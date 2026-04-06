@@ -9,83 +9,108 @@ Built with Electron, React, TypeScript, and Tailwind CSS. Cross-platform: Window
 ## Features
 
 ### Dashboard
-- One-click singleplayer launch with game status indicator
-- Favorite and recent servers with map preview cards
-- Recently installed mods feed
-- Aggregated news from Steam and BeamMP sources
-- Registry update notifications
+- **Singleplayer Launch** — one-click launch with live game status indicator; shows warning when game path is not configured
+- **Registry Update Banner** — detects available mod updates from configured registries and prompts to update
+- **Favorite Servers** — 3-column grid (up to 6) with map preview backgrounds, server name with BeamMP rich-text rendering, player count badges, and password lock indicators
+- **Recent Servers** — 4-column grid of recently joined servers with the same card style
+- **Recently Installed Mods** — 3-column grid (up to 6) showing thumbnail, mod name, author, file size, and relative install time (e.g. "2 hours ago")
+- **News Feed** — aggregated feed (4 items) from Steam and BeamMP sources with source badges, timestamps, and external links
 
 ### Vehicle Browser
-- Browse all installed vehicles with preview thumbnails
-- Search and filter by type (car, truck, utility) or brand
-- View detailed vehicle info: brand, body style, year, country, drivetrain, power, torque, weight
-- Browse and manage all vehicle configurations (factory + custom)
-- Create, clone, rename, and delete configs
-- **Config Editor** — per-slot part selection with tuning variable sliders (min/max/units)
-- **3D Vehicle Viewer** — interactive Three.js model with COLLADA loading, DDS textures, paint system, and live part updates *(in development)*
+- **Vehicle Grid** — lazy-loaded thumbnails (batches of 12) with infinite scroll, shows vehicle name and config count badge
+- **Search & Filter** — text search with brand dropdown filter and stock/mod source divider
+- **Vehicle Detail Panel** — brand, body style, model year, country of origin, drivetrain, power, torque, weight, fuel type, transmission
+- **Performance Stats** — estimated top speed, 0–60 time, and value
+- **Configuration Manager** — sidebar panel (fixed 16rem width) listing all configs (factory + custom); create new, clone, rename, duplicate, and delete configs with confirmation dialogs
+- **Config Preview** — thumbnail preview of the selected config with toggle to open the 3D Vehicle Viewer
+- **Config Editor** — per-slot part selection via dropdowns populated from vehicle slot data; tuning variable sliders with labeled min/max range, default value, and engineering units
+- **Parts List** — complete hierarchical listing of all installed parts for the active config
+- **3D Vehicle Viewer** — interactive Three.js model with COLLADA `.dae` loading, DDS texture support (BC1–BC7), material classification (paint, chrome, glass, rubber, interior), paint system with color palette, showroom environment (gradient + ground plane), and wheel placement from node data *(in development)*
 
 ### Map Browser
-- Browse installed maps with 16:9 preview images
-- Search and filter by source (stock vs mod)
-- View map metadata: terrain size, spawn points, world bounds, minimap
-- Registry-sourced descriptions, tags, and external links
+- **Map Grid** — lazy-loaded 16:9 preview images with map name overlay and stock/mod source divider
+- **Search & Filter** — text search with stock vs. mod source filter
+- **Map Detail View** — authors, terrain size (e.g. 2048×2048), spawn point count, world bounds, and embedded minimap display
+- **Registry Metadata Panel** — identifier, version, license, release status, compatibility info, and description pulled from the mod registry
+- **External Links** — links to mod page, repository, or documentation when available
 
 ### Mod Manager
 Three tabs for complete mod lifecycle management:
 
-**Installed** — Table view of all mods with enable/disable toggles, delete with dependency checks, type-filtered search, disk usage stats, and full metadata panel with registry enrichment.
+**Installed** — Stats grid showing total mods, total disk usage, active count, and last scan time. Table view with columns for name, author, type, size, and status. Enable/disable toggles per mod. Delete with dependency-check confirmation. Type filter dropdown (vehicle, map, ui, general, etc.) and text search. Full metadata side panel with registry enrichment (description, tags, version, authors, license).
 
-**Browse (beamng.com)** — OAuth login, search, category/sort filters, star ratings, download counts, one-click install with progress bar.
+**Browse (beamng.com)** — OAuth login via BeamNG.com for access to the official mod repository. Category filter (vehicles, maps, props, UI, etc.), sort by relevance/date/downloads/rating with ascending/descending toggle, paginated results. Star ratings, download counts, and file size displayed per mod. One-click install with real-time progress bar and automatic extraction.
 
-**Registry (CKAN-style)** — Pull from configurable mod repositories, verified badges, transitive dependency resolution, update notifications, and one-click updates.
+**Registry (CKAN-style)** — Pull mod metadata from configurable repositories (name, URL, priority). Verified badges (✓) for mods with confirmed authorship. Transitive dependency resolution — installs required dependencies automatically. Update notifications with one-click update. Mod detail panel with identifier, version, abstract, authors, license, download URL, and file hash. Supports multiple registries with priority-based conflict resolution.
 
 ### Server Browser
-- Live server list with auto-refresh (30s polling)
-- Search, sort (players/name/map/region), and quick filters (empty, full, official, modded, password)
-- Favorite servers
-- One-click join with mod sync overlay
-- Queue system for full servers with auto-join
-- Direct connect by IP:port
-- BeamMP rich-text server name rendering
+- **Stats Row** — 4 summary cards: total servers, total players online, servers with open slots, and your favorites count
+- **Server List** — auto-refreshing (30-second polling) with BeamMP rich-text name rendering (`^0`–`^f` color codes, `^l`/`^o`/`^n`/`^m`/`^r` style codes)
+- **Search & Sort** — text search with sort by players, name, map, or region; ascending/descending toggle
+- **Quick Filter Chips** — toggle chips for: show empty, show full, official only, modded, password-protected
+- **Filter Tabs** — All / Favorites / History / Modded / Official
+- **Favorite Servers** — star toggle on any server, persisted across sessions
+- **Server Detail Panel** — map name starting with a preview, player list, mod list, server description, owner info, and connection details
+- **Join & Queue** — one-click join with automatic mod sync overlay (downloads/updates required mods); queue system for full servers with auto-join when a slot opens and a queue position overlay
+- **Direct Connect** — connect by IP:port for unlisted servers
+- **BeamMP Authentication** — saved auth key for seamless multiplayer access
 
 ### Server Manager (Self-Hosted)
-- Create, duplicate, start/stop/restart server instances
-- Auto-download BeamMP Server binary (platform-aware)
-- **Live Console** — real-time log output with command input
-- **Config Editor** — server settings with BeamMP rich-text name editor (WYSIWYG)
-- **File Manager** — browse and edit server files in-app (Monaco editor)
-- **Mods Panel** — deploy/undeploy mods to servers
-- **Scheduling** — automated backups, restarts, commands, chat messages (once/hourly/daily/weekly)
-- **Analytics** — player session history with bar charts, player summaries, session drill-down
-- **Player Heat Map** — 3D WebGL map with live player positions, density heat map overlay, and GPS route planner with road-following pathfinding *(in development)*
+Manage your own BeamMP server instances entirely from within the app:
+
+- **Instance Management** — create, duplicate, rename, and delete server instances; start/stop/restart with live status indicators
+- **Auto-Download** — automatically downloads the correct BeamMP Server binary for your platform (Windows/Linux/macOS) with `chmod +x` on Unix
+- **Status Tab** — at-a-glance server status, uptime, player count, and resource usage
+- **Config Editor** — full server settings form with a WYSIWYG BeamMP rich-text name editor (character-level color/style toolbar with `^0`–`^f` color codes, bold/italic/underline/strikethrough, raw mode toggle, and live preview)
+- **Live Console** — real-time log output streamed from the server process with command input field for sending server commands
+- **File Manager** — browse the server's directory tree and edit any file in-app using Monaco Editor (syntax highlighting, find/replace, minimap)
+- **Mods Panel** — deploy or undeploy mods to the server's `Resources/Client` directory; shows mod name, type, size, and status
+- **Scheduling** — create automated tasks with 7 action types (backup, restart, command, chat message, mod update, config change, script) across 4 frequencies (once, hourly, daily, weekly); backup management with restore/delete
+- **Analytics** — period selector (24h/7d/30d/all), summary cards (total sessions, unique players, avg session length, peak concurrent), bar chart of player activity over time, and player table with session drill-down
+- **Player Heat Map** — 3D WebGL terrain (512×512) with live player position cones, density heat map overlay, and GPS route planner with road-following pathfinding *(in development)*
 
 ### Game Launcher
-- Launch BeamNG.drive in singleplayer or multiplayer mode
-- Built-in BeamMP protocol — no separate launcher needed
-- BeamMP authentication with saved keys
-- Color-coded launcher log viewer with filtering, copy, and export
+- **Protocol Integration** — registers custom `beammp://` protocol handlers (HTTP, HTTPS, TCP, UDP) so the app can launch multiplayer sessions directly — no separate BeamMP Launcher needed
+- **Singleplayer Bridge** — launches BeamNG.drive in singleplayer mode with Lua bridge injection for mod management communication
+- **Multiplayer Bridge** — launches via BeamMP with auth key injection, server address passing, and mod sync
+- **Steam/Proton Launch** — on Linux, launches through `steam -applaunch 284160` with Proton prefix detection
+- **Log Viewer** — color-coded log output (info/warn/error/debug categories), text filter, auto-scroll with scroll-lock threshold, copy-to-clipboard, and export/download as text file
+- **Auth Key Management** — saved BeamMP authentication key with validation
 
 ### Settings
-- Auto-detect or manually set game paths
-- Custom backend server URL with health check
-- Configurable mod registry repositories (name, URL, priority)
-- Modpack export/import (`.beampack` JSON format)
-- **Appearance** — accent color, UI scale, font size, background style/image, surface opacity, blur effects, sidebar width
+
+**General**
+- Auto-detect or manually set BeamNG.drive game paths (game directory, user folder, cache)
+- Custom backend server URL with live health-check indicator
+- Configurable mod registry repositories — add multiple sources with name, URL, and priority; reorder via drag
+- Modpack export (`.beampack` JSON bundle of selected mods) and import with conflict resolution
+
+**Appearance**
+- Accent color picker with 12 preset colors and custom hex input
+- UI scale slider (50%–200%)
+- Font size slider
+- Background style selector: solid color, gradient, image, or random image rotation
+- Background image gallery with upload and selection
+- Surface opacity slider for glass-morphism effect
+- Background blur intensity toggle
+- Sidebar width adjustment
 
 ### Additional
-- First-run setup wizard (game paths, backend config)
-- Tailscale integration for direct-connect networking
-- Cross-platform: Windows (NSIS installer), Linux (AppImage, deb), macOS (DMG)
-- Linux Proton/Steam support — auto-detects Proton installs, launches via Steam
+- **Setup Wizard** — 4-step first-run experience: Welcome → Game Paths (auto-detect or manual) → Backend Configuration (URL + health check) → Done
+- **Custom Titlebar** — frameless window with custom minimize/maximize/close controls and drag region
+- **Status Bar** — persistent bottom bar showing backend connection status, game path status, and mod counts
+- **Sidebar Navigation** — collapsible icon sidebar with tooltips, page routing, and active-page indicator
+- **Tailscale Integration** — direct-connect networking via Tailscale for LAN-like multiplayer over the internet
+- **Cross-Platform** — Windows (NSIS installer), Linux (AppImage + deb), macOS (DMG); Linux Proton/Steam auto-detection and launch support
 
 ---
 
 ## In Development
 
-The following features are functional but actively being improved:
+The following features are functional but actively being refined:
 
-- **3D Vehicle Viewer & Editor** — COLLADA model rendering with DDS texture support and live config editing. Mesh classification, paint system, and wheel placement are working; further refinement ongoing.
-- **Player Heat Map** — 3D map visualization with live tracking and GPS route planning. Core functionality works; polish and UX improvements in progress.
+- **3D Vehicle Viewer & Editor** — COLLADA `.dae` model loader with DDS texture support (BC1–BC7 compression formats). Mesh classification identifies paint, chrome, glass, rubber, and interior surfaces. Paint system with swatchable color palette applies to classified paint meshes. Showroom environment with gradient skybox and reflective ground plane. Wheel placement computed from hub node positions in vehicle data. Render options panel for wireframe, normals, bounding boxes, and material overlays. Further mesh fidelity and part-swap integration ongoing.
+- **Player Heat Map** — 3D terrain visualization (512×512 heightmap) with textured ground. Live player positions displayed as directional cones. Density heat map overlay with configurable color ramp. GPS route planner with road-network pathfinding and ribbon visualization. Core functionality works; terrain LOD and real-time streaming improvements in progress.
 
 ---
 
