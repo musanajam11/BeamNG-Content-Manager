@@ -1,0 +1,28 @@
+node_modules
+dist
+out
+.DS_Store
+.eslintcache
+*.log*
+
+# Build artifacts
+release/
+
+# Research / dev scratch (not part of the app)
+research/
+
+# IDE
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# Docs (local reference, not shipped)
+Docs/
+
+# TypeScript build info
+*.tsbuildinfo

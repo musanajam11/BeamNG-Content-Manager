@@ -1,0 +1,115 @@
+@import 'tailwindcss';
+
+:root {
+  /* ── Core palette: dark neutral + BeamMP orange accent ── */
+  --color-base: #111113;
+  --color-surface: rgba(255, 255, 255, 0.04);
+  --color-surface-hover: rgba(255, 255, 255, 0.07);
+  --color-surface-active: rgba(255, 255, 255, 0.10);
+  --color-surface-raised: rgba(255, 255, 255, 0.05);
+  --color-overlay: rgba(0, 0, 0, 0.20);
+
+  --color-accent: #f97316;
+  --color-accent-hover: #ea580c;
+  --color-accent-subtle: rgba(249, 115, 22, 0.12);
+  --color-accent-glow: rgba(249, 115, 22, 0.08);
+
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-hover: rgba(255, 255, 255, 0.14);
+  --color-border-accent: rgba(249, 115, 22, 0.30);
+
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #cbd5e1;
+  --color-text-muted: #64748b;
+  --color-text-dim: #475569;
+
+  --color-success: #4ade80;
+  --color-warning: #fbbf24;
+  --color-error: #f87171;
+  --color-info: #60a5fa;
+
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+
+  --sidebar-width: 200px;
+  --titlebar-height: 38px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  border-radius: 0 !important;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background-color: var(--color-base);
+  color: var(--color-text-primary);
+  color-scheme: dark;
+  font-family: 'Segoe UI', -apple-system, system-ui, sans-serif;
+  font-size: 16px;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Native select dropdown theming ── */
+select,
+select option {
+  background-color: var(--color-base);
+  color: var(--color-text-primary);
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; margin: 4px 0; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.20); }
+
+/* ── Titlebar drag ── */
+.titlebar-drag { -webkit-app-region: drag; }
+.titlebar-no-drag { -webkit-app-region: no-drag; }
+
+/* ── Transitions ── */
+button, a, input { transition: all 0.15s ease; }
+
+/* ── Glassmorphic card utility ── */
+.glass {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+.glass-raised {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: 0 20px 80px rgba(0, 0, 0, 0.28);
+}
+
+/* ── Population bar ── */
+.pop-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.pop-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.35s ease;
+}
+.pop-fill-green { background: linear-gradient(90deg, #16a34a, #4ade80); }
+.pop-fill-amber { background: linear-gradient(90deg, #d97706, #fbbf24); }
+.pop-fill-rose  { background: linear-gradient(90deg, #dc2626, #f87171); }
+
+/* ── Accent glow shadow ── */
+.accent-shadow { box-shadow: 0 10px 40px rgba(249, 115, 22, 0.22); }
+.accent-shadow-sm { box-shadow: 0 4px 20px rgba(249, 115, 22, 0.15); }
