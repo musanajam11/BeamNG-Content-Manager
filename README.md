@@ -298,6 +298,23 @@ docs/                    # Guides and documentation
 
 ---
 
+## Code Signing
+
+> [!WARNING]
+> **The Windows installer is not yet code-signed.** Microsoft Defender SmartScreen may display a warning stating _"Windows protected your PC"_ when you run the installer. This is expected for unsigned software and does not indicate a security threat.
+>
+> **This installer is safe to use.** To proceed, click **"More info"** → **"Run anyway"**. You may also need to allow the installer through your antivirus software.
+
+**Seeking SignPath.io EV Code Signing via HSM**
+
+We are in the process of applying for a free [SignPath Foundation](https://signpath.org/) EV code signing certificate issued via Hardware Security Module (HSM). Once granted, all Windows release binaries will be automatically signed through our GitHub Actions CI pipeline, and SmartScreen warnings will no longer appear.
+
+SignPath's open-source program requires demonstrable project reputation — usage data such as download counts, community adoption, and historical use. As this project grows and accumulates sufficient proof of use and trust, we will complete the application and enable automated signing.
+
+You can verify the integrity of any release by checking the SHA256 checksums published alongside each [GitHub Release](https://github.com/musanajam11/BeamNG-Content-Manager/releases), or by auditing the [build workflow](.github/workflows/build.yml) that produces the artifacts directly from this repository.
+
+---
+
 ## Contributing
 
 1. Fork the repository

@@ -40,7 +40,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload artifacts
+      - name: Upload unsigned artifacts
         uses: actions/upload-artifact@v4
         with:
           name: dist-${{ matrix.os }}
@@ -52,8 +52,55 @@ jobs:
             dist/*.yml
           if-no-files-found: warn
 
-  release:
+  # ── Code Signing (stubbed) ──────────────────────────────────────────────────
+  # Windows EV code signing via SignPath.io (HSM-backed).
+  # This job is disabled until a SignPath OSS subscription is granted.
+  # To enable: remove the `if: false` condition and configure the repository
+  # secrets SIGNPATH_API_TOKEN and SIGNPATH_ORG_ID.
+  # See: https://signpath.org/
+  sign-windows:
     needs: build
+    if: false # startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      actions: read
+      contents: read
+
+    steps:
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-windows-latest
+          path: unsigned
+
+      - name: Re-upload for SignPath
+        id: upload-exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: win-to-sign
+          path: unsigned/*.exe
+
+      - name: Submit signing request to SignPath
+        id: sign
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
+          organization-id: '${{ secrets.SIGNPATH_ORG_ID }}'
+          project-slug: 'beamng-content-manager'
+          signing-policy-slug: 'release-signing'
+          github-artifact-id: '${{ steps.upload-exe.outputs.artifact-id }}'
+          wait-for-completion: true
+          output-artifact-directory: signed
+
+      - name: Upload signed artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-windows-signed
+          path: signed/*.exe
+
+  release:
+    needs: [build] # add sign-windows when signing is enabled
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
