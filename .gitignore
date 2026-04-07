@@ -21,8 +21,9 @@ research/
 Thumbs.db
 Desktop.ini
 
-# Docs (local reference, not shipped)
-Docs/
+# Docs (local reference, not shipped — except screenshots)
+Docs/*
+!Docs/screenshots/
 
 # TypeScript build info
 *.tsbuildinfo
