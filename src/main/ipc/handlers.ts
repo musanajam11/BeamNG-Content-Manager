@@ -3029,12 +3029,9 @@ export function registerIpcHandlers(): void {
   /** List bundled default background image paths from resources/backgrounds/ */
   ipcMain.handle('appearance:getDefaultBackgrounds', async (): Promise<string[]> => {
     try {
-      // In production: process.resourcesPath/resources/backgrounds/
-      // In dev: <project>/resources/backgrounds/
-      const isDev = !app.isPackaged
-      const bgDir = isDev
-        ? join(app.getAppPath(), 'resources', 'backgrounds')
-        : join(process.resourcesPath, 'resources', 'backgrounds')
+      // app.getAppPath() works for both dev (project dir) and prod (asar path).
+      // Electron's patched fs transparently resolves asarUnpack'd files.
+      const bgDir = join(app.getAppPath(), 'resources', 'backgrounds')
       const entries = await readdir(bgDir)
       return entries
         .filter((e) => /\.(jpg|jpeg|png|webp)$/i.test(e))
@@ -3047,10 +3044,7 @@ export function registerIpcHandlers(): void {
   /** Delete a default background image file from the bundled backgrounds directory */
   ipcMain.handle('appearance:deleteDefaultBackground', async (_event, filePath: string): Promise<boolean> => {
     try {
-      const isDev = !app.isPackaged
-      const bgDir = isDev
-        ? join(app.getAppPath(), 'resources', 'backgrounds')
-        : join(process.resourcesPath, 'resources', 'backgrounds')
+      const bgDir = join(app.getAppPath(), 'resources', 'backgrounds')
       // Security: ensure the resolved path is inside the backgrounds directory
       const resolved = join(filePath)
       if (!resolved.startsWith(bgDir)) return false
