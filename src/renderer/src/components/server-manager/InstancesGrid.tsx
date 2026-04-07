@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Play, Square, Settings, FolderOpen, Cpu, HardDrive, Users, Copy } from 'lucide-react'
 import type { HostedServerEntry } from '../../../../shared/types'
 import { useLiveUptime } from '../../hooks/useLiveUptime'
@@ -71,6 +71,28 @@ function InstanceCard({
 
   const mapName = config.map?.split('/')[2] ?? 'Unknown'
 
+  // Marquee scroll for long server names
+  const nameContainerRef = useRef<HTMLDivElement>(null)
+  const nameTextRef = useRef<HTMLSpanElement>(null)
+  const [nameOverflows, setNameOverflows] = useState(false)
+
+  const checkNameOverflow = useCallback(() => {
+    const container = nameContainerRef.current
+    const text = nameTextRef.current
+    if (!container || !text) return
+    const overflow = text.scrollWidth > container.clientWidth
+    setNameOverflows(overflow)
+    if (overflow) {
+      text.style.setProperty('--marquee-offset', `${container.clientWidth - text.scrollWidth}px`)
+    }
+  }, [])
+
+  useEffect(() => {
+    checkNameOverflow()
+    window.addEventListener('resize', checkNameOverflow)
+    return () => window.removeEventListener('resize', checkNameOverflow)
+  }, [config.name, checkNameOverflow])
+
   const [bannerImage, setBannerImage] = useState<string | null>(null)
 
   useEffect(() => {
@@ -102,7 +124,11 @@ function InstanceCard({
         }}
       >
         <div className="flex-1 min-w-0">
-          <BeamMPText text={config.name} className="text-sm font-semibold text-[var(--color-text-primary)] truncate" />
+          <div ref={nameContainerRef} className="overflow-hidden">
+            <span ref={nameTextRef} className={`marquee-scroll${nameOverflows ? ' is-overflowing' : ''}`}>
+              <BeamMPText text={config.name} className="text-sm font-semibold text-[var(--color-text-primary)] whitespace-nowrap" />
+            </span>
+          </div>
           <p className="text-[11px] text-[var(--color-text-muted)] truncate">
             {mapName} &middot; :{config.port}
           </p>

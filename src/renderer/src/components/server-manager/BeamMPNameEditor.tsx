@@ -435,7 +435,7 @@ export function BeamMPNameEditor({ value, onChange, error }: BeamMPNameEditorPro
             const text = e.clipboardData.getData('text/plain').replace(/[\r\n]/g, ' ')
             document.execCommand('insertText', false, text)
           }}
-          className={`px-2 py-1.5 text-sm bg-[var(--color-surface)] border text-[var(--color-text-primary)] focus:border-[var(--color-border-accent)] outline-none rounded-b min-h-[32px] whitespace-pre ${error ? 'border-red-500/60' : 'border-[var(--color-border)]'}`}
+          className={`px-2 py-1.5 text-sm bg-[var(--color-surface)] border text-[var(--color-text-primary)] focus:border-[var(--color-border-accent)] outline-none rounded-b min-h-[32px] whitespace-pre overflow-x-auto ${error ? 'border-red-500/60' : 'border-[var(--color-border)]'}`}
           style={{ minHeight: 32 }}
         />
       )}
@@ -443,10 +443,10 @@ export function BeamMPNameEditor({ value, onChange, error }: BeamMPNameEditorPro
 
       {/* ── previews ── */}
       {value && (
-        <div className="mt-1 space-y-1">
-          <div className="px-2 py-1.5 rounded border border-white/8 bg-black/20 flex items-center gap-2">
+        <div className="mt-1 space-y-1 min-w-0">
+          <div className="px-2 py-1.5 rounded border border-white/8 bg-black/20 flex items-center gap-2 min-w-0 overflow-hidden">
             <span className="text-[10px] text-slate-500 shrink-0">Preview:</span>
-            <BeamMPText text={value} className="text-sm truncate" />
+            <BeamMPText text={value} className="text-sm truncate block min-w-0" />
           </div>
           <div className="px-2 py-1 rounded border border-white/8 bg-black/20 overflow-x-auto">
             <span className="text-[10px] text-slate-500 mr-2">Raw:</span>

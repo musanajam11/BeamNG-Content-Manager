@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Plus, Download, FolderOpen, Play, Square, ArrowLeft } from 'lucide-react'
 import { BeamMPText } from '../BeamMPText'
 import type { ServerExeStatus } from '../../../../shared/types'
@@ -31,6 +31,31 @@ export function ServerManagerToolbar({
   onBackToGrid
 }: ServerManagerToolbarProps): React.JSX.Element {
   const [dragOver, setDragOver] = useState(false)
+
+  // Marquee: detect if server name overflows its container
+  const containerRef = useRef<HTMLHeadingElement>(null)
+  const textRef = useRef<HTMLSpanElement>(null)
+  const [isOverflowing, setIsOverflowing] = useState(false)
+
+  const checkOverflow = useCallback(() => {
+    const container = containerRef.current
+    const text = textRef.current
+    if (!container || !text) return
+    const overflow = text.scrollWidth > container.clientWidth
+    setIsOverflowing(overflow)
+    if (overflow) {
+      text.style.setProperty('--marquee-offset', `${container.clientWidth - text.scrollWidth}px`)
+    }
+  }, [])
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    const ro = new ResizeObserver(() => checkOverflow())
+    ro.observe(container)
+    checkOverflow()
+    return () => ro.disconnect()
+  }, [serverName, viewMode, checkOverflow])
 
   const handleExeDrop = async (e: React.DragEvent): Promise<void> => {
     e.preventDefault()
@@ -90,21 +115,23 @@ export function ServerManagerToolbar({
       )}
 
       {/* Main toolbar row */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         {/* Left: title or back nav */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
           {viewMode === 'detail' ? (
             <>
               <button
                 onClick={onBackToGrid}
-                className="flex items-center gap-1 text-xs text-[var(--color-accent)] hover:underline"
+                className="flex items-center gap-1 text-xs text-[var(--color-accent)] hover:underline shrink-0"
               >
                 <ArrowLeft size={14} />
                 Instances
               </button>
-              <span className="text-[var(--color-text-muted)]">/</span>
-              <h1 className="text-lg font-bold text-[var(--color-text-primary)] truncate max-w-xs">
-                <BeamMPText text={serverName ?? 'Server'} />
+              <span className="text-[var(--color-text-muted)] shrink-0">/</span>
+              <h1 ref={containerRef} className="text-lg font-bold text-[var(--color-text-primary)] min-w-0 flex-1 overflow-hidden">
+                <span ref={textRef} className={`marquee-scroll${isOverflowing ? ' is-overflowing' : ''}`}>
+                  <BeamMPText text={serverName ?? 'Server'} className="whitespace-nowrap" />
+                </span>
               </h1>
             </>
           ) : (

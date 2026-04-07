@@ -59,8 +59,8 @@ export function SidebarNav({ activeTab, serverName, serverState, onTabChange }: 
       <div className="px-4 py-3 border-b border-[var(--color-border)] flex items-center gap-2">
         <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${stateColors[serverState] ?? 'bg-zinc-500'}`} />
         {!collapsed && (
-          <div className="min-w-0 flex-1">
-            <BeamMPText text={serverName} className="text-sm font-semibold text-[var(--color-text-primary)] truncate" />
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <BeamMPText text={serverName} className="block text-sm font-semibold text-[var(--color-text-primary)] truncate" />
             <span className="text-xs text-[var(--color-text-muted)] capitalize">{serverState}</span>
           </div>
         )}
