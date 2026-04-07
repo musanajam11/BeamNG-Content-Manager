@@ -768,9 +768,21 @@ export class GameLauncherService {
       this.ulStatus = 'UlConnection Failed!'
       this.terminate = true
       this.coreSend('L')
-      // Reject any pending server recv promises
+      // Reject any pending server recv promises so awaits don't hang
       if (this.serverMsgResolve) {
+        const r = this.serverMsgResolve
         this.serverMsgResolve = null
+        r('')
+      }
+      if (this.serverRawResolve) {
+        const r = this.serverRawResolve
+        this.serverRawResolve = null
+        r(Buffer.alloc(0))
+      }
+      if (this.modConfirmResolve) {
+        const r = this.modConfirmResolve
+        this.modConfirmResolve = null
+        r()
       }
     })
 
@@ -799,18 +811,42 @@ export class GameLauncherService {
     })
   }
 
-  private serverRecvMsg(): Promise<string> {
+  private serverRecvMsg(timeoutMs = 30000): Promise<string> {
     return new Promise((resolve, reject) => {
       if (this.terminate) { reject(new Error('Terminated')); return }
-      this.serverMsgResolve = resolve
+      const timer = setTimeout(() => {
+        if (this.serverMsgResolve === wrappedResolve) {
+          this.serverMsgResolve = null
+          this.log('ERROR: serverRecvMsg timed out')
+          this.terminate = true
+          resolve('')
+        }
+      }, timeoutMs)
+      const wrappedResolve = (val: string): void => {
+        clearTimeout(timer)
+        resolve(val)
+      }
+      this.serverMsgResolve = wrappedResolve
       this.processServerBuffer()
     })
   }
 
-  private serverRecvRaw(size: number): Promise<Buffer> {
+  private serverRecvRaw(size: number, timeoutMs = 60000): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       if (this.terminate) { reject(new Error('Terminated')); return }
-      this.serverRawResolve = resolve
+      const timer = setTimeout(() => {
+        if (this.serverRawResolve === wrappedResolve) {
+          this.serverRawResolve = null
+          this.log(`ERROR: serverRecvRaw timed out waiting for ${size} bytes`)
+          this.terminate = true
+          resolve(Buffer.alloc(0))
+        }
+      }, timeoutMs)
+      const wrappedResolve = (val: Buffer): void => {
+        clearTimeout(timer)
+        resolve(val)
+      }
+      this.serverRawResolve = wrappedResolve
       this.serverRawSize = size
       this.processServerBuffer()
     })
@@ -995,21 +1031,34 @@ export class GameLauncherService {
         return
       }
 
+      this.modConfirmResolve = null
       this.modLoadedFlag = false
       await new Promise<void>((resolve) => {
-        if (this.modLoadedFlag || this.terminate) { resolve(); return }
+        // Check after assigning resolve so the 'R' handler can resolve us
         this.modConfirmResolve = resolve
+        if (this.modLoadedFlag || this.terminate) {
+          this.modConfirmResolve = null
+          resolve()
+          return
+        }
         setTimeout(() => {
-          if (this.modConfirmResolve) { this.modConfirmResolve(); this.modConfirmResolve = null }
+          if (this.modConfirmResolve === resolve) {
+            this.modConfirmResolve = null
+            this.log(`WARN: Mod load confirmation timed out for ${mod.file_name}`)
+            resolve()
+          }
         }, 30000)
       })
     }
 
     if (!this.terminate) {
       this.serverSendFramed('Done')
-      this.emitModSyncProgress({ phase: 'done', modIndex: modInfos.length, modCount: modInfos.length, fileName: '', received: 0, total: 0 })
       this.log('Mod sync complete!')
+    } else {
+      this.log('Mod sync aborted due to error or timeout')
     }
+    // Always emit done so the overlay dismisses itself
+    this.emitModSyncProgress({ phase: 'done', modIndex: modInfos.length, modCount: modInfos.length, fileName: '', received: 0, total: 0 })
   }
 
   private handleRelayMessage(data: string): void {
