@@ -1,7 +1,7 @@
 import { readFile, writeFile, mkdir, readdir, unlink, stat, copyFile, rm, chmod } from 'fs/promises'
 import { existsSync, createWriteStream } from 'fs'
 import { join, basename, dirname } from 'path'
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, safeStorage } from 'electron'
 import { spawn, ChildProcess } from 'child_process'
 import { randomUUID } from 'crypto'
 import { get as httpsGet } from 'https'
@@ -54,6 +54,41 @@ export class ServerManagerService {
     const base = join(app.getPath('appData'), 'BeamMP-ContentManager')
     this.serversDir = join(base, 'servers')
     this.binDir = join(base, 'bin')
+  }
+
+  /* ── Auth Key encryption helpers ── */
+
+  private encryptAuthKey(plainKey: string): string {
+    if (!plainKey || !safeStorage.isEncryptionAvailable()) return plainKey
+    try {
+      return 'enc:' + safeStorage.encryptString(plainKey).toString('base64')
+    } catch {
+      return plainKey
+    }
+  }
+
+  private decryptAuthKey(stored: string): string {
+    if (!stored || !stored.startsWith('enc:')) return stored
+    if (!safeStorage.isEncryptionAvailable()) return ''
+    try {
+      const buf = Buffer.from(stored.slice(4), 'base64')
+      return safeStorage.decryptString(buf)
+    } catch {
+      return ''
+    }
+  }
+
+  /** Serialize config to JSON for server.json — encrypts authKey */
+  private serializeConfig(config: HostedServerConfig): string {
+    const toStore = { ...config, authKey: this.encryptAuthKey(config.authKey) }
+    return JSON.stringify(toStore, null, 2)
+  }
+
+  /** Deserialize config from server.json — decrypts authKey */
+  private deserializeConfig(raw: string): HostedServerConfig {
+    const config: HostedServerConfig = JSON.parse(raw)
+    config.authKey = this.decryptAuthKey(config.authKey)
+    return config
   }
 
   /* ── EXE Management ── */
@@ -390,7 +425,7 @@ export class ServerManagerService {
       if (!existsSync(cfgPath)) continue
       try {
         const raw = await readFile(cfgPath, 'utf-8')
-        const config: HostedServerConfig = JSON.parse(raw)
+        const config = this.deserializeConfig(raw)
         entries.push({ config, status: this.getStatus(config.id) })
       } catch { /* skip corrupt entries */ }
     }
@@ -412,7 +447,7 @@ export class ServerManagerService {
     // Run the exe briefly so it generates a real ServerConfig.toml + directory structure
     await this.seedServerConfig(id)
 
-    await writeFile(join(dir, 'server.json'), JSON.stringify(config, null, 2), 'utf-8')
+    await writeFile(join(dir, 'server.json'), this.serializeConfig(config), 'utf-8')
     // Merge user values on top of the real generated config
     await this.writeToml(config)
     return config
@@ -421,8 +456,8 @@ export class ServerManagerService {
   async updateServer(id: string, partial: Partial<HostedServerConfig>): Promise<HostedServerConfig> {
     const dir = join(this.serversDir, id)
     const raw = await readFile(join(dir, 'server.json'), 'utf-8')
-    const config: HostedServerConfig = { ...JSON.parse(raw), ...partial, id }
-    await writeFile(join(dir, 'server.json'), JSON.stringify(config, null, 2), 'utf-8')
+    const config: HostedServerConfig = { ...this.deserializeConfig(raw), ...partial, id }
+    await writeFile(join(dir, 'server.json'), this.serializeConfig(config), 'utf-8')
     await this.writeToml(config)
     return config
   }
@@ -439,7 +474,7 @@ export class ServerManagerService {
     const cfgPath = join(this.serversDir, id, 'server.json')
     if (!existsSync(cfgPath)) return null
     const raw = await readFile(cfgPath, 'utf-8')
-    return JSON.parse(raw)
+    return this.deserializeConfig(raw)
   }
 
   /* ── Process lifecycle ── */

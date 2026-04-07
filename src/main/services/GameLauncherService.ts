@@ -22,7 +22,7 @@ import * as dgram from 'dgram'
 import * as zlib from 'zlib'
 import { createHash } from 'crypto'
 import { homedir } from 'os'
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, safeStorage } from 'electron'
 import type { GamePaths, GameStatus } from '../../shared/types'
 
 interface ModInfo {
@@ -311,11 +311,28 @@ export class GameLauncherService {
   private loadSavedKey(): void {
     try {
       const keyPath = this.getKeyPath()
-      if (existsSync(keyPath)) {
-        const key = readFileSync(keyPath, 'utf-8').trim()
-        if (key && /^[a-zA-Z0-9-]+$/.test(key)) {
-          this.privateKey = key
+      if (!existsSync(keyPath)) return
+      const raw = readFileSync(keyPath)
+
+      // Try decrypting (encrypted keys are binary, not valid UTF-8 starting with plain alphanum)
+      if (safeStorage.isEncryptionAvailable()) {
+        try {
+          const decrypted = safeStorage.decryptString(raw)
+          if (decrypted && /^[a-zA-Z0-9-]+$/.test(decrypted)) {
+            this.privateKey = decrypted
+            return
+          }
+        } catch {
+          // Not encrypted — fall through to plaintext migration
         }
+      }
+
+      // Fallback: read as plaintext (legacy) and re-encrypt
+      const plain = raw.toString('utf-8').trim()
+      if (plain && /^[a-zA-Z0-9-]+$/.test(plain)) {
+        this.privateKey = plain
+        // Migrate: re-save encrypted
+        this.saveKey(plain)
       }
     } catch {
       // ignore
@@ -326,7 +343,13 @@ export class GameLauncherService {
     const keyPath = this.getKeyPath()
     if (key && /^[a-zA-Z0-9]/.test(key)) {
       this.privateKey = key
-      writeFileSync(keyPath, key, 'utf-8')
+      if (safeStorage.isEncryptionAvailable()) {
+        const encrypted = safeStorage.encryptString(key)
+        writeFileSync(keyPath, encrypted)
+      } else {
+        // Fallback if OS encryption unavailable
+        writeFileSync(keyPath, key, 'utf-8')
+      }
     } else {
       this.privateKey = ''
       try {

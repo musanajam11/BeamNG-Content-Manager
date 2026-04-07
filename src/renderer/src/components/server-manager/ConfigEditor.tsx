@@ -118,7 +118,7 @@ export function ConfigEditor({
   const field = (
     label: string,
     key: keyof HostedServerConfig,
-    type: 'text' | 'number' = 'text'
+    type: 'text' | 'number' | 'password' = 'text'
   ): React.JSX.Element => {
     const err = errorMap.get(key)
     return (
@@ -161,7 +161,7 @@ export function ConfigEditor({
           error={errorMap.get('name')}
         />
         {field('Port', 'port', 'number')}
-        {field('Auth Key', 'authKey')}
+        {field('Auth Key', 'authKey', 'password')}
         {field('Max Players', 'maxPlayers', 'number')}
         {field('Max Cars per Player', 'maxCars', 'number')}
         <label className="flex flex-col gap-1">
