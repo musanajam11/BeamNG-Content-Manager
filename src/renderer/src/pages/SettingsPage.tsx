@@ -45,7 +45,6 @@ export function SettingsPage(): React.JSX.Element {
 
 function LanguageSelector(): React.JSX.Element {
   const { t, i18n } = useTranslation()
-  const config = useAppStore((s) => s.config)
 
   const handleChange = async (code: string): Promise<void> => {
     await i18n.changeLanguage(code)
