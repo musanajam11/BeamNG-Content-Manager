@@ -1,4 +1,5 @@
 ﻿import { useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { ServerExeStatus } from '../../../shared/types'
 import { useHostedServerStore } from '../stores/useHostedServerStore'
 import { ConfirmDialog } from '../components/server-manager/ConfirmDialog'
@@ -14,9 +15,11 @@ import HeatMapPanel from '../components/server-manager/HeatMapPanel'
 import { SchedulePanel } from '../components/server-manager/SchedulePanel'
 import { AnalyticsPanel } from '../components/server-manager/AnalyticsPanel'
 import { ToastContainer } from '../components/server-manager/ToastContainer'
+import { CumulativeMetrics } from '../components/server-manager/CumulativeMetrics'
 
 export function ServerManagerPage(): React.JSX.Element {
   const store = useHostedServerStore()
+  const { t } = useTranslation()
 
   useEffect(() => {
     store.refresh()
@@ -72,6 +75,11 @@ export function ServerManagerPage(): React.JSX.Element {
         onBackToGrid={store.backToGrid}
       />
 
+      {/* Cumulative metrics strip (grid view only) */}
+      {store.viewMode === 'grid' && store.servers.length > 0 && (
+        <CumulativeMetrics servers={store.servers} />
+      )}
+
       {/* Body: grid or detail view */}
       {store.viewMode === 'grid' ? (
         <InstancesGrid
@@ -120,7 +128,7 @@ export function ServerManagerPage(): React.JSX.Element {
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center text-[var(--color-text-muted)] text-sm">
-          Select a server or create a new one
+          {t('serverManager.selectOrCreate')}
         </div>
       )}
     </div>

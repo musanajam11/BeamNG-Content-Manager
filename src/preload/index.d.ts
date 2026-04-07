@@ -98,6 +98,14 @@ interface AppAPI {
   // Recent Servers
   getRecentServers(): Promise<Array<{ ident: string; timestamp: number }>>
 
+  // Friends
+  getFriends(): Promise<Array<{ id: string; displayName: string; addedAt: number; notes?: string; tags?: string[] }>>
+  addFriend(id: string, displayName: string): Promise<Array<{ id: string; displayName: string; addedAt: number; notes?: string; tags?: string[] }>>
+  removeFriend(id: string): Promise<Array<{ id: string; displayName: string; addedAt: number; notes?: string; tags?: string[] }>>
+  updateFriend(id: string, updates: { displayName?: string; notes?: string; tags?: string[] }): Promise<Array<{ id: string; displayName: string; addedAt: number; notes?: string; tags?: string[] }>>
+  getFriendSessions(): Promise<Array<{ serverIdent: string; serverName: string; players: string[]; timestamp: number }>>
+  recordFriendSession(serverIdent: string, serverName: string, players: string[]): Promise<void>
+
   // Mods
   getMods(): Promise<{ success: boolean; data?: ModInfo[]; error?: string }>
   toggleMod(modKey: string, enabled: boolean): Promise<{ success: boolean; error?: string }>
@@ -282,6 +290,56 @@ interface AppAPI {
   onUpdateDownloadProgress(callback: (progress: { percent: number; transferred: number; total: number }) => void): () => void
   onUpdateDownloaded(callback: (info: { version: string }) => void): () => void
   installUpdate(): Promise<void>
+
+  // Career Save Management
+  careerListProfiles(): Promise<Array<{
+    name: string
+    isRLS: boolean
+    path: string
+    deployed: boolean
+    slots: Array<{
+      name: string
+      creationDate: string | null
+      lastSaved: string | null
+      version: number | null
+      corrupted: boolean
+    }>
+  }>>
+  careerGetSlotMetadata(profileName: string, slotName: string): Promise<{
+    slot: { name: string; creationDate: string | null; lastSaved: string | null; version: number | null; corrupted: boolean }
+    level: string | null
+    money: number | null
+    beamXP: { level: number; value: number; curLvlProgress: number; neededForNext: number } | null
+    vehicleCount: number
+    vehicles: Array<{ id: string; name: string | null; model: string | null; thumbnailDataUrl: string | null }>
+    isRLS: boolean
+    bankBalance: number | null
+    creditScore: number | null
+    gameplayStats: { totalOdometer: number | null; totalDriftScore: number | null; totalCollisions: number | null }
+    insuranceCount: number
+    missionCount: number
+    skills: Array<{ key: string; value: number; subcategories: Array<{ key: string; value: number }> }>
+    reputations: Array<{ name: string; value: number; max: number }>
+    stamina: number | null
+    vouchers: number | null
+  } | null>
+  careerGetLog(profileName: string): Promise<string[]>
+  careerDeployProfile(profileName: string): Promise<{ success: boolean; error?: string }>
+  careerUndeployProfile(profileName: string): Promise<{ success: boolean; error?: string }>
+  careerBackupSlot(profileName: string, slotName: string): Promise<{ success: boolean; backupName?: string; error?: string }>
+  careerBackupProfile(profileName: string): Promise<{ success: boolean; backupName?: string; error?: string }>
+  careerListProfileBackups(profileName?: string): Promise<Array<{
+    name: string
+    profileName: string
+    slotName: string | null
+    timestamp: string
+    path: string
+  }>>
+  careerRestoreProfileBackup(backupName: string): Promise<{ success: boolean; error?: string }>
+  careerDeleteProfileBackup(backupName: string): Promise<{ success: boolean; error?: string }>
+  careerSetSavePath(savePath: string | null): Promise<{ success: boolean; error?: string }>
+  careerBrowseSavePath(): Promise<string | null>
+  careerGetSavePath(): Promise<string | null>
 }
 
 declare global {

@@ -47,8 +47,14 @@ export interface AppConfig {
   backendUrl: string
   launcherPort: number
   theme: 'dark' | 'light'
+  /** UI language code (e.g. 'en', 'es', 'fr') */
+  language: string
   appearance: AppearanceSettings
   setupComplete: boolean
+  /** Default ports for new server instances (comma-separated ports or ranges like "30814-30820,30900") */
+  defaultPorts: string
+  /** Manual override for CareerMP save directory */
+  careerSavePath: string | null
 }
 
 export interface ServerInfo {
@@ -323,6 +329,8 @@ export type AppPage =
   | 'server-admin'
   | 'setup'
   | 'launcher'
+  | 'controls'
+  | 'career'
 
 /* ── Hosted Server Manager ── */
 

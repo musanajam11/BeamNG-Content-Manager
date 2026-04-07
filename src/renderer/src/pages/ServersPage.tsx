@@ -7,9 +7,11 @@ import { ServerDetailPanel } from '../components/servers/ServerDetailPanel'
 import { ModSyncOverlay } from '../components/servers/ModSyncOverlay'
 import { LoginSheet } from '../components/servers/LoginSheet'
 import { Globe, Users, Shield, Package, Clock, X, LogIn } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { BeamMPText } from '../components/BeamMPText'
 
 export function ServersPage(): React.JSX.Element {
+  const { t } = useTranslation()
   const {
     filteredServers, loading, error, searchQuery, selectedServer, favorites,
     sortField, sortDir, filterTab, quickFilters,
@@ -303,25 +305,25 @@ export function ServersPage(): React.JSX.Element {
         <div className="grid grid-cols-4 gap-3">
           <div className="rounded-lg border border-white/8 bg-white/5 px-4 py-3">
             <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-400 mb-1">
-              <Globe size={11} /> Visible servers
+              <Globe size={11} /> {t('servers.visibleServers')}
             </div>
             <div className="text-lg font-bold text-white">{summary.total}</div>
           </div>
           <div className="rounded-lg border border-white/8 bg-white/5 px-4 py-3">
             <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-400 mb-1">
-              <Users size={11} /> Players online
+              <Users size={11} /> {t('servers.playersOnline')}
             </div>
             <div className="text-lg font-bold text-white">{summary.totalPlayers}</div>
           </div>
           <div className="rounded-lg border border-white/8 bg-white/5 px-4 py-3">
             <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-400 mb-1">
-              <Shield size={11} /> Official
+              <Shield size={11} /> {t('servers.official')}
             </div>
             <div className="text-lg font-bold text-white">{summary.official}</div>
           </div>
           <div className="rounded-lg border border-white/8 bg-white/5 px-4 py-3">
             <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-400 mb-1">
-              <Package size={11} /> Modded
+              <Package size={11} /> {t('servers.modded')}
             </div>
             <div className="text-lg font-bold text-white">{summary.modded}</div>
           </div>
@@ -350,7 +352,7 @@ export function ServersPage(): React.JSX.Element {
       <div className="flex-1 flex min-h-0">
         {loading && filteredServers.length === 0 ? (
           <div className="flex-1 flex items-center justify-center text-slate-400 text-sm">
-            Loading servers...
+            {t('servers.loadingServers')}
           </div>
         ) : (
           <>
@@ -367,7 +369,7 @@ export function ServersPage(): React.JSX.Element {
               {queueActive && queueTarget && (
                 <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#111113]/85 backdrop-blur-sm">
                   <Clock size={28} className="text-[var(--color-accent-text)] animate-pulse mb-3" />
-                  <div className="text-sm font-semibold text-white mb-1">Waiting to join</div>
+                  <div className="text-sm font-semibold text-white mb-1">{t('servers.waitingToJoin')}</div>
                   <div className="text-xs text-[var(--color-accent-text-muted)] mb-1 max-w-[280px] text-center truncate"><BeamMPText text={queueTarget.sname} /></div>
                   <div className="text-xs text-slate-400 mb-4">{queueMessage} — {formatElapsed(queueElapsed)}</div>
                   <button
@@ -375,7 +377,7 @@ export function ServersPage(): React.JSX.Element {
                     className="inline-flex items-center gap-1.5 border border-[var(--color-border-accent)] bg-[var(--color-accent-10)] px-4 py-2 text-xs font-medium text-[var(--color-accent-text-muted)] transition hover:bg-[var(--color-accent-20)]"
                   >
                     <X size={13} />
-                    Cancel queue
+                    {t('servers.cancelQueue')}
                   </button>
                 </div>
               )}
@@ -417,8 +419,8 @@ export function ServersPage(): React.JSX.Element {
                 <LogIn size={18} />
               </div>
               <div>
-                <h2 className="text-sm font-semibold text-white">Sign in required</h2>
-                <p className="text-xs text-slate-400">Log in to your BeamMP account or continue as a guest</p>
+                <h2 className="text-sm font-semibold text-white">{t('servers.signInRequired')}</h2>
+                <p className="text-xs text-slate-400">{t('servers.signInDescription')}</p>
               </div>
             </div>
             <LoginSheet
@@ -436,8 +438,8 @@ export function ServersPage(): React.JSX.Element {
             <div className="h-10 w-10 rounded-full border-2 border-[var(--color-accent-20)]" />
             <div className="absolute inset-0 h-10 w-10 rounded-full border-2 border-transparent border-t-[var(--color-accent)] animate-spin" />
           </div>
-          <div className="text-sm font-semibold text-white mb-1">Connecting to server</div>
-          <div className="text-xs text-slate-400">Syncing mods and loading map...</div>
+          <div className="text-sm font-semibold text-white mb-1">{t('servers.connectingToServer')}</div>
+          <div className="text-xs text-slate-400">{t('servers.syncingMods')}</div>
         </div>
       )}
     </div>

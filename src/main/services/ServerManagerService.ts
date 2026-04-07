@@ -43,6 +43,31 @@ interface RunningServer {
 
 const MAX_CONSOLE_LINES = 2000
 
+/**
+ * Parse a port specification string (e.g. "30814,30816-30820,31000") into an
+ * array of individual port numbers, sorted ascending.
+ */
+export function parsePortSpec(spec: string): number[] {
+  if (!spec || !spec.trim()) return []
+  const ports = new Set<number>()
+  for (const part of spec.split(',')) {
+    const trimmed = part.trim()
+    if (!trimmed) continue
+    const rangeMatch = trimmed.match(/^(\d+)\s*-\s*(\d+)$/)
+    if (rangeMatch) {
+      const lo = parseInt(rangeMatch[1], 10)
+      const hi = parseInt(rangeMatch[2], 10)
+      if (lo >= 1 && hi <= 65535 && lo <= hi) {
+        for (let p = lo; p <= hi; p++) ports.add(p)
+      }
+    } else {
+      const p = parseInt(trimmed, 10)
+      if (p >= 1 && p <= 65535) ports.add(p)
+    }
+  }
+  return [...ports].sort((a, b) => a - b)
+}
+
 export class ServerManagerService {
   private serversDir: string
   private binDir: string
@@ -432,9 +457,25 @@ export class ServerManagerService {
     return entries
   }
 
-  async createServer(partial?: Partial<HostedServerConfig>): Promise<HostedServerConfig> {
+  async createServer(partial?: Partial<HostedServerConfig>, defaultPortSpec?: string): Promise<HostedServerConfig> {
     const id = randomUUID()
-    const config: HostedServerConfig = { ...DEFAULT_CONFIG, id, ...partial }
+    const base: HostedServerConfig = { ...DEFAULT_CONFIG, id, ...partial }
+
+    // If no explicit port was provided, pick the next available from the configured port list
+    if (!partial?.port && defaultPortSpec) {
+      const allowedPorts = parsePortSpec(defaultPortSpec)
+      if (allowedPorts.length > 0) {
+        const usedPorts = new Set(
+          (await this.listServers()).map((s) => s.config.port)
+        )
+        const nextPort = allowedPorts.find((p) => !usedPorts.has(p))
+        if (nextPort !== undefined) {
+          base.port = nextPort
+        }
+      }
+    }
+
+    const config = base
     const dir = join(this.serversDir, id)
     await mkdir(dir, { recursive: true })
     await mkdir(join(dir, config.resourceFolder), { recursive: true })

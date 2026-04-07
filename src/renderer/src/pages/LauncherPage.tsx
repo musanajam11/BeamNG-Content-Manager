@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { RefreshCw, Trash2, Copy, Download } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 export function LauncherPage(): React.JSX.Element {
+  const { t } = useTranslation()
   const [logs, setLogs] = useState<string[]>([])
   const [autoScroll, setAutoScroll] = useState(true)
   const [filter, setFilter] = useState('')
@@ -65,11 +67,11 @@ export function LauncherPage(): React.JSX.Element {
   return (
     <div className="flex flex-col h-full gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-[var(--text-primary)]">BeamMP Launcher</h1>
+        <h1 className="text-xl font-bold text-[var(--text-primary)]">{t('launcher.title')}</h1>
         <div className="flex items-center gap-2">
           <input
             type="text"
-            placeholder="Filter logs..."
+            placeholder={t('launcher.filterLogs')}
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             className="px-3 py-1.5 text-sm rounded-lg bg-[var(--bg-tertiary)] border border-[var(--border-primary)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] w-48"
@@ -77,28 +79,28 @@ export function LauncherPage(): React.JSX.Element {
           <button
             onClick={fetchLogs}
             className="p-1.5 rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors"
-            title="Refresh"
+            title={t('common.refresh')}
           >
             <RefreshCw size={16} />
           </button>
           <button
             onClick={copyLogs}
             className="p-1.5 rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors"
-            title="Copy to clipboard"
+            title={t('launcher.copyClipboard')}
           >
             <Copy size={16} />
           </button>
           <button
             onClick={downloadLogs}
             className="p-1.5 rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors"
-            title="Download log file"
+            title={t('launcher.downloadLog')}
           >
             <Download size={16} />
           </button>
           <button
             onClick={() => setLogs([])}
             className="p-1.5 rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-red-400 transition-colors"
-            title="Clear display"
+            title={t('launcher.clearDisplay')}
           >
             <Trash2 size={16} />
           </button>
@@ -106,8 +108,8 @@ export function LauncherPage(): React.JSX.Element {
       </div>
 
       <div className="flex items-center gap-3 text-xs text-[var(--text-muted)]">
-        <span>{logs.length} log entries</span>
-        {filter && <span>({filteredLogs.length} matching)</span>}
+        <span>{t('launcher.logEntries', { count: logs.length })}</span>
+        {filter && <span>{t('launcher.matching', { count: filteredLogs.length })}</span>}
         <label className="flex items-center gap-1.5 ml-auto cursor-pointer">
           <input
             type="checkbox"
@@ -115,7 +117,7 @@ export function LauncherPage(): React.JSX.Element {
             onChange={(e) => setAutoScroll(e.target.checked)}
             className="rounded"
           />
-          Auto-scroll
+          {t('launcher.autoScroll')}
         </label>
       </div>
 
@@ -126,7 +128,7 @@ export function LauncherPage(): React.JSX.Element {
       >
         {filteredLogs.length === 0 ? (
           <div className="text-[var(--text-muted)] text-center py-8">
-            No launcher logs yet. Join a server to see activity.
+            {t('launcher.noLogs')}
           </div>
         ) : (
           filteredLogs.map((line, i) => (

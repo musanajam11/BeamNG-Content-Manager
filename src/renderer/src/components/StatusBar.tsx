@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 
 interface VersionInfo {
   appVersion: string
@@ -9,6 +10,7 @@ interface VersionInfo {
 
 export function StatusBar(): React.JSX.Element {
   const [versions, setVersions] = useState<VersionInfo | null>(null)
+  const { t } = useTranslation()
 
   useEffect(() => {
     window.api.getVersions().then(setVersions).catch(() => {})
@@ -18,13 +20,13 @@ export function StatusBar(): React.JSX.Element {
     <div className="flex items-center justify-between h-[22px] shrink-0 border-t border-[var(--color-border)] bg-black/30 text-[10px] text-[var(--color-text-muted)] select-none" style={{ paddingLeft: '12px', paddingRight: '12px' }}>
       <div className="flex items-center gap-3">
         {versions?.gameVersion && (
-          <span>BeamNG <span className="text-[var(--color-text-secondary)]">{versions.gameVersion}</span></span>
+          <span>{t('statusBar.beamng', { version: versions.gameVersion })}</span>
         )}
-        <span>BeamMP Client <span className="text-[var(--color-text-secondary)]">{versions?.launcherVersion ?? '—'}</span> Server <span className="text-[var(--color-text-secondary)]">{versions?.serverVersion ?? '—'}</span></span>
+        <span>{t('statusBar.beammpClient', { version: versions?.launcherVersion ?? '—' })} {t('statusBar.server', { version: versions?.serverVersion ?? '—' })}</span>
       </div>
 
       <span className="text-[var(--color-text-muted)]">
-        Made with <span className="text-red-400">❤️</span>
+        {t('statusBar.madeWith')}
       </span>
 
       <div className="flex items-center gap-3">

@@ -11,10 +11,13 @@ import { MapsPage } from './pages/MapsPage'
 import { ModsPage } from './pages/ModsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { LauncherPage } from './pages/LauncherPage'
+import { ControlsPage } from './pages/ControlsPage'
 import { ServerManagerPage } from './pages/ServerManagerPage'
+import { CareerPage } from './pages/CareerPage'
 import { SetupWizard } from './pages/SetupWizard'
 import { useAppStore } from './stores/useAppStore'
 import { useThemeStore } from './stores/useThemeStore'
+import i18n from './i18n'
 
 function PageRouter(): React.JSX.Element {
   const currentPage = useAppStore((s) => s.currentPage)
@@ -34,8 +37,12 @@ function PageRouter(): React.JSX.Element {
       return <ModsPage />
     case 'launcher':
       return <LauncherPage />
+    case 'controls':
+      return <ControlsPage />
     case 'server-admin':
       return <ServerManagerPage />
+    case 'career':
+      return <CareerPage />
     case 'settings':
       return <SettingsPage />
     default:
@@ -51,10 +58,13 @@ function App(): React.JSX.Element {
     loadConfig()
   }, [])
 
-  // Apply appearance settings once config is loaded
+  // Apply appearance settings and language once config is loaded
   useEffect(() => {
     if (config?.appearance) {
       loadTheme(config.appearance)
+    }
+    if (config?.language) {
+      i18n.changeLanguage(config.language)
     }
   }, [configLoaded])
 

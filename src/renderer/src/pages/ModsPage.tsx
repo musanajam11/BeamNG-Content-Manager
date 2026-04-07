@@ -39,6 +39,7 @@ import {
 import type { ModInfo, RepoMod, RepoCategory, RepoSortOrder } from '../../../shared/types'
 import type { AvailableMod, BeamModMetadata, RegistrySearchResult, ResolutionResult, InstalledRegistryMod } from '../../../shared/registry-types'
 import { useConfirmDialog } from '../hooks/useConfirmDialog'
+import { useTranslation } from 'react-i18next'
 
 type ModFilter = string
 type ModsTab = 'installed' | 'browse' | 'registry'
@@ -51,16 +52,16 @@ function formatBytes(bytes: number): string {
 }
 
 const MOD_TYPE_FILTERS: { value: string; label: string }[] = [
-  { value: '', label: 'All Types' },
-  { value: 'vehicle', label: 'Vehicles' },
-  { value: 'terrain', label: 'Maps' },
-  { value: 'skin', label: 'Skins' },
-  { value: 'ui_app', label: 'UI Apps' },
-  { value: 'sound', label: 'Sounds' },
-  { value: 'scenario', label: 'Scenarios' },
-  { value: 'license_plate', label: 'License Plates' },
-  { value: 'automation', label: 'Automation' },
-  { value: 'other', label: 'Other' }
+  { value: '', label: 'mods.allTypes' },
+  { value: 'vehicle', label: 'mods.vehicleType' },
+  { value: 'terrain', label: 'mods.mapType' },
+  { value: 'skin', label: 'mods.skinType' },
+  { value: 'ui_app', label: 'mods.uiApps' },
+  { value: 'sound', label: 'mods.sounds' },
+  { value: 'scenario', label: 'mods.scenarios' },
+  { value: 'license_plate', label: 'mods.licensePlates' },
+  { value: 'automation', label: 'mods.automation' },
+  { value: 'other', label: 'mods.otherType' }
 ]
 
 function modTypeIcon(modType: string): React.ReactNode {
@@ -93,6 +94,7 @@ export function ModsPage(): React.JSX.Element {
   const [activeTab, setActiveTab] = useState<ModsTab>('installed')
   const [registryUpdates, setRegistryUpdates] = useState(0)
   const [deleteVersion, setDeleteVersion] = useState(0)
+  const { t } = useTranslation()
 
   useEffect(() => {
     window.api.registryGetUpdatesAvailable().then((updates) => {
@@ -105,7 +107,7 @@ export function ModsPage(): React.JSX.Element {
       {/* Top-level tab bar */}
       <div className="shrink-0 border-b border-white/6 px-4 pt-4 pb-0">
         <div className="flex items-center gap-6">
-          <h1 className="text-lg font-semibold text-white">Mods</h1>
+          <h1 className="text-lg font-semibold text-white">{t('mods.title')}</h1>
           <div className="flex gap-2 -mb-px">
             <button
               onClick={() => setActiveTab('installed')}
@@ -116,7 +118,7 @@ export function ModsPage(): React.JSX.Element {
               }`}
             >
               <span className="inline-flex items-center gap-1.5">
-                <Package size={13} /> Installed
+                <Package size={13} /> {t('mods.installed')}
               </span>
             </button>
             <button
@@ -128,7 +130,7 @@ export function ModsPage(): React.JSX.Element {
               }`}
             >
               <span className="inline-flex items-center gap-1.5">
-                <Globe size={13} /> Browse
+                <Globe size={13} /> {t('mods.browse')}
               </span>
             </button>
             <button
@@ -140,7 +142,7 @@ export function ModsPage(): React.JSX.Element {
               }`}
             >
               <span className="inline-flex items-center gap-1.5">
-                <Database size={13} /> Registry
+                <Database size={13} /> {t('mods.registry')}
                 {registryUpdates > 0 && (
                   <span className="ml-1 px-1.5 py-0.5 text-[10px] font-bold bg-[var(--color-accent)] text-white rounded-full leading-none">
                     {registryUpdates}
@@ -181,6 +183,7 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
   const [previewCache, setPreviewCache] = useState<Record<string, string | null>>({})
   const [registryInstalled, setRegistryInstalled] = useState<Record<string, InstalledRegistryMod>>({})
   const { dialog: confirmDialogEl, confirm } = useConfirmDialog()
+  const { t } = useTranslation()
 
   const fetchMods = async (): Promise<void> => {
     setLoading(true)
@@ -190,7 +193,7 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
       if (result.success && result.data) {
         setMods(result.data)
       } else {
-        setError(result.error || 'Failed to load mods')
+        setError(result.error || t('mods.failedToLoadMods'))
       }
     } catch (err) {
       setError(String(err))
@@ -303,9 +306,9 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
       if (reverseDeps.length > 0) {
         const depList = reverseDeps.join(', ')
         const ok = await confirm({
-          title: 'Dependency Warning',
-          message: `The following mods depend on "${mod.title || mod.fileName}":\n${depList}\n\nDelete anyway?`,
-          confirmLabel: 'Delete Anyway',
+          title: t('mods.dependencyWarning'),
+          message: `${t('mods.dependsOn')}\n${depList}`,
+          confirmLabel: t('mods.deleteAnyway'),
           variant: 'warning'
         })
         if (!ok) return
@@ -318,9 +321,9 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
       if (servers.length > 0) {
         const serverList = servers.map((s) => s.name).join(', ')
         const ok = await confirm({
-          title: 'Mod Deployed on Servers',
-          message: `"${mod.title || mod.fileName}" is deployed on ${servers.length} server(s): ${serverList}\n\nThis will uninstall the mod and remove it from all servers.`,
-          confirmLabel: 'Uninstall & Remove',
+          title: t('mods.deployedOnServers'),
+          message: `"${mod.title || mod.fileName}" is deployed on ${servers.length} server(s): ${serverList}`,
+          confirmLabel: t('mods.uninstallRemove'),
           variant: 'danger'
         })
         if (!ok) return
@@ -363,7 +366,7 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
           <div className="flex items-center gap-3">
             {!loading && (
               <span className="text-xs text-slate-400">
-                {summary.total} mod{summary.total !== 1 ? 's' : ''}
+                {t('mods.modCount', { count: summary.total })}
               </span>
             )}
           </div>
@@ -371,7 +374,7 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
             <button
               onClick={fetchMods}
               className="inline-flex items-center gap-1.5 border border-white/10 bg-white/5 px-4 py-2 text-xs text-slate-300 transition hover:bg-white/10"
-              title="Refresh"
+              title={t('common.refresh')}
             >
               <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
             </button>
@@ -380,14 +383,14 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
               className="inline-flex items-center gap-1.5 border border-white/10 bg-white/5 px-4 py-2 text-xs text-slate-300 transition hover:bg-white/10"
             >
               <FolderOpen size={13} />
-              Open folder
+              {t('mods.openFolder')}
             </button>
             <button
               onClick={handleInstall}
               className="inline-flex items-center gap-1.5 border border-[var(--color-border-accent)] bg-[var(--color-accent-10)] px-4 py-2 text-xs font-medium text-[var(--color-accent-text)] transition hover:bg-[var(--color-accent-20)]"
             >
               <Plus size={13} />
-              Install mod
+              {t('mods.installMod')}
             </button>
           </div>
         </div>
@@ -396,25 +399,25 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
         <div className="grid grid-cols-4 gap-3">
           <div className="border border-white/8 bg-white/5 px-4 py-3">
             <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-400 mb-1">
-              <Package size={11} /> Total mods
+              <Package size={11} /> {t('mods.totalMods')}
             </div>
             <div className="text-lg font-bold text-white">{summary.total}</div>
           </div>
           <div className="border border-white/8 bg-white/5 px-4 py-3">
             <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-400 mb-1">
-              <ToggleRight size={11} /> Enabled
+              <ToggleRight size={11} /> {t('mods.enabledCount')}
             </div>
             <div className="text-lg font-bold text-white">{summary.enabled}</div>
           </div>
           <div className="border border-white/8 bg-white/5 px-4 py-3">
             <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-400 mb-1">
-              <HardDrive size={11} /> Disk usage
+              <HardDrive size={11} /> {t('mods.diskUsage')}
             </div>
             <div className="text-lg font-bold text-white">{formatBytes(summary.totalSize)}</div>
           </div>
           <div className="border border-white/8 bg-white/5 px-4 py-3">
             <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-400 mb-1">
-              <MapPin size={11} /> Maps / Vehicles
+              <MapPin size={11} /> {t('mods.mapsVehicles')}
             </div>
             <div className="text-lg font-bold text-white">
               {summary.terrain} / {summary.vehicle}
@@ -430,7 +433,7 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search mods..."
+              placeholder={t('mods.searchMods')}
               className="w-full bg-white/5 border border-white/10 pr-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-[var(--color-accent-50)]"
               style={{ paddingLeft: 42 }}
             />
@@ -442,7 +445,7 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
           >
             {MOD_TYPE_FILTERS.map((o) => (
               <option key={o.value} value={o.value} className="bg-[#1a1a1c] text-white">
-                {o.label}
+                {t(o.label)}
               </option>
             ))}
           </select>
@@ -460,13 +463,13 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
       <div className="flex-1 flex min-h-0">
         {loading && mods.length === 0 ? (
           <div className="flex-1 flex items-center justify-center text-slate-400 text-sm">
-            Loading mods...
+            {t('mods.loadingMods')}
           </div>
         ) : filteredMods.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-400">
             <Package size={40} strokeWidth={1} />
             <p className="text-sm">
-              {mods.length === 0 ? 'No mods installed' : 'No mods match your search'}
+              {mods.length === 0 ? t('mods.noModsInstalled') : t('mods.noModsMatch')}
             </p>
             {mods.length === 0 && (
               <button
@@ -474,7 +477,7 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                 className="mt-2 inline-flex items-center gap-1.5 border border-[var(--color-border-accent)] bg-[var(--color-accent-10)] px-4 py-2 text-xs font-medium text-[var(--color-accent-text)] transition hover:bg-[var(--color-accent-20)]"
               >
                 <Plus size={13} />
-                Install your first mod
+                {t('mods.installFirstMod')}
               </button>
             )}
           </div>
@@ -485,11 +488,11 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-10 bg-[#111113] border-b border-white/6">
                   <tr className="text-[10px] uppercase tracking-[0.12em] text-slate-500">
-                    <th className="text-left px-4 py-2.5 font-medium">Status</th>
-                    <th className="text-left px-4 py-2.5 font-medium">Mod</th>
-                    <th className="text-left px-4 py-2.5 font-medium">Type</th>
-                    <th className="text-right px-4 py-2.5 font-medium">Size</th>
-                    <th className="text-right px-4 py-2.5 font-medium">Actions</th>
+                    <th className="text-left px-4 py-2.5 font-medium">{t('mods.tableStatus')}</th>
+                    <th className="text-left px-4 py-2.5 font-medium">{t('mods.tableMod')}</th>
+                    <th className="text-left px-4 py-2.5 font-medium">{t('mods.tableType')}</th>
+                    <th className="text-right px-4 py-2.5 font-medium">{t('mods.tableSize')}</th>
+                    <th className="text-right px-4 py-2.5 font-medium">{t('mods.tableActions')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -512,7 +515,7 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                           }}
                           disabled={actionPending === mod.key || mod.location === 'multiplayer'}
                           className="text-slate-300 transition hover:text-white disabled:opacity-40"
-                          title={mod.enabled ? 'Disable mod' : 'Enable mod'}
+                          title={mod.enabled ? t('mods.disableMod') : t('mods.enableMod')}
                         >
                           {mod.enabled ? (
                             <ToggleRight size={20} className="text-[var(--color-accent)]" />
@@ -533,7 +536,7 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                           </div>
                         )}
                         {mod.author && (
-                          <div className="text-[11px] text-slate-500">by {mod.author}</div>
+                          <div className="text-[11px] text-slate-500">{t('mods.byAuthor', { author: mod.author })}</div>
                         )}
                       </td>
 
@@ -541,7 +544,7 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                       <td className="px-4 py-3">
                         <div className="inline-flex items-center gap-1.5 text-xs text-slate-400">
                           {modTypeIcon(mod.modType)}
-                          {mod.modType || 'unknown'}
+                          {mod.modType || t('mods.otherType')}
                         </div>
                       </td>
 
@@ -560,7 +563,7 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                             }}
                             disabled={actionPending === mod.key}
                             className="text-slate-500 transition hover:text-rose-400 disabled:opacity-40"
-                            title="Delete mod"
+                            title={t('mods.deleteMod')}
                           >
                             <Trash2 size={14} />
                           </button>
@@ -618,23 +621,23 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
 
                 <div className="space-y-2 text-xs">
                   <div className="flex justify-between">
-                    <span className="text-slate-500">File</span>
+                    <span className="text-slate-500">{t('common.file')}</span>
                     <span className="text-slate-300 truncate ml-4 max-w-[180px]">{selectedMod.fileName}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">Type</span>
+                    <span className="text-slate-500">{t('common.type')}</span>
                     <span className="text-slate-300 inline-flex items-center gap-1">
                       {modTypeIcon(selectedMod.modType)}
                       {selectedRegistryEntry?.metadata.mod_type || selectedMod.modType}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">Size</span>
+                    <span className="text-slate-500">{t('common.size')}</span>
                     <span className="text-slate-300">{formatBytes(selectedMod.sizeBytes)}</span>
                   </div>
                   {(selectedRegistryEntry?.metadata.author || selectedMod.author) && (
                     <div className="flex justify-between">
-                      <span className="text-slate-500">Author</span>
+                      <span className="text-slate-500">{t('common.author')}</span>
                       <span className="text-slate-300">
                         {Array.isArray(selectedRegistryEntry?.metadata.author)
                           ? selectedRegistryEntry!.metadata.author.join(', ')
@@ -644,7 +647,7 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                   )}
                   {(selectedRegistryEntry?.metadata.version || selectedMod.version) && (
                     <div className="flex justify-between">
-                      <span className="text-slate-500">Version</span>
+                      <span className="text-slate-500">{t('common.version')}</span>
                       <span className="text-slate-300">
                         {selectedRegistryEntry?.metadata.version || selectedMod.version}
                       </span>
@@ -652,7 +655,7 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                   )}
                   {selectedRegistryEntry?.metadata.license && (
                     <div className="flex justify-between">
-                      <span className="text-slate-500">License</span>
+                      <span className="text-slate-500">{t('common.license')}</span>
                       <span className="text-slate-300">
                         {Array.isArray(selectedRegistryEntry.metadata.license)
                           ? selectedRegistryEntry.metadata.license.join(', ')
@@ -662,7 +665,7 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                   )}
                   {selectedRegistryEntry?.metadata.release_status && (
                     <div className="flex justify-between">
-                      <span className="text-slate-500">Release</span>
+                      <span className="text-slate-500">{t('mods.release')}</span>
                       <span className={`capitalize ${
                         selectedRegistryEntry.metadata.release_status === 'stable'
                           ? 'text-emerald-400'
@@ -676,7 +679,7 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                   )}
                   {selectedRegistryEntry?.metadata.release_date && (
                     <div className="flex justify-between">
-                      <span className="text-slate-500">Released</span>
+                      <span className="text-slate-500">{t('mods.released')}</span>
                       <span className="text-slate-300">
                         {new Date(selectedRegistryEntry.metadata.release_date).toLocaleDateString()}
                       </span>
@@ -684,30 +687,30 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                   )}
                   {selectedRegistryEntry && (
                     <div className="flex justify-between">
-                      <span className="text-slate-500">Source</span>
+                      <span className="text-slate-500">{t('common.source')}</span>
                       <span className="text-slate-300 capitalize">{selectedRegistryEntry.install_source}</span>
                     </div>
                   )}
                   {selectedRegistryEntry && (
                     <div className="flex justify-between">
-                      <span className="text-slate-500">Installed</span>
+                      <span className="text-slate-500">{t('mods.installed')}</span>
                       <span className="text-slate-300">
                         {new Date(selectedRegistryEntry.install_time).toLocaleDateString()}
                       </span>
                     </div>
                   )}
                   <div className="flex justify-between">
-                    <span className="text-slate-500">Location</span>
+                    <span className="text-slate-500">{t('mods.location')}</span>
                     <span className="text-slate-300">{selectedMod.location}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">Status</span>
+                    <span className="text-slate-500">{t('common.status')}</span>
                     <span className={selectedMod.enabled ? 'text-[var(--color-accent)]' : 'text-slate-500'}>
-                      {selectedMod.enabled ? 'Enabled' : 'Disabled'}
+                      {selectedMod.enabled ? t('common.enabled') : t('common.disabled')}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-500">Modified</span>
+                    <span className="text-slate-500">{t('mods.modified')}</span>
                     <span className="text-slate-300">
                       {new Date(selectedMod.modifiedDate).toLocaleDateString()}
                     </span>
@@ -717,7 +720,7 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                 {/* External links */}
                 {selectedRegistryEntry?.metadata.resources && (
                   <div className="border-t border-white/6 pt-3 space-y-1.5">
-                    <span className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Links</span>
+                    <span className="text-[10px] uppercase tracking-[0.12em] text-slate-500">{t('common.links')}</span>
                     {Object.entries(selectedRegistryEntry.metadata.resources).map(([key, url]) => (
                       <a
                         key={key}
@@ -736,7 +739,7 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                 {/* Dependencies */}
                 {selectedRegistryEntry?.metadata.depends && selectedRegistryEntry.metadata.depends.length > 0 && (
                   <div className="border-t border-white/6 pt-3 space-y-1.5">
-                    <span className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Dependencies</span>
+                    <span className="text-[10px] uppercase tracking-[0.12em] text-slate-500">{t('mods.dependencies')}</span>
                     {selectedRegistryEntry.metadata.depends.map((dep) => {
                       const depName = 'identifier' in dep ? dep.identifier : dep.any_of.map(r => r.identifier).join(' | ')
                       return (
@@ -762,11 +765,11 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                     >
                       {selectedMod.enabled ? (
                         <>
-                          <ToggleLeft size={13} /> Disable
+                          <ToggleLeft size={13} /> {t('mods.disableMod')}
                         </>
                       ) : (
                         <>
-                          <ToggleRight size={13} /> Enable
+                          <ToggleRight size={13} /> {t('mods.enableMod')}
                         </>
                       )}
                     </button>
@@ -775,7 +778,7 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                       disabled={actionPending === selectedMod.key}
                       className="inline-flex items-center justify-center gap-1.5 border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-medium text-rose-300 transition hover:bg-rose-500/20"
                     >
-                      <Trash2 size={13} /> Delete
+                      <Trash2 size={13} /> {t('common.delete')}
                     </button>
                   </div>
                 )}
@@ -794,11 +797,11 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
    ═══════════════════════════════════════════ */
 
 const SORT_OPTIONS: { value: RepoSortOrder; label: string }[] = [
-  { value: 'download_count', label: 'Most Downloaded' },
-  { value: 'rating_weighted', label: 'Best Rated' },
-  { value: 'last_update', label: 'Recently Updated' },
-  { value: 'resource_date', label: 'Newest' },
-  { value: 'title', label: 'Alphabetical' }
+  { value: 'download_count', label: 'mods.mostDownloaded' },
+  { value: 'rating_weighted', label: 'mods.bestRated' },
+  { value: 'last_update', label: 'mods.recentlyUpdated' },
+  { value: 'resource_date', label: 'mods.newest' },
+  { value: 'title', label: 'mods.alphabetical' }
 ]
 
 function StarRating({ rating }: { rating: number }): React.JSX.Element {
@@ -846,6 +849,7 @@ function BrowseModsView(): React.JSX.Element {
   const [loginLoading, setLoginLoading] = useState(false)
   const [installedResourceIds, setInstalledResourceIds] = useState<Set<number>>(new Set())
   const [installedTitles, setInstalledTitles] = useState<Set<string>>(new Set())
+  const { t } = useTranslation()
 
   // Load categories
   useEffect(() => {
@@ -915,7 +919,7 @@ function BrowseModsView(): React.JSX.Element {
         setMods(result.data.mods)
         setTotalPages(result.data.totalPages)
       } else {
-        setError(result.error || 'Failed to load mods')
+        setError(result.error || t('mods.failedToLoadMods'))
         setMods([])
       }
     } catch (err) {
@@ -977,7 +981,7 @@ function BrowseModsView(): React.JSX.Element {
         setInstalledResourceIds((prev) => new Set(prev).add(mod.resourceId))
         setInstalledTitles((prev) => new Set(prev).add(mod.title.toLowerCase().trim()))
       } else if (result.error !== 'Cancelled') {
-        setDownloadError(result.error || 'Download failed')
+        setDownloadError(result.error || t('mods.downloadFailed'))
       }
       // Recheck login status (user may have logged in via popup)
       window.api.beamngWebLoggedIn().then((r) => setBeamngLoggedIn(r.loggedIn))
@@ -1002,7 +1006,7 @@ function BrowseModsView(): React.JSX.Element {
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              placeholder="Search beamng.com mods..."
+              placeholder={t('mods.searchModsBrowse')}
               className="w-full bg-white/5 border border-white/10 pr-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-[var(--color-accent-50)]"
               style={{ paddingLeft: 42 }}
             />
@@ -1011,14 +1015,14 @@ function BrowseModsView(): React.JSX.Element {
             onClick={handleSearch}
             className="inline-flex items-center gap-1.5 border border-[var(--color-border-accent)] bg-[var(--color-accent-10)] px-4 py-2.5 text-xs font-medium text-[var(--color-accent-text)] transition hover:bg-[var(--color-accent-20)]"
           >
-            <Search size={13} /> Search
+            <Search size={13} /> {t('common.search')}
           </button>
           {searchQuery && (
             <button
               onClick={handleClearSearch}
               className="inline-flex items-center gap-1.5 border border-white/10 bg-white/5 px-4 py-2.5 text-xs text-slate-300 transition hover:bg-white/10"
             >
-              Clear
+              {t('mods.clear')}
             </button>
           )}
 
@@ -1027,12 +1031,12 @@ function BrowseModsView(): React.JSX.Element {
             {beamngLoggedIn ? (
               <>
                 <span className="inline-flex items-center gap-1.5 text-[11px] text-emerald-400">
-                  <User size={12} /> Logged in
+                  <User size={12} /> {t('mods.loggedIn')}
                 </span>
                 <button
                   onClick={handleBeamngLogout}
                   className="inline-flex items-center gap-1.5 border border-white/10 bg-white/5 px-3 py-2.5 text-xs text-slate-400 transition hover:bg-white/10 hover:text-white"
-                  title="Log out of BeamNG.com"
+                  title={t('mods.logOut')}
                 >
                   <LogOut size={12} />
                 </button>
@@ -1042,14 +1046,14 @@ function BrowseModsView(): React.JSX.Element {
                 onClick={handleBeamngLogin}
                 disabled={loginLoading}
                 className="inline-flex items-center gap-1.5 border border-[var(--color-border-accent)] bg-[var(--color-accent-10)] px-4 py-2.5 text-xs font-medium text-[var(--color-accent-text)] transition hover:bg-[var(--color-accent-20)] disabled:opacity-50"
-                title="Log in to BeamNG.com to download mods"
+                title={t('mods.logInToDownload')}
               >
                 {loginLoading ? (
                   <Loader2 size={12} className="animate-spin" />
                 ) : (
                   <LogIn size={12} />
                 )}
-                BeamNG Login
+                {t('mods.beamngLogin')}
               </button>
             )}
           </div>
@@ -1079,7 +1083,7 @@ function BrowseModsView(): React.JSX.Element {
             >
               {SORT_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value} className="bg-[#1a1a1c] text-white">
-                  {opt.label}
+                  {t(opt.label)}
                 </option>
               ))}
             </select>
@@ -1087,7 +1091,7 @@ function BrowseModsView(): React.JSX.Element {
             <button
               onClick={fetchMods}
               className="inline-flex items-center gap-1.5 border border-white/10 bg-white/5 px-4 py-2.5 text-xs text-slate-300 transition hover:bg-white/10"
-              title="Refresh"
+              title={t('common.refresh')}
             >
               <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
             </button>
@@ -1106,13 +1110,13 @@ function BrowseModsView(): React.JSX.Element {
       <div className="flex-1 flex min-h-0">
         {loading ? (
           <div className="flex-1 flex items-center justify-center text-slate-400 text-sm gap-2">
-            <Loader2 size={16} className="animate-spin" /> Loading mods...
+            <Loader2 size={16} className="animate-spin" /> {t('mods.loadingMods')}
           </div>
         ) : mods.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-400">
             <Globe size={40} strokeWidth={1} />
             <p className="text-sm">
-              {searchQuery ? 'No mods found for your search' : 'No mods found'}
+              {searchQuery ? t('mods.noModsMatch') : t('mods.noModsMatch')}
             </p>
           </div>
         ) : (
@@ -1163,9 +1167,8 @@ function BrowseModsView(): React.JSX.Element {
                         <h3 className="text-sm font-medium text-white truncate">{mod.title}</h3>
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] text-slate-400 truncate">
-                            by {mod.author}
+                            {t('mods.byAuthor', { author: mod.author })}
                           </span>
-                          <span className="text-[11px] text-slate-500">{mod.version}</span>
                         </div>
                         {mod.tagLine && (
                           <p className="text-[11px] text-slate-500 truncate">{mod.tagLine}</p>
@@ -1215,19 +1218,19 @@ function BrowseModsView(): React.JSX.Element {
 
                   <div className="space-y-2 text-xs">
                     <div className="flex justify-between">
-                      <span className="text-slate-500">Author</span>
+                      <span className="text-slate-500">{t('common.author')}</span>
                       <span className="text-slate-300">{selectedMod.author}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-500">Version</span>
+                      <span className="text-slate-500">{t('common.version')}</span>
                       <span className="text-slate-300">{selectedMod.version}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-500">Category</span>
+                      <span className="text-slate-500">{t('mods.tableType')}</span>
                       <span className="text-slate-300">{selectedMod.category}</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-500">Rating</span>
+                      <span className="text-slate-500">{t('mods.rating')}</span>
                       <span className="inline-flex items-center gap-1.5">
                         <StarRating rating={selectedMod.rating} />
                         <span className="text-slate-400">
@@ -1236,11 +1239,11 @@ function BrowseModsView(): React.JSX.Element {
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-500">Downloads</span>
+                      <span className="text-slate-500">{t('mods.downloads')}</span>
                       <span className="text-slate-300">{selectedMod.downloads.toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-500">Subscriptions</span>
+                      <span className="text-slate-500">{t('mods.subscriptions')}</span>
                       <span className="text-slate-300">
                         {selectedMod.subscriptions.toLocaleString()}
                       </span>
@@ -1261,15 +1264,15 @@ function BrowseModsView(): React.JSX.Element {
                         <Loader2 size={13} className="animate-spin" />
                         {downloadProgress
                           ? `${Math.round((downloadProgress.received / (downloadProgress.total || 1)) * 100)}%`
-                          : 'Starting...'}
+                          : t('mods.starting')}
                       </>
                     ) : isModInstalled(selectedMod) ? (
                       <>
-                        <CheckCircle size={13} /> Installed
+                        <CheckCircle size={13} /> {t('mods.installed')}
                       </>
                     ) : (
                       <>
-                        <Download size={13} /> Install mod
+                        <Download size={13} /> {t('mods.installMod')}
                       </>
                     )}
                   </button>
@@ -1277,7 +1280,7 @@ function BrowseModsView(): React.JSX.Element {
                     onClick={() => window.api.openModPage(selectedMod.pageUrl)}
                     className="w-full inline-flex items-center justify-center gap-1.5 border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300 transition hover:bg-white/10"
                   >
-                    <ExternalLink size={13} /> View on beamng.com
+                    <ExternalLink size={13} /> {t('mods.viewOnBeamng')}
                   </button>
                   {downloadError && downloading === null && (
                     <p className="text-[11px] text-rose-400">{downloadError}</p>
@@ -1294,17 +1297,17 @@ function BrowseModsView(): React.JSX.Element {
                   disabled={page <= 1}
                   className="inline-flex items-center gap-1 border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-300 transition hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
                 >
-                  <ChevronLeft size={13} /> Previous
+                  <ChevronLeft size={13} /> {t('mods.previous')}
                 </button>
                 <span className="text-xs text-slate-400">
-                  Page {page} of {totalPages}
+                  {t('mods.pageOf', { page, totalPages })}
                 </span>
                 <button
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page >= totalPages}
                   className="inline-flex items-center gap-1 border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-300 transition hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed"
                 >
-                  Next <ChevronRight size={13} />
+                  {t('mods.next')} <ChevronRight size={13} />
                 </button>
               </div>
             )}
@@ -1340,8 +1343,7 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
   const [installed, setInstalled] = useState<Record<string, InstalledRegistryMod>>({})
   const [indexUpdating, setIndexUpdating] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState<{ received: number; total: number } | null>(null)
-
-  // Subscribe to download progress events
+  const { t } = useTranslation()
   useEffect(() => {
     const unsub = window.api.onRegistryDownloadProgress((progress) => {
       setDownloadProgress({ received: progress.received, total: progress.total })
@@ -1395,7 +1397,7 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
     setShowConfirm(false); setInstalling(identifiers[0] ?? null); setInstallError(null); setDownloadProgress(null)
     try {
       const result = await window.api.registryInstall(identifiers)
-      if (!result.success) setInstallError(result.error || 'Install failed')
+      if (!result.success) setInstallError(result.error || t('mods.installFailed'))
       await fetchInstalled(); await fetchUpdates()
     } catch (err) { setInstallError(String(err)) } finally { setInstalling(null); setDownloadProgress(null) }
   }
@@ -1406,30 +1408,30 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
       <div className="shrink-0 border-b border-white/6 px-5 pt-2 pb-3 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-xs text-slate-400">{mods.length > 0 ? `${mods.length} mods` : 'Registry'}</span>
+            <span className="text-xs text-slate-400">{mods.length > 0 ? t('mods.modCount', { count: mods.length }) : t('mods.registry')}</span>
             {updates.length > 0 && (
               <button onClick={() => setShowUpdates(!showUpdates)}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-[var(--color-accent-15)] text-[var(--color-accent-text)] border border-[var(--color-accent-20)] hover:bg-[var(--color-accent-25)]">
-                <ArrowUpCircle size={12} /> {updates.length} update{updates.length !== 1 ? 's' : ''}
+                <ArrowUpCircle size={12} /> {t('mods.updateCount', { count: updates.length })}
               </button>
             )}
           </div>
           <button onClick={handleRefreshIndex} disabled={indexUpdating}
             className="inline-flex items-center gap-1.5 border border-white/10 bg-white/5 px-4 py-2 text-xs text-slate-300 hover:bg-white/10">
             <RefreshCw size={13} className={indexUpdating ? 'animate-spin' : ''} />
-            {indexUpdating ? 'Updating...' : 'Refresh'}
+            {indexUpdating ? t('mods.updating') : t('common.refresh')}
           </button>
         </div>
         <div className="flex items-center gap-3">
           <div className="relative flex-1">
             <Search size={14} className="absolute top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" style={{ left: 14 }} />
             <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search registry..." className="w-full bg-white/5 border border-white/10 pr-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-[var(--color-accent-50)]"
+              placeholder={t('mods.searchRegistry')} className="w-full bg-white/5 border border-white/10 pr-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none focus:border-[var(--color-accent-50)]"
               style={{ paddingLeft: 42 }} />
           </div>
           <select value={modType} onChange={(e) => setModType(e.target.value)}
             className="bg-white/5 border border-white/10 px-4 py-2.5 text-xs text-slate-300 outline-none focus:border-[var(--color-accent-50)]">
-            {MOD_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            {MOD_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
           </select>
         </div>
       </div>
@@ -1452,7 +1454,7 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
       {installing && downloadProgress && downloadProgress.total > 0 && (
         <div className="mx-4 mt-2">
           <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
-            <span>Downloading {installing}...</span>
+            <span>{t('mods.downloading', { name: installing })}</span>
             <span>{Math.round(downloadProgress.received / 1024)}KB / {Math.round(downloadProgress.total / 1024)}KB</span>
           </div>
           <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
@@ -1468,15 +1470,15 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
       <div className="flex-1 flex min-h-0">
         {loading ? (
           <div className="flex-1 flex items-center justify-center text-slate-400 text-sm">
-            <Loader2 size={16} className="animate-spin mr-2" /> Loading registry...
+            <Loader2 size={16} className="animate-spin mr-2" /> {t('mods.loadingRegistry')}
           </div>
         ) : mods.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-400">
             <Database size={40} strokeWidth={1} />
-            <p className="text-sm">{searchQuery ? 'No mods match your search' : 'Registry empty — try refreshing'}</p>
+            <p className="text-sm">{searchQuery ? t('mods.noModsMatch') : t('mods.registryEmpty')}</p>
             <button onClick={handleRefreshIndex}
               className="mt-2 inline-flex items-center gap-1.5 border border-[var(--color-border-accent)] bg-[var(--color-accent-10)] px-4 py-2 text-xs font-medium text-[var(--color-accent-text)] hover:bg-[var(--color-accent-20)]">
-              <RefreshCw size={13} /> Refresh Index
+              <RefreshCw size={13} /> {t('mods.refreshIndex')}
             </button>
           </div>
         ) : (
@@ -1521,12 +1523,12 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
         <div className="shrink-0 border-t border-white/6 px-5 py-3 flex items-center justify-between">
           <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}
             className="inline-flex items-center gap-1 border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/10 disabled:opacity-30">
-            <ChevronLeft size={13} /> Previous
+            <ChevronLeft size={13} /> {t('mods.previous')}
           </button>
-          <span className="text-xs text-slate-400">Page {page} of {totalPages}</span>
+          <span className="text-xs text-slate-400">{t('mods.pageOf', { page, totalPages })}</span>
           <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
             className="inline-flex items-center gap-1 border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/10 disabled:opacity-30">
-            Next <ChevronRight size={13} />
+            {t('mods.next')} <ChevronRight size={13} />
           </button>
         </div>
       )}
@@ -1548,6 +1550,7 @@ function RegistryDetailPanel({
   const authors = Array.isArray(latest.author) ? latest.author.join(', ') : latest.author
   const isInst = mod.identifier in installed
   const deps = latest.depends ?? []
+  const { t } = useTranslation()
 
   return (
     <div className="w-[340px] shrink-0 border-l border-white/6 overflow-y-auto p-5 space-y-4">
@@ -1564,19 +1567,19 @@ function RegistryDetailPanel({
       )}
 
       <div className="space-y-2 text-xs">
-        <div className="flex justify-between"><span className="text-slate-500">Identifier</span><span className="text-slate-300 font-mono text-[11px]">{mod.identifier}</span></div>
-        <div className="flex justify-between"><span className="text-slate-500">Version</span><span className="text-slate-300">{latest.version}</span></div>
-        <div className="flex justify-between"><span className="text-slate-500">Author</span><span className="text-slate-300 truncate ml-4 max-w-[180px]">{authors}</span></div>
-        {latest.mod_type && <div className="flex justify-between"><span className="text-slate-500">Type</span><span className="text-slate-300">{latest.mod_type}</span></div>}
-        {latest.license && <div className="flex justify-between"><span className="text-slate-500">License</span><span className="text-slate-300">{Array.isArray(latest.license) ? latest.license.join(', ') : latest.license}</span></div>}
-        {latest.release_date && <div className="flex justify-between"><span className="text-slate-500">Released</span><span className="text-slate-300">{latest.release_date}</span></div>}
-        {latest.release_status && <div className="flex justify-between"><span className="text-slate-500">Status</span><span className="text-slate-300">{latest.release_status}</span></div>}
-        {latest.beamng_version && <div className="flex justify-between"><span className="text-slate-500">Game ver</span><span className="text-slate-300">{latest.beamng_version}</span></div>}
+        <div className="flex justify-between"><span className="text-slate-500">{t('mods.identifier')}</span><span className="text-slate-300 font-mono text-[11px]">{mod.identifier}</span></div>
+        <div className="flex justify-between"><span className="text-slate-500">{t('common.version')}</span><span className="text-slate-300">{latest.version}</span></div>
+        <div className="flex justify-between"><span className="text-slate-500">{t('common.author')}</span><span className="text-slate-300 truncate ml-4 max-w-[180px]">{authors}</span></div>
+        {latest.mod_type && <div className="flex justify-between"><span className="text-slate-500">{t('common.type')}</span><span className="text-slate-300">{latest.mod_type}</span></div>}
+        {latest.license && <div className="flex justify-between"><span className="text-slate-500">{t('common.license')}</span><span className="text-slate-300">{Array.isArray(latest.license) ? latest.license.join(', ') : latest.license}</span></div>}
+        {latest.release_date && <div className="flex justify-between"><span className="text-slate-500">{t('mods.released')}</span><span className="text-slate-300">{latest.release_date}</span></div>}
+        {latest.release_status && <div className="flex justify-between"><span className="text-slate-500">{t('common.status')}</span><span className="text-slate-300">{latest.release_status}</span></div>}
+        {latest.beamng_version && <div className="flex justify-between"><span className="text-slate-500">{t('mods.gameVer')}</span><span className="text-slate-300">{latest.beamng_version}</span></div>}
         {latest.multiplayer_scope && latest.multiplayer_scope !== 'client' && (
           <div className="flex justify-between">
-            <span className="text-slate-500">Scope</span>
+            <span className="text-slate-500">{t('mods.scope')}</span>
             <span className={`text-xs px-1.5 py-0.5 rounded ${latest.multiplayer_scope === 'both' ? 'bg-blue-500/20 text-blue-300' : 'bg-purple-500/20 text-purple-300'}`}>
-              {latest.multiplayer_scope === 'both' ? 'Client + Server Plugin' : 'Server Plugin'}
+              {latest.multiplayer_scope === 'both' ? t('mods.clientServerPlugin') : t('mods.serverPlugin')}
             </span>
           </div>
         )}
@@ -1590,10 +1593,10 @@ function RegistryDetailPanel({
 
       {deps.length > 0 && (
         <div className="border-t border-white/6 pt-3">
-          <h3 className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">Dependencies</h3>
+          <h3 className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">{t('mods.dependencies')}</h3>
           <div className="space-y-1">
             {deps.map((dep, i) => {
-              if ('any_of' in dep) return <span key={i} className="text-[11px] text-slate-400">One of: {dep.any_of.map((d) => d.identifier).join(', ')}</span>
+              if ('any_of' in dep) return <span key={i} className="text-[11px] text-slate-400">{t('mods.oneOf')}: {dep.any_of.map((d) => d.identifier).join(', ')}</span>
               return <span key={i} className="block text-[11px] text-slate-400">{dep.identifier}{dep.version ? ` = ${dep.version}` : ''}</span>
             })}
           </div>
@@ -1602,10 +1605,10 @@ function RegistryDetailPanel({
 
       {latest.supports && latest.supports.length > 0 && (
         <div className="border-t border-white/6 pt-3">
-          <h3 className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">Enhances</h3>
+          <h3 className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">{t('mods.enhances')}</h3>
           <div className="space-y-1">
             {latest.supports.map((sup, i) => {
-              if ('any_of' in sup) return <span key={i} className="text-[11px] text-emerald-400">Any of: {sup.any_of.map((d) => d.identifier).join(', ')}</span>
+              if ('any_of' in sup) return <span key={i} className="text-[11px] text-emerald-400">{t('mods.anyOf')}: {sup.any_of.map((d) => d.identifier).join(', ')}</span>
               return <span key={i} className="block text-[11px] text-emerald-400">{sup.identifier}</span>
             })}
           </div>
@@ -1614,15 +1617,15 @@ function RegistryDetailPanel({
 
       {latest.resources && (
         <div className="border-t border-white/6 pt-3 space-y-1">
-          {latest.resources.homepage && <a href={latest.resources.homepage} className="block text-[11px] text-[var(--color-accent)] hover:underline truncate"><ExternalLink size={10} className="inline mr-1" />Homepage</a>}
-          {latest.resources.repository && <a href={latest.resources.repository} className="block text-[11px] text-[var(--color-accent)] hover:underline truncate"><ExternalLink size={10} className="inline mr-1" />Source</a>}
-          {latest.resources.beamng_resource && <a href={latest.resources.beamng_resource} className="block text-[11px] text-[var(--color-accent)] hover:underline truncate"><ExternalLink size={10} className="inline mr-1" />BeamNG.com</a>}
+          {latest.resources.homepage && <a href={latest.resources.homepage} className="block text-[11px] text-[var(--color-accent)] hover:underline truncate"><ExternalLink size={10} className="inline mr-1" />{t('mods.homepage')}</a>}
+          {latest.resources.repository && <a href={latest.resources.repository} className="block text-[11px] text-[var(--color-accent)] hover:underline truncate"><ExternalLink size={10} className="inline mr-1" />{t('common.source')}</a>}
+          {latest.resources.beamng_resource && <a href={latest.resources.beamng_resource} className="block text-[11px] text-[var(--color-accent)] hover:underline truncate"><ExternalLink size={10} className="inline mr-1" />{t('mods.beamngCom')}</a>}
         </div>
       )}
 
       {mod.versions.length > 1 && (
         <div className="border-t border-white/6 pt-3">
-          <h3 className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">Versions</h3>
+          <h3 className="text-[10px] uppercase tracking-widest text-slate-500 mb-2">{t('mods.versions')}</h3>
           <div className="space-y-1">
             {mod.versions.slice(0, 5).map((v) => (
               <div key={v.version} className="text-[11px] text-slate-400 flex justify-between">
@@ -1647,11 +1650,11 @@ function RegistryDetailPanel({
           }`}
         >
           {installing === mod.identifier ? (
-            <><Loader2 size={13} className="animate-spin" /> Installing...</>
+            <><Loader2 size={13} className="animate-spin" /> {t('mods.installing')}</>
           ) : isInst ? (
-            <><CheckCircle size={13} /> Installed</>
+            <><CheckCircle size={13} /> {t('mods.installed')}</>
           ) : (
-            <><Download size={13} /> Install</>
+            <><Download size={13} /> {t('common.install')}</>
           )}
         </button>
       </div>
@@ -1668,15 +1671,16 @@ function RegistryUpdatesPanel({
   onInstall: (ids: string[]) => void
   installing: string | null
 }): React.JSX.Element {
+  const { t } = useTranslation()
   return (
     <div className="mx-4 mt-3 border border-[var(--color-accent-20)] bg-[var(--color-accent-5)] p-4 space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-semibold text-[var(--color-accent-text)] flex items-center gap-1.5">
-          <ArrowUpCircle size={14} /> Updates Available
+          <ArrowUpCircle size={14} /> {t('mods.updatesAvailable')}
         </h3>
         <button onClick={() => onInstall(updates.map((u) => u.identifier))} disabled={installing !== null}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium border border-[var(--color-border-accent)] bg-[var(--color-accent-15)] text-[var(--color-accent-text)] hover:bg-[var(--color-accent-25)] disabled:opacity-40">
-          {installing ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />} Update All
+          {installing ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />} {t('mods.updateAll')}
         </button>
       </div>
       <div className="space-y-2">
@@ -1688,7 +1692,7 @@ function RegistryUpdatesPanel({
             </div>
             <button onClick={() => onInstall([u.identifier])} disabled={installing === u.identifier}
               className="text-[11px] text-[var(--color-accent-text)] hover:text-[var(--color-accent-text-muted)] disabled:opacity-40">
-              {installing === u.identifier ? <Loader2 size={11} className="animate-spin" /> : 'Update'}
+              {installing === u.identifier ? <Loader2 size={11} className="animate-spin" /> : t('common.update')}
             </button>
           </div>
         ))}
@@ -1708,15 +1712,16 @@ function RegistryConfirmDialog({
   onCancel: () => void
 }): React.JSX.Element {
   const newMods = resolution.to_install.filter((m) => !installed[m.identifier])
+  const { t } = useTranslation()
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
       <div className="bg-[#1a1a1e] border border-white/10 w-[420px] max-h-[80vh] overflow-y-auto p-6 space-y-4">
         <h2 className="text-sm font-semibold text-white flex items-center gap-2">
-          <Info size={16} className="text-[var(--color-accent)]" /> Confirm Installation
+          <Info size={16} className="text-[var(--color-accent)]" /> {t('mods.confirmInstallation')}
         </h2>
         <p className="text-xs text-slate-400">
-          The following {newMods.length} mod{newMods.length !== 1 ? 's' : ''} will be installed:
+          {t('mods.modsWillBeInstalled', { count: newMods.length })}
         </p>
         <div className="space-y-1 max-h-[200px] overflow-y-auto">
           {newMods.map((m) => (
@@ -1738,7 +1743,7 @@ function RegistryConfirmDialog({
         )}
         {resolution.to_remove.length > 0 && (
           <div className="border border-rose-500/20 bg-rose-500/5 p-3">
-            <p className="text-[11px] text-rose-300 mb-1">The following mods will be removed:</p>
+            <p className="text-[11px] text-rose-300 mb-1">{t('mods.modsWillBeRemoved')}</p>
             {resolution.to_remove.map((id) => (
               <p key={id} className="text-[11px] text-rose-400">{id}</p>
             ))}
@@ -1747,11 +1752,11 @@ function RegistryConfirmDialog({
         <div className="flex gap-3 pt-2">
           <button onClick={onCancel}
             className="flex-1 border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300 hover:bg-white/10">
-            Cancel
+            {t('common.cancel')}
           </button>
           <button onClick={onConfirm}
             className="flex-1 border border-[var(--color-border-accent)] bg-[var(--color-accent-15)] px-3 py-2 text-xs font-medium text-[var(--color-accent-text)] hover:bg-[var(--color-accent-25)]">
-            Install {newMods.length} mod{newMods.length !== 1 ? 's' : ''}
+            {t('mods.modsWillBeInstalled', { count: newMods.length })}
           </button>
         </div>
       </div>

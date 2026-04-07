@@ -3,6 +3,7 @@ import {
   Search, Car, Loader2, ChevronLeft, X, Save, Trash2,
   Edit3, Copy, Zap, Gauge, Weight, Fuel, Settings2, Info, Box
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { VehicleDetail, VehicleConfigInfo, VehicleConfigData, VehicleEditorData } from '../../../shared/types'
 import { VehicleViewer, type PaintData } from '../components/VehicleViewer'
 
@@ -16,6 +17,7 @@ type FilterType = 'all' | 'Car' | 'Truck' | 'Utility'
 
 // placeholder — filled in chunk 2
 export function VehiclesPage(): React.JSX.Element {
+  const { t } = useTranslation()
   // ── State ──
   const [vehicles, setVehicles] = useState<VehicleListItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -299,16 +301,16 @@ export function VehiclesPage(): React.JSX.Element {
         {/* Toolbar */}
         <div className="flex items-center gap-3 p-4 border-b border-[var(--color-border)]">
           <Car size={18} className="text-[var(--color-accent)]" />
-          <h1 className="text-sm font-semibold text-[var(--color-text-primary)]">Vehicles</h1>
+          <h1 className="text-sm font-semibold text-[var(--color-text-primary)]">{t('vehicles.title')}</h1>
           <span className="text-xs text-[var(--color-text-muted)]">
-            {filtered.length} of {vehicles.length}
+            {t('vehicles.filteredOf', { filtered: filtered.length, total: vehicles.length })}
           </span>
           <div className="flex-1" />
           <div className="relative">
             <Search size={14} className="absolute top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] pointer-events-none" style={{ left: 14 }} />
             <input
               type="text"
-              placeholder="Search vehicles..."
+              placeholder={t('vehicles.searchVehicles')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pr-4 py-2.5 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none w-56"
@@ -324,28 +326,28 @@ export function VehiclesPage(): React.JSX.Element {
 
         {/* Filters */}
         <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--color-border)]">
-          <span className="text-xs text-[var(--color-text-muted)] mr-1">Type:</span>
-          {(['all', 'Car', 'Truck', 'Utility'] as FilterType[]).map((t) => (
+          <span className="text-xs text-[var(--color-text-muted)] mr-1">{t('vehicles.typeLabel')}</span>
+          {(['all', 'Car', 'Truck', 'Utility'] as FilterType[]).map((ft) => (
             <button
-              key={t}
-              onClick={() => setFilterType(t)}
+              key={ft}
+              onClick={() => setFilterType(ft)}
               className={`px-4 py-2 text-xs transition-colors ${
-                filterType === t
+                filterType === ft
                   ? 'bg-[var(--color-accent)] text-white'
                   : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'
               }`}
             >
-              {t === 'all' ? 'All' : t}
+              {({ all: t('common.all'), Car: t('vehicles.car'), Truck: t('vehicles.truck'), Utility: t('vehicles.utility') } as Record<string, string>)[ft]}
             </button>
           ))}
           <div className="w-px h-4 bg-[var(--color-border)] mx-1" />
-          <span className="text-xs text-[var(--color-text-muted)] mr-1">Brand:</span>
+          <span className="text-xs text-[var(--color-text-muted)] mr-1">{t('vehicles.brandLabel')}</span>
           <select
             value={filterBrand}
             onChange={(e) => setFilterBrand(e.target.value)}
             className="px-4 py-2 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-secondary)] focus:outline-none"
           >
-            <option value="all">All Brands</option>
+            <option value="all">{t('vehicles.allBrands')}</option>
             {brands.map((b) => (
               <option key={b} value={b}>{b}</option>
             ))}
@@ -357,12 +359,12 @@ export function VehiclesPage(): React.JSX.Element {
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 size={24} className="animate-spin text-[var(--color-accent)]" />
-              <span className="ml-2 text-xs text-[var(--color-text-muted)]">Scanning vehicles...</span>
+              <span className="ml-2 text-xs text-[var(--color-text-muted)]">{t('vehicles.scanningVehicles')}</span>
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-[var(--color-text-muted)]">
               <Car size={36} strokeWidth={1} />
-              <p className="text-sm mt-2">No vehicles found</p>
+              <p className="text-sm mt-2">{t('vehicles.noVehiclesFound')}</p>
             </div>
           ) : (
             (() => {
@@ -409,7 +411,7 @@ export function VehiclesPage(): React.JSX.Element {
                     <>
                       <div className="flex items-center gap-3 my-4">
                         <div className="flex-1 h-px bg-[var(--color-border)]" />
-                        <span className="text-xs font-medium text-[var(--color-accent)]">Mod Vehicles</span>
+                        <span className="text-xs font-medium text-[var(--color-accent)]">{t('vehicles.modVehicles')}</span>
                         <div className="flex-1 h-px bg-[var(--color-border)]" />
                       </div>
                       <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-2">
@@ -471,14 +473,14 @@ export function VehiclesPage(): React.JSX.Element {
           {/* Left: config list */}
           <div className="w-64 border-r border-[var(--color-border)] flex flex-col">
             <div className="p-3 border-b border-[var(--color-border)] flex items-center justify-between">
-              <span className="text-xs font-medium text-[var(--color-text-secondary)]">Configurations</span>
+              <span className="text-xs font-medium text-[var(--color-text-secondary)]">{t('vehicles.configurations')}</span>
               <div className="flex items-center gap-1">
                 <button
                   onClick={handleCreateNew}
                   className="px-1.5 py-0.5 text-[10px] bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)]"
                   title="Create new configuration"
                 >
-                  + New
+                  {t('vehicles.newConfig')}
                 </button>
                 <button
                   onClick={() => { setShowSaveAs(true); setSaveAsName('') }}
@@ -496,7 +498,7 @@ export function VehiclesPage(): React.JSX.Element {
                   type="text"
                   value={saveAsName}
                   onChange={(e) => setSaveAsName(e.target.value)}
-                  placeholder="Config name..."
+                  placeholder={t('vehicles.configName')}
                   className="flex-1 px-2 py-1 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none"
                   onKeyDown={(e) => e.key === 'Enter' && handleSaveAs()}
                   autoFocus
@@ -506,7 +508,7 @@ export function VehiclesPage(): React.JSX.Element {
                   disabled={savingConfig || !saveAsName.trim()}
                   className="px-2 py-1 text-xs bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
                 >
-                  {savingConfig ? <Loader2 size={12} className="animate-spin" /> : 'Save'}
+                  {savingConfig ? <Loader2 size={12} className="animate-spin" /> : t('common.save')}
                 </button>
                 <button onClick={() => setShowSaveAs(false)} className="px-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]">
                   <X size={12} />
@@ -563,7 +565,7 @@ export function VehiclesPage(): React.JSX.Element {
           <div className="flex-1 flex flex-col overflow-y-auto">
             {selCfg ? renderConfigDetail(selCfg) : (
               <div className="flex-1 flex items-center justify-center text-[var(--color-text-muted)]">
-                <p className="text-xs">Select a configuration</p>
+                <p className="text-xs">{t('vehicles.selectConfig')}</p>
               </div>
             )}
           </div>
@@ -596,7 +598,7 @@ export function VehiclesPage(): React.JSX.Element {
                 ? 'bg-[var(--color-accent)] border-[var(--color-accent)] text-black'
                 : 'bg-black/60 border-[var(--color-border)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent)]'
             }`}
-            title={show3D ? 'Show preview image' : 'Show 3D model'}
+            title={show3D ? t('vehicles.showPreview') : t('vehicles.show3DModel')}
           >
             <Box size={14} />
           </button>
@@ -613,7 +615,7 @@ export function VehiclesPage(): React.JSX.Element {
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
           >
             <Edit3 size={12} />
-            {cfg.source === 'user' ? 'Edit' : 'Edit as Copy'}
+            {cfg.source === 'user' ? t('common.edit') : t('vehicles.editAsCopy')}
           </button>
         </div>
 
@@ -624,7 +626,7 @@ export function VehiclesPage(): React.JSX.Element {
               <div className="flex items-center gap-2 p-3 bg-[var(--color-surface)] border border-[var(--color-border)]">
                 <Zap size={14} className="text-[var(--color-accent)]" />
                 <div>
-                  <p className="text-[10px] text-[var(--color-text-muted)]">Power</p>
+                  <p className="text-[10px] text-[var(--color-text-muted)]">{t('vehicles.power')}</p>
                   <p className="text-xs font-medium text-[var(--color-text-primary)]">{cfg.power} hp</p>
                 </div>
               </div>
@@ -633,7 +635,7 @@ export function VehiclesPage(): React.JSX.Element {
               <div className="flex items-center gap-2 p-3 bg-[var(--color-surface)] border border-[var(--color-border)]">
                 <Settings2 size={14} className="text-[var(--color-accent)]" />
                 <div>
-                  <p className="text-[10px] text-[var(--color-text-muted)]">Torque</p>
+                  <p className="text-[10px] text-[var(--color-text-muted)]">{t('vehicles.torque')}</p>
                   <p className="text-xs font-medium text-[var(--color-text-primary)]">{cfg.torque} Nm</p>
                 </div>
               </div>
@@ -642,7 +644,7 @@ export function VehiclesPage(): React.JSX.Element {
               <div className="flex items-center gap-2 p-3 bg-[var(--color-surface)] border border-[var(--color-border)]">
                 <Weight size={14} className="text-[var(--color-accent)]" />
                 <div>
-                  <p className="text-[10px] text-[var(--color-text-muted)]">Weight</p>
+                  <p className="text-[10px] text-[var(--color-text-muted)]">{t('vehicles.weight')}</p>
                   <p className="text-xs font-medium text-[var(--color-text-primary)]">{cfg.weight} kg</p>
                 </div>
               </div>
@@ -651,7 +653,7 @@ export function VehiclesPage(): React.JSX.Element {
               <div className="flex items-center gap-2 p-3 bg-[var(--color-surface)] border border-[var(--color-border)]">
                 <Gauge size={14} className="text-[var(--color-accent)]" />
                 <div>
-                  <p className="text-[10px] text-[var(--color-text-muted)]">Drivetrain</p>
+                  <p className="text-[10px] text-[var(--color-text-muted)]">{t('vehicles.drivetrain')}</p>
                   <p className="text-xs font-medium text-[var(--color-text-primary)]">{cfg.drivetrain}</p>
                 </div>
               </div>
@@ -660,7 +662,7 @@ export function VehiclesPage(): React.JSX.Element {
               <div className="flex items-center gap-2 p-3 bg-[var(--color-surface)] border border-[var(--color-border)]">
                 <Settings2 size={14} className="text-[var(--color-accent)]" />
                 <div>
-                  <p className="text-[10px] text-[var(--color-text-muted)]">Transmission</p>
+                  <p className="text-[10px] text-[var(--color-text-muted)]">{t('vehicles.transmission')}</p>
                   <p className="text-xs font-medium text-[var(--color-text-primary)]">{cfg.transmission}</p>
                 </div>
               </div>
@@ -669,7 +671,7 @@ export function VehiclesPage(): React.JSX.Element {
               <div className="flex items-center gap-2 p-3 bg-[var(--color-surface)] border border-[var(--color-border)]">
                 <Fuel size={14} className="text-[var(--color-accent)]" />
                 <div>
-                  <p className="text-[10px] text-[var(--color-text-muted)]">Fuel</p>
+                  <p className="text-[10px] text-[var(--color-text-muted)]">{t('vehicles.fuel')}</p>
                   <p className="text-xs font-medium text-[var(--color-text-primary)]">{cfg.fuelType}</p>
                 </div>
               </div>
@@ -682,19 +684,19 @@ export function VehiclesPage(): React.JSX.Element {
           <div className="flex flex-wrap gap-4 text-xs">
             {cfg.topSpeed != null && (
               <div>
-                <span className="text-[var(--color-text-muted)]">Top Speed: </span>
+                <span className="text-[var(--color-text-muted)]">{t('vehicles.topSpeed')} </span>
                 <span className="text-[var(--color-text-primary)] font-medium">{Math.round(cfg.topSpeed * 3.6)} km/h</span>
               </div>
             )}
             {cfg.zeroToSixty != null && (
               <div>
-                <span className="text-[var(--color-text-muted)]">0-60 mph: </span>
+                <span className="text-[var(--color-text-muted)]">{t('vehicles.zeroToSixty')} </span>
                 <span className="text-[var(--color-text-primary)] font-medium">{cfg.zeroToSixty}s</span>
               </div>
             )}
             {cfg.value != null && (
               <div>
-                <span className="text-[var(--color-text-muted)]">Value: </span>
+                <span className="text-[var(--color-text-muted)]">{t('vehicles.value')} </span>
                 <span className="text-[var(--color-text-primary)] font-medium">${cfg.value.toLocaleString()}</span>
               </div>
             )}
@@ -706,7 +708,7 @@ export function VehiclesPage(): React.JSX.Element {
           <details className="group">
             <summary className="flex items-center gap-2 text-xs text-[var(--color-text-muted)] cursor-pointer hover:text-[var(--color-text-secondary)]">
               <Info size={12} />
-              <span>Parts ({Object.keys(configData.parts).length})</span>
+              <span>{t('vehicles.partsCount', { count: Object.keys(configData.parts).length })}</span>
             </summary>
             <div className="mt-2 max-h-60 overflow-y-auto bg-[var(--color-surface)] border border-[var(--color-border)] p-2 space-y-0.5">
               {Object.entries(configData.parts)
@@ -739,7 +741,7 @@ export function VehiclesPage(): React.JSX.Element {
           </button>
           <Settings2 size={16} className="text-[var(--color-accent)]" />
           <div className="flex-1 min-w-0">
-            <p className="text-[10px] text-[var(--color-text-muted)]">Editing Configuration</p>
+            <p className="text-[10px] text-[var(--color-text-muted)]">{t('vehicles.editingConfig')}</p>
             <input
               type="text"
               value={editName}
@@ -753,7 +755,7 @@ export function VehiclesPage(): React.JSX.Element {
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
           >
             {savingConfig ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-            Save
+            {t('common.save')}
           </button>
         </div>
 
@@ -775,7 +777,7 @@ export function VehiclesPage(): React.JSX.Element {
           {/* Parts section */}
           <div className="border-b border-[var(--color-border)]">
             <div className="flex items-center justify-between px-4 py-2">
-              <span className="text-xs font-medium text-[var(--color-text-secondary)]">Parts ({Object.keys(editParts).length})</span>
+              <span className="text-xs font-medium text-[var(--color-text-secondary)]">{t('vehicles.partsCount', { count: Object.keys(editParts).length })}</span>
               <div className="relative">
                 <Search size={12} className="absolute top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] pointer-events-none" style={{ left: 10 }} />
                 <input
@@ -842,7 +844,7 @@ export function VehiclesPage(): React.JSX.Element {
                     }}
                     className="w-48 px-1.5 py-0.5 text-[10px] bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:border-[var(--color-accent)] focus:outline-none appearance-none cursor-pointer"
                   >
-                    <option value="">Select slot…</option>
+                    <option value="">{t('vehicles.selectSlot')}</option>
                     {Object.keys(editorData.slots)
                       .filter(s => !editParts[s])
                       .sort()
@@ -856,7 +858,7 @@ export function VehiclesPage(): React.JSX.Element {
                     disabled={!newPartKey}
                     className="flex-1 px-1.5 py-0.5 text-[10px] bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:border-[var(--color-accent)] focus:outline-none appearance-none cursor-pointer disabled:opacity-50"
                   >
-                    <option value="">Select part…</option>
+                    <option value="">{t('vehicles.selectPart')}</option>
                     {newPartKey && editorData.slots[newPartKey]?.options.map(o => (
                       <option key={o.partName} value={o.partName}>{o.partName}</option>
                     ))}
@@ -868,14 +870,14 @@ export function VehiclesPage(): React.JSX.Element {
                     type="text"
                     value={newPartKey}
                     onChange={(e) => setNewPartKey(e.target.value)}
-                    placeholder="Part slot..."
+                    placeholder={t('vehicles.partSlot')}
                     className="w-48 px-1.5 py-0.5 text-[10px] bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none"
                   />
                   <input
                     type="text"
                     value={newPartVal}
                     onChange={(e) => setNewPartVal(e.target.value)}
-                    placeholder="Part value..."
+                    placeholder={t('vehicles.partValue')}
                     className="flex-1 px-1.5 py-0.5 text-[10px] bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none"
                   />
                 </>
@@ -898,18 +900,18 @@ export function VehiclesPage(): React.JSX.Element {
 
           {/* Vars section */}
           <div className="px-4 py-2">
-            <span className="text-xs font-medium text-[var(--color-text-secondary)]">Tuning Variables ({Object.keys(editVars).length})</span>
+            <span className="text-xs font-medium text-[var(--color-text-secondary)]">{t('vehicles.tuningVars', { count: Object.keys(editVars).length })}</span>
             <div className="mt-2 space-y-3">
               {(() => {
                 const entries = Object.entries(editVars).sort(([a], [b]) => a.localeCompare(b))
                 if (entries.length === 0) {
-                  return <p className="text-[10px] text-[var(--color-text-dim)]">No tuning variables defined</p>
+                  return <p className="text-[10px] text-[var(--color-text-dim)]">{t('vehicles.noTuningVars')}</p>
                 }
                 // Group by category
                 const grouped: Record<string, [string, number][]> = {}
                 for (const entry of entries) {
                   const meta = editorData?.variables?.[entry[0]]
-                  const cat = meta?.category || 'Other'
+                  const cat = meta?.category || t('vehicles.other')
                   if (!grouped[cat]) grouped[cat] = []
                   grouped[cat].push(entry)
                 }
@@ -942,7 +944,7 @@ export function VehiclesPage(): React.JSX.Element {
                                   <button
                                     onClick={() => setEditVars((v) => ({ ...v, [key]: meta.default }))}
                                     className="opacity-0 group-hover:opacity-100 text-[9px] text-[var(--color-text-muted)] hover:text-[var(--color-accent)]"
-                                    title="Reset to default"
+                                    title={t('vehicles.resetToDefault')}
                                   >↺</button>
                                 </div>
                               </div>

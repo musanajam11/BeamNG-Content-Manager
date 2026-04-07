@@ -137,6 +137,20 @@ const api = {
   getRecentServers: () =>
     ipcRenderer.invoke('recentServers:get') as Promise<Array<{ ident: string; timestamp: number }>>,
 
+  // Friends
+  getFriends: () =>
+    ipcRenderer.invoke('friends:getAll') as Promise<Array<{ id: string; displayName: string; addedAt: number; notes?: string; tags?: string[] }>>,
+  addFriend: (id: string, displayName: string) =>
+    ipcRenderer.invoke('friends:add', id, displayName) as Promise<Array<{ id: string; displayName: string; addedAt: number; notes?: string; tags?: string[] }>>,
+  removeFriend: (id: string) =>
+    ipcRenderer.invoke('friends:remove', id) as Promise<Array<{ id: string; displayName: string; addedAt: number; notes?: string; tags?: string[] }>>,
+  updateFriend: (id: string, updates: { displayName?: string; notes?: string; tags?: string[] }) =>
+    ipcRenderer.invoke('friends:update', id, updates) as Promise<Array<{ id: string; displayName: string; addedAt: number; notes?: string; tags?: string[] }>>,
+  getFriendSessions: () =>
+    ipcRenderer.invoke('friends:getSessions') as Promise<Array<{ serverIdent: string; serverName: string; players: string[]; timestamp: number }>>,
+  recordFriendSession: (serverIdent: string, serverName: string, players: string[]) =>
+    ipcRenderer.invoke('friends:recordSession', serverIdent, serverName, players) as Promise<void>,
+
   // Mods
   getMods: () => ipcRenderer.invoke('mods:list'),
   toggleMod: (modKey: string, enabled: boolean) => ipcRenderer.invoke('mods:toggle', modKey, enabled),
@@ -432,7 +446,35 @@ const api = {
     ipcRenderer.on('updater:update-downloaded', handler)
     return () => ipcRenderer.removeListener('updater:update-downloaded', handler)
   },
-  installUpdate: () => ipcRenderer.invoke('updater:install')
+  installUpdate: () => ipcRenderer.invoke('updater:install'),
+
+  // Career Save Management
+  careerListProfiles: () =>
+    ipcRenderer.invoke('career:listProfiles'),
+  careerGetSlotMetadata: (profileName: string, slotName: string) =>
+    ipcRenderer.invoke('career:getSlotMetadata', profileName, slotName),
+  careerGetLog: (profileName: string) =>
+    ipcRenderer.invoke('career:getCareerLog', profileName) as Promise<string[]>,
+  careerDeployProfile: (profileName: string) =>
+    ipcRenderer.invoke('career:deployProfile', profileName) as Promise<{ success: boolean; error?: string }>,
+  careerUndeployProfile: (profileName: string) =>
+    ipcRenderer.invoke('career:undeployProfile', profileName) as Promise<{ success: boolean; error?: string }>,
+  careerBackupSlot: (profileName: string, slotName: string) =>
+    ipcRenderer.invoke('career:backupSlot', profileName, slotName) as Promise<{ success: boolean; backupName?: string; error?: string }>,
+  careerBackupProfile: (profileName: string) =>
+    ipcRenderer.invoke('career:backupProfile', profileName) as Promise<{ success: boolean; backupName?: string; error?: string }>,
+  careerListProfileBackups: (profileName?: string) =>
+    ipcRenderer.invoke('career:listProfileBackups', profileName),
+  careerRestoreProfileBackup: (backupName: string) =>
+    ipcRenderer.invoke('career:restoreProfileBackup', backupName) as Promise<{ success: boolean; error?: string }>,
+  careerDeleteProfileBackup: (backupName: string) =>
+    ipcRenderer.invoke('career:deleteProfileBackup', backupName) as Promise<{ success: boolean; error?: string }>,
+  careerSetSavePath: (savePath: string | null) =>
+    ipcRenderer.invoke('career:setSavePath', savePath) as Promise<{ success: boolean; error?: string }>,
+  careerBrowseSavePath: () =>
+    ipcRenderer.invoke('career:browseSavePath') as Promise<string | null>,
+  careerGetSavePath: () =>
+    ipcRenderer.invoke('career:getSavePath') as Promise<string | null>
 }
 
 if (process.contextIsolated) {
