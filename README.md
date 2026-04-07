@@ -1,12 +1,17 @@
 <div align="center">
 
+<img src="build/icon.png" alt="BeamNG Content Manager" width="128" />
+
 # BeamNG Content Manager
+
+> **BETA** — This project is under active development. Expect breaking changes between releases.
 
 **The all-in-one desktop manager for [BeamNG.drive](https://www.beamng.com/) and [BeamMP](https://beammp.com/)**
 
 Manage mods, vehicles, maps, servers, and more — from a single app.
 
 [![Build & Release](https://github.com/musanajam11/BeamNG-Content-Manager/actions/workflows/build.yml/badge.svg)](https://github.com/musanajam11/BeamNG-Content-Manager/actions/workflows/build.yml)
+[![Beta](https://img.shields.io/badge/Status-Beta-orange)](https://github.com/musanajam11/BeamNG-Content-Manager/releases)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-39-47848F?logo=electron&logoColor=white)](https://www.electronjs.org/)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
