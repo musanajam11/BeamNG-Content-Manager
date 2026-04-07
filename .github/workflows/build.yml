@@ -13,11 +13,11 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            build_cmd: npm run build:win
+            builder_flag: --win
           - os: ubuntu-latest
-            build_cmd: npm run build:linux
+            builder_flag: --linux
           - os: macos-latest
-            build_cmd: npm run build:mac
+            builder_flag: --mac
 
     runs-on: ${{ matrix.os }}
 
@@ -36,7 +36,7 @@ jobs:
         run: npm run typecheck
 
       - name: Build
-        run: ${{ matrix.build_cmd }}
+        run: npx electron-vite build && npx electron-builder ${{ matrix.builder_flag }} --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
