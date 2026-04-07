@@ -478,14 +478,14 @@ export function VehiclesPage(): React.JSX.Element {
                 <button
                   onClick={handleCreateNew}
                   className="px-1.5 py-0.5 text-[10px] bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)]"
-                  title="Create new configuration"
+                  title={t('vehicles.createNewConfig')}
                 >
                   {t('vehicles.newConfig')}
                 </button>
                 <button
                   onClick={() => { setShowSaveAs(true); setSaveAsName('') }}
                   className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-accent)]"
-                  title="Save current as new config"
+                  title={t('vehicles.saveAsNewConfig')}
                 >
                   <Save size={13} />
                 </button>
@@ -554,7 +554,7 @@ export function VehiclesPage(): React.JSX.Element {
                     </div>
                   )}
                   {cfg.source === 'stock' && renaming !== cfg.name && (
-                    <button onClick={(e) => { e.stopPropagation(); handleDuplicate(cfg.name) }} className="hidden group-hover:block p-0.5 text-[var(--color-text-muted)] hover:text-[var(--color-accent)]" title="Duplicate as custom config"><Copy size={11} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); handleDuplicate(cfg.name) }} className="hidden group-hover:block p-0.5 text-[var(--color-text-muted)] hover:text-[var(--color-accent)]" title={t('vehicles.duplicateAsCustom')}><Copy size={11} /></button>
                   )}
                 </div>
               ))}
@@ -784,7 +784,7 @@ export function VehiclesPage(): React.JSX.Element {
                   type="text"
                   value={partsFilter}
                   onChange={(e) => setPartsFilter(e.target.value)}
-                  placeholder="Filter parts..."
+                  placeholder={t('vehicles.filterParts')}
                   className="pr-3 py-1.5 text-[10px] w-40 bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none"
                   style={{ paddingLeft: 30 }}
                 />

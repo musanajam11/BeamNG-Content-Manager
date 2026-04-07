@@ -267,7 +267,7 @@ export function MapsPage(): React.JSX.Element {
             {selectedMap.source === 'stock' ? t('maps.stockMaps') : t('maps.modMaps')}
           </span>
           {mapMetadata?.registryId && (
-            <span className="px-2 py-0.5 text-[10px] bg-green-500/15 text-green-400">Registry</span>
+            <span className="px-2 py-0.5 text-[10px] bg-green-500/15 text-green-400">{t('maps.registry')}</span>
           )}
         </div>
 
@@ -369,7 +369,7 @@ export function MapsPage(): React.JSX.Element {
               </div>
               {minimapData?.worldBounds && (
                 <div className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] text-xs text-[var(--color-text-muted)]">
-                  <span className="font-medium text-[var(--color-text-secondary)]">World Bounds: </span>
+                  <span className="font-medium text-[var(--color-text-secondary)]">{t('maps.worldBounds')} </span>
                   {Math.round(minimapData.worldBounds.maxX - minimapData.worldBounds.minX)}m &times; {Math.round(minimapData.worldBounds.maxY - minimapData.worldBounds.minY)}m
                 </div>
               )}
@@ -445,9 +445,9 @@ export function MapsPage(): React.JSX.Element {
                         <HardDrive size={12} className="text-[var(--color-accent)]" />
                         <span className="text-[var(--color-text-muted)]">{t('common.size')}:</span>
                         <span className="text-[var(--color-text-secondary)]">
-                          {mapMetadata.registryDownloadSize != null && `${formatFileSize(mapMetadata.registryDownloadSize)} download`}
+                          {mapMetadata.registryDownloadSize != null && t('maps.downloadSize', { size: formatFileSize(mapMetadata.registryDownloadSize) })}
                           {mapMetadata.registryDownloadSize != null && mapMetadata.registryInstallSize != null && ' / '}
-                          {mapMetadata.registryInstallSize != null && `${formatFileSize(mapMetadata.registryInstallSize)} installed`}
+                          {mapMetadata.registryInstallSize != null && t('maps.installedSize', { size: formatFileSize(mapMetadata.registryInstallSize) })}
                         </span>
                       </div>
                     )}

@@ -112,11 +112,11 @@ export function FriendsPage(): React.JSX.Element {
   }
 
   const tabs: Array<{ id: Tab; label: string; count?: number }> = [
-    { id: 'all', label: 'All', count: friends.length },
-    { id: 'online', label: 'Online', count: onlineCount },
-    { id: 'offline', label: 'Offline', count: friends.length - onlineCount },
-    { id: 'suggestions', label: 'Suggestions', count: suggestions.length },
-    { id: 'beammp-requests', label: 'BeamMP Requests' }
+    { id: 'all', label: t('friends.tabAll'), count: friends.length },
+    { id: 'online', label: t('friends.tabOnline'), count: onlineCount },
+    { id: 'offline', label: t('friends.tabOffline'), count: friends.length - onlineCount },
+    { id: 'suggestions', label: t('friends.tabSuggestions'), count: suggestions.length },
+    { id: 'beammp-requests', label: t('friends.tabBeamMPRequests') }
   ]
 
   return (
@@ -128,7 +128,7 @@ export function FriendsPage(): React.JSX.Element {
           <h1 className="text-xl font-bold text-[var(--color-text-primary)]">{t('friends.title')}</h1>
           {friends.length > 0 && (
             <span className="text-xs text-[var(--color-text-muted)]">
-              {onlineCount} online / {friends.length} total
+              {t('friends.countSummary', { online: onlineCount, total: friends.length })}
             </span>
           )}
         </div>
@@ -136,7 +136,7 @@ export function FriendsPage(): React.JSX.Element {
           <button
             onClick={() => { loadFriends(); loadSessions() }}
             className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
-            title="Refresh"
+            title={t('common.refresh')}
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
           </button>
@@ -212,7 +212,7 @@ export function FriendsPage(): React.JSX.Element {
 
       {confirmRemove && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-400">
-          Click remove again to confirm
+          {t('friends.removeConfirmToast')}
         </div>
       )}
 
@@ -229,6 +229,7 @@ export function FriendsPage(): React.JSX.Element {
 /* ── Sub-components ── */
 
 function BeamMPRequestsStub(): React.JSX.Element {
+  const { t } = useTranslation()
   return (
     <div className="flex flex-col items-center justify-center gap-5 py-16 text-center">
       <div className="relative">
@@ -237,12 +238,10 @@ function BeamMPRequestsStub(): React.JSX.Element {
       </div>
       <div className="space-y-2 max-w-sm">
         <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">
-          BeamMP Friend Requests
+          {t('friends.beammpRequestsTitle')}
         </h2>
         <p className="text-sm text-[var(--color-text-muted)] leading-relaxed">
-          Mutual friend requests require a friends API from the BeamMP backend.
-          This feature is reserved for when BeamMP exposes an official
-          friend request system.
+          {t('friends.beammpRequestsDescription')}
         </p>
       </div>
       <div className="grid gap-3 max-w-sm w-full text-left">
@@ -250,10 +249,10 @@ function BeamMPRequestsStub(): React.JSX.Element {
           <Handshake size={16} className="text-[var(--color-accent)] mt-0.5 shrink-0" />
           <div>
             <p className="text-sm font-medium text-[var(--color-text-primary)]">
-              Send &amp; receive friend requests
+              {t('friends.featureSendReceive')}
             </p>
             <p className="text-xs text-[var(--color-text-muted)]">
-              Mutual acceptance before appearing on each other&apos;s list
+              {t('friends.featureMutualAcceptance')}
             </p>
           </div>
         </div>
@@ -261,22 +260,23 @@ function BeamMPRequestsStub(): React.JSX.Element {
           <Construction size={16} className="text-amber-400 mt-0.5 shrink-0" />
           <div>
             <p className="text-sm font-medium text-[var(--color-text-primary)]">
-              Requires BeamMP backend support
+              {t('friends.featureBackendSupport')}
             </p>
             <p className="text-xs text-[var(--color-text-muted)]">
-              Waiting for an official friends API endpoint from the BeamMP team
+              {t('friends.featureWaitingBackend')}
             </p>
           </div>
         </div>
       </div>
       <div className="mt-1 px-4 py-2 rounded-full bg-slate-500/10 border border-slate-500/20">
-        <span className="text-xs font-medium text-slate-400">Pending Backend Support</span>
+        <span className="text-xs font-medium text-slate-400">{t('friends.pendingBackendSupport')}</span>
       </div>
     </div>
   )
 }
 
 function SuggestionsView({ suggestions, onAdd }: { suggestions: Array<{ name: string; seenCount: number; lastSeen: number }>; onAdd: (name: string) => void }): React.JSX.Element {
+  const { t } = useTranslation()
   return (
     <div className="space-y-4">
       <FriendSuggestions suggestions={suggestions} onAdd={onAdd} />
@@ -284,8 +284,7 @@ function SuggestionsView({ suggestions, onAdd }: { suggestions: Array<{ name: st
         <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
           <Users size={40} className="text-slate-600" />
           <p className="text-sm text-[var(--color-text-muted)]">
-            No suggestions yet. Play on servers and we&apos;ll suggest players
-            you&apos;ve been on servers with multiple times.
+            {t('friends.noSuggestionsYet')}
           </p>
         </div>
       )}
@@ -294,13 +293,14 @@ function SuggestionsView({ suggestions, onAdd }: { suggestions: Array<{ name: st
 }
 
 function EmptyState({ onAdd }: { onAdd: () => void }): React.JSX.Element {
+  const { t } = useTranslation()
   return (
     <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
       <Users size={48} className="text-slate-600" />
       <div className="space-y-1">
-        <p className="text-sm font-medium text-[var(--color-text-primary)]">No friends yet</p>
+        <p className="text-sm font-medium text-[var(--color-text-primary)]">{t('friends.noFriendsYet')}</p>
         <p className="text-xs text-[var(--color-text-muted)]">
-          Add friends by their BeamMP username to track when they&apos;re online.
+          {t('friends.addFriendsDescription')}
         </p>
       </div>
       <button
@@ -308,13 +308,14 @@ function EmptyState({ onAdd }: { onAdd: () => void }): React.JSX.Element {
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--color-accent)] text-white text-xs font-medium hover:brightness-110 transition-all"
       >
         <UserPlus size={14} />
-        Add Your First Friend
+        {t('friends.addFirstFriend')}
       </button>
     </div>
   )
 }
 
 function NoResults({ activeTab }: { activeTab: string }): React.JSX.Element {
+  const { t } = useTranslation()
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
       {activeTab === 'online' ? (
@@ -324,10 +325,10 @@ function NoResults({ activeTab }: { activeTab: string }): React.JSX.Element {
       )}
       <p className="text-sm text-[var(--color-text-muted)]">
         {activeTab === 'online'
-          ? 'None of your friends are online right now.'
+          ? t('friends.noOnlineFriends')
           : activeTab === 'offline'
-            ? 'All your friends are online!'
-            : 'No friends match your search.'}
+            ? t('friends.allFriendsOnline')
+            : t('friends.noSearchResults')}
       </p>
     </div>
   )

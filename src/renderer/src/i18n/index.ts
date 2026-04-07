@@ -16,19 +16,19 @@ import fa from './locales/fa.json'
 import ur from './locales/ur.json'
 
 export const LANGUAGES = [
-  { code: 'en', name: 'English', nativeName: 'English' },
-  { code: 'es', name: 'Spanish', nativeName: 'Español' },
-  { code: 'pt', name: 'Portuguese', nativeName: 'Português' },
-  { code: 'fr', name: 'French', nativeName: 'Français' },
-  { code: 'de', name: 'German', nativeName: 'Deutsch' },
-  { code: 'it', name: 'Italian', nativeName: 'Italiano' },
-  { code: 'zh', name: 'Chinese', nativeName: '中文' },
-  { code: 'ja', name: 'Japanese', nativeName: '日本語' },
-  { code: 'ko', name: 'Korean', nativeName: '한국어' },
-  { code: 'ru', name: 'Russian', nativeName: 'Русский' },
-  { code: 'ar', name: 'Arabic', nativeName: 'العربية' },
-  { code: 'fa', name: 'Farsi', nativeName: 'فارسی' },
-  { code: 'ur', name: 'Urdu', nativeName: 'اردو' }
+  { code: 'en', name: 'English', nativeName: 'English', flag: '🇬🇧' },
+  { code: 'es', name: 'Spanish', nativeName: 'Español', flag: '🇪🇸' },
+  { code: 'pt', name: 'Portuguese', nativeName: 'Português', flag: '🇧🇷' },
+  { code: 'fr', name: 'French', nativeName: 'Français', flag: '🇫🇷' },
+  { code: 'de', name: 'German', nativeName: 'Deutsch', flag: '🇩🇪' },
+  { code: 'it', name: 'Italian', nativeName: 'Italiano', flag: '🇮🇹' },
+  { code: 'zh', name: 'Chinese', nativeName: '中文', flag: '🇨🇳' },
+  { code: 'ja', name: 'Japanese', nativeName: '日本語', flag: '🇯🇵' },
+  { code: 'ko', name: 'Korean', nativeName: '한국어', flag: '🇰🇷' },
+  { code: 'ru', name: 'Russian', nativeName: 'Русский', flag: '🇷🇺' },
+  { code: 'ar', name: 'Arabic', nativeName: 'العربية', flag: '🇸🇦' },
+  { code: 'fa', name: 'Farsi', nativeName: 'فارسی', flag: '🇮🇷' },
+  { code: 'ur', name: 'Urdu', nativeName: 'اردو', flag: '🇵🇰' }
 ] as const
 
 export type LanguageCode = (typeof LANGUAGES)[number]['code']

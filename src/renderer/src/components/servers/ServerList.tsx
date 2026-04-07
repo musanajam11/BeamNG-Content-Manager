@@ -1,4 +1,5 @@
 import type { ServerInfo } from '../../../../shared/types'
+import { useTranslation } from 'react-i18next'
 import { ServerListItem } from './ServerListItem'
 
 interface Props {
@@ -16,10 +17,12 @@ export function ServerList({
   onSelect,
   onToggleFavorite
 }: Props): React.JSX.Element {
+  const { t } = useTranslation()
+
   if (servers.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-slate-500 text-sm">
-        No servers found
+        {t('servers.noServersFound')}
       </div>
     )
   }
@@ -31,11 +34,11 @@ export function ServerList({
       {/* Header */}
       <div className="flex items-center justify-between border-b border-white/8 px-5 py-3">
         <div>
-          <div className="text-sm font-semibold text-white">Active server list</div>
-          <div className="text-[11px] text-slate-400">Select a server to view details and join</div>
+          <div className="text-sm font-semibold text-white">{t('servers.activeServerList')}</div>
+          <div className="text-[11px] text-slate-400">{t('servers.selectServerPrompt')}</div>
         </div>
         <span className="inline-flex items-center rounded-full border border-white/8 bg-white/5 px-3 py-1 text-[11px] font-medium text-slate-300">
-          {servers.length} results
+          {t('servers.results', { count: servers.length })}
         </span>
       </div>
 

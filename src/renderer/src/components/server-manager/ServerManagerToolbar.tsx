@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Plus, Download, FolderOpen, Play, Square, ArrowLeft } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { BeamMPText } from '../BeamMPText'
 import type { ServerExeStatus } from '../../../../shared/types'
 
@@ -30,6 +31,7 @@ export function ServerManagerToolbar({
   onStopAll,
   onBackToGrid
 }: ServerManagerToolbarProps): React.JSX.Element {
+  const { t } = useTranslation()
   const [dragOver, setDragOver] = useState(false)
 
   // Marquee: detect if server name overflows its container
@@ -87,12 +89,12 @@ export function ServerManagerToolbar({
           <Download size={16} className={exeStatus === 'downloading' ? 'text-yellow-400 animate-pulse' : 'text-[var(--color-accent)]'} />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-[var(--color-text-primary)]">
-              {exeStatus === 'downloading' ? 'Downloading BeamMP-Server...' : 'BeamMP-Server executable not found'}
+              {exeStatus === 'downloading' ? t('serverManager.downloading') : t('serverManager.exeNotFound')}
             </p>
             <p className="text-xs text-[var(--color-text-muted)]">
               {exeStatus === 'downloading'
-                ? 'This may take a moment. The download is running in the background.'
-                : 'A single server executable is shared by all instances. Download it once to run any server.'}
+                ? t('serverManager.downloadDesc')
+                : t('serverManager.exeMissingDesc')}
             </p>
           </div>
           {exeStatus === 'missing' && (
@@ -101,13 +103,13 @@ export function ServerManagerToolbar({
                 onClick={onDownloadExe}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded bg-[var(--color-accent)] text-white font-semibold hover:bg-[var(--color-accent-hover)] transition-colors"
               >
-                <Download size={12} /> Download
+                <Download size={12} /> {t('serverManager.download')}
               </button>
               <button
                 onClick={onBrowseExe}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] transition-colors"
               >
-                <FolderOpen size={12} /> Browse
+                <FolderOpen size={12} /> {t('serverManager.browseExe')}
               </button>
             </div>
           )}
@@ -125,7 +127,7 @@ export function ServerManagerToolbar({
                 className="flex items-center gap-1 text-xs text-[var(--color-accent)] hover:underline shrink-0"
               >
                 <ArrowLeft size={14} />
-                Instances
+                {t('serverManager.instances')}
               </button>
               <span className="text-[var(--color-text-muted)] shrink-0">/</span>
               <h1 ref={containerRef} className="text-lg font-bold text-[var(--color-text-primary)] min-w-0 flex-1 overflow-hidden">
@@ -135,7 +137,7 @@ export function ServerManagerToolbar({
               </h1>
             </>
           ) : (
-            <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Server Manager</h1>
+            <h1 className="text-xl font-bold text-[var(--color-text-primary)]">{t('serverManager.title')}</h1>
           )}
         </div>
 
@@ -148,13 +150,13 @@ export function ServerManagerToolbar({
                 onClick={onStartAll}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-green-500/30 text-green-400 hover:bg-green-500/10 transition-colors"
               >
-                <Play size={12} /> Start All
+                <Play size={12} /> {t('serverManager.startAll')}
               </button>
               <button
                 onClick={onStopAll}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
               >
-                <Square size={12} /> Stop All
+                <Square size={12} /> {t('serverManager.stopAll')}
               </button>
             </>
           )}
@@ -162,7 +164,7 @@ export function ServerManagerToolbar({
             onClick={onCreate}
             className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded bg-[var(--color-accent)] text-black font-semibold hover:bg-[var(--color-accent-hover)] transition-colors"
           >
-            <Plus size={14} /> Create Instance
+            <Plus size={14} /> {t('serverManager.createInstance')}
           </button>
         </div>
       </div>

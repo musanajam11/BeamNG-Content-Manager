@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import { Play, Square, RotateCcw, Clock, Cpu, HardDrive, Users, Wifi, Copy, AlertTriangle, Search, CheckCircle, XCircle, Loader2, Globe, Download, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { HostedServerEntry, ServerExeStatus } from '../../../../shared/types'
 
 type TailscaleStatus = {
@@ -28,6 +29,7 @@ export function StatusDashboard({
   onStop,
   onRestart
 }: StatusDashboardProps): React.JSX.Element {
+  const { t } = useTranslation()
   const { config, status } = server
   const isRunning = status.state === 'running'
   const isStopped = status.state === 'stopped' || status.state === 'error'
@@ -93,16 +95,16 @@ export function StatusDashboard({
       {/* Uptime badge */}
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-base font-semibold text-[var(--color-text-primary)]">
-          Metrics and Status
+          {t('serverManager.metricsAndStatus')}
         </h2>
         {isRunning ? (
           <span className="flex items-center gap-2 text-xs font-medium px-3 py-1.5 bg-green-500/10 border border-green-500/30 text-green-400 rounded-full">
             <Clock size={12} />
-            RUNNING UPTIME: {formatUptime(liveUptime)}
+            {t('serverManager.runningUptime')} {formatUptime(liveUptime)}
           </span>
         ) : (
           <span className="text-xs font-medium px-3 py-1.5 bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-muted)] rounded-full">
-            {status.state === 'error' ? 'ERROR' : 'STOPPED'}
+            {status.state === 'error' ? t('serverManager.errorStatus') : t('serverManager.stopped')}
           </span>
         )}
       </div>
@@ -111,21 +113,21 @@ export function StatusDashboard({
       <div className="grid grid-cols-3 gap-4 mb-5">
         <MetricCard
           icon={<Cpu size={16} />}
-          label="CPU USAGE"
+          label={t('serverManager.cpuUsage')}
           value={isRunning ? '0%' : '—'}
           barPercent={0}
           barColor="bg-blue-500"
         />
         <MetricCard
           icon={<HardDrive size={16} />}
-          label="MEMORY USAGE"
+          label={t('serverManager.memoryUsage')}
           value={isRunning ? '0.02 / 60.50 GB' : '— / —'}
           barPercent={isRunning ? 0.03 : 0}
           barColor="bg-blue-500"
         />
         <MetricCard
           icon={<Users size={16} />}
-          label="ACTIVE USERS"
+          label={t('serverManager.activeUsers')}
           value={`${isRunning ? status.players : 0} / ${config.maxPlayers}`}
           barPercent={
             isRunning && config.maxPlayers > 0
@@ -141,20 +143,20 @@ export function StatusDashboard({
         {/* Actions */}
         <div className="border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
           <h3 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-3">
-            Actions
+            {t('serverManager.actions')}
           </h3>
           <div className="flex flex-wrap gap-2">
             {exeStatus !== 'ready' ? (
               <div className="flex items-center gap-2 text-sm text-[var(--color-accent)]">
                 <AlertTriangle size={16} />
-                <span>Server exe required — download it from the banner above</span>
+                <span>{t('serverManager.exeRequired')}</span>
               </div>
             ) : isStopped ? (
               <button
                 onClick={() => onStart(config.id)}
                 className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-green-600 hover:bg-green-700 text-white transition-colors"
               >
-                <Play size={14} /> Start
+                <Play size={14} /> {t('serverManager.start')}
               </button>
             ) : (
               <>
@@ -162,13 +164,13 @@ export function StatusDashboard({
                   onClick={() => onRestart(config.id)}
                   className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors"
                 >
-                  <RotateCcw size={14} /> Restart
+                  <RotateCcw size={14} /> {t('serverManager.restart')}
                 </button>
                 <button
                   onClick={() => onStop(config.id)}
                   className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors"
                 >
-                  <Square size={14} /> Stop
+                  <Square size={14} /> {t('serverManager.stop')}
                 </button>
               </>
             )}
@@ -178,11 +180,11 @@ export function StatusDashboard({
         {/* Connection Info */}
         <div className="border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
           <h3 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-3">
-            Connection Info
+            {t('serverManager.connectionInfo')}
           </h3>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs text-[var(--color-text-muted)]">Connect Address</span>
+              <span className="text-xs text-[var(--color-text-muted)]">{t('serverManager.connectAddress')}</span>
               <div className="flex items-center gap-1.5">
                 <span className="text-sm font-mono text-[var(--color-text-primary)]">
                   {connectionString}
@@ -190,7 +192,7 @@ export function StatusDashboard({
                 <button
                   onClick={() => navigator.clipboard.writeText(connectionString)}
                   className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-accent)] transition-colors"
-                  title="Copy connection address"
+                  title={t('serverManager.copyConnectionAddress')}
                 >
                   <Copy size={12} />
                 </button>
@@ -198,7 +200,7 @@ export function StatusDashboard({
             </div>
             {publicIp && (
               <div className="flex items-center justify-between">
-                <span className="text-xs text-[var(--color-text-muted)]">Public IP</span>
+                <span className="text-xs text-[var(--color-text-muted)]">{t('serverManager.publicIp')}</span>
                 <div className="flex items-center gap-1.5">
                   <span className="text-sm font-mono text-[var(--color-text-secondary)]">
                     {publicIp}
@@ -206,7 +208,7 @@ export function StatusDashboard({
                   <button
                     onClick={() => navigator.clipboard.writeText(publicIp)}
                     className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-accent)] transition-colors"
-                    title="Copy IP"
+                    title={t('serverManager.copyIp')}
                   >
                     <Copy size={12} />
                   </button>
@@ -214,21 +216,21 @@ export function StatusDashboard({
               </div>
             )}
             <div className="flex items-center justify-between">
-              <span className="text-xs text-[var(--color-text-muted)]">Port</span>
+              <span className="text-xs text-[var(--color-text-muted)]">{t('serverManager.port')}</span>
               <span className="text-sm font-mono text-[var(--color-text-secondary)]">
                 {config.port}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-xs text-[var(--color-text-muted)]">Map</span>
+              <span className="text-xs text-[var(--color-text-muted)]">{t('serverManager.mapLabel')}</span>
               <span className="text-sm text-[var(--color-text-secondary)]">
                 {config.map?.split('/')[2] ?? '—'}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-xs text-[var(--color-text-muted)]">Visibility</span>
+              <span className="text-xs text-[var(--color-text-muted)]">{t('serverManager.visibility')}</span>
               <span className="text-sm text-[var(--color-text-secondary)]">
-                {config.private ? 'Private' : 'Public'}
+                {config.private ? t('serverManager.private') : t('serverManager.public')}
               </span>
             </div>
           </div>
@@ -237,14 +239,14 @@ export function StatusDashboard({
         {/* Network Port Status */}
         <div className="border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
           <h3 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-3">
-            Network Port Status
+            {t('serverManager.networkPortStatus')}
           </h3>
           <div className="space-y-3">
             <PortRow
               active={isRunning}
-              label="Main Game Port"
+              label={t('serverManager.mainGamePort')}
               port={config.port}
-              protocol="TCP+UDP"
+              protocol={t('serverManager.tcpUdp')}
             />
 
             {/* Port test result */}
@@ -257,9 +259,9 @@ export function StatusDashboard({
                     : 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20'
               }`}>
                 {portTestState === 'open' ? (
-                  <><CheckCircle size={12} /> Port {config.port} is open and reachable</>
+                  <><CheckCircle size={12} /> {t('serverManager.portOpen')}</>
                 ) : portTestState === 'closed' ? (
-                  <><XCircle size={12} /> Port {config.port} is not reachable from outside</>
+                  <><XCircle size={12} /> {t('serverManager.portNotReachable')}</>
                 ) : (
                   <><AlertTriangle size={12} /> {portTestError}</>
                 )}
@@ -273,9 +275,9 @@ export function StatusDashboard({
               className="flex items-center gap-1.5 w-full px-3 py-2 text-xs font-medium border border-[var(--color-border)] bg-[var(--color-surface-hover)] hover:border-[var(--color-border-accent)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors rounded disabled:opacity-50"
             >
               {portTestState === 'testing' ? (
-                <><Loader2 size={12} className="animate-spin" /> Testing port {config.port}...</>
+                <><Loader2 size={12} className="animate-spin" /> {t('serverManager.testingPort')}</>
               ) : (
-                <><Search size={12} /> Test My Port</>
+                <><Search size={12} /> {t('serverManager.testMyPort')}</>
               )}
             </button>
           </div>
@@ -289,7 +291,7 @@ export function StatusDashboard({
           className="flex items-center gap-2 text-sm font-medium text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
         >
           <Globe size={14} />
-          I can't port forward
+          {t('serverManager.cantPortForward')}
           {showTailscale ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
         </button>
 
@@ -309,7 +311,7 @@ export function StatusDashboard({
                       <button
                         onClick={() => navigator.clipboard.writeText(`${tailscale.ip}:${config.port}`)}
                         className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-accent)] transition-colors"
-                        title="Copy Tailscale address"
+                        title={t('serverManager.copyTailscaleAddress')}
                       >
                         <Copy size={12} />
                       </button>

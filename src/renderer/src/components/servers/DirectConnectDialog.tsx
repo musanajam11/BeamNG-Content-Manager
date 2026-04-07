@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { X, Play, Star, Trash2, Clock, Users, MapPin } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useServerStore } from '../../stores/useServerStore'
 import { BeamMPText } from '../BeamMPText'
 
@@ -52,6 +53,7 @@ function parseAddress(addr: string): { ip: string; port: number } | null {
 }
 
 export function DirectConnectDialog({ open, joining, onClose, onConnect }: Props): React.JSX.Element | null {
+  const { t } = useTranslation()
   const [address, setAddress] = useState('')
   const [label, setLabel] = useState('')
   const [saved, setSaved] = useState<SavedServer[]>([])
@@ -105,7 +107,7 @@ export function DirectConnectDialog({ open, joining, onClose, onConnect }: Props
     const target = addr || address
     const parsed = parseAddress(target)
     if (!parsed) {
-      setError('Enter a valid address like 127.0.0.1:30814')
+      setError(t('servers.invalidAddress'))
       return
     }
     setError(null)
@@ -128,7 +130,7 @@ export function DirectConnectDialog({ open, joining, onClose, onConnect }: Props
   const handleSave = (): void => {
     const parsed = parseAddress(address)
     if (!parsed) {
-      setError('Enter a valid address to save')
+      setError(t('servers.invalidAddressSave'))
       return
     }
     setError(null)
@@ -189,7 +191,7 @@ export function DirectConnectDialog({ open, joining, onClose, onConnect }: Props
       <div className="relative w-full max-w-md rounded-[28px] border border-white/8 bg-[#1a1a1e]/95 backdrop-blur-xl shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/8">
-          <h2 className="text-sm font-semibold text-white">Direct Connect</h2>
+          <h2 className="text-sm font-semibold text-white">{t('servers.directConnectTitle')}</h2>
           <button
             onClick={onClose}
             className="rounded-xl border border-white/8 bg-white/5 p-2 text-slate-400 transition hover:text-white hover:bg-white/10"
@@ -202,7 +204,7 @@ export function DirectConnectDialog({ open, joining, onClose, onConnect }: Props
         <div className="space-y-3 px-6 py-5">
           <div className="space-y-1.5">
             <label className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">
-              Server Address
+              {t('servers.serverAddress')}
             </label>
             <input
               type="text"
@@ -217,7 +219,7 @@ export function DirectConnectDialog({ open, joining, onClose, onConnect }: Props
 
           <div className="space-y-1.5">
             <label className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">
-              Label <span className="normal-case font-normal opacity-60">(optional)</span>
+              {t('servers.label')} <span className="normal-case font-normal opacity-60">({t('servers.labelOptional')})</span>
             </label>
             <input
               type="text"
@@ -239,16 +241,16 @@ export function DirectConnectDialog({ open, joining, onClose, onConnect }: Props
               className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[var(--color-accent)] px-4 py-2.5 text-sm font-semibold text-white accent-shadow transition hover:opacity-95 disabled:opacity-40"
             >
               <Play size={14} fill="currentColor" />
-              {joining ? 'Connecting...' : 'Connect'}
+              {joining ? t('servers.connecting') : t('servers.connect')}
             </button>
             <button
               onClick={handleSave}
               disabled={!address.trim()}
               className="flex items-center gap-1.5 rounded-2xl border border-white/8 bg-white/5 px-4 py-2.5 text-sm text-slate-300 transition hover:bg-white/10 disabled:opacity-30"
-              title="Save to favorites"
+              title={t('servers.saveToFavorites')}
             >
               <Star size={14} />
-              Save
+              {t('common.save')}
             </button>
           </div>
         </div>
@@ -259,7 +261,7 @@ export function DirectConnectDialog({ open, joining, onClose, onConnect }: Props
             {favorites.length > 0 && (
               <div className="px-6 py-3">
                 <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">
-                  Saved Servers
+                  {t('servers.savedServers')}
                 </h3>
                 <div className="space-y-0.5">
                   {favorites.map((s) => (
@@ -280,7 +282,7 @@ export function DirectConnectDialog({ open, joining, onClose, onConnect }: Props
             {recents.length > 0 && (
               <div className="border-t border-white/8 px-6 py-3">
                 <h3 className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">
-                  <Clock size={10} /> Recent
+                  <Clock size={10} /> {t('servers.recent')}
                 </h3>
                 <div className="space-y-0.5">
                   {recents.map((s) => (
@@ -319,6 +321,7 @@ function SavedServerRow({
   onToggleFavorite: () => void
   onRemove: () => void
 }): React.JSX.Element {
+  const { t } = useTranslation()
   return (
     <div className="group flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-white/5">
       <button
@@ -333,7 +336,7 @@ function SavedServerRow({
       </button>
 
       {/* Online/offline indicator */}
-      <div className="flex-shrink-0" title={probe ? (probe.online ? 'Online' : 'Offline') : 'Checking...'}>
+      <div className="flex-shrink-0" title={probe ? (probe.online ? t('servers.online') : t('servers.offline')) : t('servers.checking')}>
         {!probe ? (
           <div className="h-2 w-2 rounded-full bg-slate-500 animate-pulse" />
         ) : probe.online ? (
@@ -369,7 +372,7 @@ function SavedServerRow({
           </div>
         )}
         {probe && !probe.online && (
-          <div className="mt-0.5 text-[10px] text-rose-400/70">Offline</div>
+          <div className="mt-0.5 text-[10px] text-rose-400/70">{t('servers.offline')}</div>
         )}
       </button>
 

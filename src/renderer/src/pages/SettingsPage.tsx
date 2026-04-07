@@ -68,6 +68,7 @@ function LanguageSelector(): React.JSX.Element {
                 : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'
             }`}
           >
+            <span className="text-base leading-none">{lang.flag}</span>
             <span className="font-medium">{lang.nativeName}</span>
             {i18n.language === lang.code && <Check size={14} className="ml-auto" />}
           </button>
@@ -215,7 +216,7 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
           <section>
             <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
               <Network size={16} />
-              Default Server Ports
+              {t('settings.defaultServerPorts')}
             </h2>
             <input
               type="text"
@@ -225,7 +226,7 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
               className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)]"
             />
             <p className="mt-2 text-xs text-[var(--color-text-muted)]">
-              Comma-separated ports or ranges. New server instances will use the next available port from this list.
+              {t('settings.defaultPortsDescription')}
             </p>
           </section>
 
@@ -254,7 +255,7 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
                       updated[i] = { ...updated[i], name: e.target.value }
                       setRepos(updated)
                     }}
-                    placeholder="Name"
+                    placeholder={t('common.name')}
                     className="w-32 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)]"
                   />
                   <input
@@ -265,7 +266,7 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
                       updated[i] = { ...updated[i], url: e.target.value }
                       setRepos(updated)
                     }}
-                    placeholder="GitHub API URL"
+                    placeholder={t('settings.repoUrlPlaceholder')}
                     className="flex-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)]"
                   />
                   <button
@@ -309,7 +310,7 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
                   type="text"
                   value={modpackName}
                   onChange={(e) => setModpackName(e.target.value)}
-                  placeholder="Modpack name"
+                  placeholder={t('settings.modpackName')}
                   className="flex-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)]"
                 />
                 <button
@@ -323,17 +324,17 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
                     a.download = `${modpackName.trim().replace(/[^a-zA-Z0-9_-]/g, '_')}.beampack`
                     a.click()
                     URL.revokeObjectURL(url)
-                    setModpackStatus('Exported!')
+                    setModpackStatus(t('settings.exported'))
                     setTimeout(() => setModpackStatus(null), 2000)
                   }}
                   className="px-3 py-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] transition-colors flex items-center gap-1"
                 >
-                  <Upload size={14} /> Export
+                  <Upload size={14} /> {t('settings.export')}
                 </button>
               </div>
               <div className="flex gap-2 items-center">
                 <label className="px-3 py-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] transition-colors flex items-center gap-1 cursor-pointer">
-                  <Download size={14} /> Import Modpack
+                  <Download size={14} /> {t('settings.importModpack')}
                   <input
                     type="file"
                     accept=".beampack,.json"
@@ -344,15 +345,15 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
                       const text = await file.text()
                       const result = await window.api.registryImportModpack(text)
                       if (result.error) {
-                        setModpackStatus(`Error: ${result.error}`)
+                        setModpackStatus(t('settings.importError', { error: result.error }))
                       } else if (result.missing.length > 0) {
-                        setModpackStatus(`Found ${result.identifiers.length} mods, ${result.missing.length} unavailable`)
+                        setModpackStatus(t('settings.modsFoundPartiallyAvailable', { found: result.identifiers.length, missing: result.missing.length }))
                       } else {
-                        setModpackStatus(`Ready to install ${result.identifiers.length} mods`)
+                        setModpackStatus(t('settings.readyToInstallMods', { count: result.identifiers.length }))
                       }
                       if (result.identifiers.length > 0) {
                         await window.api.registryInstall(result.identifiers)
-                        setModpackStatus(`Installed ${result.identifiers.length} mods from modpack`)
+                        setModpackStatus(t('settings.installedFromModpack', { count: result.identifiers.length }))
                       }
                       setTimeout(() => setModpackStatus(null), 5000)
                     }}

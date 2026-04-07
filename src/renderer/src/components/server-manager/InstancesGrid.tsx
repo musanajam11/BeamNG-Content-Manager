@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Play, Square, Settings, FolderOpen, Cpu, HardDrive, Users, Copy } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { HostedServerEntry } from '../../../../shared/types'
 import { useLiveUptime } from '../../hooks/useLiveUptime'
 import { BeamMPText } from '../BeamMPText'
@@ -22,10 +23,12 @@ export function InstancesGrid({
   onDelete,
   onDuplicate
 }: InstancesGridProps): React.JSX.Element {
+  const { t } = useTranslation()
+
   if (servers.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-[var(--color-text-muted)] text-sm">
-        No server instances yet. Click <span className="text-[var(--color-accent)] mx-1">+ Create Instance</span> to get started.
+        {t('serverManager.noInstances')} <span className="text-[var(--color-accent)] mx-1">+ {t('serverManager.createInstance')}</span> {t('serverManager.noInstancesGetStarted')}
       </div>
     )
   }
@@ -64,6 +67,7 @@ function InstanceCard({
   onDelete: (id: string, name: string) => void
   onDuplicate: (id: string) => void
 }): React.JSX.Element {
+  const { t } = useTranslation()
   const { config, status } = server
   const isRunning = status.state === 'running'
   const isStopped = status.state === 'stopped' || status.state === 'error'
@@ -162,7 +166,7 @@ function InstanceCard({
           <ActionBtn
             onClick={() => onStart(config.id)}
             className="text-green-400 hover:bg-green-400/10"
-            title="Start"
+            title={t('serverManager.start')}
           >
             <Play size={14} />
           </ActionBtn>
@@ -170,7 +174,7 @@ function InstanceCard({
           <ActionBtn
             onClick={() => onStop(config.id)}
             className="text-red-400 hover:bg-red-400/10"
-            title="Stop"
+            title={t('serverManager.stop')}
           >
             <Square size={14} />
           </ActionBtn>
@@ -178,21 +182,21 @@ function InstanceCard({
         <ActionBtn
           onClick={() => onOpen(config.id, 'config')}
           className="text-[var(--color-accent)] hover:bg-[var(--color-accent)]/10"
-          title="Manage"
+          title={t('serverManager.manage')}
         >
           <Settings size={14} />
         </ActionBtn>
         <ActionBtn
           onClick={() => onOpen(config.id, 'files')}
           className="text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
-          title="Files"
+          title={t('serverManager.files')}
         >
           <FolderOpen size={14} />
         </ActionBtn>
         <ActionBtn
           onClick={() => onDuplicate(config.id)}
           className="text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
-          title="Clone"
+          title={t('serverManager.clone')}
         >
           <Copy size={14} />
         </ActionBtn>
@@ -201,7 +205,7 @@ function InstanceCard({
           <ActionBtn
             onClick={() => onDelete(config.id, config.name)}
             className="text-red-400/60 hover:text-red-400 hover:bg-red-400/10"
-            title="Delete"
+            title={t('serverManager.delete')}
           >
             <span className="text-xs">&#x2715;</span>
           </ActionBtn>
@@ -234,6 +238,7 @@ function ActionBtn({
 }
 
 function StatusBadge({ state }: { state: string }): React.JSX.Element {
+  const { t } = useTranslation()
   const styles: Record<string, string> = {
     running: 'bg-green-500/20 text-green-400 border-green-500/30',
     starting: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
@@ -242,10 +247,10 @@ function StatusBadge({ state }: { state: string }): React.JSX.Element {
   }
 
   const labels: Record<string, string> = {
-    running: 'Running',
-    starting: 'Starting',
-    error: 'Error',
-    stopped: 'Idle'
+    running: t('serverManager.running'),
+    starting: t('serverManager.starting'),
+    error: t('serverManager.error'),
+    stopped: t('serverManager.idle')
   }
 
   const s = styles[state] ?? styles.stopped

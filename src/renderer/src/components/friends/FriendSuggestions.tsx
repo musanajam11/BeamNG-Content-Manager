@@ -1,4 +1,5 @@
 import { UserPlus } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 interface Suggestion {
   name: string
@@ -12,12 +13,14 @@ interface FriendSuggestionsProps {
 }
 
 export function FriendSuggestions({ suggestions, onAdd }: FriendSuggestionsProps): React.JSX.Element | null {
+  const { t } = useTranslation()
+
   if (suggestions.length === 0) return null
 
   return (
     <div className="space-y-2">
       <h3 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
-        Recently Played With
+        {t('friends.recentlyPlayedWith')}
       </h3>
       <div className="space-y-1">
         {suggestions.slice(0, 8).map((s) => (
@@ -28,13 +31,13 @@ export function FriendSuggestions({ suggestions, onAdd }: FriendSuggestionsProps
             <div>
               <p className="text-sm text-[var(--color-text-primary)]">{s.name}</p>
               <p className="text-xs text-[var(--color-text-muted)]">
-                Seen {s.seenCount} times
+                {t('friends.seenCount_other', { count: s.seenCount })}
               </p>
             </div>
             <button
               onClick={() => onAdd(s.name)}
               className="p-1.5 rounded-md text-[var(--color-accent)] hover:bg-[var(--color-accent)]/20 transition-colors"
-              title={`Add ${s.name}`}
+              title={t('friends.addPlayer', { name: s.name })}
             >
               <UserPlus size={14} />
             </button>

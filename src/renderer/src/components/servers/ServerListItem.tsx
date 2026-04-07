@@ -1,4 +1,6 @@
 import { Star, Shield, Lock, MapPin } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import type { ServerInfo } from '../../../../shared/types'
 import { countryFlag, cleanMapName } from '../../utils/countryFlags'
 import { useFlagUrl } from '../../utils/flagCache'
@@ -26,15 +28,15 @@ function getPopColor(pct: number): string {
   return 'pop-fill-green'
 }
 
-function getServerTags(server: ServerInfo): { label: string; tone: string }[] {
+function getServerTags(server: ServerInfo, t: TFunction): { label: string; tone: string }[] {
   const tags: { label: string; tone: string }[] = []
   const pct = getFillPct(server)
-  if (server.tags === 'offline') { tags.push({ label: 'Offline', tone: 'offline' }); return tags }
-  if (server.official) tags.push({ label: 'Official', tone: 'accent' })
-  if (parseInt(server.modstotal, 10) > 0) tags.push({ label: 'Modded', tone: 'gold' })
-  if (server.password) tags.push({ label: 'Password', tone: 'default' })
-  if (pct >= 85) tags.push({ label: 'High Pop', tone: 'warn' })
-  if (pct === 0) tags.push({ label: 'Empty', tone: 'default' })
+  if (server.tags === 'offline') { tags.push({ label: t('servers.tagOffline'), tone: 'offline' }); return tags }
+  if (server.official) tags.push({ label: t('servers.tagOfficial'), tone: 'accent' })
+  if (parseInt(server.modstotal, 10) > 0) tags.push({ label: t('servers.tagModded'), tone: 'gold' })
+  if (server.password) tags.push({ label: t('servers.tagPassword'), tone: 'default' })
+  if (pct >= 85) tags.push({ label: t('servers.tagHighPop'), tone: 'warn' })
+  if (pct === 0) tags.push({ label: t('servers.tagEmpty'), tone: 'default' })
   return tags
 }
 
@@ -47,10 +49,11 @@ const BADGE_TONES: Record<string, string> = {
 }
 
 export function ServerListItem({ server, selected, favorite, onSelect, onToggleFavorite }: Props): React.JSX.Element {
+  const { t } = useTranslation()
   const playerCount = parseInt(server.players, 10) || 0
   const maxPlayers = parseInt(server.maxplayers, 10) || 0
   const fillPct = getFillPct(server)
-  const tags = getServerTags(server)
+  const tags = getServerTags(server, t)
   const flagUrl = useFlagUrl(server.location)
 
   return (

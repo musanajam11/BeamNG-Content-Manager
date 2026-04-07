@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 interface Props {
   onClose: () => void
@@ -6,6 +7,7 @@ interface Props {
 }
 
 export function LoginSheet({ onClose, onSuccess }: Props): React.JSX.Element {
+  const { t } = useTranslation()
   const [loginUser, setLoginUser] = useState('')
   const [loginPass, setLoginPass] = useState('')
   const [loading, setLoading] = useState(false)
@@ -43,14 +45,14 @@ export function LoginSheet({ onClose, onSuccess }: Props): React.JSX.Element {
           type="text"
           value={loginUser}
           onChange={(e) => setLoginUser(e.target.value)}
-          placeholder="Username"
+          placeholder={t('servers.username')}
           className="flex-1 rounded-xl border border-white/8 bg-white/5 px-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-[var(--color-accent-40)]"
         />
         <input
           type="password"
           value={loginPass}
           onChange={(e) => setLoginPass(e.target.value)}
-          placeholder="Password"
+          placeholder={t('servers.password')}
           onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
           className="flex-1 rounded-xl border border-white/8 bg-white/5 px-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-[var(--color-accent-40)]"
         />
@@ -59,13 +61,13 @@ export function LoginSheet({ onClose, onSuccess }: Props): React.JSX.Element {
           disabled={loading}
           className="rounded-xl bg-[var(--color-accent)] px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-40"
         >
-          {loading ? '...' : 'Login'}
+          {loading ? '...' : t('servers.login')}
         </button>
         <button
           onClick={handleGuest}
           className="rounded-xl border border-white/8 bg-white/5 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/10"
         >
-          Guest
+          {t('common.guest')}
         </button>
       </div>
       {error && <p className="mt-1.5 px-1 text-[10px] text-rose-400">{error}</p>}

@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useMemo, useState, useRef } from 'react'
 import { Trash2, AlertTriangle, Upload, X, ImageIcon } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { HostedServerConfig } from '../../../../shared/types'
 import { BeamMPNameEditor } from './BeamMPNameEditor'
 
@@ -41,6 +42,7 @@ export function ConfigEditor({
   saving,
   serverId
 }: ConfigEditorProps): React.JSX.Element {
+  const { t } = useTranslation()
   const errors = useMemo(() => validate(draft), [draft])
   const errorMap = useMemo(() => new Map(errors.map((e) => [e.field, e.message])), [errors])
   const hasErrors = errors.length > 0
@@ -160,12 +162,12 @@ export function ConfigEditor({
           onChange={(name) => setDraft({ ...draft, name })}
           error={errorMap.get('name')}
         />
-        {field('Port', 'port', 'number')}
-        {field('Auth Key', 'authKey', 'password')}
-        {field('Max Players', 'maxPlayers', 'number')}
-        {field('Max Cars per Player', 'maxCars', 'number')}
+        {field(t('serverManager.configPort'), 'port', 'number')}
+        {field(t('serverManager.configAuthKey'), 'authKey', 'password')}
+        {field(t('serverManager.configMaxPlayers'), 'maxPlayers', 'number')}
+        {field(t('serverManager.configMaxCarsPerPlayer'), 'maxCars', 'number')}
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-[var(--color-text-muted)]">Map</span>
+          <span className="text-xs text-[var(--color-text-muted)]">{t('serverManager.configMap')}</span>
           <select
             value={draft.map ?? ''}
             onChange={(e) => setDraft({ ...draft, map: e.target.value })}
@@ -181,11 +183,11 @@ export function ConfigEditor({
             })}
           </select>
         </label>
-        {field('Tags', 'tags')}
-        {field('Resource Folder', 'resourceFolder')}
+        {field(t('serverManager.configTags'), 'tags')}
+        {field(t('serverManager.configResourceFolder'), 'resourceFolder')}
         <div className="col-span-2">
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-[var(--color-text-muted)]">Description</span>
+            <span className="text-xs text-[var(--color-text-muted)]">{t('serverManager.configDescription')}</span>
             <textarea
               value={draft.description ?? ''}
               onChange={(e) => setDraft({ ...draft, description: e.target.value })}
@@ -195,15 +197,15 @@ export function ConfigEditor({
           </label>
         </div>
         <div className="col-span-2 flex flex-wrap gap-4">
-          {toggle('Private', 'private')}
-          {toggle('Allow Guests', 'allowGuests')}
-          {toggle('Log Chat', 'logChat')}
-          {toggle('Debug', 'debug')}
+          {toggle(t('serverManager.configPrivate'), 'private')}
+          {toggle(t('serverManager.configAllowGuests'), 'allowGuests')}
+          {toggle(t('serverManager.configLogChat'), 'logChat')}
+          {toggle(t('serverManager.configDebug'), 'debug')}
         </div>
 
         {/* Custom Banner Image */}
         <div className="col-span-2">
-          <span className="text-xs text-[var(--color-text-muted)] mb-1 block">Server Card Image</span>
+          <span className="text-xs text-[var(--color-text-muted)] mb-1 block">{t('serverManager.configServerCardImage')}</span>
           {customImage ? (
             <div className="relative rounded border border-[var(--color-border)] overflow-hidden">
               <img src={customImage} alt="Custom banner" className="w-full h-32 object-cover" />
@@ -211,14 +213,14 @@ export function ConfigEditor({
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   className="p-1.5 bg-black/60 hover:bg-black/80 text-white rounded transition-colors"
-                  title="Replace image"
+                  title={t('serverManager.replaceImage')}
                 >
                   <Upload size={12} />
                 </button>
                 <button
                   onClick={removeImage}
                   className="p-1.5 bg-black/60 hover:bg-red-600/80 text-white rounded transition-colors"
-                  title="Remove image"
+                  title={t('serverManager.removeImage')}
                 >
                   <X size={12} />
                 </button>
@@ -242,7 +244,7 @@ export function ConfigEditor({
                 <>
                   <ImageIcon size={20} className="text-[var(--color-text-muted)]" />
                   <span className="text-xs text-[var(--color-text-muted)]">
-                    Drag & drop an image or click to browse
+                    {t('serverManager.configDragOrClick')}
                   </span>
                   <span className="text-[10px] text-[var(--color-text-muted)]">
                     Used as the card banner — defaults to map preview if not set
@@ -285,14 +287,14 @@ export function ConfigEditor({
           className="px-4 py-2 text-sm font-semibold rounded bg-[var(--color-accent)] text-black hover:bg-[var(--color-accent-hover)] transition-colors disabled:opacity-50"
           title={hasErrors ? 'Fix validation errors first' : 'Save (Ctrl+S)'}
         >
-          {saving ? 'Saving...' : 'Save Configuration'}
+          {saving ? t('serverManager.configSaving') : t('serverManager.configSaveConfiguration')}
         </button>
         <button
           onClick={onDelete}
           className="flex items-center gap-1.5 px-4 py-2 text-sm text-red-400 border border-red-500/30 hover:bg-red-500/10 transition-colors"
         >
           <Trash2 size={14} />
-          Delete Server
+          {t('serverManager.configDeleteServer')}
         </button>
       </div>
     </div>

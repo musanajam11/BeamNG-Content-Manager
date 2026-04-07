@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { BarChart3, Users, Clock, Trash2, Loader2, ChevronDown } from 'lucide-react'
 import type { AnalyticsData, DailyStats, PlayerSummary, PlayerSession } from '../../../../shared/types'
+import { useTranslation } from 'react-i18next'
 
 interface AnalyticsPanelProps {
   serverId: string
@@ -32,6 +33,7 @@ function dayLabel(dateStr: string): string {
 }
 
 export function AnalyticsPanel({ serverId }: AnalyticsPanelProps): React.JSX.Element {
+  const { t } = useTranslation()
   const [data, setData] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useState<Period>('7d')
@@ -100,7 +102,7 @@ export function AnalyticsPanel({ serverId }: AnalyticsPanelProps): React.JSX.Ele
     return (
       <div className="flex-1 flex items-center justify-center text-[var(--color-text-muted)]">
         <Loader2 size={20} className="animate-spin mr-2" />
-        Loading analytics...
+        {t('serverManager.loadingAnalytics')}
       </div>
     )
   }
@@ -111,12 +113,12 @@ export function AnalyticsPanel({ serverId }: AnalyticsPanelProps): React.JSX.Ele
       <div className="px-4 py-3 border-b border-[var(--color-border)] flex items-center justify-between">
         <div className="flex items-center gap-2">
           <BarChart3 size={16} className="text-[var(--color-accent)]" />
-          <span className="text-sm font-semibold text-[var(--color-text-primary)]">Server Analytics</span>
+          <span className="text-sm font-semibold text-[var(--color-text-primary)]">{t('serverManager.serverAnalytics')}</span>
         </div>
         <div className="flex items-center gap-2">
           {/* Period selector */}
           <div className="flex gap-1">
-            {([['7d', '7 Days'], ['30d', '30 Days'], ['90d', '90 Days'], ['all', 'All']] as [Period, string][]).map(([p, label]) => (
+            {([['7d', t('serverManager.period7Days')], ['30d', t('serverManager.period30Days')], ['90d', t('serverManager.period90Days')], ['all', t('serverManager.periodAll')]] as [Period, string][]).map(([p, label]) => (
               <button
                 key={p}
                 onClick={() => setPeriod(p)}
@@ -132,7 +134,7 @@ export function AnalyticsPanel({ serverId }: AnalyticsPanelProps): React.JSX.Ele
           </div>
           <button
             onClick={handleClear}
-            title="Clear all analytics data"
+            title={t('serverManager.clearAllAnalytics')}
             className="p-1.5 rounded text-[var(--color-text-muted)] hover:text-red-400 hover:bg-red-400/10 transition-colors"
           >
             <Trash2 size={14} />
@@ -144,17 +146,17 @@ export function AnalyticsPanel({ serverId }: AnalyticsPanelProps): React.JSX.Ele
         {/* Summary Cards */}
         <div className="grid grid-cols-3 gap-3">
           <SummaryCard
-            label="Total Players"
+            label={t('serverManager.totalPlayers')}
             value={String(data.playerSummaries.length)}
             icon={<Users size={14} />}
           />
           <SummaryCard
-            label="Active Now"
+            label={t('serverManager.activeNow')}
             value={String(data.activeSessions.length)}
             icon={<span className="w-2 h-2 rounded-full bg-green-500 inline-block" />}
           />
           <SummaryCard
-            label="Total Playtime"
+            label={t('serverManager.totalPlaytime')}
             value={formatDuration(data.playerSummaries.reduce((sum, p) => sum + p.totalTimeMs, 0))}
             icon={<Clock size={14} />}
           />

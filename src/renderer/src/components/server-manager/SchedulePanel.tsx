@@ -1,29 +1,48 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Calendar, Clock, Download, Trash2, RotateCcw, Play, Loader2, Plus, RefreshCw, Terminal, MessageSquare, ArrowDownToLine, Square, Pencil } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { BackupEntry, ScheduledTask, ScheduledTaskType, TaskFrequency } from '../../../../shared/types'
 
 interface SchedulePanelProps {
   serverId: string
 }
 
-const TASK_TYPES: { value: ScheduledTaskType; label: string; icon: typeof Play; color: string }[] = [
-  { value: 'backup', label: 'Backup', icon: Download, color: 'text-blue-400' },
-  { value: 'restart', label: 'Restart Server', icon: RefreshCw, color: 'text-[var(--color-accent)]' },
-  { value: 'start', label: 'Start Server', icon: Play, color: 'text-green-400' },
-  { value: 'stop', label: 'Stop Server', icon: Square, color: 'text-red-400' },
-  { value: 'command', label: 'Console Command', icon: Terminal, color: 'text-purple-400' },
-  { value: 'message', label: 'Chat Message', icon: MessageSquare, color: 'text-cyan-400' },
-  { value: 'update', label: 'Update Server', icon: ArrowDownToLine, color: 'text-yellow-400' },
-]
+type TFunc = (key: string, opts?: Record<string, unknown>) => string
 
-const FREQ_OPTIONS: { value: TaskFrequency; label: string }[] = [
-  { value: 'once', label: 'Once' },
-  { value: 'hourly', label: 'Hourly' },
-  { value: 'daily', label: 'Daily' },
-  { value: 'weekly', label: 'Weekly' },
-]
+const TASK_TYPE_ICONS: Record<ScheduledTaskType, { icon: typeof Play; color: string }> = {
+  backup: { icon: Download, color: 'text-blue-400' },
+  restart: { icon: RefreshCw, color: 'text-[var(--color-accent)]' },
+  start: { icon: Play, color: 'text-green-400' },
+  stop: { icon: Square, color: 'text-red-400' },
+  command: { icon: Terminal, color: 'text-purple-400' },
+  message: { icon: MessageSquare, color: 'text-cyan-400' },
+  update: { icon: ArrowDownToLine, color: 'text-yellow-400' },
+}
 
-const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+const TASK_TYPE_KEYS: ScheduledTaskType[] = ['backup', 'restart', 'start', 'stop', 'command', 'message', 'update']
+const FREQ_KEYS: TaskFrequency[] = ['once', 'hourly', 'daily', 'weekly']
+
+const TASK_TYPE_I18N: Record<ScheduledTaskType, string> = {
+  backup: 'serverManager.taskBackup',
+  restart: 'serverManager.taskRestart',
+  start: 'serverManager.taskStart',
+  stop: 'serverManager.taskStop',
+  command: 'serverManager.taskCommand',
+  message: 'serverManager.taskMessage',
+  update: 'serverManager.taskUpdate',
+}
+
+const FREQ_I18N: Record<TaskFrequency, string> = {
+  once: 'serverManager.freqOnce',
+  hourly: 'serverManager.freqHourly',
+  daily: 'serverManager.freqDaily',
+  weekly: 'serverManager.freqWeekly',
+}
+
+const DAY_KEYS = [
+  'serverManager.sunday', 'serverManager.monday', 'serverManager.tuesday',
+  'serverManager.wednesday', 'serverManager.thursday', 'serverManager.friday', 'serverManager.saturday'
+]
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -36,18 +55,19 @@ function formatDate(ms: number): string {
   return new Date(ms).toLocaleString()
 }
 
-function timeAgo(ms: number): string {
+function timeAgo(ms: number, t: TFunc): string {
   const diff = Date.now() - ms
   const mins = Math.floor(diff / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
+  if (mins < 1) return t('time.justNow')
+  if (mins < 60) return t('time.minutesAgo', { n: mins })
   const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
+  if (hours < 24) return t('time.hoursAgo', { n: hours })
   const days = Math.floor(hours / 24)
-  return `${days}d ago`
+  return t('time.daysAgo', { n: days })
 }
 
 export function SchedulePanel({ serverId }: SchedulePanelProps): React.JSX.Element {
+  const { t } = useTranslation()
   const [backups, setBackups] = useState<BackupEntry[]>([])
   const [tasks, setTasks] = useState<ScheduledTask[]>([])
   const [loading, setLoading] = useState(true)
@@ -127,7 +147,7 @@ export function SchedulePanel({ serverId }: SchedulePanelProps): React.JSX.Eleme
     return (
       <div className="flex-1 flex items-center justify-center text-[var(--color-text-muted)]">
         <Loader2 size={20} className="animate-spin mr-2" />
-        Loading...
+        {t('common.loading')}
       </div>
     )
   }
@@ -138,14 +158,14 @@ export function SchedulePanel({ serverId }: SchedulePanelProps): React.JSX.Eleme
       <div className="px-4 py-3 border-b border-[var(--color-border)] flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Calendar size={16} className="text-[var(--color-accent)]" />
-          <span className="text-sm font-semibold text-[var(--color-text-primary)]">Schedule &amp; Tasks</span>
+          <span className="text-sm font-semibold text-[var(--color-text-primary)]">{t('serverManager.scheduleAndTasks')}</span>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => { setShowNewTask(true); setEditingTask(null) }}
             className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-[var(--color-accent)]/20 text-[var(--color-accent)] border border-[var(--color-accent)]/30 hover:bg-[var(--color-accent)]/30 transition-colors"
           >
-            <Plus size={14} /> New Task
+            <Plus size={14} /> {t('serverManager.newTask')}
           </button>
           <button
             onClick={handleCreateBackup}
@@ -153,7 +173,7 @@ export function SchedulePanel({ serverId }: SchedulePanelProps): React.JSX.Eleme
             className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 transition-colors disabled:opacity-50"
           >
             {creating ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-            {creating ? 'Creating...' : 'Backup Now'}
+            {creating ? t('serverManager.creatingBackup') : t('serverManager.backupNow')}
           </button>
         </div>
       </div>
@@ -174,12 +194,12 @@ export function SchedulePanel({ serverId }: SchedulePanelProps): React.JSX.Eleme
             <div className="flex items-center gap-2 mb-3">
               <Calendar size={14} className="text-[var(--color-text-muted)]" />
               <span className="text-sm font-medium text-[var(--color-text-primary)]">
-                Scheduled Tasks ({tasks.length})
+                {t('serverManager.scheduledTasks', { count: tasks.length })}
               </span>
             </div>
             <div className="space-y-1">
               {tasks.map((task) => {
-                const typeInfo = TASK_TYPES.find((t) => t.value === task.type)
+                const typeInfo = TASK_TYPE_ICONS[task.type]
                 const Icon = typeInfo?.icon ?? Calendar
                 return (
                   <div key={task.id} className="flex items-center gap-3 px-4 py-2.5 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] transition-colors">
@@ -187,28 +207,28 @@ export function SchedulePanel({ serverId }: SchedulePanelProps): React.JSX.Eleme
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-sm text-[var(--color-text-primary)] truncate">{task.label}</span>
-                        {!task.enabled && <span className="text-[10px] px-1.5 py-0.5 bg-zinc-700 text-zinc-400 rounded">paused</span>}
+                        {!task.enabled && <span className="text-[10px] px-1.5 py-0.5 bg-zinc-700 text-zinc-400 rounded">{t('serverManager.paused')}</span>}
                       </div>
                       <div className="text-[11px] text-[var(--color-text-muted)]">
                         {task.frequency}{task.frequency !== 'hourly' && task.frequency !== 'once' ? ` at ${task.timeOfDay}` : ''}
-                        {task.lastRun ? ` · last: ${timeAgo(task.lastRun)}` : ''}
+                        {task.lastRun ? ` · last: ${timeAgo(task.lastRun, t)}` : ''}
                         {task.lastResult ? ` · ${task.lastResult}` : ''}
                       </div>
                     </div>
                     <button
                       onClick={() => handleSaveTask({ ...task, enabled: !task.enabled })}
-                      title={task.enabled ? 'Disable' : 'Enable'}
+                      title={task.enabled ? t('serverManager.disable') : t('serverManager.enable')}
                       className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${task.enabled ? 'bg-[var(--color-accent)]' : 'bg-zinc-600'}`}
                     >
                       <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform ${task.enabled ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
                     </button>
-                    <button onClick={() => handleRunTask(task.id)} disabled={runningTask === task.id} title="Run now" className="p-1.5 rounded text-[var(--color-text-muted)] hover:text-green-400 hover:bg-green-400/10 transition-colors disabled:opacity-50">
+                    <button onClick={() => handleRunTask(task.id)} disabled={runningTask === task.id} title={t('serverManager.runNow')} className="p-1.5 rounded text-[var(--color-text-muted)] hover:text-green-400 hover:bg-green-400/10 transition-colors disabled:opacity-50">
                       {runningTask === task.id ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
                     </button>
-                    <button onClick={() => { setEditingTask(task); setShowNewTask(false) }} title="Edit" className="p-1.5 rounded text-[var(--color-text-muted)] hover:text-blue-400 hover:bg-blue-400/10 transition-colors">
+                    <button onClick={() => { setEditingTask(task); setShowNewTask(false) }} title={t('serverManager.edit')} className="p-1.5 rounded text-[var(--color-text-muted)] hover:text-blue-400 hover:bg-blue-400/10 transition-colors">
                       <Pencil size={14} />
                     </button>
-                    <button onClick={() => handleDeleteTask(task.id)} title="Delete" className="p-1.5 rounded text-[var(--color-text-muted)] hover:text-red-400 hover:bg-red-400/10 transition-colors">
+                    <button onClick={() => handleDeleteTask(task.id)} title={t('serverManager.delete')} className="p-1.5 rounded text-[var(--color-text-muted)] hover:text-red-400 hover:bg-red-400/10 transition-colors">
                       <Trash2 size={14} />
                     </button>
                   </div>
@@ -223,13 +243,13 @@ export function SchedulePanel({ serverId }: SchedulePanelProps): React.JSX.Eleme
           <div className="flex items-center gap-2 mb-3">
             <Download size={14} className="text-[var(--color-text-muted)]" />
             <span className="text-sm font-medium text-[var(--color-text-primary)]">
-              Backups ({backups.length})
+              {t('serverManager.backups', { count: backups.length })}
             </span>
           </div>
 
           {backups.length === 0 ? (
             <div className="text-sm text-[var(--color-text-muted)] text-center py-6 border border-dashed border-[var(--color-border)] rounded-lg">
-              No backups yet. Click &quot;Backup Now&quot; to create one.
+              {t('serverManager.noBackupsYet')}
             </div>
           ) : (
             <div className="space-y-1">
@@ -247,14 +267,14 @@ export function SchedulePanel({ serverId }: SchedulePanelProps): React.JSX.Eleme
                   <button
                     onClick={() => handleRestore(b.filename)}
                     disabled={restoring === b.filename}
-                    title="Restore this backup"
+                    title={t('serverManager.restoreBackup')}
                     className="p-1.5 rounded text-[var(--color-text-muted)] hover:text-blue-400 hover:bg-blue-400/10 transition-colors disabled:opacity-50"
                   >
                     {restoring === b.filename ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
                   </button>
                   <button
                     onClick={() => handleDelete(b.filename)}
-                    title="Delete this backup"
+                    title={t('serverManager.deleteBackup')}
                     className="p-1.5 rounded text-[var(--color-text-muted)] hover:text-red-400 hover:bg-red-400/10 transition-colors"
                   >
                     <Trash2 size={14} />
@@ -278,6 +298,7 @@ interface TaskFormProps {
 }
 
 function TaskForm({ task, onSave, onCancel }: TaskFormProps): React.JSX.Element {
+  const { t } = useTranslation()
   const [type, setType] = useState<ScheduledTaskType>(task?.type ?? 'backup')
   const [label, setLabel] = useState(task?.label ?? '')
   const [frequency, setFrequency] = useState<TaskFrequency>(task?.frequency ?? 'daily')
@@ -285,7 +306,7 @@ function TaskForm({ task, onSave, onCancel }: TaskFormProps): React.JSX.Element 
   const [dayOfWeek, setDayOfWeek] = useState(task?.dayOfWeek ?? 0)
   const [config, setConfig] = useState<Record<string, string | number | boolean>>(task?.config ?? {})
 
-  const autoLabel = TASK_TYPES.find((t) => t.value === type)?.label ?? type
+  const autoLabel = t(TASK_TYPE_I18N[type])
   const effectiveLabel = label || autoLabel
 
   const submit = (): void => {
@@ -294,26 +315,27 @@ function TaskForm({ task, onSave, onCancel }: TaskFormProps): React.JSX.Element 
 
   return (
     <div className="rounded-lg border border-[var(--color-accent)]/30 bg-[var(--color-surface)] p-4 space-y-4">
-      <span className="text-sm font-medium text-[var(--color-text-primary)]">{task ? 'Edit Task' : 'New Scheduled Task'}</span>
+      <span className="text-sm font-medium text-[var(--color-text-primary)]">{task ? t('serverManager.editTask') : t('serverManager.newScheduledTask')}</span>
 
       {/* Task Type */}
       <div className="space-y-1.5">
-        <label className="text-xs text-[var(--color-text-muted)]">Task Type</label>
+        <label className="text-xs text-[var(--color-text-muted)]">{t('serverManager.taskType')}</label>
         <div className="grid grid-cols-4 gap-1.5">
-          {TASK_TYPES.map((t) => {
-            const Icon = t.icon
+          {TASK_TYPE_KEYS.map((value) => {
+            const info = TASK_TYPE_ICONS[value]
+            const Icon = info.icon
             return (
               <button
-                key={t.value}
-                onClick={() => { setType(t.value); if (!label) setLabel('') }}
+                key={value}
+                onClick={() => { setType(value); if (!label) setLabel('') }}
                 className={`flex items-center gap-1.5 px-2 py-1.5 text-xs rounded-md border transition-colors ${
-                  type === t.value
+                  type === value
                     ? 'bg-[var(--color-accent)]/20 text-[var(--color-accent)] border-[var(--color-accent)]/30'
                     : 'text-[var(--color-text-muted)] border-[var(--color-border)] hover:bg-[var(--color-surface-hover)]'
                 }`}
               >
-                <Icon size={12} className={type === t.value ? t.color : ''} />
-                {t.label}
+                <Icon size={12} className={type === value ? info.color : ''} />
+                {t(TASK_TYPE_I18N[value])}
               </button>
             )
           })}
@@ -322,7 +344,7 @@ function TaskForm({ task, onSave, onCancel }: TaskFormProps): React.JSX.Element 
 
       {/* Label */}
       <div className="space-y-1.5">
-        <label className="text-xs text-[var(--color-text-muted)]">Label</label>
+        <label className="text-xs text-[var(--color-text-muted)]">{t('serverManager.taskLabel')}</label>
         <input
           value={label}
           onChange={(e) => setLabel(e.target.value)}
@@ -334,22 +356,22 @@ function TaskForm({ task, onSave, onCancel }: TaskFormProps): React.JSX.Element 
       {/* Config fields based on type */}
       {type === 'command' && (
         <div className="space-y-1.5">
-          <label className="text-xs text-[var(--color-text-muted)]">Command</label>
+          <label className="text-xs text-[var(--color-text-muted)]">{t('serverManager.command')}</label>
           <input
             value={(config.command as string) ?? ''}
             onChange={(e) => setConfig({ ...config, command: e.target.value })}
-            placeholder="e.g. kick all"
+            placeholder={t('serverManager.commandPlaceholder')}
             className="w-full px-2 py-1 text-sm bg-[var(--color-bg)] text-[var(--color-text-primary)] border border-[var(--color-border)] rounded-md font-mono"
           />
         </div>
       )}
       {type === 'message' && (
         <div className="space-y-1.5">
-          <label className="text-xs text-[var(--color-text-muted)]">Message</label>
+          <label className="text-xs text-[var(--color-text-muted)]">{t('serverManager.message')}</label>
           <input
             value={(config.message as string) ?? ''}
             onChange={(e) => setConfig({ ...config, message: e.target.value })}
-            placeholder="Server restarting in 5 minutes..."
+            placeholder={t('serverManager.messagePlaceholder')}
             className="w-full px-2 py-1 text-sm bg-[var(--color-bg)] text-[var(--color-text-primary)] border border-[var(--color-border)] rounded-md"
           />
         </div>
@@ -357,19 +379,19 @@ function TaskForm({ task, onSave, onCancel }: TaskFormProps): React.JSX.Element 
 
       {/* Frequency */}
       <div className="space-y-1.5">
-        <label className="text-xs text-[var(--color-text-muted)]">Frequency</label>
+        <label className="text-xs text-[var(--color-text-muted)]">{t('serverManager.frequency')}</label>
         <div className="flex gap-2">
-          {FREQ_OPTIONS.map((f) => (
+          {FREQ_KEYS.map((value) => (
             <button
-              key={f.value}
-              onClick={() => setFrequency(f.value)}
+              key={value}
+              onClick={() => setFrequency(value)}
               className={`px-3 py-1.5 text-xs rounded-md border transition-colors ${
-                frequency === f.value
+                frequency === value
                   ? 'bg-[var(--color-accent)]/20 text-[var(--color-accent)] border-[var(--color-accent)]/30'
                   : 'text-[var(--color-text-muted)] border-[var(--color-border)] hover:bg-[var(--color-surface-hover)]'
               }`}
             >
-              {f.label}
+              {t(FREQ_I18N[value])}
             </button>
           ))}
         </div>
@@ -379,7 +401,7 @@ function TaskForm({ task, onSave, onCancel }: TaskFormProps): React.JSX.Element 
       {frequency !== 'hourly' && (
         <div className="space-y-1.5">
           <label className="text-xs text-[var(--color-text-muted)] flex items-center gap-1">
-            <Clock size={12} /> Time
+            <Clock size={12} /> {t('serverManager.time')}
           </label>
           <input
             type="time"
@@ -393,14 +415,14 @@ function TaskForm({ task, onSave, onCancel }: TaskFormProps): React.JSX.Element 
       {/* Day (for weekly) */}
       {frequency === 'weekly' && (
         <div className="space-y-1.5">
-          <label className="text-xs text-[var(--color-text-muted)]">Day of Week</label>
+          <label className="text-xs text-[var(--color-text-muted)]">{t('serverManager.dayOfWeek')}</label>
           <select
             value={dayOfWeek}
             onChange={(e) => setDayOfWeek(Number(e.target.value))}
             className="px-2 py-1 text-sm bg-[var(--color-bg)] text-[var(--color-text-primary)] border border-[var(--color-border)] rounded-md"
           >
-            {DAYS.map((d, i) => (
-              <option key={d} value={i}>{d}</option>
+            {DAY_KEYS.map((key, i) => (
+              <option key={key} value={i}>{t(key)}</option>
             ))}
           </select>
         </div>
@@ -412,13 +434,13 @@ function TaskForm({ task, onSave, onCancel }: TaskFormProps): React.JSX.Element 
           onClick={onCancel}
           className="px-3 py-1.5 text-xs text-[var(--color-text-muted)] border border-[var(--color-border)] rounded-md hover:bg-[var(--color-surface-hover)] transition-colors"
         >
-          Cancel
+          {t('common.cancel')}
         </button>
         <button
           onClick={submit}
           className="px-3 py-1.5 text-xs bg-[var(--color-accent)] text-white rounded-md hover:bg-[var(--color-accent)]/80 transition-colors"
         >
-          {task ? 'Save' : 'Create'}
+          {task ? t('common.save') : t('serverManager.create')}
         </button>
       </div>
     </div>

@@ -1,6 +1,7 @@
 import { Package, Server, Trash2 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useConfirmDialog } from '../../hooks/useConfirmDialog'
+import { useTranslation } from 'react-i18next'
 
 interface ModsPanelProps {
   serverId: string
@@ -9,6 +10,7 @@ interface ModsPanelProps {
 }
 
 export function ModsPanel({ serverId, mods, onRefresh }: ModsPanelProps): React.JSX.Element {
+  const { t } = useTranslation()
   const [registryMeta, setRegistryMeta] = useState<Record<string, { multiplayer_scope?: string }>>({})
   const [copying, setCopying] = useState<string | null>(null)
   const [undeploying, setUndeploying] = useState<string | null>(null)
@@ -57,9 +59,9 @@ export function ModsPanel({ serverId, mods, onRefresh }: ModsPanelProps): React.
 
   const handleUndeploy = async (fileName: string): Promise<void> => {
     const ok = await confirm({
-      title: 'Undeploy Mod',
-      message: `Remove "${fileName}" from this server? This will delete the mod's client and server files from the server.`,
-      confirmLabel: 'Undeploy',
+      title: t('serverManager.undeployMod'),
+      message: t('serverManager.undeployModMessage', { fileName }),
+      confirmLabel: t('serverManager.undeployLabel'),
       variant: 'danger'
     })
     if (!ok) return
@@ -77,12 +79,12 @@ export function ModsPanel({ serverId, mods, onRefresh }: ModsPanelProps): React.
     <>
       <div className="flex-1 flex flex-col min-h-0">
         <div className="px-4 py-2 border-b border-[var(--color-border)] text-xs text-[var(--color-text-muted)]">
-          Deploy installed mods to this server. Mods with server components will install both client and server files.
+          {t('serverManager.deployModsDescription')}
         </div>
       <div className="flex-1 overflow-y-auto">
         {mods.length === 0 ? (
           <div className="text-[var(--color-text-muted)] text-center py-8 text-sm">
-            No mods installed. Install mods from the Mods page first.
+            {t('serverManager.noModsInstalled')}
           </div>
         ) : (
           mods.map((m) => {
@@ -105,7 +107,7 @@ export function ModsPanel({ serverId, mods, onRefresh }: ModsPanelProps): React.
                     <span className="text-sm text-[var(--color-text-primary)] truncate">{m.name}</span>
                     {hasServerComponent && (
                       <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 text-purple-300 bg-purple-400/10 border border-purple-400/20 shrink-0">
-                        <Server size={10} />Client + Server
+                        <Server size={10} />{t('serverManager.clientServer')}
                       </span>
                     )}
                   </div>
@@ -118,24 +120,24 @@ export function ModsPanel({ serverId, mods, onRefresh }: ModsPanelProps): React.
                       : 'text-[var(--color-text-muted)] bg-[var(--color-surface)]'
                   }`}
                 >
-                  {isDeployed ? 'Deployed' : 'Not deployed'}
+                  {isDeployed ? t('serverManager.deployed') : t('serverManager.notDeployed')}
                 </span>
                 <button
                   onClick={() => handleCopy(m.filePath)}
                   disabled={isCopying}
                   className="text-xs px-2.5 py-1 bg-[var(--color-accent)]/20 text-[var(--color-accent)] border border-[var(--color-accent)]/30 hover:bg-[var(--color-accent)]/30 transition-colors disabled:opacity-50"
                 >
-                  {isCopying ? 'Deploying…' : isDeployed ? 'Redeploy' : hasServerComponent ? 'Deploy to Server' : 'Copy to Server'}
+                  {isCopying ? t('serverManager.deploying') : isDeployed ? t('serverManager.redeploy') : hasServerComponent ? t('serverManager.deployToServer') : t('serverManager.copyToServer')}
                 </button>
                 {isDeployed && (
                   <button
                     onClick={() => handleUndeploy(fileName)}
                     disabled={undeploying === fileName}
                     className="text-xs px-2 py-1 text-red-400 bg-red-400/10 border border-red-400/20 hover:bg-red-400/20 transition-colors disabled:opacity-50"
-                    title="Remove mod from this server"
+                    title={t('serverManager.removeModFromServer')}
                   >
                     {undeploying === fileName ? (
-                      'Removing…'
+                      t('serverManager.removing')
                     ) : (
                       <Trash2 size={12} />
                     )}

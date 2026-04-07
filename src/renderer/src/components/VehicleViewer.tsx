@@ -3,6 +3,7 @@ import * as THREE from 'three'
 import { ColladaLoader } from 'three/examples/jsm/loaders/ColladaLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Loader2, Settings, Sun, Palette } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 export interface PaintData {
   baseColor?: [number, number, number, number]
@@ -592,6 +593,7 @@ interface MatDef {
 }
 
 export function VehicleViewer({ vehicleName, parts, paints, className }: VehicleViewerProps): React.JSX.Element {
+  const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null)
   const frameIdRef = useRef<number>(0)
@@ -1402,12 +1404,12 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
       {status === 'loading' && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 z-10">
           <Loader2 size={24} className="text-[var(--color-accent)] animate-spin" />
-          <span className="text-xs text-[var(--color-text-muted)] mt-2">Loading 3D model...</span>
+          <span className="text-xs text-[var(--color-text-muted)] mt-2">{t('vehicles.loading3DModel')}</span>
         </div>
       )}
       {status === 'error' && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-10">
-          <span className="text-xs text-[var(--color-text-muted)]">3D model unavailable</span>
+          <span className="text-xs text-[var(--color-text-muted)]">{t('vehicles.modelUnavailable')}</span>
         </div>
       )}
 
@@ -1416,7 +1418,7 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
         <button
           onClick={() => setShowRenderOpts(v => !v)}
           className="absolute top-2 right-10 z-20 p-1.5 bg-[#222226]/90 hover:bg-[#333] border border-[#444] shadow-lg transition-colors"
-          title="Render options"
+          title={t('vehicles.renderOptions')}
         >
           <Settings size={14} className={showRenderOpts ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)]'} />
         </button>
@@ -1432,7 +1434,7 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
           <div>
             <div className="flex items-center gap-1.5 text-[var(--color-text-muted)] mb-1.5">
               <Sun size={12} />
-              <span>Sun Angle</span>
+              <span>{t('vehicles.sunAngle')}</span>
               <span className="ml-auto text-[var(--color-text-muted)]/60">{sunAngle}°</span>
             </div>
             <input
@@ -1444,9 +1446,9 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
               className="w-full h-1 accent-[var(--color-accent)] cursor-pointer"
             />
             <div className="flex justify-between text-[9px] text-[var(--color-text-muted)]/40 mt-0.5">
-              <span>Low</span>
-              <span>Overhead</span>
-              <span>Behind</span>
+              <span>{t('vehicles.sunLow')}</span>
+              <span>{t('vehicles.sunOverhead')}</span>
+              <span>{t('vehicles.sunBehind')}</span>
             </div>
           </div>
 
@@ -1454,7 +1456,7 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
           <div>
             <div className="flex items-center gap-1.5 text-[var(--color-text-muted)] mb-1.5">
               <Sun size={12} />
-              <span>Intensity</span>
+              <span>{t('vehicles.intensity')}</span>
               <span className="ml-auto text-[var(--color-text-muted)]/60">{lightIntensity.toFixed(1)}</span>
             </div>
             <input
@@ -1472,7 +1474,7 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
           <div>
             <div className="flex items-center gap-1.5 text-[var(--color-text-muted)] mb-1.5">
               <Palette size={12} />
-              <span>Background</span>
+              <span>{t('vehicles.background')}</span>
             </div>
             <div className="flex gap-1.5 items-center">
               <input
@@ -1499,7 +1501,7 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
           <div>
             <div className="flex items-center gap-1.5 text-[var(--color-text-muted)] mb-1.5">
               <Palette size={12} />
-              <span>Floor</span>
+              <span>{t('vehicles.floor')}</span>
             </div>
             <div className="flex gap-1.5 items-center">
               <input

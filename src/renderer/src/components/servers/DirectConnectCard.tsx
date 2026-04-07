@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Plug } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 interface Props {
   onConnect: (ip: string, port: string) => void
@@ -8,6 +9,7 @@ interface Props {
 
 export function DirectConnectCard({ onConnect, joining }: Props): React.JSX.Element {
   const [address, setAddress] = useState('')
+  const { t } = useTranslation()
 
   const handleConnect = (): void => {
     const [ip, port] = address.split(':')
@@ -30,7 +32,7 @@ export function DirectConnectCard({ onConnect, joining }: Props): React.JSX.Elem
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 border border-white/[0.06] text-sm text-[var(--text-secondary)] hover:bg-white/10 hover:text-[var(--text-primary)] transition-all disabled:opacity-40"
       >
         <Plug size={14} />
-        Connect
+        {t('servers.connect')}
       </button>
     </div>
   )

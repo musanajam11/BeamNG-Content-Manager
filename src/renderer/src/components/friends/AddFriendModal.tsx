@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { UserPlus, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 interface AddFriendModalProps {
   open: boolean
@@ -11,17 +12,18 @@ interface AddFriendModalProps {
 export function AddFriendModal({ open, onClose, onAdd, existingIds }: AddFriendModalProps): React.JSX.Element | null {
   const [username, setUsername] = useState('')
   const [error, setError] = useState('')
+  const { t } = useTranslation()
 
   if (!open) return null
 
   const handleAdd = (): void => {
     const trimmed = username.trim()
     if (!trimmed) {
-      setError('Enter a username')
+      setError(t('friends.enterUsername'))
       return
     }
     if (existingIds.has(trimmed.toLowerCase())) {
-      setError('Already in your friend list')
+      setError(t('friends.alreadyInList'))
       return
     }
     onAdd(trimmed)
@@ -36,7 +38,7 @@ export function AddFriendModal({ open, onClose, onAdd, existingIds }: AddFriendM
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
             <UserPlus size={18} className="text-[var(--color-accent)]" />
-            Add Friend
+            {t('friends.addFriend')}
           </h2>
           <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
             <X size={18} />
@@ -44,7 +46,7 @@ export function AddFriendModal({ open, onClose, onAdd, existingIds }: AddFriendM
         </div>
 
         <p className="text-xs text-[var(--color-text-muted)] mb-3">
-          Enter their BeamMP username exactly as it appears in-game.
+          {t('friends.enterBeamMPUsername')}
         </p>
 
         <input
@@ -52,7 +54,7 @@ export function AddFriendModal({ open, onClose, onAdd, existingIds }: AddFriendM
           value={username}
           onChange={(e) => { setUsername(e.target.value); setError('') }}
           onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-          placeholder="BeamMP username"
+          placeholder={t('friends.beammpUsernamePlaceholder')}
           className="w-full px-3 py-2 rounded-lg bg-black/20 border border-[var(--color-border)] text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)] mb-2"
           autoFocus
         />
@@ -64,13 +66,13 @@ export function AddFriendModal({ open, onClose, onAdd, existingIds }: AddFriendM
             onClick={onClose}
             className="px-3 py-1.5 text-xs rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             onClick={handleAdd}
             className="px-3 py-1.5 text-xs rounded-lg bg-[var(--color-accent)] text-white font-medium hover:brightness-110 transition-all"
           >
-            Add Friend
+            {t('friends.addFriend')}
           </button>
         </div>
       </div>

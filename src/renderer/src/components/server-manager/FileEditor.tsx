@@ -3,6 +3,7 @@ import { Save, X, Loader2 } from 'lucide-react'
 import * as monaco from 'monaco-editor'
 import { loader } from '@monaco-editor/react'
 import Editor, { type OnMount } from '@monaco-editor/react'
+import { useTranslation } from 'react-i18next'
 
 type Monaco = typeof monaco
 
@@ -163,6 +164,7 @@ function registerCustomLanguages(m: Monaco): void {
 }
 
 export function FileEditor({ serverId, filePath, fileName, onClose }: FileEditorProps): React.JSX.Element {
+  const { t } = useTranslation()
   const [content, setContent] = useState('')
   const [original, setOriginal] = useState('')
   const [loading, setLoading] = useState(true)
@@ -272,7 +274,7 @@ export function FileEditor({ serverId, filePath, fileName, onClose }: FileEditor
       <div className="flex-1 flex flex-col items-center justify-center gap-3">
         <p className="text-red-400 text-sm">{error}</p>
         <button onClick={onClose} className="px-3 py-1.5 text-sm rounded border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]">
-          Go back
+          {t('common.goBack')}
         </button>
       </div>
     )
@@ -285,12 +287,12 @@ export function FileEditor({ serverId, filePath, fileName, onClose }: FileEditor
         <button
           onClick={onClose}
           className="p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] transition-colors"
-          title="Close editor"
+          title={t('serverManager.closeEditor')}
         >
           <X size={16} />
         </button>
         <span className="text-sm text-[var(--color-text-primary)] font-medium truncate">{fileName}</span>
-        {isDirty && <span className="w-2 h-2 rounded-full bg-[var(--color-accent)] shrink-0" title="Unsaved changes" />}
+        {isDirty && <span className="w-2 h-2 rounded-full bg-[var(--color-accent)] shrink-0" title={t('serverManager.unsavedChanges')} />}
         <div className="ml-auto flex items-center gap-2">
           <select
             value={lang}
@@ -309,7 +311,7 @@ export function FileEditor({ serverId, filePath, fileName, onClose }: FileEditor
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded bg-[var(--color-accent)] text-black hover:opacity-90 transition-opacity disabled:opacity-40"
           >
             {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-            SAVE CONTENT
+            {t('serverManager.saveContent')}
           </button>
         </div>
       </div>
@@ -356,13 +358,13 @@ export function FileEditor({ serverId, filePath, fileName, onClose }: FileEditor
 
       {/* Status bar */}
       <div className="flex items-center gap-4 px-4 py-1 border-t border-[var(--color-border)] bg-[var(--color-bg)] text-[10px] text-[var(--color-text-muted)]">
-        <span>Ln {cursorPos.line}, Col {cursorPos.col}</span>
+        <span>{t('serverManager.lnCol', { line: cursorPos.line, col: cursorPos.col })}</span>
         {selection && <span>{selection}</span>}
-        <span>{lineCount} lines</span>
-        <span>{content.length} chars</span>
+        <span>{t('serverManager.lineCount_other', { count: lineCount })}</span>
+        <span>{t('serverManager.charCount_other', { count: content.length })}</span>
         <span className="ml-auto">UTF-8</span>
         <span>{LANG_LABELS[lang] ?? lang}</span>
-        <span>Ctrl+S save · Ctrl+F find · Ctrl+H replace</span>
+        <span>{t('serverManager.editorShortcuts')}</span>
       </div>
     </div>
   )

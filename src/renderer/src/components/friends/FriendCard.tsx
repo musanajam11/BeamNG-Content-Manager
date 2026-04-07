@@ -1,4 +1,5 @@
 import { UserMinus, ExternalLink, Copy, MapPin, Users, AlertTriangle } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { Friend, FriendOnlineStatus } from '../../stores/useFriendsStore'
 
 interface FriendCardProps {
@@ -13,16 +14,19 @@ function stripColors(text: string): string {
   return text.replace(/\^[0-9a-fA-FlLrR]/g, '').trim()
 }
 
-function timeAgo(timestamp: number | undefined): string {
-  if (!timestamp) return 'Never seen'
+type TFunc = (key: string, opts?: Record<string, unknown>) => string
+
+function timeAgo(timestamp: number | undefined, t: TFunc): string {
+  if (!timestamp) return t('friends.neverSeen')
   const seconds = Math.floor((Date.now() - timestamp) / 1000)
-  if (seconds < 60) return 'Just now'
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
-  return `${Math.floor(seconds / 86400)}d ago`
+  if (seconds < 60) return t('time.justNow')
+  if (seconds < 3600) return t('time.minutesAgo', { n: Math.floor(seconds / 60) })
+  if (seconds < 86400) return t('time.hoursAgo', { n: Math.floor(seconds / 3600) })
+  return t('time.daysAgo', { n: Math.floor(seconds / 86400) })
 }
 
 export function FriendCard({ friend, status, onRemove, onJoinServer }: FriendCardProps): React.JSX.Element {
+  const { t } = useTranslation()
   const online = status?.online ?? false
   const serverFull =
     online &&
@@ -69,7 +73,7 @@ export function FriendCard({ friend, status, onRemove, onJoinServer }: FriendCar
           </div>
         ) : (
           <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-            {timeAgo(status?.lastSeen)}
+            {timeAgo(status?.lastSeen, t)}
           </p>
         )}
         {friend.notes && (
@@ -94,7 +98,7 @@ export function FriendCard({ friend, status, onRemove, onJoinServer }: FriendCar
               <button
                 onClick={() => onJoinServer?.(status.serverIdent!)}
                 className="p-1.5 rounded-md text-emerald-400 hover:bg-emerald-500/20 transition-colors"
-                title="Join server"
+                title={t('friends.joinServer')}
               >
                 <ExternalLink size={14} />
               </button>
@@ -102,7 +106,7 @@ export function FriendCard({ friend, status, onRemove, onJoinServer }: FriendCar
             <button
               onClick={() => navigator.clipboard.writeText(status.serverIdent!)}
               className="p-1.5 rounded-md text-slate-400 hover:bg-white/10 hover:text-white transition-colors"
-              title="Copy server address"
+              title={t('friends.copyServerAddress')}
             >
               <Copy size={14} />
             </button>
@@ -111,7 +115,7 @@ export function FriendCard({ friend, status, onRemove, onJoinServer }: FriendCar
         <button
           onClick={() => onRemove(friend.id)}
           className="p-1.5 rounded-md text-slate-500 hover:bg-red-500/20 hover:text-red-400 transition-colors"
-          title="Remove friend"
+          title={t('friends.removeFriend')}
         >
           <UserMinus size={14} />
         </button>

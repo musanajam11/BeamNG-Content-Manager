@@ -1,6 +1,7 @@
 import { Play, Star, Package, Users, MapPin, Globe, Gauge, Wifi, Copy, Check, X, Clock, Square, ImageIcon } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
+import { useTranslation } from 'react-i18next'
 import type { ServerInfo } from '../../../../shared/types'
 import { countryFlag, cleanMapName } from '../../utils/countryFlags'
 import { useFlagUrl } from '../../utils/flagCache'
@@ -49,6 +50,7 @@ export function ServerDetailPanel({
   server, favorite, userLabel, joining, joinError, connectedServer, onJoin, onClose, onToggleFavorite,
   queueActive, queueTarget, queueMessage, queueElapsed, onQueueStart, onQueueStop
 }: Props): React.JSX.Element {
+  const { t } = useTranslation()
   const playerCount = parseInt(server.players, 10) || 0
   const maxPlayers = parseInt(server.maxplayers, 10) || 0
   const fillPct = maxPlayers > 0 ? Math.min(100, (playerCount / maxPlayers) * 100) : 0
@@ -147,9 +149,9 @@ export function ServerDetailPanel({
           </div>
         )}
         <div className="flex flex-wrap gap-1.5">
-          {server.official && <Badge tone="accent">Official</Badge>}
-          {parseInt(server.modstotal, 10) > 0 && <Badge tone="gold">Modded</Badge>}
-          {server.password ? <Badge>Private</Badge> : <Badge>Open</Badge>}
+          {server.official && <Badge tone="accent">{t('servers.tagOfficial')}</Badge>}
+          {parseInt(server.modstotal, 10) > 0 && <Badge tone="gold">{t('servers.tagModded')}</Badge>}
+          {server.password ? <Badge>{t('servers.private')}</Badge> : <Badge>{t('servers.open')}</Badge>}
         </div>
 
         {/* Description */}
@@ -161,10 +163,10 @@ export function ServerDetailPanel({
 
         {/* Stat pills */}
         <div className="mt-3 grid grid-cols-2 gap-2">
-          <StatPill icon={<Users size={10} />} label="Players" value={`${server.players}/${server.maxplayers}`} />
-          <StatPill icon={<MapPin size={10} />} label="Map" value={cleanMapName(server.map)} />
-          <StatPill icon={<Globe size={10} />} label="Region" value={server.location || 'Global'} />
-          <StatPill icon={<Gauge size={10} />} label="Type" value={parseInt(server.modstotal, 10) > 0 ? 'Modded' : 'Standard'} />
+          <StatPill icon={<Users size={10} />} label={t('servers.players')} value={`${server.players}/${server.maxplayers}`} />
+          <StatPill icon={<MapPin size={10} />} label={t('servers.map')} value={cleanMapName(server.map)} />
+          <StatPill icon={<Globe size={10} />} label={t('servers.region')} value={server.location || 'Global'} />
+          <StatPill icon={<Gauge size={10} />} label={t('servers.type')} value={parseInt(server.modstotal, 10) > 0 ? t('servers.tagModded') : t('servers.standard')} />
         </div>
 
         {/* Action buttons */}
@@ -177,7 +179,7 @@ export function ServerDetailPanel({
             >
               <span className="inline-flex items-center gap-2">
                 <Square size={14} />
-                Cancel queue
+                {t('servers.cancelQueueBtn')}
               </span>
             </button>
           ) : isConnectedHere ? (
@@ -185,7 +187,7 @@ export function ServerDetailPanel({
             <div className="flex-1 border border-emerald-400/25 bg-emerald-400/10 px-4 py-2.5 text-sm font-semibold text-emerald-300 text-center">
               <span className="inline-flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                Connected
+                {t('servers.connected')}
               </span>
             </div>
           ) : isFull ? (
@@ -198,7 +200,7 @@ export function ServerDetailPanel({
             >
               <span className="inline-flex items-center gap-2">
                 <Clock size={14} />
-                Wait to join
+                {t('servers.waitToJoin')}
               </span>
             </button>
           ) : (
@@ -211,7 +213,7 @@ export function ServerDetailPanel({
             >
               <span className="inline-flex items-center gap-2">
                 <Play size={14} fill="currentColor" />
-                {joining ? 'Joining...' : isOtherQueued ? 'Locked — in queue' : isConnectedElsewhere ? 'Connected elsewhere' : 'Join server'}
+                {joining ? t('servers.joining') : isOtherQueued ? t('servers.lockedInQueue') : isConnectedElsewhere ? t('servers.connectedElsewhere') : t('servers.joinServer')}
               </span>
             </button>
           )}
@@ -219,7 +221,7 @@ export function ServerDetailPanel({
           <button
             onClick={handleCopy}
             className="border border-white/8 bg-white/5 px-3 py-2.5 text-slate-300 transition hover:bg-white/10 hover:text-white"
-            title="Copy address"
+            title={t('servers.copyAddress')}
           >
             {copied ? <Check size={14} /> : <Copy size={14} />}
           </button>
@@ -249,22 +251,22 @@ export function ServerDetailPanel({
       <div className="flex-1 space-y-3 overflow-y-auto px-5 py-5">
         {/* Connection */}
         <section className="rounded-lg border border-white/8 bg-black/20 p-3.5">
-          <div className="mb-2.5 text-xs font-semibold text-white">Connection</div>
+          <div className="mb-2.5 text-xs font-semibold text-white">{t('servers.connection')}</div>
           <div className="space-y-1.5 text-xs">
             <div className="flex items-center justify-between rounded-lg border border-white/8 bg-white/5 px-3 py-2">
-              <span className="text-slate-400 shrink-0">Address</span>
+              <span className="text-slate-400 shrink-0">{t('servers.address')}</span>
               <span className="font-mono text-white text-[11px] truncate ml-2">{server.ip}:{server.port}</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-lg border border-white/8 bg-white/5 px-3 py-2">
                 <div className="mb-0.5 flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-slate-400">
-                  <Wifi size={10} /> Access
+                  <Wifi size={10} /> {t('servers.access')}
                 </div>
-                <div className="text-xs font-medium text-white">{server.password ? 'Restricted' : 'Open join'}</div>
+                <div className="text-xs font-medium text-white">{server.password ? t('servers.restricted') : t('servers.openJoin')}</div>
               </div>
               <div className="rounded-lg border border-white/8 bg-white/5 px-3 py-2">
                 <div className="mb-0.5 text-[10px] uppercase tracking-[0.12em] text-slate-400">
-                  Version
+                  {t('servers.version')}
                 </div>
                 <div className="text-xs font-medium text-white">{server.version || '—'}</div>
               </div>
@@ -275,8 +277,8 @@ export function ServerDetailPanel({
         {/* Population */}
         <section className="rounded-lg border border-white/8 bg-black/20 p-3.5">
           <div className="mb-2 flex items-center justify-between">
-            <div className="text-xs font-semibold text-white">Population</div>
-            <div className="text-xs text-slate-400">{Math.round(fillPct)}% full</div>
+            <div className="text-xs font-semibold text-white">{t('servers.population')}</div>
+            <div className="text-xs text-slate-400">{t('servers.percentFull', { percent: Math.round(fillPct) })}</div>
           </div>
           <div className="pop-bar w-full">
             <motion.div
@@ -287,7 +289,7 @@ export function ServerDetailPanel({
             />
           </div>
           <div className="mt-1.5 flex items-center justify-between text-xs">
-            <span className="text-slate-400">Current players</span>
+            <span className="text-slate-400">{t('servers.currentPlayers')}</span>
             <span className="font-semibold text-white">{server.players}/{server.maxplayers}</span>
           </div>
         </section>
@@ -295,7 +297,7 @@ export function ServerDetailPanel({
         {/* Online players */}
         {server.playerslist && (
           <section className="rounded-lg border border-white/8 bg-black/20 p-3.5">
-            <div className="mb-2.5 text-xs font-semibold text-white">Online players</div>
+            <div className="mb-2.5 text-xs font-semibold text-white">{t('servers.onlinePlayers')}</div>
             <div className="flex flex-wrap gap-1.5">
               {server.playerslist.split(';').filter(Boolean).map((name) => (
                 <span key={name} className="rounded-full border border-white/8 bg-white/5 px-2.5 py-1 text-xs text-slate-300">
@@ -311,7 +313,7 @@ export function ServerDetailPanel({
           <section className="rounded-lg border border-white/8 bg-black/20 p-3.5">
             <div className="mb-2.5 flex items-center gap-1.5 text-xs font-semibold text-white">
               <Package size={13} />
-              Required mods
+              {t('servers.requiredMods')}
             </div>
             <div className="flex flex-wrap gap-1.5">
               {server.modlist.split(/[;,\n]+/).map((mod) => mod.trim()).filter(Boolean).map((mod) => (
@@ -325,19 +327,19 @@ export function ServerDetailPanel({
 
         {/* Extra info */}
         <section className="rounded-lg border border-white/8 bg-black/20 p-3.5">
-          <div className="mb-2.5 text-xs font-semibold text-white">Details</div>
+          <div className="mb-2.5 text-xs font-semibold text-white">{t('servers.details')}</div>
           <div className="space-y-1.5 text-xs">
             <div className="flex justify-between gap-2">
-              <span className="text-slate-400 shrink-0">Owner</span>
+              <span className="text-slate-400 shrink-0">{t('servers.owner')}</span>
               <span className="text-white truncate">{server.owner || '—'}</span>
             </div>
             <div className="flex justify-between gap-2">
-              <span className="text-slate-400 shrink-0">Guests</span>
-              <span className={server.guests ? 'text-emerald-400' : 'text-rose-400'}>{server.guests ? 'Allowed' : 'No'}</span>
+              <span className="text-slate-400 shrink-0">{t('servers.guests')}</span>
+              <span className={server.guests ? 'text-emerald-400' : 'text-rose-400'}>{server.guests ? t('servers.allowed') : t('common.no')}</span>
             </div>
             {server.tags && (
               <div className="flex justify-between gap-2">
-                <span className="text-slate-400 shrink-0">Tags</span>
+                <span className="text-slate-400 shrink-0">{t('servers.tags')}</span>
                 <span className="text-slate-300 truncate">{server.tags}</span>
               </div>
             )}

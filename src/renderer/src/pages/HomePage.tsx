@@ -36,16 +36,16 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function timeAgo(dateStr: string): string {
+function timeAgo(dateStr: string, t: (key: string, opts?: Record<string, unknown>) => string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
   const mins = Math.floor(diff / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
+  if (mins < 1) return t('time.justNow')
+  if (mins < 60) return t('time.minutesAgo', { n: mins })
   const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
+  if (hours < 24) return t('time.hoursAgo', { n: hours })
   const days = Math.floor(hours / 24)
-  if (days < 7) return `${days}d ago`
-  return `${Math.floor(days / 7)}w ago`
+  if (days < 7) return t('time.daysAgo', { n: days })
+  return t('time.weeksAgo', { n: Math.floor(days / 7) })
 }
 
 export function HomePage(): React.JSX.Element {
@@ -442,7 +442,7 @@ export function HomePage(): React.JSX.Element {
                     )}
                     <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-500">
                       <span>{formatBytes(mod.sizeBytes)}</span>
-                      <span>{timeAgo(mod.modifiedDate)}</span>
+                      <span>{timeAgo(mod.modifiedDate, t)}</span>
                     </div>
                   </div>
                 </div>
@@ -488,7 +488,7 @@ export function HomePage(): React.JSX.Element {
                         {item.source === 'beammp' ? 'BeamMP' : 'BeamNG'}
                       </span>
                       <span className="text-[10px] text-slate-500">
-                        {timeAgo(new Date(item.date * 1000).toISOString())}
+                        {timeAgo(new Date(item.date * 1000).toISOString(), t)}
                       </span>
                     </div>
                     <p className="text-xs font-semibold text-white truncate">{item.title}</p>

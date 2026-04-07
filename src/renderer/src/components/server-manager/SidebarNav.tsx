@@ -12,28 +12,29 @@ import {
   PanelLeftOpen,
   Map
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { BeamMPText } from '../BeamMPText'
 
 type Tab = 'status' | 'config' | 'console' | 'files' | 'mods' | 'heatmap' | 'schedule' | 'analytics'
 
 interface NavItem {
   id: Tab | string
-  label: string
+  i18nKey: string
   icon: React.ReactNode
   disabled?: boolean
-  badge?: string
+  badgeKey?: string
 }
 
 const navItems: NavItem[] = [
-  { id: 'status', label: 'Status', icon: <Activity size={18} /> },
-  { id: 'console', label: 'Console', icon: <Terminal size={18} /> },
-  { id: 'config', label: 'Configuration', icon: <Settings size={18} /> },
-  { id: 'files', label: 'File Manager', icon: <FolderOpen size={18} /> },
-  { id: 'mods', label: 'Mods', icon: <Archive size={18} /> },
-  { id: 'schedule', label: 'Schedule', icon: <Calendar size={18} /> },
-  { id: 'analytics', label: 'Analytics', icon: <BarChart3 size={18} /> },
-  { id: 'heatmap', label: 'Player Heat Map', icon: <Map size={18} /> },
-  { id: 'help', label: 'Support', icon: <HelpCircle size={18} />, disabled: true, badge: 'Soon' }
+  { id: 'status', i18nKey: 'serverManager.sidebarStatus', icon: <Activity size={18} /> },
+  { id: 'console', i18nKey: 'serverManager.sidebarConsole', icon: <Terminal size={18} /> },
+  { id: 'config', i18nKey: 'serverManager.sidebarConfiguration', icon: <Settings size={18} /> },
+  { id: 'files', i18nKey: 'serverManager.sidebarFileManager', icon: <FolderOpen size={18} /> },
+  { id: 'mods', i18nKey: 'serverManager.sidebarMods', icon: <Archive size={18} /> },
+  { id: 'schedule', i18nKey: 'serverManager.sidebarSchedule', icon: <Calendar size={18} /> },
+  { id: 'analytics', i18nKey: 'serverManager.sidebarAnalytics', icon: <BarChart3 size={18} /> },
+  { id: 'heatmap', i18nKey: 'serverManager.sidebarPlayerHeatMap', icon: <Map size={18} /> },
+  { id: 'help', i18nKey: 'serverManager.sidebarSupport', icon: <HelpCircle size={18} />, disabled: true, badgeKey: 'serverManager.sidebarSoon' }
 ]
 
 interface SidebarNavProps {
@@ -51,6 +52,7 @@ const stateColors: Record<string, string> = {
 }
 
 export function SidebarNav({ activeTab, serverName, serverState, onTabChange }: SidebarNavProps): React.JSX.Element {
+  const { t } = useTranslation()
   const [collapsed, setCollapsed] = useState(false)
 
   return (
@@ -67,7 +69,7 @@ export function SidebarNav({ activeTab, serverName, serverState, onTabChange }: 
         <button
           onClick={() => setCollapsed(!collapsed)}
           className="p-1 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] transition-colors shrink-0"
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={collapsed ? t('serverManager.expandSidebar') : t('serverManager.collapseSidebar')}
         >
           {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
         </button>
@@ -83,7 +85,7 @@ export function SidebarNav({ activeTab, serverName, serverState, onTabChange }: 
               key={item.id}
               disabled={isDisabled}
               onClick={() => !isDisabled && onTabChange(item.id as Tab)}
-              title={collapsed ? item.label : undefined}
+              title={collapsed ? t(item.i18nKey) : undefined}
               className={`
                 mx-2 flex items-center ${collapsed ? 'justify-center' : 'gap-3'} px-3 py-2 rounded-md text-sm font-medium transition-colors
                 ${isActive
@@ -95,13 +97,13 @@ export function SidebarNav({ activeTab, serverName, serverState, onTabChange }: 
               `}
             >
               <span className={`shrink-0 ${isActive ? 'text-[var(--color-accent)]' : ''}`}>{item.icon}</span>
-              {!collapsed && item.label}
-              {!collapsed && isDisabled && item.badge && (
+              {!collapsed && t(item.i18nKey)}
+              {!collapsed && isDisabled && item.badgeKey && (
                 <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded ${
-                  item.badge === 'Next'
+                  item.badgeKey === 'Next'
                     ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)]'
                     : 'bg-[var(--color-surface-hover)] text-[var(--color-text-muted)]'
-                }`}>{item.badge}</span>
+                }`}>{t(item.badgeKey)}</span>
               )}
             </button>
           )

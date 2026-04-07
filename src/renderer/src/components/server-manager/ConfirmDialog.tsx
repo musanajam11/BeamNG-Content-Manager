@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { AlertTriangle } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 interface ConfirmDialogProps {
   open: boolean
@@ -16,12 +17,15 @@ export function ConfirmDialog({
   open,
   title,
   message,
-  confirmLabel = 'Confirm',
-  cancelLabel = 'Cancel',
+  confirmLabel,
+  cancelLabel,
   variant = 'default',
   onConfirm,
   onCancel
 }: ConfirmDialogProps): React.JSX.Element | null {
+  const { t } = useTranslation()
+  const resolvedConfirm = confirmLabel ?? t('serverManager.confirmDialogConfirm')
+  const resolvedCancel = cancelLabel ?? t('serverManager.confirmDialogCancel')
   const confirmRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
@@ -70,14 +74,14 @@ export function ConfirmDialog({
             onClick={onCancel}
             className="px-3 py-1.5 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] transition-colors"
           >
-            {cancelLabel}
+            {resolvedCancel}
           </button>
           <button
             ref={confirmRef}
             onClick={onConfirm}
             className={`px-3 py-1.5 text-sm font-semibold transition-colors ${confirmColors}`}
           >
-            {confirmLabel}
+            {resolvedConfirm}
           </button>
         </div>
       </div>

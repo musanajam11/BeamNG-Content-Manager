@@ -2,6 +2,7 @@ import { Play, Square, Trash2 } from 'lucide-react'
 import type { HostedServerEntry } from '../../../../shared/types'
 import { BeamMPText } from '../BeamMPText'
 import { useLiveUptime } from '../../hooks/useLiveUptime'
+import { useTranslation } from 'react-i18next'
 
 interface ServerInstanceCardProps {
   server: HostedServerEntry
@@ -22,6 +23,7 @@ export function ServerInstanceCard({
 }: ServerInstanceCardProps): React.JSX.Element {
   const { config, status } = server
   const liveUptime = useLiveUptime(status.startedAt, status.state === 'running')
+  const { t } = useTranslation()
 
   const stateColor = (): string => {
     switch (status.state) {
@@ -39,13 +41,13 @@ export function ServerInstanceCard({
   const stateLabel = (): string => {
     switch (status.state) {
       case 'running':
-        return 'Running'
+        return t('serverManager.running')
       case 'starting':
-        return 'Starting...'
+        return t('serverManager.starting')
       case 'error':
-        return 'Error'
+        return t('serverManager.error')
       default:
-        return 'Stopped'
+        return t('serverManager.stopped')
     }
   }
 
@@ -86,7 +88,7 @@ export function ServerInstanceCard({
       {/* Players + uptime when running */}
       {status.state === 'running' && (
         <div className="flex items-center gap-3 pl-4 text-[11px] text-[var(--color-text-muted)]">
-          <span>{status.players}/{config.maxPlayers} players</span>
+          <span>{status.players}/{config.maxPlayers} {t('serverManager.playerCount_other', { count: status.players })}</span>
           <span>{formatUptime(liveUptime)}</span>
         </div>
       )}
@@ -101,7 +103,7 @@ export function ServerInstanceCard({
               onStart(config.id)
             }}
             className="p-1 text-green-400 hover:bg-green-400/10 transition-colors rounded"
-            title="Start"
+            title={t('serverManager.start')}
           >
             <Play size={13} />
           </span>
@@ -113,7 +115,7 @@ export function ServerInstanceCard({
               onStop(config.id)
             }}
             className="p-1 text-red-400 hover:bg-red-400/10 transition-colors rounded"
-            title="Stop"
+            title={t('serverManager.stop')}
           >
             <Square size={13} />
           </span>
@@ -125,7 +127,7 @@ export function ServerInstanceCard({
             onDelete(config.id, config.name)
           }}
           className="p-1 text-red-400 hover:bg-red-400/10 transition-colors rounded"
-          title="Delete"
+          title={t('serverManager.delete')}
         >
           <Trash2 size={13} />
         </span>

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Trash2, Upload, Folder, File, ChevronRight, Search, FolderPlus, Copy, X, RefreshCw, Archive } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { ServerFileEntry } from '../../../../shared/types'
 import { FileEditor } from './FileEditor'
 
@@ -37,6 +38,7 @@ export function FilesPanel({
   onNavigate,
   onRefresh
 }: FilesPanelProps): React.JSX.Element {
+  const { t } = useTranslation()
   const [search, setSearch] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
@@ -76,7 +78,7 @@ export function FilesPanel({
   }
 
   const handleNewFolder = async (): Promise<void> => {
-    const name = prompt('Folder name:')
+    const name = prompt(t('serverManager.folderNamePrompt'))
     if (!name) return
     const sub = filePath ? `${filePath}/${name}` : name
     await window.api.hostedServerCreateFolder(serverId, sub)
@@ -113,7 +115,7 @@ export function FilesPanel({
             onClick={() => onNavigate('')}
             className="text-[var(--color-accent)] hover:underline shrink-0 font-medium"
           >
-            Root
+            {t('serverManager.fileRoot')}
           </button>
           {breadcrumbs.map((seg, i) => {
             const path = breadcrumbs.slice(0, i + 1).join('/')
@@ -135,7 +137,7 @@ export function FilesPanel({
           <button
             onClick={onRefresh}
             className="p-1.5 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
-            title="Refresh"
+            title={t('serverManager.fileRefresh')}
           >
             <RefreshCw size={13} />
           </button>
@@ -143,13 +145,13 @@ export function FilesPanel({
             onClick={handleNewFolder}
             className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] transition-colors"
           >
-            <FolderPlus size={12} /> New Folder
+            <FolderPlus size={12} /> {t('serverManager.newFolder')}
           </button>
           <button
             onClick={handleAddFiles}
             className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-[var(--color-accent)] text-white hover:opacity-90 transition-colors"
           >
-            <Upload size={12} /> Add Files
+            <Upload size={12} /> {t('serverManager.addFiles')}
           </button>
         </div>
       </div>
@@ -161,7 +163,7 @@ export function FilesPanel({
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search files..."
+          placeholder={t('serverManager.searchFiles')}
           className="flex-1 text-xs bg-transparent text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] outline-none"
         />
         {search && (
@@ -170,15 +172,15 @@ export function FilesPanel({
           </button>
         )}
         <span className="text-[10px] text-[var(--color-text-muted)] shrink-0">
-          {dirCount} folder{dirCount !== 1 ? 's' : ''}, {fileCount} file{fileCount !== 1 ? 's' : ''}
+          {t('serverManager.folderCount', { count: dirCount })}, {t('serverManager.fileCount', { count: fileCount })}
         </span>
       </div>
 
       {/* Column header */}
       <div className="flex items-center px-4 py-1 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] border-b border-[var(--color-border)] bg-[var(--color-bg)]">
-        <span className="flex-1">Name</span>
-        <span className="w-20 text-right">Size</span>
-        <span className="w-20 text-right">Actions</span>
+        <span className="flex-1">{t('serverManager.fileName')}</span>
+        <span className="w-20 text-right">{t('serverManager.fileSize')}</span>
+        <span className="w-20 text-right">{t('serverManager.fileActions')}</span>
       </div>
 
       {/* File list */}
@@ -233,7 +235,7 @@ export function FilesPanel({
                       ? 'text-[var(--color-accent)] animate-pulse'
                       : 'opacity-0 group-hover:opacity-100 text-[var(--color-text-muted)] hover:text-[var(--color-accent)]'
                   }`}
-                  title="Extract here"
+                  title={t('serverManager.extractHere')}
                 >
                   <Archive size={12} />
                 </button>
@@ -241,7 +243,7 @@ export function FilesPanel({
               <button
                 onClick={() => copyPath(f.path)}
                 className={`p-1 rounded transition-all ${copied === f.path ? 'text-green-400' : 'opacity-0 group-hover:opacity-100 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}`}
-                title="Copy path"
+                title={t('serverManager.copyPath')}
               >
                 <Copy size={12} />
               </button>
@@ -251,13 +253,13 @@ export function FilesPanel({
                     onClick={() => handleDelete(f)}
                     className="px-1.5 py-0.5 text-[10px] bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
                   >
-                    Yes
+                    {t('serverManager.deleteConfirmYes')}
                   </button>
                   <button
                     onClick={() => setDeleteTarget(null)}
                     className="px-1.5 py-0.5 text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]"
                   >
-                    No
+                    {t('serverManager.deleteConfirmNo')}
                   </button>
                 </div>
               ) : (
@@ -274,7 +276,7 @@ export function FilesPanel({
         ))}
         {filtered.length === 0 && (
           <div className="text-[var(--color-text-muted)] text-center py-8 text-sm">
-            {search ? 'No matching files' : 'Empty folder'}
+            {search ? t('serverManager.noMatchingFiles') : t('serverManager.emptyFolder')}
           </div>
         )}
       </div>

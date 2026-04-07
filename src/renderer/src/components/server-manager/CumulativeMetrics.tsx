@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Cpu, HardDrive, Users, Server, Activity, Clock } from 'lucide-react'
 import type { HostedServerEntry } from '../../../../shared/types'
 
@@ -7,6 +8,7 @@ interface CumulativeMetricsProps {
 }
 
 export function CumulativeMetrics({ servers }: CumulativeMetricsProps): React.JSX.Element | null {
+  const { t } = useTranslation()
   if (servers.length === 0) return null
 
   const runningServers = servers.filter((s) => s.status.state === 'running')
@@ -39,47 +41,47 @@ export function CumulativeMetrics({ servers }: CumulativeMetricsProps): React.JS
     <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
       <MiniMetric
         icon={<Server size={14} />}
-        label="Instances"
+        label={t('serverManager.metricsInstances')}
         value={`${runningCount} / ${totalCount}`}
-        sub={runningCount === 0 ? 'All stopped' : `${runningCount} running`}
+        sub={runningCount === 0 ? t('serverManager.metricsAllStopped') : t('serverManager.metricsRunningCount', { count: runningCount })}
         accent={runningCount > 0 ? 'green' : 'neutral'}
       />
       <MiniMetric
         icon={<Users size={14} />}
-        label="Total Players"
+        label={t('serverManager.metricsTotalPlayers')}
         value={`${totalPlayers} / ${totalMaxPlayers}`}
-        sub={`${Math.round(playerPercent)}% capacity`}
+        sub={t('serverManager.metricsCapacity', { percent: Math.round(playerPercent) })}
         accent={totalPlayers > 0 ? 'blue' : 'neutral'}
         barPercent={playerPercent}
       />
       <MiniMetric
         icon={<Cpu size={14} />}
-        label="Est. CPU"
+        label={t('serverManager.metricsEstCpu')}
         value={runningCount > 0 ? `~${runningCount * 0}%` : '—'}
-        sub={runningCount > 0 ? `${runningCount} process${runningCount !== 1 ? 'es' : ''}` : 'No load'}
+        sub={runningCount > 0 ? t('serverManager.metricsProcesses', { count: runningCount }) : t('serverManager.metricsNoLoad')}
         accent="neutral"
         barPercent={0}
       />
       <MiniMetric
         icon={<HardDrive size={14} />}
-        label="Est. Memory"
+        label={t('serverManager.metricsEstMemory')}
         value={runningCount > 0 ? `~${(runningCount * 0.02).toFixed(2)} GB` : '—'}
-        sub={runningCount > 0 ? `${runningCount} instance${runningCount !== 1 ? 's' : ''}` : 'No usage'}
+        sub={runningCount > 0 ? t('serverManager.metricsInstanceCount', { count: runningCount }) : t('serverManager.metricsNoUsage')}
         accent="neutral"
         barPercent={0}
       />
       <MiniMetric
         icon={<Activity size={14} />}
-        label="Network"
-        value={runningCount > 0 ? `${runningCount} port${runningCount !== 1 ? 's' : ''}` : '—'}
-        sub={runningCount > 0 ? `Ports: ${runningServers.map((s) => s.config.port).join(', ')}` : 'No traffic'}
+        label={t('serverManager.metricsNetwork')}
+        value={runningCount > 0 ? t('serverManager.metricsPortCount', { count: runningCount }) : '—'}
+        sub={runningCount > 0 ? t('serverManager.metricsPorts', { ports: runningServers.map((s) => s.config.port).join(', ') }) : t('serverManager.metricsNoTraffic')}
         accent={runningCount > 0 ? 'blue' : 'neutral'}
       />
       <MiniMetric
         icon={<Clock size={14} />}
-        label="Longest Uptime"
+        label={t('serverManager.metricsLongestUptime')}
         value={longestUptime > 0 ? formatUptime(longestUptime) : '—'}
-        sub={runningCount > 0 ? 'Oldest instance' : 'All offline'}
+        sub={runningCount > 0 ? t('serverManager.metricsOldestInstance') : t('serverManager.metricsAllOffline')}
         accent={runningCount > 0 ? 'green' : 'neutral'}
       />
     </div>

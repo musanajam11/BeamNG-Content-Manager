@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
 import { Send, Trash2, Search, Download, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 interface ConsolePanelProps {
   lines: string[]
@@ -25,6 +26,7 @@ export function ConsolePanel({
   onSend,
   onClear
 }: ConsolePanelProps): React.JSX.Element {
+  const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
   const [autoScroll, setAutoScroll] = useState(true)
   const [filter, setFilter] = useState('')
@@ -96,26 +98,26 @@ export function ConsolePanel({
       {/* Toolbar */}
       <div className="flex items-center gap-1 px-4 py-1.5 border-b border-[var(--color-border)] bg-[var(--color-bg)]">
         <span className="text-xs text-[var(--color-text-muted)] mr-auto">
-          {lines.length} lines{filter && ` (${filtered.length} matched)`}
+          {t('serverManager.consoleLines', { count: lines.length })}{filter && ` (${t('serverManager.consoleMatched', { count: filtered.length })})`}
         </span>
         <button
           onClick={() => setShowSearch(!showSearch)}
           className={`p-1.5 rounded transition-colors ${showSearch ? 'text-[var(--color-accent)] bg-[var(--color-accent)]/10' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}`}
-          title="Search"
+          title={t('serverManager.consoleSearch')}
         >
           <Search size={14} />
         </button>
         <button
           onClick={exportLog}
           className="p-1.5 rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] transition-colors"
-          title="Export log"
+          title={t('serverManager.exportLog')}
         >
           <Download size={14} />
         </button>
         <button
           onClick={onClear}
           className="p-1.5 rounded text-[var(--color-text-muted)] hover:text-red-400 transition-colors"
-          title="Clear console"
+          title={t('serverManager.clearConsole')}
         >
           <Trash2 size={14} />
         </button>
@@ -129,7 +131,7 @@ export function ConsolePanel({
             type="text"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filter console output..."
+            placeholder={t('serverManager.filterPlaceholder')}
             className="flex-1 text-xs bg-transparent text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] outline-none"
             autoFocus
           />
@@ -145,7 +147,7 @@ export function ConsolePanel({
       <div ref={containerRef} className="flex-1 overflow-auto font-mono text-xs leading-5 p-3 bg-black/40" onScroll={handleScroll}>
         {filtered.length === 0 ? (
           <div className="text-[var(--color-text-muted)] text-center py-8">
-            {filter ? 'No matching lines' : 'Server console output will appear here'}
+            {filter ? t('serverManager.noMatchingLines') : t('serverManager.consoleEmpty')}
           </div>
         ) : (
           filtered.map((line, i) => (
@@ -162,7 +164,7 @@ export function ConsolePanel({
           onClick={() => { setAutoScroll(true); if (containerRef.current) containerRef.current.scrollTop = containerRef.current.scrollHeight }}
           className="mx-auto -mt-8 mb-1 relative z-10 px-3 py-1 rounded-full text-xs bg-[var(--color-accent)] text-white shadow-lg hover:opacity-90 transition-opacity"
         >
-          ↓ Scroll to bottom
+          {t('serverManager.scrollToBottom')}
         </button>
       )}
 
@@ -174,7 +176,7 @@ export function ConsolePanel({
           value={cmdInput}
           onChange={(e) => { setCmdInput(e.target.value); setHistoryIdx(-1) }}
           onKeyDown={handleKeyDown}
-          placeholder="Send command..."
+          placeholder={t('serverManager.sendCommand')}
           className="flex-1 px-2 py-2 text-sm bg-transparent text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] outline-none font-mono"
         />
         <button

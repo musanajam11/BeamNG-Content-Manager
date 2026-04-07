@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Bold, Italic, Underline, Strikethrough, Eraser, Palette, Code } from 'lucide-react'
 import { BeamMPText } from '../BeamMPText'
+import { useTranslation } from 'react-i18next'
 
 /* ── colour table ──────────────────────────────────────────────── */
 
@@ -203,6 +204,7 @@ interface BeamMPNameEditorProps {
 }
 
 export function BeamMPNameEditor({ value, onChange, error }: BeamMPNameEditorProps): React.JSX.Element {
+  const { t } = useTranslation()
   const editorRef = useRef<HTMLDivElement>(null)
   const modelRef = useRef<StyledChar[]>(parseModel(value))
   const [rawMode, setRawMode] = useState(false)
@@ -346,23 +348,23 @@ export function BeamMPNameEditor({ value, onChange, error }: BeamMPNameEditorPro
 
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-xs text-[var(--color-text-muted)]">Server Name</span>
+      <span className="text-xs text-[var(--color-text-muted)]">{t('serverManager.serverName')}</span>
 
       {/* ── toolbar ── */}
       <div className="flex items-center gap-0.5 px-1 py-0.5 border border-[var(--color-border)] border-b-0 rounded-t bg-white/[0.03]">
-        <button type="button" onMouseDown={prevent} onClick={() => toggleStyle('bold')} title="Bold" className={btnCls()}>
+        <button type="button" onMouseDown={prevent} onClick={() => toggleStyle('bold')} title={t('serverManager.bold')} className={btnCls()}>
           <Bold size={13} />
         </button>
-        <button type="button" onMouseDown={prevent} onClick={() => toggleStyle('italic')} title="Italic" className={btnCls()}>
+        <button type="button" onMouseDown={prevent} onClick={() => toggleStyle('italic')} title={t('serverManager.italic')} className={btnCls()}>
           <Italic size={13} />
         </button>
-        <button type="button" onMouseDown={prevent} onClick={() => toggleStyle('underline')} title="Underline" className={btnCls()}>
+        <button type="button" onMouseDown={prevent} onClick={() => toggleStyle('underline')} title={t('serverManager.underline')} className={btnCls()}>
           <Underline size={13} />
         </button>
-        <button type="button" onMouseDown={prevent} onClick={() => toggleStyle('strike')} title="Strikethrough" className={btnCls()}>
+        <button type="button" onMouseDown={prevent} onClick={() => toggleStyle('strike')} title={t('serverManager.strikethrough')} className={btnCls()}>
           <Strikethrough size={13} />
         </button>
-        <button type="button" onMouseDown={prevent} onClick={clearFormat} title="Clear formatting" className={btnCls()}>
+        <button type="button" onMouseDown={prevent} onClick={clearFormat} title={t('serverManager.clearFormatting')} className={btnCls()}>
           <Eraser size={13} />
         </button>
 
@@ -374,7 +376,7 @@ export function BeamMPNameEditor({ value, onChange, error }: BeamMPNameEditorPro
             type="button"
             onMouseDown={prevent}
             onClick={() => setShowColors(!showColors)}
-            title="Text colour"
+            title={t('serverManager.textColour')}
             className={btnCls(showColors)}
           >
             <Palette size={13} />
@@ -403,7 +405,7 @@ export function BeamMPNameEditor({ value, onChange, error }: BeamMPNameEditorPro
         <button
           type="button"
           onClick={() => setRawMode(!rawMode)}
-          title={rawMode ? 'Visual editor' : 'Raw codes'}
+          title={rawMode ? t('serverManager.visualEditor') : t('serverManager.rawCodes')}
           className={btnCls(rawMode)}
         >
           <Code size={13} />
@@ -417,7 +419,7 @@ export function BeamMPNameEditor({ value, onChange, error }: BeamMPNameEditorPro
           value={value}
           onChange={(e) => onChange(e.target.value)}
           className={`px-2 py-1.5 text-sm bg-[var(--color-surface)] border text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-border-accent)] outline-none rounded-b font-mono ${error ? 'border-red-500/60' : 'border-[var(--color-border)]'}`}
-          placeholder="My ^cAwesome ^9Server"
+          placeholder={t('serverManager.serverNamePlaceholder')}
         />
       ) : (
         <div
