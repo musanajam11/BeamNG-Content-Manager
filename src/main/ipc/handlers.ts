@@ -818,12 +818,14 @@ export function registerIpcHandlers(): void {
   })
 
   // ── Version Info ──
+  let cachedServerVersion: string | null = null
+
   ipcMain.handle('app:getVersions', async () => {
     const config = configService.get()
 
     // Fetch latest release versions from GitHub (cached for the session)
     let launcherVersion = launcherService.getLauncherVersion()
-    let serverVersion: string | null = null
+    let serverVersion: string | null = cachedServerVersion
     try {
       const [launcherRes, serverRes] = await Promise.all([
         fetch('https://api.github.com/repos/BeamMP/BeamMP-Launcher/releases/latest'),
@@ -835,10 +837,13 @@ export function registerIpcHandlers(): void {
       }
       if (serverRes.ok) {
         const data = await serverRes.json() as { tag_name?: string }
-        if (data.tag_name) serverVersion = data.tag_name.replace(/^v/, '')
+        if (data.tag_name) {
+          serverVersion = data.tag_name.replace(/^v/, '')
+          cachedServerVersion = serverVersion
+        }
       }
     } catch {
-      // Fall back to hardcoded values
+      // Fall back to cached values
     }
 
     // If gameVersion is missing from config, try reading it from disk
@@ -4359,6 +4364,9 @@ export function registerIpcHandlers(): void {
       summary: string
     }> = []
 
+    let steamOk = false
+    let beammpOk = false
+
     // Fetch BeamNG.drive Steam news via RSS feed
     try {
       const steamRes = await fetch('https://store.steampowered.com/feeds/news/app/284160')
@@ -4395,6 +4403,7 @@ export function registerIpcHandlers(): void {
             count++
           }
         }
+        steamOk = true
       }
     } catch { /* network error, skip */ }
 
@@ -4422,14 +4431,15 @@ export function registerIpcHandlers(): void {
             summary: (rel.body || '').slice(0, 200).replace(/[#*_\r]/g, '').trim()
           })
         }
+        beammpOk = true
       }
     } catch { /* network error, skip */ }
 
     // Sort newest first
     items.sort((a, b) => b.date - a.date)
 
-    // Only update cache if we got at least some results
-    if (items.length > 0) {
+    // Only cache when both sources fetched successfully; otherwise retry next time
+    if (steamOk && beammpOk) {
       newsFeedCache = { items, fetchedAt: Date.now() }
     }
 

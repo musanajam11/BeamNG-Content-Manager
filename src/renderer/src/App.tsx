@@ -58,6 +58,21 @@ function App(): React.JSX.Element {
     loadConfig()
   }, [])
 
+  // Auto-updater listeners — registered once at app level so state persists across navigation
+  useEffect(() => {
+    const { setUpdateAvailable, setUpdateProgress, setUpdateReady } = useAppStore.getState()
+    const unsub1 = window.api.onUpdateAvailable((info) => {
+      setUpdateAvailable({ version: info.version })
+    })
+    const unsub2 = window.api.onUpdateDownloadProgress((progress) => {
+      setUpdateProgress(progress.percent)
+    })
+    const unsub3 = window.api.onUpdateDownloaded((info) => {
+      setUpdateReady(info.version)
+    })
+    return () => { unsub1(); unsub2(); unsub3() }
+  }, [])
+
   // Apply appearance settings and language once config is loaded
   useEffect(() => {
     if (config?.appearance) {

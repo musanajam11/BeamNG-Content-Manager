@@ -68,10 +68,10 @@ export function HomePage(): React.JSX.Element {
   const [newsLoading, setNewsLoading] = useState(true)
   const [recentServerIdents, setRecentServerIdents] = useState<string[]>([])
 
-  // Auto-updater state
-  const [updateAvailable, setUpdateAvailable] = useState<{ version: string } | null>(null)
-  const [updateProgress, setUpdateProgress] = useState<number | null>(null)
-  const [updateReady, setUpdateReady] = useState<string | null>(null)
+  // Auto-updater state from global store (persists across navigation)
+  const updateAvailable = useAppStore((s) => s.updateAvailable)
+  const updateProgress = useAppStore((s) => s.updateProgress)
+  const updateReady = useAppStore((s) => s.updateReady)
   const isRunning = gameStatus.running
   const hasGame = !!config?.gamePaths?.installDir
 
@@ -100,21 +100,6 @@ export function HomePage(): React.JSX.Element {
     window.api.getRecentServers().then((recent) => {
       setRecentServerIdents(recent.map((r) => r.ident))
     }).catch(() => {})
-  }, [])
-
-  // Auto-updater listeners
-  useEffect(() => {
-    const unsub1 = window.api.onUpdateAvailable((info) => {
-      setUpdateAvailable({ version: info.version })
-    })
-    const unsub2 = window.api.onUpdateDownloadProgress((progress) => {
-      setUpdateProgress(progress.percent)
-    })
-    const unsub3 = window.api.onUpdateDownloaded((info) => {
-      setUpdateReady(info.version)
-      setUpdateProgress(null)
-    })
-    return () => { unsub1(); unsub2(); unsub3() }
   }, [])
 
   const favoriteServers = servers.filter((s) => favorites.has(`${s.ip}:${s.port}`)).slice(0, 6)

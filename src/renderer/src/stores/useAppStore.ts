@@ -8,10 +8,19 @@ interface AppState {
   configLoaded: boolean
   sidebarCollapsed: boolean
 
+  // Auto-updater state (persists across page navigation)
+  updateAvailable: { version: string } | null
+  updateProgress: number | null
+  updateReady: string | null
+
   setPage: (page: AppPage) => void
   setConfig: (config: AppConfig) => void
   updateConfig: (partial: Partial<AppConfig>) => void
   toggleSidebar: () => void
+
+  setUpdateAvailable: (info: { version: string } | null) => void
+  setUpdateProgress: (percent: number | null) => void
+  setUpdateReady: (version: string | null) => void
 
   loadConfig: () => Promise<void>
   saveConfig: (partial: Partial<AppConfig>) => Promise<void>
@@ -25,6 +34,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   configLoaded: false,
   sidebarCollapsed: false,
 
+  updateAvailable: null,
+  updateProgress: null,
+  updateReady: null,
+
   setPage: (page) => {
     set({ currentPage: page })
     if (page !== 'servers') {
@@ -37,6 +50,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       config: state.config ? { ...state.config, ...partial } : null
     })),
   toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+
+  setUpdateAvailable: (info) => set({ updateAvailable: info }),
+  setUpdateProgress: (percent) => set({ updateProgress: percent }),
+  setUpdateReady: (version) => set({ updateReady: version, updateProgress: null }),
 
   loadConfig: async () => {
     const config = await window.api.getConfig()
