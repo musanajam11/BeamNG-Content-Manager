@@ -271,6 +271,12 @@ interface AppAPI {
     tailnet: string | null
     peers: Array<{ hostname: string; ip: string; os: string; online: boolean }>
   }>
+
+  // Auto-Updater
+  onUpdateAvailable(callback: (info: { version: string; releaseDate: string }) => void): () => void
+  onUpdateDownloadProgress(callback: (progress: { percent: number; transferred: number; total: number }) => void): () => void
+  onUpdateDownloaded(callback: (info: { version: string }) => void): () => void
+  installUpdate(): Promise<void>
 }
 
 declare global {

@@ -399,7 +399,25 @@ const api = {
       hostname: string | null
       tailnet: string | null
       peers: Array<{ hostname: string; ip: string; os: string; online: boolean }>
-    }>
+    }>,
+
+  // Auto-Updater
+  onUpdateAvailable: (callback: (info: { version: string; releaseDate: string }) => void) => {
+    const handler = (_event: unknown, info: { version: string; releaseDate: string }): void => callback(info)
+    ipcRenderer.on('updater:update-available', handler)
+    return () => ipcRenderer.removeListener('updater:update-available', handler)
+  },
+  onUpdateDownloadProgress: (callback: (progress: { percent: number; transferred: number; total: number }) => void) => {
+    const handler = (_event: unknown, progress: { percent: number; transferred: number; total: number }): void => callback(progress)
+    ipcRenderer.on('updater:download-progress', handler)
+    return () => ipcRenderer.removeListener('updater:download-progress', handler)
+  },
+  onUpdateDownloaded: (callback: (info: { version: string }) => void) => {
+    const handler = (_event: unknown, info: { version: string }): void => callback(info)
+    ipcRenderer.on('updater:update-downloaded', handler)
+    return () => ipcRenderer.removeListener('updater:update-downloaded', handler)
+  },
+  installUpdate: () => ipcRenderer.invoke('updater:install')
 }
 
 if (process.contextIsolated) {

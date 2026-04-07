@@ -66,6 +66,10 @@ export function HomePage(): React.JSX.Element {
   const [newsLoading, setNewsLoading] = useState(true)
   const [recentServerIdents, setRecentServerIdents] = useState<string[]>([])
 
+  // Auto-updater state
+  const [updateAvailable, setUpdateAvailable] = useState<{ version: string } | null>(null)
+  const [updateProgress, setUpdateProgress] = useState<number | null>(null)
+  const [updateReady, setUpdateReady] = useState<string | null>(null)
   const isRunning = gameStatus.running
   const hasGame = !!config?.gamePaths?.installDir
 
@@ -94,6 +98,21 @@ export function HomePage(): React.JSX.Element {
     window.api.getRecentServers().then((recent) => {
       setRecentServerIdents(recent.map((r) => r.ident))
     }).catch(() => {})
+  }, [])
+
+  // Auto-updater listeners
+  useEffect(() => {
+    const unsub1 = window.api.onUpdateAvailable((info) => {
+      setUpdateAvailable({ version: info.version })
+    })
+    const unsub2 = window.api.onUpdateDownloadProgress((progress) => {
+      setUpdateProgress(progress.percent)
+    })
+    const unsub3 = window.api.onUpdateDownloaded((info) => {
+      setUpdateReady(info.version)
+      setUpdateProgress(null)
+    })
+    return () => { unsub1(); unsub2(); unsub3() }
   }, [])
 
   const favoriteServers = servers.filter((s) => favorites.has(`${s.ip}:${s.port}`)).slice(0, 6)
@@ -216,6 +235,37 @@ export function HomePage(): React.JSX.Element {
             </div>
             <ChevronRight size={14} className="text-slate-500" />
           </button>
+        )}
+
+        {/* App Update Banner */}
+        {(updateAvailable || updateReady) && (
+          <div className="w-full flex items-center gap-3 border border-green-500/20 bg-green-500/5 px-4 py-3">
+            <ArrowUpCircle size={18} className="text-green-400 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-green-300">
+                {updateReady
+                  ? `Version ${updateReady} is ready to install`
+                  : `Version ${updateAvailable!.version} is downloading${updateProgress !== null ? ` (${updateProgress}%)` : '...'}`
+                }
+              </p>
+              {updateProgress !== null && (
+                <div className="mt-1.5 h-1 w-full bg-white/10 rounded-full overflow-hidden">
+                  <div className="h-full bg-green-400 transition-all duration-300" style={{ width: `${updateProgress}%` }} />
+                </div>
+              )}
+              {!updateReady && updateProgress === null && (
+                <p className="text-[11px] text-slate-500">Downloading update in the background</p>
+              )}
+            </div>
+            {updateReady && (
+              <button
+                onClick={() => window.api.installUpdate()}
+                className="px-3 py-1.5 text-xs font-semibold bg-green-500 hover:bg-green-600 text-white rounded transition"
+              >
+                Restart & Update
+              </button>
+            )}
+          </div>
         )}
 
         {/* Favorite Servers */}

@@ -1,6 +1,7 @@
-import { app, shell, BrowserWindow, protocol, Tray, Menu, nativeImage } from 'electron'
+import { app, shell, BrowserWindow, protocol, Tray, Menu, nativeImage, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { autoUpdater } from 'electron-updater'
 import icon from '../../resources/icon.png?asset'
 import { initializeServices, registerIpcHandlers } from './ipc/handlers'
 import { extractVehicleAsset, resolveGameAsset, initVehicleAssetService } from './services/VehicleAssetService'
@@ -140,6 +141,44 @@ app.whenReady().then(async () => {
   })
 
   createWindow()
+
+  // Auto-updater
+  if (!is.dev) {
+    autoUpdater.autoDownload = true
+    autoUpdater.autoInstallOnAppQuit = true
+
+    autoUpdater.on('update-available', (info) => {
+      mainWindow?.webContents.send('updater:update-available', {
+        version: info.version,
+        releaseDate: info.releaseDate
+      })
+    })
+
+    autoUpdater.on('download-progress', (progress) => {
+      mainWindow?.webContents.send('updater:download-progress', {
+        percent: Math.round(progress.percent),
+        transferred: progress.transferred,
+        total: progress.total
+      })
+    })
+
+    autoUpdater.on('update-downloaded', (info) => {
+      mainWindow?.webContents.send('updater:update-downloaded', {
+        version: info.version
+      })
+    })
+
+    autoUpdater.on('error', (err) => {
+      console.error('Auto-updater error:', err.message)
+    })
+
+    autoUpdater.checkForUpdates().catch(() => {})
+  }
+
+  ipcMain.handle('updater:install', () => {
+    isQuitting = true
+    autoUpdater.quitAndInstall()
+  })
 
   // System tray
   const trayIcon = nativeImage.createFromPath(icon).resize({ width: 16, height: 16 })
