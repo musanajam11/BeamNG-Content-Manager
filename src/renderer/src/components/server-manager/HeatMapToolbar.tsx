@@ -9,7 +9,7 @@ import {
   Flame,
   RotateCcw
 } from 'lucide-react'
-import type { GPSRoute } from '@shared/types'
+import type { GPSRoute } from '../../../../shared/types'
 
 interface HeatMapToolbarProps {
   routes: GPSRoute[]

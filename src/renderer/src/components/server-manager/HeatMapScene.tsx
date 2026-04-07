@@ -1,7 +1,7 @@
 import { useRef, useEffect } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import type { PlayerPosition, GPSRoute } from '@shared/types'
+import type { PlayerPosition, GPSRoute } from '../../../../shared/types'
 import { worldToNorm, normToWorld, type MapBounds } from './mapBounds'
 
 const PLANE_SIZE = 20
@@ -284,12 +284,12 @@ export default function HeatMapScene({
       if (result) {
         if (result.worldBounds) texBoundsRef.current = result.worldBounds
         applyTexture(result.dataUrl)
-      } else {
-        // Fallback to preview
-        return window.api.getMapPreview(mapPath).then((prev) => {
-          if (prev) applyTexture(prev)
-        })
+        return
       }
+      // Fallback to preview
+      return window.api.getMapPreview(mapPath).then((prev) => {
+        if (prev) applyTexture(prev)
+      })
     })
 
     Promise.all([loadHeightmap, loadMinimap])

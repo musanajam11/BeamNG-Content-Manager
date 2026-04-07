@@ -1,8 +1,8 @@
-import { Play, Star, Shield, Lock, Package, Users, MapPin, Globe, Gauge, Wifi, Copy, Check, X, Clock, Square, ImageIcon } from 'lucide-react'
+import { Play, Star, Package, Users, MapPin, Globe, Gauge, Wifi, Copy, Check, X, Clock, Square, ImageIcon } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import type { ServerInfo } from '../../../../shared/types'
-import { countryFlag, cleanMapName, mapLevelId } from '../../utils/countryFlags'
+import { countryFlag, cleanMapName } from '../../utils/countryFlags'
 import { useFlagUrl } from '../../utils/flagCache'
 import { BeamMPText } from '../BeamMPText'
 

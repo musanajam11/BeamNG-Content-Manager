@@ -1,6 +1,6 @@
-import { readFile, writeFile, mkdir, copyFile, unlink } from 'fs/promises'
+import { readFile, writeFile, mkdir, unlink } from 'fs/promises'
 import { existsSync, createWriteStream } from 'fs'
-import { join, basename, posix } from 'path'
+import { join, posix } from 'path'
 import { createHash } from 'crypto'
 import { createGunzip } from 'zlib'
 import { pipeline } from 'stream/promises'

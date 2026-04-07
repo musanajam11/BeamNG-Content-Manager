@@ -8,7 +8,7 @@ import type {
 } from '../../../shared/types'
 import { useToastStore } from './useToastStore'
 
-type Tab = 'status' | 'config' | 'console' | 'files' | 'mods' | 'heatmap' | 'schedule' | 'analytics'
+export type Tab = 'status' | 'config' | 'console' | 'files' | 'mods' | 'heatmap' | 'schedule' | 'analytics'
 type ViewMode = 'grid' | 'detail'
 
 interface HostedServerState {
@@ -49,7 +49,7 @@ interface HostedServerState {
   /* ── Actions ── */
   refresh: () => Promise<void>
   select: (id: string) => void
-  openDetail: (id: string, tab?: string) => void
+  openDetail: (id: string, tab?: Tab) => void
   backToGrid: () => void
   setTab: (tab: Tab) => void
   setCmdInput: (v: string) => void

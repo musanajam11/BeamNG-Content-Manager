@@ -97,13 +97,13 @@ export function SchedulePanel({ serverId }: SchedulePanelProps): React.JSX.Eleme
   }
 
   const handleCreateTask = async (task: Omit<ScheduledTask, 'id' | 'lastRun' | 'nextRun' | 'lastResult'>): Promise<void> => {
-    const updated = await window.api.hostedServerCreateTask(serverId, task as Record<string, unknown>)
+    const updated = await window.api.hostedServerCreateTask(serverId, task)
     setTasks(updated)
     setShowNewTask(false)
   }
 
   const handleSaveTask = async (task: ScheduledTask): Promise<void> => {
-    const updated = await window.api.hostedServerSaveTask(serverId, task as unknown as Record<string, unknown>)
+    const updated = await window.api.hostedServerSaveTask(serverId, task)
     setTasks(updated)
     setEditingTask(null)
   }

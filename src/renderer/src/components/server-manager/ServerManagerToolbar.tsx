@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Plus, Download, FolderOpen, Play, Square, ArrowLeft } from 'lucide-react'
+import { BeamMPText } from '../BeamMPText'
 import type { ServerExeStatus } from '../../../../shared/types'
 
 interface ServerManagerToolbarProps {
@@ -103,7 +104,7 @@ export function ServerManagerToolbar({
               </button>
               <span className="text-[var(--color-text-muted)]">/</span>
               <h1 className="text-lg font-bold text-[var(--color-text-primary)] truncate max-w-xs">
-                {serverName ?? 'Server'}
+                <BeamMPText text={serverName ?? 'Server'} />
               </h1>
             </>
           ) : (

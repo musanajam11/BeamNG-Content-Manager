@@ -1,6 +1,6 @@
 import { readFile, writeFile, mkdir, readdir, unlink, stat, copyFile, rm, chmod } from 'fs/promises'
 import { existsSync, createWriteStream } from 'fs'
-import { join, basename, extname, dirname } from 'path'
+import { join, basename, dirname } from 'path'
 import { app, BrowserWindow } from 'electron'
 import { spawn, ChildProcess } from 'child_process'
 import { randomUUID } from 'crypto'

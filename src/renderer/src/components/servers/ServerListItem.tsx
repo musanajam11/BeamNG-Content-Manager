@@ -1,4 +1,4 @@
-import { Star, Shield, Lock, MapPin, Globe, Users } from 'lucide-react'
+import { Star, Shield, Lock, MapPin } from 'lucide-react'
 import type { ServerInfo } from '../../../../shared/types'
 import { countryFlag, cleanMapName } from '../../utils/countryFlags'
 import { useFlagUrl } from '../../utils/flagCache'

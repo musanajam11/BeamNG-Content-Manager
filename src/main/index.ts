@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, protocol } from 'electron'
+import { app, shell, BrowserWindow, protocol, Tray, Menu, nativeImage } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -11,6 +11,21 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 let mainWindow: BrowserWindow | null = null
+let tray: Tray | null = null
+let isQuitting = false
+
+// Single instance lock — if a second copy launches, focus the existing window
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -22,7 +37,7 @@ function createWindow(): void {
     frame: false,
     autoHideMenuBar: true,
     backgroundColor: '#111113',
-    ...(process.platform === 'linux' ? { icon } : {}),
+    icon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false
@@ -31,6 +46,14 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()
+  })
+
+  // Close-to-tray: hide window instead of quitting (like Discord)
+  mainWindow.on('close', (e) => {
+    if (!isQuitting) {
+      e.preventDefault()
+      mainWindow?.hide()
+    }
   })
 
   mainWindow.on('maximize', () => {
@@ -88,7 +111,7 @@ app.whenReady().then(async () => {
         dae: 'application/xml', png: 'image/png', jpg: 'image/jpeg',
         jpeg: 'image/jpeg', dds: 'application/octet-stream'
       }
-      return new Response(buf, {
+      return new Response(new Uint8Array(buf), {
         headers: { 'Content-Type': mimeMap[ext] || 'application/octet-stream' }
       })
     } catch {
@@ -111,7 +134,39 @@ app.whenReady().then(async () => {
     serverManager.shutdownAll()
   })
 
+  // Set isQuitting so close-to-tray doesn't block actual quit
+  app.on('before-quit', () => {
+    isQuitting = true
+  })
+
   createWindow()
+
+  // System tray
+  const trayIcon = nativeImage.createFromPath(icon).resize({ width: 16, height: 16 })
+  tray = new Tray(trayIcon)
+  tray.setToolTip('BeamNG Content Manager')
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'Show',
+      click: (): void => {
+        mainWindow?.show()
+        mainWindow?.focus()
+      }
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit',
+      click: (): void => {
+        isQuitting = true
+        app.quit()
+      }
+    }
+  ])
+  tray.setContextMenu(contextMenu)
+  tray.on('double-click', () => {
+    mainWindow?.show()
+    mainWindow?.focus()
+  })
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -119,7 +174,9 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => {
+  // Don't quit — app lives in the system tray.
+  // On macOS this is standard behavior already.
   if (process.platform !== 'darwin') {
-    app.quit()
+    // no-op: tray keeps the app alive
   }
 })

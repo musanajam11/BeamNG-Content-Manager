@@ -4,7 +4,7 @@ import { ColladaLoader } from 'three/examples/jsm/loaders/ColladaLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { Loader2, Settings, Sun, Palette } from 'lucide-react'
 
-interface PaintData {
+export interface PaintData {
   baseColor?: [number, number, number, number]
   metallic?: number
   roughness?: number
@@ -484,7 +484,7 @@ async function loadGameTexture(
       info.mipmaps as unknown as ImageData[],
       info.width,
       info.height,
-      info.format
+      info.format as THREE.CompressedPixelFormat
     )
     texture.minFilter = info.mipmaps.length > 1 ? THREE.LinearMipmapLinearFilter : THREE.LinearFilter
     texture.magFilter = THREE.LinearFilter
@@ -540,7 +540,7 @@ async function loadGameNormalMap(
     if (!info || info.mipmaps.length === 0) return null
     const tex = new THREE.CompressedTexture(
       info.mipmaps as unknown as ImageData[],
-      info.width, info.height, info.format
+      info.width, info.height, info.format as THREE.CompressedPixelFormat
     )
     tex.minFilter = info.mipmaps.length > 1 ? THREE.LinearMipmapLinearFilter : THREE.LinearFilter
     tex.magFilter = THREE.LinearFilter

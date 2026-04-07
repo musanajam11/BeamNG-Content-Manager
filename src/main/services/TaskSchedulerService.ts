@@ -2,7 +2,7 @@ import { readFile, writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { app } from 'electron'
 import { randomUUID } from 'crypto'
-import type { ScheduledTask, TaskFrequency } from '../../shared/types'
+import type { ScheduledTask } from '../../shared/types'
 import type { ServerManagerService } from './ServerManagerService'
 import type { BackupSchedulerService } from './BackupSchedulerService'
 

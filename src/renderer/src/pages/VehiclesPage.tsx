@@ -4,7 +4,7 @@ import {
   Edit3, Copy, Zap, Gauge, Weight, Fuel, Settings2, Info, Box
 } from 'lucide-react'
 import type { VehicleDetail, VehicleConfigInfo, VehicleConfigData, VehicleEditorData } from '../../../shared/types'
-import { VehicleViewer } from '../components/VehicleViewer'
+import { VehicleViewer, type PaintData } from '../components/VehicleViewer'
 
 type VehicleListItem = {
   name: string; displayName: string; brand: string; type: string
@@ -253,7 +253,7 @@ export function VehiclesPage(): React.JSX.Element {
     setNewPartKey('')
     setNewPartVal('')
     if (selectedVehicle) {
-      window.api.getVehicleEditorData(selectedVehicle).then((d: VehicleEditorData) => setEditorData(d)).catch(() => {})
+      window.api.getVehicleEditorData(selectedVehicle).then((d) => setEditorData(d as VehicleEditorData)).catch(() => {})
     }
   }, [selectedVehicle])
 
@@ -578,7 +578,7 @@ export function VehiclesPage(): React.JSX.Element {
         {/* Preview / 3D toggle */}
         <div className="relative w-full aspect-[16/9] bg-black/30 overflow-hidden border border-[var(--color-border)]">
           {show3D && selectedVehicle ? (
-            <VehicleViewer vehicleName={selectedVehicle} parts={configData?.parts} paints={configData?.paints} className="w-full h-full" />
+            <VehicleViewer vehicleName={selectedVehicle} parts={configData?.parts} paints={configData?.paints as PaintData[] | undefined} className="w-full h-full" />
           ) : configPreview ? (
             <img src={configPreview} alt={cfg.displayName} className="w-full h-full object-cover" />
           ) : previews[selectedVehicle || ''] ? (
@@ -768,7 +768,7 @@ export function VehiclesPage(): React.JSX.Element {
           {/* Live 3D preview */}
           {selectedVehicle && (
             <div className="mx-4 mt-2 aspect-[16/9] border border-[var(--color-border)] overflow-hidden">
-              <VehicleViewer vehicleName={selectedVehicle} parts={editParts} paints={configData?.paints} className="w-full h-full" />
+              <VehicleViewer vehicleName={selectedVehicle} parts={editParts} paints={configData?.paints as PaintData[] | undefined} className="w-full h-full" />
             </div>
           )}
 

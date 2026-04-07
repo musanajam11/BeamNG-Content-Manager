@@ -3,10 +3,11 @@ import { Play, Square, Settings, FolderOpen, Cpu, HardDrive, Users, Copy } from 
 import type { HostedServerEntry } from '../../../../shared/types'
 import { useLiveUptime } from '../../hooks/useLiveUptime'
 import { BeamMPText } from '../BeamMPText'
+import type { Tab } from '../../stores/useHostedServerStore'
 
 interface InstancesGridProps {
   servers: HostedServerEntry[]
-  onOpen: (id: string, tab?: string) => void
+  onOpen: (id: string, tab?: Tab) => void
   onStart: (id: string) => void
   onStop: (id: string) => void
   onDelete: (id: string, name: string) => void
@@ -57,7 +58,7 @@ function InstanceCard({
   onDuplicate
 }: {
   server: HostedServerEntry
-  onOpen: (id: string) => void
+  onOpen: (id: string, tab?: Tab) => void
   onStart: (id: string) => void
   onStop: (id: string) => void
   onDelete: (id: string, name: string) => void

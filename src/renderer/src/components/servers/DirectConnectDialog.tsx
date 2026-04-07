@@ -53,6 +53,7 @@ export function DirectConnectDialog({ open, joining, onClose, onConnect }: Props
       document.addEventListener('keydown', handleKeyDown)
       return () => document.removeEventListener('keydown', handleKeyDown)
     }
+    return undefined
   }, [open, handleKeyDown])
 
   if (!open) return null

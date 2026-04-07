@@ -29,7 +29,6 @@ import {
   Info,
   Shield,
   BadgeCheck,
-  Server,
   Volume2,
   Layout,
   Flag,
@@ -739,7 +738,7 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                   <div className="border-t border-white/6 pt-3 space-y-1.5">
                     <span className="text-[10px] uppercase tracking-[0.12em] text-slate-500">Dependencies</span>
                     {selectedRegistryEntry.metadata.depends.map((dep) => {
-                      const depName = typeof dep === 'string' ? dep : dep.name
+                      const depName = 'identifier' in dep ? dep.identifier : dep.any_of.map(r => r.identifier).join(' | ')
                       return (
                         <div key={depName} className="text-xs text-slate-300 flex items-center gap-1">
                           <Package size={10} className="text-slate-500" /> {depName}
@@ -1496,7 +1495,7 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
                             <span className="text-xs font-semibold text-white truncate">{latest.name}</span>
-                            {latest.x_verified && <BadgeCheck size={12} className="text-blue-400 shrink-0" title="Registry Verified" />}
+                            {latest.x_verified && <BadgeCheck size={12} className="text-blue-400 shrink-0" />}
                             {isInst && <CheckCircle size={12} className="text-emerald-400 shrink-0" />}
                           </div>
                           <p className="text-[10px] text-slate-500 truncate mt-0.5">{authors}</p>
@@ -1555,7 +1554,7 @@ function RegistryDetailPanel({
       <div>
         <div className="flex items-center gap-1.5">
           <h2 className="text-base font-semibold text-white">{latest.name}</h2>
-          {latest.x_verified && <BadgeCheck size={14} className="text-blue-400 shrink-0" title="Registry Verified" />}
+          {latest.x_verified && <BadgeCheck size={14} className="text-blue-400 shrink-0" />}
         </div>
         <p className="text-xs text-slate-400 mt-1">{latest.abstract}</p>
       </div>

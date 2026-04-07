@@ -22,7 +22,7 @@ import { DependencyResolver } from '../services/DependencyResolver'
 import { RoadNetwork } from '../services/RoadNetwork'
 import { TailscaleService } from '../services/TailscaleService'
 import { parseBeamNGJson } from '../utils/parseBeamNGJson'
-import type { AppConfig, GamePaths, ServerInfo, RepoSortOrder, VehicleDetail, VehicleConfigInfo, VehicleConfigData, VehicleEditorData, SlotInfo, VariableInfo, WheelPlacement, HostedServerConfig, ServerFileEntry, GPSRoute, ScheduledTask, MapRichMetadata } from '../../shared/types'
+import type { AppConfig, GamePaths, ServerInfo, RepoSortOrder, VehicleDetail, VehicleConfigInfo, VehicleConfigData, VehicleEditorData, SlotInfo, VariableInfo, WheelPlacement, HostedServerConfig, GPSRoute, ScheduledTask, MapRichMetadata } from '../../shared/types'
 import type { RegistrySearchOptions, RegistryRepository, BeamModMetadata, InstalledRegistryMod } from '../../shared/registry-types'
 
 let discoveryService: GameDiscoveryService
@@ -44,6 +44,7 @@ export function initializeServices(): {
   launcher: GameLauncherService
   backend: BackendApiService
   modManager: ModManagerService
+  serverManager: ServerManagerService
 } {
   discoveryService = new GameDiscoveryService()
   launcherService = new GameLauncherService()
@@ -204,7 +205,6 @@ interface DecalRoadNode {
 }
 
 /** Materials that represent actual road surfaces (not markings, not invisible) */
-const ROAD_MATERIAL_RE = /^(road_|asphalt|concrete|dirt_road|gravel)/i
 const SKIP_MATERIAL_RE = /^(line_|road_invisible|road_marking|road_edge|road_slash)/i
 
 /** Materials to include for A* routing (driveable surfaces including invisible road meshes) */
@@ -709,13 +709,6 @@ async function buildCompositeMapImage(
   return { image: PNG.sync.write(out) }
 }
 
-/** Read the top-down *_minimap.png from a BeamNG level zip, return as data URL */
-function readMinimapFromZip(zipPath: string, levelName: string): Promise<string | null> {
-  return readImageFromZip(zipPath, new RegExp(
-    `^levels/${levelName}/[^/]*_?minimap[^/]*\\.(?:png|jpe?g)$`, 'i'
-  ))
-}
-
 /** Read a heightmap image from a BeamNG level zip – tries *_heightmap.png first, falls back to *.ter.depth.png */
 function readHeightmapFromZip(zipPath: string, levelName: string): Promise<string | null> {
   return new Promise(async (resolve) => {
@@ -1017,16 +1010,17 @@ export function registerIpcHandlers(): void {
     )
 
     if (!info) return null
-    const type = String(info.Type || 'Vehicle')
+    const infoRec = info as Record<string, unknown>
+    const type = String(infoRec.Type || 'Vehicle')
     if (NON_VEHICLE_TYPES.has(type)) return null
 
     return {
       name: modelName,
-      displayName: String(info.Name || modelName),
-      brand: String(info.Brand || ''),
+      displayName: String(infoRec.Name || modelName),
+      brand: String(infoRec.Brand || ''),
       type,
-      bodyStyle: String(info['Body Style'] || ''),
-      country: String(info.Country || ''),
+      bodyStyle: String(infoRec['Body Style'] || ''),
+      country: String(infoRec.Country || ''),
       source: 'stock' as const,
       configCount
     }
@@ -1663,9 +1657,9 @@ export function registerIpcHandlers(): void {
             }
           }
 
-          modelDefaultPaint1 = info.defaultPaintName1
-          modelDefaultPaint2 = info.defaultPaintName2 || info.defaultPaintName1
-          modelDefaultPaint3 = info.defaultPaintName3 || info.defaultPaintName1
+          modelDefaultPaint1 = info.defaultPaintName1 as string | undefined
+          modelDefaultPaint2 = (info.defaultPaintName2 || info.defaultPaintName1) as string | undefined
+          modelDefaultPaint3 = (info.defaultPaintName3 || info.defaultPaintName1) as string | undefined
         } catch { /* */ }
       }
 
@@ -1682,15 +1676,16 @@ export function registerIpcHandlers(): void {
       if (configInfoBuf) {
         try {
           const configInfo = parseBeamNGJson<Record<string, unknown>>(configInfoBuf.toString('utf-8'))
-          if (configInfo.defaultMultiPaintSetup) {
-            paint1Key = configInfo.defaultMultiPaintSetup.paint1
-            paint2Key = configInfo.defaultMultiPaintSetup.paint2
-            paint3Key = configInfo.defaultMultiPaintSetup.paint3
+          const paintSetup = configInfo.defaultMultiPaintSetup as Record<string, string> | undefined
+          if (paintSetup) {
+            paint1Key = paintSetup.paint1
+            paint2Key = paintSetup.paint2
+            paint3Key = paintSetup.paint3
           } else {
             // Fall back to per-config defaultPaintName fields
-            paint1Key = configInfo.defaultPaintName1
-            paint2Key = configInfo.defaultPaintName2
-            paint3Key = configInfo.defaultPaintName3
+            paint1Key = configInfo.defaultPaintName1 as string | undefined
+            paint2Key = configInfo.defaultPaintName2 as string | undefined
+            paint3Key = configInfo.defaultPaintName3 as string | undefined
           }
         } catch { /* */ }
       }
@@ -3153,7 +3148,7 @@ export function registerIpcHandlers(): void {
       const installed = []
       for (const filePath of result.filePaths) {
         const mod = await modManagerService.installMod(userDir, filePath)
-        installed.push(mod)
+        installed.push(mod as never)
       }
       vehicleListCache = null
       return { success: true, data: installed }

@@ -41,7 +41,7 @@ export function ServerManagerPage(): React.JSX.Element {
     return cleanup
   }, [])
 
-  const { selected, selectedId } = store
+  const { selected } = store
 
   return (
     <div className="flex flex-col h-full gap-4">

@@ -5,11 +5,6 @@
  * with intersection detection, and provides A* shortest-path queries.
  */
 
-interface RoadNode {
-  x: number
-  y: number
-}
-
 interface GraphEdge {
   to: number
   dist: number
@@ -32,7 +27,6 @@ const CELL_SIZE = 30
 
 export class RoadNetwork {
   nodes: GraphNode[] = []
-  private built = false
 
   /**
    * Build the navigable graph from DecalRoad data.
@@ -41,7 +35,7 @@ export class RoadNetwork {
    */
   build(roads: { nodes: { x: number; y: number; width: number }[]; material: string }[]): void {
     this.nodes = []
-    this.built = true
+    // Reset graph
 
     // Track which road each graph node belongs to (for intersection detection)
     const roadIdOf: number[] = []

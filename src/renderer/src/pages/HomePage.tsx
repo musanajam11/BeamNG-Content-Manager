@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import {
-  Play,
   Square,
   Loader2,
   Star,
@@ -11,7 +10,6 @@ import {
   ChevronRight,
   Monitor,
   ArrowUpCircle,
-  Database,
   Newspaper,
   ExternalLink,
   Clock
@@ -50,7 +48,7 @@ function timeAgo(dateStr: string): string {
 }
 
 export function HomePage(): React.JSX.Element {
-  const { gameStatus, launching, error, killGame } = useGameStore()
+  const { gameStatus, error, killGame } = useGameStore()
   const config = useAppStore((s) => s.config)
   const setPage = useAppStore((s) => s.setPage)
   const { servers, favorites, fetchServers, loadFavorites } = useServerStore()

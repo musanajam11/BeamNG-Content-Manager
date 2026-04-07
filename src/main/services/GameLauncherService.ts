@@ -9,7 +9,7 @@ import {
   renameSync,
   createReadStream
 } from 'fs'
-import { join, dirname, extname, basename } from 'path'
+import { join, extname, basename } from 'path'
 import {
   createServer as createHttpServer,
   IncomingMessage,

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { GPSRoute, PlayerPosition, HostedServerEntry } from '@shared/types'
+import type { GPSRoute, PlayerPosition, HostedServerEntry } from '../../../../shared/types'
 import { getBounds, worldToNorm } from './mapBounds'
 import HeatMapScene from './HeatMapScene'
 import HeatMapToolbar from './HeatMapToolbar'

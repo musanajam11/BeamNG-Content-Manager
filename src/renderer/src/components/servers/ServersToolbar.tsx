@@ -14,7 +14,6 @@ interface Props {
 }
 
 export function ServersToolbar({
-  serverCount,
   searchQuery,
   loading,
   joining,

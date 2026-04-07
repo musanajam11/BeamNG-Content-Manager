@@ -1,8 +1,52 @@
+<div align="center">
+
 # BeamNG Content Manager
 
-A comprehensive desktop content manager for **BeamNG.drive** and **BeamMP** — manage mods, vehicles, maps, servers, and more from a single app.
+**The all-in-one desktop manager for [BeamNG.drive](https://www.beamng.com/) and [BeamMP](https://beammp.com/)**
 
-Built with Electron, React, TypeScript, and Tailwind CSS. Cross-platform: Windows, Linux (including Proton), and macOS.
+Manage mods, vehicles, maps, servers, and more — from a single app.
+
+[![Build & Release](https://github.com/musanajam11/BeamNG-Content-Manager/actions/workflows/build.yml/badge.svg)](https://github.com/musanajam11/BeamNG-Content-Manager/actions/workflows/build.yml)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![Electron](https://img.shields.io/badge/Electron-39-47848F?logo=electron&logoColor=white)](https://www.electronjs.org/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+
+[**Download**](releases/) · [**Build from Source**](docs/BUILD.md) · [**Report Bug**](https://github.com/musanajam11/BeamNG-Content-Manager/issues) · [**Request Feature**](https://github.com/musanajam11/BeamNG-Content-Manager/issues)
+
+</div>
+
+---
+
+## Installation
+
+### Windows (Recommended)
+
+> Download the latest installer from [**Releases**](https://github.com/musanajam11/BeamNG-Content-Manager/releases):
+
+| Platform | File | Notes |
+|----------|------|-------|
+| Windows | `beamng-content-manager-*-setup.exe` | NSIS installer, auto-updates |
+| Linux | `beamng-content-manager-*.AppImage` | Portable, no install needed |
+| Linux (Debian) | `beamng-content-manager-*.deb` | `sudo dpkg -i <file>.deb` |
+| macOS | `beamng-content-manager-*.dmg` | Drag to Applications |
+
+> [!TIP]
+> On Windows, the installer creates a desktop shortcut and Start Menu entry automatically. The app minimizes to the system tray when closed — right-click the tray icon to quit.
+
+<details>
+<summary><b>Build from source instead</b></summary>
+
+See the full [Build Guide](docs/BUILD.md) for prerequisites and step-by-step instructions.
+
+```bash
+git clone https://github.com/musanajam11/BeamNG-Content-Manager.git
+cd BeamNG-Content-Manager
+npm install
+npm run build:win    # or build:linux / build:mac
+```
+
+</details>
 
 ---
 
@@ -17,6 +61,10 @@ Built with Electron, React, TypeScript, and Tailwind CSS. Cross-platform: Window
 - **News Feed** — aggregated feed (4 items) from Steam and BeamMP sources with source badges, timestamps, and external links
 
 ### Vehicle Browser
+
+<details>
+<summary>Browse, inspect, and customize every vehicle in your game</summary>
+
 - **Vehicle Grid** — lazy-loaded thumbnails (batches of 12) with infinite scroll, shows vehicle name and config count badge
 - **Search & Filter** — text search with brand dropdown filter and stock/mod source divider
 - **Vehicle Detail Panel** — brand, body style, model year, country of origin, drivetrain, power, torque, weight, fuel type, transmission
@@ -27,23 +75,42 @@ Built with Electron, React, TypeScript, and Tailwind CSS. Cross-platform: Window
 - **Parts List** — complete hierarchical listing of all installed parts for the active config
 - **3D Vehicle Viewer** — interactive Three.js model with COLLADA `.dae` loading, DDS texture support (BC1–BC7), material classification (paint, chrome, glass, rubber, interior), paint system with color palette, showroom environment (gradient + ground plane), and wheel placement from node data *(in development)*
 
+</details>
+
 ### Map Browser
+
+<details>
+<summary>Explore maps with previews, metadata, and registry info</summary>
+
 - **Map Grid** — lazy-loaded 16:9 preview images with map name overlay and stock/mod source divider
 - **Search & Filter** — text search with stock vs. mod source filter
 - **Map Detail View** — authors, terrain size (e.g. 2048×2048), spawn point count, world bounds, and embedded minimap display
 - **Registry Metadata Panel** — identifier, version, license, release status, compatibility info, and description pulled from the mod registry
 - **External Links** — links to mod page, repository, or documentation when available
 
+</details>
+
 ### Mod Manager
-Three tabs for complete mod lifecycle management:
 
-**Installed** — Stats grid showing total mods, total disk usage, active count, and last scan time. Table view with columns for name, author, type, size, and status. Enable/disable toggles per mod. Delete with dependency-check confirmation. Type filter dropdown (vehicle, map, ui, general, etc.) and text search. Full metadata side panel with registry enrichment (description, tags, version, authors, license).
+<details>
+<summary>Three tabs for complete mod lifecycle management</summary>
 
-**Browse (beamng.com)** — OAuth login via BeamNG.com for access to the official mod repository. Category filter (vehicles, maps, props, UI, etc.), sort by relevance/date/downloads/rating with ascending/descending toggle, paginated results. Star ratings, download counts, and file size displayed per mod. One-click install with real-time progress bar and automatic extraction.
+#### Installed
+Stats grid showing total mods, total disk usage, active count, and last scan time. Table view with columns for name, author, type, size, and status. Enable/disable toggles per mod. Delete with dependency-check confirmation. Type filter dropdown (vehicle, map, ui, general, etc.) and text search. Full metadata side panel with registry enrichment (description, tags, version, authors, license).
 
-**Registry (CKAN-style)** — Pull mod metadata from configurable repositories (name, URL, priority). Verified badges (✓) for mods with confirmed authorship. Transitive dependency resolution — installs required dependencies automatically. Update notifications with one-click update. Mod detail panel with identifier, version, abstract, authors, license, download URL, and file hash. Supports multiple registries with priority-based conflict resolution.
+#### Browse (beamng.com)
+OAuth login via BeamNG.com for access to the official mod repository. Category filter (vehicles, maps, props, UI, etc.), sort by relevance/date/downloads/rating with ascending/descending toggle, paginated results. Star ratings, download counts, and file size displayed per mod. One-click install with real-time progress bar and automatic extraction.
+
+#### Registry (CKAN-style)
+Pull mod metadata from configurable repositories (name, URL, priority). Verified badges (✓) for mods with confirmed authorship. Transitive dependency resolution — installs required dependencies automatically. Update notifications with one-click update. Mod detail panel with identifier, version, abstract, authors, license, download URL, and file hash. Supports multiple registries with priority-based conflict resolution.
+
+</details>
 
 ### Server Browser
+
+<details>
+<summary>Browse, filter, favorite, and join BeamMP servers</summary>
+
 - **Stats Row** — 4 summary cards: total servers, total players online, servers with open slots, and your favorites count
 - **Server List** — auto-refreshing (30-second polling) with BeamMP rich-text name rendering (`^0`–`^f` color codes, `^l`/`^o`/`^n`/`^m`/`^r` style codes)
 - **Search & Sort** — text search with sort by players, name, map, or region; ascending/descending toggle
@@ -55,8 +122,12 @@ Three tabs for complete mod lifecycle management:
 - **Direct Connect** — connect by IP:port for unlisted servers
 - **BeamMP Authentication** — saved auth key for seamless multiplayer access
 
+</details>
+
 ### Server Manager (Self-Hosted)
-Manage your own BeamMP server instances entirely from within the app:
+
+<details>
+<summary>Manage your own BeamMP server instances entirely from within the app</summary>
 
 - **Instance Management** — create, duplicate, rename, and delete server instances; start/stop/restart with live status indicators
 - **Auto-Download** — automatically downloads the correct BeamMP Server binary for your platform (Windows/Linux/macOS) with `chmod +x` on Unix
@@ -69,7 +140,13 @@ Manage your own BeamMP server instances entirely from within the app:
 - **Analytics** — period selector (24h/7d/30d/all), summary cards (total sessions, unique players, avg session length, peak concurrent), bar chart of player activity over time, and player table with session drill-down
 - **Player Heat Map** — 3D WebGL terrain (512×512) with live player position cones, density heat map overlay, and GPS route planner with road-following pathfinding *(in development)*
 
+</details>
+
 ### Game Launcher
+
+<details>
+<summary>Launch singleplayer and multiplayer with protocol integration</summary>
+
 - **Protocol Integration** — registers custom `beammp://` protocol handlers (HTTP, HTTPS, TCP, UDP) so the app can launch multiplayer sessions directly — no separate BeamMP Launcher needed
 - **Singleplayer Bridge** — launches BeamNG.drive in singleplayer mode with Lua bridge injection for mod management communication
 - **Multiplayer Bridge** — launches via BeamMP with auth key injection, server address passing, and mod sync
@@ -77,7 +154,12 @@ Manage your own BeamMP server instances entirely from within the app:
 - **Log Viewer** — color-coded log output (info/warn/error/debug categories), text filter, auto-scroll with scroll-lock threshold, copy-to-clipboard, and export/download as text file
 - **Auth Key Management** — saved BeamMP authentication key with validation
 
+</details>
+
 ### Settings
+
+<details>
+<summary>General configuration and appearance customization</summary>
 
 **General**
 - Auto-detect or manually set BeamNG.drive game paths (game directory, user folder, cache)
@@ -87,18 +169,21 @@ Manage your own BeamMP server instances entirely from within the app:
 
 **Appearance**
 - Accent color picker with 12 preset colors and custom hex input
-- UI scale slider (50%–200%)
-- Font size slider
+- UI scale slider (50%–200%) and font size slider
 - Background style selector: solid color, gradient, image, or random image rotation
 - Background image gallery with upload and selection
 - Surface opacity slider for glass-morphism effect
 - Background blur intensity toggle
 - Sidebar width adjustment
 
+</details>
+
 ### Additional
-- **Setup Wizard** — 4-step first-run experience: Welcome → Game Paths (auto-detect or manual) → Backend Configuration (URL + health check) → Done
+- **System Tray** — minimizes to tray on close (Discord-style); double-click to restore; right-click menu with Show/Quit
+- **Single Instance Lock** — prevents multiple app instances from running simultaneously
+- **Setup Wizard** — 4-step first-run experience: Welcome → Game Paths → Backend Configuration → Done
 - **Custom Titlebar** — frameless window with custom minimize/maximize/close controls and drag region
-- **Status Bar** — persistent bottom bar showing backend connection status, game path status, and mod counts
+- **Status Bar** — persistent bottom bar showing BeamNG.drive version, BeamMP Client and Server versions, and app version
 - **Sidebar Navigation** — collapsible icon sidebar with tooltips, page routing, and active-page indicator
 - **Tailscale Integration** — direct-connect networking via Tailscale for LAN-like multiplayer over the internet
 - **Cross-Platform** — Windows (NSIS installer), Linux (AppImage + deb), macOS (DMG); Linux Proton/Steam auto-detection and launch support
@@ -107,52 +192,18 @@ Manage your own BeamMP server instances entirely from within the app:
 
 ## In Development
 
-The following features are functional but actively being refined:
+> [!NOTE]
+> These features are functional but actively being refined.
 
-- **3D Vehicle Viewer & Editor** — COLLADA `.dae` model loader with DDS texture support (BC1–BC7 compression formats). Mesh classification identifies paint, chrome, glass, rubber, and interior surfaces. Paint system with swatchable color palette applies to classified paint meshes. Showroom environment with gradient skybox and reflective ground plane. Wheel placement computed from hub node positions in vehicle data. Render options panel for wireframe, normals, bounding boxes, and material overlays. Further mesh fidelity and part-swap integration ongoing.
-- **Player Heat Map** — 3D terrain visualization (512×512 heightmap) with textured ground. Live player positions displayed as directional cones. Density heat map overlay with configurable color ramp. GPS route planner with road-network pathfinding and ribbon visualization. Core functionality works; terrain LOD and real-time streaming improvements in progress.
-
----
-
-## Getting Started
-
-### Prerequisites
-- [Node.js](https://nodejs.org/) 22+
-- [BeamNG.drive](https://www.beamng.com/) installed (auto-detected or manually configured)
-
-### Install
-
-```bash
-npm install
-```
-
-### Development
-
-```bash
-npm run dev
-```
-
-### Build
-
-```bash
-# Windows (NSIS installer)
-npm run build:win
-
-# Linux (AppImage + deb)
-npm run build:linux
-
-# macOS (DMG)
-npm run build:mac
-```
-
-Builds are output to `dist/`.
+- **3D Vehicle Viewer & Editor** — COLLADA `.dae` model loader with DDS texture support (BC1–BC7 compression formats). Mesh classification identifies paint, chrome, glass, rubber, and interior surfaces. Paint system with swatchable color palette applies to classified paint meshes. Showroom environment with gradient skybox and reflective ground plane. Wheel placement computed from hub node positions in vehicle data. Render options panel for wireframe, normals, bounding boxes, and material overlays.
+- **Player Heat Map** — 3D terrain visualization (512×512 heightmap) with textured ground. Live player positions displayed as directional cones. Density heat map overlay with configurable color ramp. GPS route planner with road-network pathfinding and ribbon visualization.
 
 ---
 
 ## Tech Stack
 
 | Layer | Technology |
-|-------|-----------|
+|:------|:-----------|
 | Framework | Electron 39 |
 | Frontend | React 19, TypeScript 5.9 |
 | Styling | Tailwind CSS v4 |
@@ -168,21 +219,34 @@ Builds are output to `dist/`.
 
 ```
 src/
-  main/              # Electron main process
-    ipc/              #   IPC handlers
-    services/         #   Backend services (15 services)
-    utils/            #   Parsing utilities
-  preload/            # Context bridge
-  renderer/           # React frontend
-    src/
-      components/     #   UI components
-      hooks/          #   Custom React hooks
-      pages/          #   Page components (10 pages)
-      stores/         #   Zustand state stores
-  shared/             # Types shared between main & renderer
-build/                # Electron-builder resources (icons)
-resources/            # Bundled assets (backgrounds)
+├── main/                # Electron main process
+│   ├── ipc/             #   IPC handlers
+│   ├── services/        #   Backend services (15 services)
+│   └── utils/           #   Parsing utilities
+├── preload/             # Context bridge
+├── renderer/            # React frontend
+│   └── src/
+│       ├── components/  #   UI components
+│       ├── hooks/       #   Custom React hooks
+│       ├── pages/       #   Page components (10 pages)
+│       └── stores/      #   Zustand state stores
+└── shared/              # Types shared between main & renderer
+build/                   # Electron-builder resources (icons)
+resources/               # Bundled assets (backgrounds)
+docs/                    # Guides and documentation
 ```
+
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/my-feature`)
+3. Commit your changes (`git commit -m 'Add my feature'`)
+4. Push to the branch (`git push origin feature/my-feature`)
+5. Open a Pull Request
+
+See [Build Guide](docs/BUILD.md) for development setup.
 
 ---
 
@@ -192,8 +256,8 @@ This project is licensed under the [GNU General Public License v3.0](LICENSE).
 
 ---
 
-## Acknowledgments
+<div align="center">
 
-- [BeamNG.drive](https://www.beamng.com/) by BeamNG GmbH
-- [BeamMP](https://beammp.com/) multiplayer mod
-- Built with [electron-vite](https://electron-vite.org/)
+**[BeamNG.drive](https://www.beamng.com/)** by BeamNG GmbH · **[BeamMP](https://beammp.com/)** multiplayer mod · Built with **[electron-vite](https://electron-vite.org/)**
+
+</div>
