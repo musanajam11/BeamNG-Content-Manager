@@ -15,6 +15,8 @@ const api = {
     ipcRenderer.invoke('appearance:loadBackgroundImage', filePath) as Promise<string | null>,
   getDefaultBackgrounds: () =>
     ipcRenderer.invoke('appearance:getDefaultBackgrounds') as Promise<string[]>,
+  deleteDefaultBackground: (filePath: string) =>
+    ipcRenderer.invoke('appearance:deleteDefaultBackground', filePath) as Promise<boolean>,
   loadBackgroundThumb: (filePath: string) =>
     ipcRenderer.invoke('appearance:loadBackgroundThumb', filePath) as Promise<string | null>,
 

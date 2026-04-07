@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, app, shell, dialog, session } from 'electron'
+import { ipcMain, BrowserWindow, app, shell, dialog, session, nativeImage } from 'electron'
 import { readFile, writeFile, mkdir, access, readdir, unlink, rename as fsRename, stat, copyFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join, basename } from 'node:path'
@@ -3006,6 +3006,18 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('appearance:loadBackgroundImage', async (_event, filePath: string) => {
     try {
       const data = await readFile(filePath)
+      // Resize large images to max 1920px wide to avoid IPC/memory issues
+      if (data.length > 2 * 1024 * 1024) {
+        const img = nativeImage.createFromBuffer(data)
+        const size = img.getSize()
+        if (size.width > 1920) {
+          const resized = img.resize({ width: 1920, quality: 'best' })
+          const jpeg = resized.toJPEG(85)
+          return `data:image/jpeg;base64,${jpeg.toString('base64')}`
+        }
+        const jpeg = img.toJPEG(85)
+        return `data:image/jpeg;base64,${jpeg.toString('base64')}`
+      }
       const ext = filePath.split('.').pop()?.toLowerCase() || 'png'
       const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`
       return `data:${mime};base64,${data.toString('base64')}`
@@ -3032,13 +3044,31 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  /** Delete a default background image file from the bundled backgrounds directory */
+  ipcMain.handle('appearance:deleteDefaultBackground', async (_event, filePath: string): Promise<boolean> => {
+    try {
+      const isDev = !app.isPackaged
+      const bgDir = isDev
+        ? join(app.getAppPath(), 'resources', 'backgrounds')
+        : join(process.resourcesPath, 'resources', 'backgrounds')
+      // Security: ensure the resolved path is inside the backgrounds directory
+      const resolved = join(filePath)
+      if (!resolved.startsWith(bgDir)) return false
+      await unlink(resolved)
+      return true
+    } catch {
+      return false
+    }
+  })
+
   /** Load a background image thumbnail (smaller base64 for gallery previews) */
   ipcMain.handle('appearance:loadBackgroundThumb', async (_event, filePath: string): Promise<string | null> => {
     try {
       const data = await readFile(filePath)
-      const ext = filePath.split('.').pop()?.toLowerCase() || 'png'
-      const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`
-      return `data:${mime};base64,${data.toString('base64')}`
+      const img = nativeImage.createFromBuffer(data)
+      const resized = img.resize({ width: 384, quality: 'best' })
+      const jpeg = resized.toJPEG(80)
+      return `data:image/jpeg;base64,${jpeg.toString('base64')}`
     } catch {
       return null
     }

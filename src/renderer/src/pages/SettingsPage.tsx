@@ -728,12 +728,17 @@ function BackgroundImageSection({ appearance, update }: {
     const updates: Partial<AppearanceSettings> = { bgImageList: newList }
     if (appearance.bgImagePath === path) updates.bgImagePath = null
     update(updates)
+    // If it's a default background, delete the file from disk and remove from defaults
+    if (defaultPaths.includes(path)) {
+      window.api.deleteDefaultBackground(path)
+      setDefaultPaths((prev) => prev.filter((p) => p !== path))
+    }
     setThumbs((prev) => {
       const next = { ...prev }
       delete next[path]
       return next
     })
-  }, [appearance.bgImageList, appearance.bgImagePath, update])
+  }, [appearance.bgImageList, appearance.bgImagePath, update, defaultPaths])
 
   const selectImage = useCallback((path: string) => {
     if (appearance.bgImagePath === path) {
@@ -742,8 +747,6 @@ function BackgroundImageSection({ appearance, update }: {
       update({ bgImagePath: path })
     }
   }, [appearance.bgImagePath, update])
-
-  const isDefault = (path: string): boolean => defaultPaths.includes(path)
 
   return (
     <section>
@@ -782,15 +785,13 @@ function BackgroundImageSection({ appearance, update }: {
                   </div>
                 )}
                 {/* Delete button (red X) — top-right */}
-                {!isDefault(path) && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); removeFromList(path) }}
-                    className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 hover:bg-red-600 rounded-full p-0.5"
-                    title="Remove from list"
-                  >
-                    <X size={10} className="text-red-400 hover:text-white" />
-                  </button>
-                )}
+                <button
+                  onClick={(e) => { e.stopPropagation(); removeFromList(path) }}
+                  className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 hover:bg-red-600 rounded-full p-0.5"
+                  title="Remove from list"
+                >
+                  <X size={10} className="text-red-400 hover:text-white" />
+                </button>
               </div>
             )
           })}

@@ -14,6 +14,7 @@ interface AppAPI {
   pickBackgroundImage(): Promise<string | null>
   loadBackgroundImage(filePath: string): Promise<string | null>
   getDefaultBackgrounds(): Promise<string[]>
+  deleteDefaultBackground(filePath: string): Promise<boolean>
   loadBackgroundThumb(filePath: string): Promise<string | null>
 
   // Versions
