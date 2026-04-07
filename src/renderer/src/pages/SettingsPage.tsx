@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { FolderOpen, Globe, Check, AlertCircle, Package, Download, Upload, Palette, RotateCcw, Monitor, Type, Layers, Maximize2, PanelLeft, Eye, Image, X, Plus, Shuffle } from 'lucide-react'
+import { FolderOpen, Globe, Check, AlertCircle, Package, Download, Upload, Palette, RotateCcw, Monitor, Type, Layers, Maximize2, PanelLeft, Eye, Image, X, Plus, Shuffle, Network, Languages } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/useAppStore'
 import { useThemeStore, ACCENT_PRESETS, BG_STYLES } from '../stores/useThemeStore'
+import { LANGUAGES } from '../i18n'
 import type { AppearanceSettings } from '../../../shared/types'
 
 type SettingsTab = 'general' | 'appearance'
@@ -9,23 +11,24 @@ type SettingsTab = 'general' | 'appearance'
 export function SettingsPage(): React.JSX.Element {
   const config = useAppStore((s) => s.config)
   const [tab, setTab] = useState<SettingsTab>('general')
+  const { t } = useTranslation()
 
   return (
     <div className="flex flex-col h-full rounded-lg border border-[var(--color-border)] overflow-hidden">
       <div className="flex items-center gap-3 px-5 py-4 border-b border-[var(--color-border)]">
-        <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">Settings</h1>
+        <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">{t('settings.title')}</h1>
         <div className="flex gap-2 ml-4">
-          {(['general', 'appearance'] as const).map((t) => (
+          {(['general', 'appearance'] as const).map((tabKey) => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
+              key={tabKey}
+              onClick={() => setTab(tabKey)}
               className={`px-4 py-2 text-xs font-medium transition-colors ${
-                tab === t
+                tab === tabKey
                   ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)] border border-[var(--color-accent)]/30'
                   : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] border border-transparent'
               }`}
             >
-              {t === 'general' ? 'General' : 'Appearance'}
+              {tabKey === 'general' ? t('settings.general') : t('settings.appearance')}
             </button>
           ))}
         </div>
@@ -38,14 +41,53 @@ export function SettingsPage(): React.JSX.Element {
   )
 }
 
+// ── Language Selector ──
+
+function LanguageSelector(): React.JSX.Element {
+  const { t, i18n } = useTranslation()
+  const config = useAppStore((s) => s.config)
+
+  const handleChange = async (code: string): Promise<void> => {
+    await i18n.changeLanguage(code)
+    await useAppStore.getState().saveConfig({ language: code })
+  }
+
+  return (
+    <section>
+      <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
+        <Languages size={16} />
+        {t('settings.language')}
+      </h2>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        {LANGUAGES.map((lang) => (
+          <button
+            key={lang.code}
+            onClick={() => handleChange(lang.code)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors ${
+              i18n.language === lang.code
+                ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/10 text-[var(--color-accent)]'
+                : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'
+            }`}
+          >
+            <span className="font-medium">{lang.nativeName}</span>
+            {i18n.language === lang.code && <Check size={14} className="ml-auto" />}
+          </button>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 // ── General Settings Tab ──
 
 function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.getState>['config'] }): React.JSX.Element {
+  const { t } = useTranslation()
   const [backendUrl, setBackendUrl] = useState(config?.backendUrl || '')
   const [backendHealthy, setBackendHealthy] = useState<boolean | null>(null)
   const [installDir, setInstallDir] = useState(config?.gamePaths?.installDir || '')
   const [userDir, setUserDir] = useState(config?.gamePaths?.userDir || '')
   const [saved, setSaved] = useState(false)
+  const [defaultPorts, setDefaultPorts] = useState(config?.defaultPorts || '')
 
   const [repos, setRepos] = useState<Array<{ name: string; url: string; priority: number }>>([])
   const [reposSaved, setReposSaved] = useState(false)
@@ -57,6 +99,7 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
       setBackendUrl(config.backendUrl)
       setInstallDir(config.gamePaths?.installDir ?? '')
       setUserDir(config.gamePaths?.userDir ?? '')
+      setDefaultPorts(config.defaultPorts ?? '')
     }
   }, [config])
 
@@ -80,6 +123,9 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
     if (installDir && userDir) {
       await window.api.setCustomPaths(installDir, userDir)
     }
+    if (defaultPorts !== (config?.defaultPorts ?? '')) {
+      await window.api.updateConfig({ defaultPorts })
+    }
     await useAppStore.getState().loadConfig()
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
@@ -96,15 +142,18 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
   return (
     <div className="max-w-2xl">
       <div className="flex flex-col gap-8">
+        {/* Language */}
+        <LanguageSelector />
+
         {/* Game Paths */}
         <section>
           <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
             <FolderOpen size={16} />
-            Game Paths
+            {t('settings.gamePaths')}
           </h2>
             <div className="flex flex-col gap-3">
               <div>
-                <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Install Directory</label>
+                <label className="text-xs text-[var(--color-text-muted)] mb-1 block">{t('settings.installDir')}</label>
                 <input
                   type="text"
                   value={installDir}
@@ -114,7 +163,7 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
                 />
               </div>
               <div>
-                <label className="text-xs text-[var(--color-text-muted)] mb-1 block">User Data Directory</label>
+                <label className="text-xs text-[var(--color-text-muted)] mb-1 block">{t('settings.userDataDir')}</label>
                 <input
                   type="text"
                   value={userDir}
@@ -127,7 +176,7 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
                 onClick={handleAutoDetect}
                 className="self-start text-xs text-[var(--color-accent)] hover:underline"
               >
-                Auto-detect paths
+                {t('settings.autoDetect')}
               </button>
             </div>
           </section>
@@ -136,7 +185,7 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
           <section>
             <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
               <Globe size={16} />
-              Backend Server
+              {t('settings.backendServer')}
             </h2>
             <div className="flex gap-2">
               <input
@@ -150,7 +199,7 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
                 onClick={checkHealth}
                 className="px-3 py-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] transition-colors"
               >
-                Test
+                {t('common.test')}
               </button>
             </div>
             {backendHealthy !== null && (
@@ -158,9 +207,27 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
                 className={`mt-2 text-xs flex items-center gap-1 ${backendHealthy ? 'text-green-400' : 'text-red-400'}`}
               >
                 {backendHealthy ? <Check size={12} /> : <AlertCircle size={12} />}
-                {backendHealthy ? 'Backend is reachable' : 'Backend is unreachable'}
+                {backendHealthy ? t('settings.backendReachable') : t('settings.backendUnreachable')}
               </p>
             )}
+          </section>
+
+          {/* Default Server Ports */}
+          <section>
+            <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
+              <Network size={16} />
+              Default Server Ports
+            </h2>
+            <input
+              type="text"
+              value={defaultPorts}
+              onChange={(e) => setDefaultPorts(e.target.value)}
+              placeholder="e.g. 30814-30820, 31000"
+              className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)]"
+            />
+            <p className="mt-2 text-xs text-[var(--color-text-muted)]">
+              Comma-separated ports or ranges. New server instances will use the next available port from this list.
+            </p>
           </section>
 
           {/* Save */}
@@ -168,14 +235,14 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
             onClick={handleSave}
             className="self-start px-6 py-2 rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white text-sm font-medium transition-colors"
           >
-            {saved ? 'Saved!' : 'Save Settings'}
+            {saved ? t('settings.saved') : t('settings.saveSettings')}
           </button>
 
           {/* Registry Settings */}
           <section>
             <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
               <Package size={16} />
-              Mod Registry
+              {t('settings.modRegistry')}
             </h2>
             <div className="flex flex-col gap-3">
               {repos.map((repo, i) => (
@@ -215,7 +282,7 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
                   onClick={() => setRepos([...repos, { name: '', url: '', priority: repos.length }])}
                   className="text-xs text-[var(--color-accent)] hover:underline"
                 >
-                  + Add repository
+                  {t('settings.addRepository')}
                 </button>
                 <button
                   onClick={async () => {
@@ -225,7 +292,7 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
                   }}
                   className="text-xs text-[var(--color-accent)] hover:underline"
                 >
-                  {reposSaved ? '✓ Saved' : 'Save repositories'}
+                  {reposSaved ? t('settings.repositoriesSaved') : t('settings.saveRepositories')}
                 </button>
               </div>
             </div>
@@ -235,7 +302,7 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
           <section>
             <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
               <Download size={16} />
-              Modpack Export / Import
+              {t('settings.modpackExportImport')}
             </h2>
             <div className="flex flex-col gap-3">
               <div className="flex gap-2 items-center">
@@ -308,6 +375,7 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
 function AppearanceSettingsPanel(): React.JSX.Element {
   const { appearance, update, reset } = useThemeStore()
   const [customHex, setCustomHex] = useState(appearance.accentColor)
+  const { t } = useTranslation()
 
   const inputClass =
     'w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-accent)]'
@@ -319,7 +387,7 @@ function AppearanceSettingsPanel(): React.JSX.Element {
         <section>
           <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
             <Palette size={16} />
-            Accent Color
+            {t('settings.accentColor')}
           </h2>
           <div className="grid grid-cols-12 gap-1.5" style={{ marginBottom: 24 }}>
             {ACCENT_PRESETS.map((preset) => (
@@ -377,7 +445,7 @@ function AppearanceSettingsPanel(): React.JSX.Element {
         <section>
           <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
             <Maximize2 size={16} />
-            UI Scale
+            {t('settings.uiScale')}
           </h2>
           <div className="flex items-center gap-3">
             <input
@@ -394,7 +462,7 @@ function AppearanceSettingsPanel(): React.JSX.Element {
             </span>
           </div>
           <p className="text-xs text-[var(--color-text-muted)] mt-1">
-            Scales the entire interface. 100% is the default (110% system zoom).
+            {t('settings.uiScaleDesc')}
           </p>
         </section>
 
@@ -402,7 +470,7 @@ function AppearanceSettingsPanel(): React.JSX.Element {
         <section>
           <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
             <Type size={16} />
-            Font Size
+            {t('settings.fontSize')}
           </h2>
           <div className="flex items-center gap-3">
             <input
@@ -424,7 +492,7 @@ function AppearanceSettingsPanel(): React.JSX.Element {
         <section>
           <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
             <Monitor size={16} />
-            Background Style
+            {t('settings.backgroundStyle')}
           </h2>
           <div className="grid grid-cols-2 gap-2">
             {(Object.keys(BG_STYLES) as Array<keyof typeof BG_STYLES>).map((key) => {
@@ -448,7 +516,7 @@ function AppearanceSettingsPanel(): React.JSX.Element {
           {appearance.backgroundStyle === 'default' && (
             <div className="mt-3 flex gap-2">
               <div className="flex-1">
-                <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Gradient Color 1</label>
+                <label className="text-xs text-[var(--color-text-muted)] mb-1 block">{t('settings.gradientColor1')}</label>
                 <div className="flex gap-2 items-center">
                   <input
                     type="color"
@@ -466,7 +534,7 @@ function AppearanceSettingsPanel(): React.JSX.Element {
                 </div>
               </div>
               <div className="flex-1">
-                <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Gradient Color 2</label>
+                <label className="text-xs text-[var(--color-text-muted)] mb-1 block">{t('settings.gradientColor2')}</label>
                 <div className="flex gap-2 items-center">
                   <input
                     type="color"
@@ -494,11 +562,11 @@ function AppearanceSettingsPanel(): React.JSX.Element {
         <section>
           <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
             <Layers size={16} />
-            Surface &amp; Borders
+            {t('settings.surfaceBorders')}
           </h2>
           <div className="flex flex-col gap-4">
             <div>
-              <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Surface Opacity</label>
+              <label className="text-xs text-[var(--color-text-muted)] mb-1 block">{t('settings.surfaceOpacity')}</label>
               <div className="flex items-center gap-3">
                 <input
                   type="range"
@@ -515,7 +583,7 @@ function AppearanceSettingsPanel(): React.JSX.Element {
               </div>
             </div>
             <div>
-              <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Border Opacity</label>
+              <label className="text-xs text-[var(--color-text-muted)] mb-1 block">{t('settings.borderOpacity')}</label>
               <div className="flex items-center gap-3">
                 <input
                   type="range"
@@ -538,7 +606,7 @@ function AppearanceSettingsPanel(): React.JSX.Element {
         <section>
           <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
             <Eye size={16} />
-            Effects
+            {t('settings.effects')}
           </h2>
           <label className="flex items-center gap-3 cursor-pointer">
             <button
@@ -556,8 +624,8 @@ function AppearanceSettingsPanel(): React.JSX.Element {
               />
             </button>
             <div>
-              <span className="text-sm text-[var(--color-text-primary)]">Blur Effects</span>
-              <p className="text-xs text-[var(--color-text-muted)]">Glassmorphism blur on panels and overlays</p>
+              <span className="text-sm text-[var(--color-text-primary)]">{t('settings.blurEffects')}</span>
+              <p className="text-xs text-[var(--color-text-muted)]">{t('settings.blurEffectsDesc')}</p>
             </div>
           </label>
         </section>
@@ -566,7 +634,7 @@ function AppearanceSettingsPanel(): React.JSX.Element {
         <section>
           <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
             <PanelLeft size={16} />
-            Sidebar Width
+            {t('settings.sidebarWidth')}
           </h2>
           <div className="flex items-center gap-3">
             <input
@@ -591,10 +659,10 @@ function AppearanceSettingsPanel(): React.JSX.Element {
             className="flex items-center gap-2 px-4 py-2 rounded-lg border border-[var(--color-border)] text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)] transition-colors"
           >
             <RotateCcw size={14} />
-            Reset to Defaults
+            {t('settings.resetDefaults')}
           </button>
           <p className="text-xs text-[var(--color-text-muted)] mt-2">
-            Restores all appearance settings to factory defaults.
+            {t('settings.resetDefaultsDesc')}
           </p>
         </section>
       </div>
@@ -608,6 +676,7 @@ function BackgroundImageSection({ appearance, update }: {
   appearance: AppearanceSettings
   update: (partial: Partial<AppearanceSettings>) => Promise<void>
 }): React.JSX.Element {
+  const { t } = useTranslation()
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
   const [defaultPaths, setDefaultPaths] = useState<string[]>([])
 
@@ -681,7 +750,7 @@ function BackgroundImageSection({ appearance, update }: {
     <section>
       <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
         <Image size={16} />
-        Background Image
+        {t('settings.backgroundImage')}
       </h2>
       <div className="flex flex-col gap-4">
         {/* Gallery grid */}
@@ -733,7 +802,7 @@ function BackgroundImageSection({ appearance, update }: {
             className="aspect-[16/9] border-2 border-dashed border-[var(--color-border)] hover:border-[var(--color-accent)] flex flex-col items-center justify-center gap-1 transition-colors text-[var(--color-text-muted)] hover:text-[var(--color-accent)]"
           >
             <Plus size={16} />
-            <span className="text-[10px]">Add Image</span>
+            <span className="text-[10px]">{t('settings.addImage')}</span>
           </button>
         </div>
 
@@ -741,7 +810,7 @@ function BackgroundImageSection({ appearance, update }: {
         <div className="flex items-center justify-between p-3 bg-[var(--color-surface)] border border-[var(--color-border)]">
           <div className="flex items-center gap-2">
             <Shuffle size={14} className="text-[var(--color-accent)]" />
-            <span className="text-xs text-[var(--color-text-primary)]">Random background on launch</span>
+            <span className="text-xs text-[var(--color-text-primary)]">{t('settings.randomBgOnLaunch')}</span>
           </div>
           <button
             onClick={() => update({ bgCycleOnLaunch: !appearance.bgCycleOnLaunch })}
@@ -758,7 +827,7 @@ function BackgroundImageSection({ appearance, update }: {
         {/* Active background file name */}
         {appearance.bgImagePath && (
           <p className="text-[11px] text-[var(--color-text-muted)] truncate">
-            Active: {appearance.bgImagePath.split(/[\\/]/).pop()}
+            {t('settings.active')} {appearance.bgImagePath.split(/[\\/]/).pop()}
           </p>
         )}
 
@@ -766,7 +835,7 @@ function BackgroundImageSection({ appearance, update }: {
         {appearance.bgImagePath && (
           <>
             <div>
-              <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Image Opacity</label>
+              <label className="text-xs text-[var(--color-text-muted)] mb-1 block">{t('settings.imageOpacity')}</label>
               <div className="flex items-center gap-3">
                 <input
                   type="range"
@@ -783,7 +852,7 @@ function BackgroundImageSection({ appearance, update }: {
               </div>
             </div>
             <div>
-              <label className="text-xs text-[var(--color-text-muted)] mb-1 block">Image Blur</label>
+              <label className="text-xs text-[var(--color-text-muted)] mb-1 block">{t('settings.imageBlur')}</label>
               <div className="flex items-center gap-3">
                 <input
                   type="range"

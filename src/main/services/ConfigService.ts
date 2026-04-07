@@ -15,6 +15,7 @@ const DEFAULT_CONFIG: AppConfig = {
   backendUrl: 'https://backend.beammp.com',
   launcherPort: 4444,
   theme: 'dark',
+  language: 'en',
   appearance: {
     accentColor: '#f97316',
     uiScale: 1.1,
@@ -32,7 +33,9 @@ const DEFAULT_CONFIG: AppConfig = {
     bgImageList: [],
     bgCycleOnLaunch: false
   },
-  setupComplete: false
+  setupComplete: false,
+  defaultPorts: '',
+  careerSavePath: null
 }
 
 export class ConfigService {
@@ -40,14 +43,20 @@ export class ConfigService {
   private configPath: string
   private favoritesPath: string
   private recentServersPath: string
+  private friendsPath: string
+  private sessionsPath: string
   private favorites: Set<string> = new Set()
   private recentServers: Array<{ ident: string; timestamp: number }> = []
+  private friends: Array<{ id: string; displayName: string; addedAt: number; notes?: string; tags?: string[] }> = []
+  private sessions: Array<{ serverIdent: string; serverName: string; players: string[]; timestamp: number }> = []
 
   constructor() {
     const appDataDir = join(app.getPath('appData'), 'BeamMP-ContentManager')
     this.configPath = join(appDataDir, 'config.json')
     this.favoritesPath = join(appDataDir, 'favorites.json')
     this.recentServersPath = join(appDataDir, 'recent-servers.json')
+    this.friendsPath = join(appDataDir, 'friends.json')
+    this.sessionsPath = join(appDataDir, 'sessions.json')
   }
 
   async load(): Promise<AppConfig> {
@@ -75,6 +84,22 @@ export class ConfigService {
         const raw = await readFile(this.recentServersPath, 'utf-8')
         const arr = JSON.parse(raw)
         if (Array.isArray(arr)) this.recentServers = arr
+      }
+    } catch { /* ignore */ }
+    // Load friends
+    try {
+      if (existsSync(this.friendsPath)) {
+        const raw = await readFile(this.friendsPath, 'utf-8')
+        const arr = JSON.parse(raw)
+        if (Array.isArray(arr)) this.friends = arr
+      }
+    } catch { /* ignore */ }
+    // Load sessions
+    try {
+      if (existsSync(this.sessionsPath)) {
+        const raw = await readFile(this.sessionsPath, 'utf-8')
+        const arr = JSON.parse(raw)
+        if (Array.isArray(arr)) this.sessions = arr
       }
     } catch { /* ignore */ }
     return this.config
@@ -161,5 +186,64 @@ export class ConfigService {
       await mkdir(dir, { recursive: true })
     }
     await writeFile(this.recentServersPath, JSON.stringify(this.recentServers), 'utf-8')
+  }
+
+  // ── Friends ──
+
+  getFriends(): Array<{ id: string; displayName: string; addedAt: number; notes?: string; tags?: string[] }> {
+    return this.friends
+  }
+
+  async addFriend(id: string, displayName: string): Promise<typeof this.friends> {
+    if (this.friends.some((f) => f.id === id)) return this.friends
+    this.friends.push({ id, displayName, addedAt: Date.now() })
+    await this.saveFriends()
+    return this.friends
+  }
+
+  async removeFriend(id: string): Promise<typeof this.friends> {
+    this.friends = this.friends.filter((f) => f.id !== id)
+    await this.saveFriends()
+    return this.friends
+  }
+
+  async updateFriend(id: string, updates: { displayName?: string; notes?: string; tags?: string[] }): Promise<typeof this.friends> {
+    const friend = this.friends.find((f) => f.id === id)
+    if (friend) {
+      if (updates.displayName !== undefined) friend.displayName = updates.displayName
+      if (updates.notes !== undefined) friend.notes = updates.notes
+      if (updates.tags !== undefined) friend.tags = updates.tags
+      await this.saveFriends()
+    }
+    return this.friends
+  }
+
+  private async saveFriends(): Promise<void> {
+    const dir = join(this.friendsPath, '..')
+    if (!existsSync(dir)) {
+      await mkdir(dir, { recursive: true })
+    }
+    await writeFile(this.friendsPath, JSON.stringify(this.friends, null, 2), 'utf-8')
+  }
+
+  // ── Sessions ──
+
+  getSessions(): Array<{ serverIdent: string; serverName: string; players: string[]; timestamp: number }> {
+    return this.sessions
+  }
+
+  async recordSession(serverIdent: string, serverName: string, players: string[]): Promise<void> {
+    this.sessions.unshift({ serverIdent, serverName, players, timestamp: Date.now() })
+    // Keep last 100 sessions
+    this.sessions = this.sessions.slice(0, 100)
+    await this.saveSessions()
+  }
+
+  private async saveSessions(): Promise<void> {
+    const dir = join(this.sessionsPath, '..')
+    if (!existsSync(dir)) {
+      await mkdir(dir, { recursive: true })
+    }
+    await writeFile(this.sessionsPath, JSON.stringify(this.sessions), 'utf-8')
   }
 }

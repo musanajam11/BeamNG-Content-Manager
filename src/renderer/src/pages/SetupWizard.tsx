@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { Loader2, CheckCircle, AlertCircle, FolderOpen, Globe, ArrowRight } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/useAppStore'
 
 type WizardStep = 'welcome' | 'paths' | 'backend' | 'done'
 
 export function SetupWizard(): React.JSX.Element {
+  const { t } = useTranslation()
   const [step, setStep] = useState<WizardStep>('welcome')
   const [installDir, setInstallDir] = useState('')
   const [userDir, setUserDir] = useState('')
@@ -90,10 +92,10 @@ export function SetupWizard(): React.JSX.Element {
           {step === 'welcome' && (
             <div className="flex flex-col items-center gap-6 text-center">
               <h1 className="text-3xl font-bold text-[var(--text-primary)]">
-                Welcome to BeamMP Content Manager
+                {t('setup.welcome')}
               </h1>
               <p className="text-[var(--text-secondary)] text-sm max-w-sm">
-                Let's set up your game paths and backend connection before you start playing.
+                {t('setup.welcomeDesc')}
               </p>
               <button
                 onClick={() => {
@@ -102,7 +104,7 @@ export function SetupWizard(): React.JSX.Element {
                 }}
                 className="flex items-center gap-2 px-8 py-3 rounded-xl bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white font-semibold transition-colors"
               >
-                Get Started
+                {t('setup.getStarted')}
                 <ArrowRight size={18} />
               </button>
             </div>
@@ -113,19 +115,19 @@ export function SetupWizard(): React.JSX.Element {
             <div className="flex flex-col gap-6">
               <div className="flex items-center gap-3">
                 <FolderOpen size={20} className="text-[var(--accent-primary)]" />
-                <h2 className="text-xl font-semibold text-[var(--text-primary)]">Game Paths</h2>
+                <h2 className="text-xl font-semibold text-[var(--text-primary)]">{t('setup.gamePaths')}</h2>
               </div>
 
               {detecting ? (
                 <div className="flex items-center gap-3 text-[var(--text-secondary)] text-sm">
                   <Loader2 size={16} className="animate-spin" />
-                  Auto-detecting BeamNG.drive installation...
+                  {t('setup.autoDetecting')}
                 </div>
               ) : (
                 <div className="flex flex-col gap-4">
                   <div>
                     <label className="text-xs text-[var(--text-muted)] mb-1 block">
-                      Install Directory
+                      {t('setup.installDir')}
                     </label>
                     <input
                       type="text"
@@ -137,7 +139,7 @@ export function SetupWizard(): React.JSX.Element {
                   </div>
                   <div>
                     <label className="text-xs text-[var(--text-muted)] mb-1 block">
-                      User Data Directory
+                      {t('setup.userDataDir')}
                     </label>
                     <input
                       type="text"
@@ -151,7 +153,7 @@ export function SetupWizard(): React.JSX.Element {
                     onClick={handleAutoDetect}
                     className="self-start text-xs text-[var(--accent-primary)] hover:underline"
                   >
-                    Re-detect automatically
+                    {t('setup.redetect')}
                   </button>
                 </div>
               )}
@@ -168,7 +170,7 @@ export function SetupWizard(): React.JSX.Element {
                 disabled={detecting || !installDir || !userDir}
                 className="self-end flex items-center gap-2 px-6 py-2.5 rounded-lg bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Continue
+                {t('common.continue')}
                 <ArrowRight size={16} />
               </button>
             </div>
@@ -180,7 +182,7 @@ export function SetupWizard(): React.JSX.Element {
               <div className="flex items-center gap-3">
                 <Globe size={20} className="text-[var(--accent-primary)]" />
                 <h2 className="text-xl font-semibold text-[var(--text-primary)]">
-                  Backend Server
+                  {t('setup.backendServer')}
                 </h2>
               </div>
 
@@ -195,10 +197,10 @@ export function SetupWizard(): React.JSX.Element {
                   />
                   <div>
                     <p className="text-sm font-medium text-[var(--text-primary)]">
-                      Official BeamMP Backend
+                      {t('setup.officialBackend')}
                     </p>
                     <p className="text-xs text-[var(--text-muted)]">
-                      Use the default BeamMP servers at backend.beammp.com
+                      {t('setup.officialBackendDesc')}
                     </p>
                   </div>
                 </label>
@@ -213,10 +215,10 @@ export function SetupWizard(): React.JSX.Element {
                   />
                   <div>
                     <p className="text-sm font-medium text-[var(--text-primary)]">
-                      Self-Hosted Backend
+                      {t('setup.selfHosted')}
                     </p>
                     <p className="text-xs text-[var(--text-muted)]">
-                      Connect to a custom BeamMP backend server
+                      {t('setup.selfHostedDesc')}
                     </p>
                   </div>
                 </label>
@@ -224,7 +226,7 @@ export function SetupWizard(): React.JSX.Element {
 
               {backendType === 'custom' && (
                 <div>
-                  <label className="text-xs text-[var(--text-muted)] mb-1 block">Backend URL</label>
+                  <label className="text-xs text-[var(--text-muted)] mb-1 block">{t('setup.backendUrl')}</label>
                   <input
                     type="text"
                     value={backendUrl}
@@ -240,14 +242,14 @@ export function SetupWizard(): React.JSX.Element {
                   onClick={handleTestBackend}
                   className="px-4 py-2 rounded-lg bg-[var(--bg-tertiary)] border border-[var(--border-primary)] text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
                 >
-                  Test Connection
+                  {t('setup.testConnection')}
                 </button>
                 {backendHealthy !== null && (
                   <span
                     className={`text-xs flex items-center gap-1 ${backendHealthy ? 'text-green-400' : 'text-red-400'}`}
                   >
                     {backendHealthy ? <CheckCircle size={12} /> : <AlertCircle size={12} />}
-                    {backendHealthy ? 'Connected' : 'Unreachable'}
+                    {backendHealthy ? t('setup.connected') : t('setup.unreachable')}
                   </span>
                 )}
               </div>
@@ -258,7 +260,7 @@ export function SetupWizard(): React.JSX.Element {
                 }}
                 className="self-end flex items-center gap-2 px-6 py-2.5 rounded-lg bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white text-sm font-medium transition-colors"
               >
-                Continue
+                {t('common.continue')}
                 <ArrowRight size={16} />
               </button>
             </div>
@@ -268,15 +270,15 @@ export function SetupWizard(): React.JSX.Element {
           {step === 'done' && (
             <div className="flex flex-col items-center gap-6 text-center">
               <CheckCircle size={48} className="text-green-400" />
-              <h2 className="text-2xl font-bold text-[var(--text-primary)]">You&apos;re all set!</h2>
+              <h2 className="text-2xl font-bold text-[var(--text-primary)]">{t('setup.allSet')}</h2>
               <p className="text-[var(--text-secondary)] text-sm max-w-sm">
-                Your BeamMP Content Manager is configured and ready to use.
+                {t('setup.allSetDesc')}
               </p>
               <button
                 onClick={handleFinish}
                 className="px-8 py-3 rounded-xl bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white font-semibold transition-colors"
               >
-                Launch Content Manager
+                {t('setup.launchApp')}
               </button>
             </div>
           )}

@@ -208,6 +208,36 @@ Pull mod metadata from configurable repositories (name, URL, priority). Verified
 
 </details>
 
+### CareerMP Save Manager
+
+<details>
+<summary>Browse, deploy, backup, and manage your CareerMP and RLS career saves</summary>
+
+- **Profile Discovery** — auto-detects career profiles from BeamNG.drive cloud saves folder with configurable manual path override
+- **Deploy / Undeploy** — deploy profiles to the game save folder or undeploy them to Content Manager storage; deployed profiles are visible to the game, undeployed profiles are safely stored externally
+- **3-Level Navigation** — Profile List → Profile Detail (slots, deploy status, backups, career log) → Slot Detail (full stats and metadata)
+- **Rich Metadata** — money, BeamXP with level progress bar, current map, vehicle count, insurance, missions completed, odometer, drift score, stamina, vouchers
+- **Skills & Activities** — expandable skill categories (logistics, BMRA, freestyle, career skills, APM) with subcategory breakdown
+- **Business Reputations** — reputation bars for all dealerships and businesses with value/max display
+- **Vehicle Gallery** — thumbnail grid of all owned vehicles with model names and preview images
+- **Profile Backups** — full profile backup to Content Manager storage with restore and delete; per-slot backups also supported
+- **Career Activity Log** — view the career log file with most recent entries first
+- **RLS Support** — detects RLS (Real Life Simulator) profiles with bank balance and credit score display
+
+</details>
+
+### Internationalization (i18n)
+
+<details>
+<summary>Full multi-language support across the entire app</summary>
+
+- **13 Languages** — English, Spanish, Portuguese, French, German, Italian, Chinese, Japanese, Korean, Russian, Arabic, Farsi, Urdu
+- **RTL Support** — proper right-to-left layout for Arabic, Farsi, and Urdu
+- **Complete Coverage** — all UI text, labels, buttons, messages, and descriptions are translatable
+- **Language Selector** — switch language from Settings with instant UI update
+
+</details>
+
 ### Additional
 - **System Tray** — minimizes to tray on close (Discord-style); double-click to restore; right-click menu with Show/Quit
 - **Single Instance Lock** — prevents multiple app instances from running simultaneously

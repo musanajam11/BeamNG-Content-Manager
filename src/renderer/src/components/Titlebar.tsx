@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
 import { Minus, Square, X, Copy } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { AppLogo } from './AppLogo'
 
 export function Titlebar(): React.JSX.Element {
   const [maximized, setMaximized] = useState(false)
+  const { t } = useTranslation()
 
   useEffect(() => {
     window.api.isMaximized().then(setMaximized)
@@ -23,21 +25,21 @@ export function Titlebar(): React.JSX.Element {
         <button
           onClick={() => window.api.minimizeWindow()}
           className="flex items-center justify-center w-12 h-full hover:bg-white/8 text-slate-400 hover:text-white rounded-none"
-          aria-label="Minimize"
+          aria-label={t('titlebar.minimize')}
         >
           <Minus size={14} />
         </button>
         <button
           onClick={() => window.api.maximizeWindow()}
           className="flex items-center justify-center w-12 h-full hover:bg-white/8 text-slate-400 hover:text-white rounded-none"
-          aria-label={maximized ? 'Restore' : 'Maximize'}
+          aria-label={maximized ? t('titlebar.restore') : t('titlebar.maximize')}
         >
           {maximized ? <Copy size={11} /> : <Square size={11} />}
         </button>
         <button
           onClick={() => window.api.closeWindow()}
           className="flex items-center justify-center w-12 h-full hover:bg-rose-500/80 text-slate-400 hover:text-white rounded-none"
-          aria-label="Close"
+          aria-label={t('titlebar.close')}
         >
           <X size={14} />
         </button>

@@ -9,37 +9,44 @@ import {
   ChevronRight,
   Terminal,
   MonitorCog,
-  Users
+  Users,
+  Gamepad2,
+  Briefcase
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/useAppStore'
 import type { AppPage } from '../../../shared/types'
 
 interface NavItem {
   id: AppPage
-  label: string
+  labelKey: string
   icon: React.ComponentType<{ size?: number; className?: string }>
 }
 
 const navItems: NavItem[] = [
-  { id: 'home', label: 'Home', icon: Home },
-  { id: 'servers', label: 'Servers', icon: Server },
-  { id: 'friends', label: 'Friends', icon: Users },
-  { id: 'vehicles', label: 'Vehicles', icon: Car },
-  { id: 'maps', label: 'Maps', icon: Map },
-  { id: 'mods', label: 'Mods', icon: Package },
-  { id: 'server-admin', label: 'Server Manager', icon: MonitorCog },
-  { id: 'launcher', label: 'BeamMP Launcher', icon: Terminal },
+  { id: 'home', labelKey: 'sidebar.home', icon: Home },
+  { id: 'servers', labelKey: 'sidebar.servers', icon: Server },
+  { id: 'friends', labelKey: 'sidebar.friends', icon: Users },
+  { id: 'vehicles', labelKey: 'sidebar.vehicles', icon: Car },
+  { id: 'maps', labelKey: 'sidebar.maps', icon: Map },
+  { id: 'mods', labelKey: 'sidebar.mods', icon: Package },
+  { id: 'career', labelKey: 'sidebar.career', icon: Briefcase },
+  { id: 'server-admin', labelKey: 'sidebar.serverManager', icon: MonitorCog },
+  { id: 'launcher', labelKey: 'sidebar.launcher', icon: Terminal },
+  { id: 'controls', labelKey: 'sidebar.controls', icon: Gamepad2 },
 ]
 
 const bottomItems: NavItem[] = [
-  { id: 'settings', label: 'Settings', icon: Settings }
+  { id: 'settings', labelKey: 'sidebar.settings', icon: Settings }
 ]
 
 export function Sidebar(): React.JSX.Element {
   const { currentPage, setPage, sidebarCollapsed, toggleSidebar } = useAppStore()
+  const { t } = useTranslation()
 
-  const renderItem = ({ id, label, icon: Icon }: NavItem): React.JSX.Element => {
+  const renderItem = ({ id, labelKey, icon: Icon }: NavItem): React.JSX.Element => {
     const active = currentPage === id
+    const label = t(labelKey)
     return (
       <button
         key={id}
@@ -77,10 +84,10 @@ export function Sidebar(): React.JSX.Element {
           className={`flex items-center gap-3 w-full rounded-xl text-slate-500 hover:text-slate-300 hover:bg-white/5 transition-all duration-150 ${
             sidebarCollapsed ? 'justify-center px-0 py-2.5' : 'px-3 py-2'
           }`}
-          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={sidebarCollapsed ? t('sidebar.expandSidebar') : t('sidebar.collapseSidebar')}
         >
           {sidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-          {!sidebarCollapsed && <span className="text-[12px] font-medium">Collapse</span>}
+          {!sidebarCollapsed && <span className="text-[12px] font-medium">{t('sidebar.collapse')}</span>}
         </button>
       </div>
     </aside>

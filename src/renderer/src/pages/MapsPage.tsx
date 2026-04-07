@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Search, Map, Loader2, X, ChevronLeft, MapPin, User, Tag, Calendar, HardDrive, ExternalLink, Info, Ruler, Flag } from 'lucide-react'
 import type { MapRichMetadata } from '../../../shared/types'
 
@@ -19,6 +20,7 @@ function formatFileSize(bytes: number): string {
 }
 
 export function MapsPage(): React.JSX.Element {
+  const { t } = useTranslation()
   const [maps, setMaps] = useState<MapListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -124,16 +126,16 @@ export function MapsPage(): React.JSX.Element {
         {/* Toolbar */}
         <div className="flex items-center gap-3 p-4 border-b border-[var(--color-border)]">
           <Map size={18} className="text-[var(--color-accent)]" />
-          <h1 className="text-sm font-semibold text-[var(--color-text-primary)]">Maps</h1>
+          <h1 className="text-sm font-semibold text-[var(--color-text-primary)]">{t('maps.title')}</h1>
           <span className="text-xs text-[var(--color-text-muted)]">
-            {filtered.length} of {maps.length}
+            {t('maps.filteredOf', { filtered: filtered.length, total: maps.length })}
           </span>
           <div className="flex-1" />
           <div className="relative">
             <Search size={14} className="absolute top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] pointer-events-none" style={{ left: 14 }} />
             <input
               type="text"
-              placeholder="Search maps..."
+              placeholder={t('maps.searchMaps')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pr-4 py-2.5 text-xs bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none w-56"
@@ -149,7 +151,7 @@ export function MapsPage(): React.JSX.Element {
 
         {/* Filters */}
         <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--color-border)]">
-          <span className="text-xs text-[var(--color-text-muted)] mr-1">Source:</span>
+          <span className="text-xs text-[var(--color-text-muted)] mr-1">{t('maps.sourceLabel')}</span>
           {(['all', 'stock', 'mod'] as const).map((s) => (
             <button
               key={s}
@@ -160,7 +162,7 @@ export function MapsPage(): React.JSX.Element {
                   : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'
               }`}
             >
-              {s === 'all' ? 'All' : s === 'stock' ? 'Stock' : 'Mods'}
+              {s === 'all' ? t('common.all') : s === 'stock' ? t('maps.stockMaps') : t('maps.modMaps')}
             </button>
           ))}
         </div>
@@ -170,12 +172,12 @@ export function MapsPage(): React.JSX.Element {
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 size={24} className="animate-spin text-[var(--color-accent)]" />
-              <span className="ml-2 text-xs text-[var(--color-text-muted)]">Scanning maps...</span>
+              <span className="ml-2 text-xs text-[var(--color-text-muted)]">{t('maps.scanningMaps')}</span>
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-[var(--color-text-muted)]">
               <Map size={36} strokeWidth={1} />
-              <p className="text-sm mt-2">No maps found</p>
+              <p className="text-sm mt-2">{t('maps.noMapsFound')}</p>
             </div>
           ) : (
             (() => {
@@ -202,7 +204,7 @@ export function MapsPage(): React.JSX.Element {
                       {formatMapName(m.name)}
                     </p>
                     <p className="text-[10px] text-[var(--color-text-muted)] truncate">
-                      {m.source === 'stock' ? 'Stock' : 'Mod'}
+                      {m.source === 'stock' ? t('maps.stockMaps') : t('maps.modMaps')}
                     </p>
                   </div>
                 </button>
@@ -217,7 +219,7 @@ export function MapsPage(): React.JSX.Element {
                     <>
                       <div className="flex items-center gap-3 my-4">
                         <div className="flex-1 h-px bg-[var(--color-border)]" />
-                        <span className="text-xs font-medium text-[var(--color-accent)]">Mod Maps</span>
+                        <span className="text-xs font-medium text-[var(--color-accent)]">{t('maps.modMapsDivider')}</span>
                         <div className="flex-1 h-px bg-[var(--color-border)]" />
                       </div>
                       <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-2">
@@ -262,7 +264,7 @@ export function MapsPage(): React.JSX.Element {
               ? 'bg-blue-500/15 text-blue-400'
               : 'bg-[var(--color-accent)]/15 text-[var(--color-accent)]'
           }`}>
-            {selectedMap.source === 'stock' ? 'Stock' : 'Mod'}
+            {selectedMap.source === 'stock' ? t('maps.stockMaps') : t('maps.modMaps')}
           </span>
           {mapMetadata?.registryId && (
             <span className="px-2 py-0.5 text-[10px] bg-green-500/15 text-green-400">Registry</span>
@@ -274,7 +276,7 @@ export function MapsPage(): React.JSX.Element {
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
             {/* Left column: Preview + info */}
             <div className="flex flex-col gap-3">
-              <h2 className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">Preview</h2>
+              <h2 className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">{t('maps.preview')}</h2>
               <div className="aspect-[16/9] bg-black/30 border border-[var(--color-border)] overflow-hidden">
                 {detailPreview ? (
                   <img src={detailPreview} alt={mapMetadata?.title || formatMapName(selectedMap.name)} className="w-full h-full object-cover" />
@@ -303,39 +305,39 @@ export function MapsPage(): React.JSX.Element {
               <div className="flex flex-col gap-2 p-4 bg-[var(--color-surface)] border border-[var(--color-border)]">
                 <div className="flex items-center gap-2 text-xs">
                   <MapPin size={12} className="text-[var(--color-accent)]" />
-                  <span className="text-[var(--color-text-muted)]">Internal Name:</span>
+                  <span className="text-[var(--color-text-muted)]">{t('maps.internalName')}</span>
                   <span className="text-[var(--color-text-secondary)] font-mono">{selectedMap.name}</span>
                 </div>
                 <div className="flex items-center gap-2 text-xs">
                   <Map size={12} className="text-[var(--color-accent)]" />
-                  <span className="text-[var(--color-text-muted)]">Source:</span>
-                  <span className="text-[var(--color-text-secondary)]">{selectedMap.source === 'stock' ? 'Stock (BeamNG.drive)' : 'Mod (User Installed)'}</span>
+                  <span className="text-[var(--color-text-muted)]">{t('maps.sourceLabel')}</span>
+                  <span className="text-[var(--color-text-secondary)]">{selectedMap.source === 'stock' ? t('maps.stockSource') : t('maps.modSource')}</span>
                 </div>
                 {(mapMetadata?.authors && mapMetadata.authors.length > 0) && (
                   <div className="flex items-center gap-2 text-xs">
                     <User size={12} className="text-[var(--color-accent)]" />
-                    <span className="text-[var(--color-text-muted)]">Authors:</span>
+                    <span className="text-[var(--color-text-muted)]">{t('maps.authors')}</span>
                     <span className="text-[var(--color-text-secondary)]">{mapMetadata.authors.join(', ')}</span>
                   </div>
                 )}
                 {mapMetadata?.terrainSize && (
                   <div className="flex items-center gap-2 text-xs">
                     <Ruler size={12} className="text-[var(--color-accent)]" />
-                    <span className="text-[var(--color-text-muted)]">Terrain Size:</span>
+                    <span className="text-[var(--color-text-muted)]">{t('maps.terrainSize')}</span>
                     <span className="text-[var(--color-text-secondary)]">{mapMetadata.terrainSize}m &times; {mapMetadata.terrainSize}m</span>
                   </div>
                 )}
                 {mapMetadata?.spawnPointCount != null && mapMetadata.spawnPointCount > 0 && (
                   <div className="flex items-center gap-2 text-xs">
                     <Flag size={12} className="text-[var(--color-accent)]" />
-                    <span className="text-[var(--color-text-muted)]">Spawn Points:</span>
+                    <span className="text-[var(--color-text-muted)]">{t('maps.spawnPoints')}</span>
                     <span className="text-[var(--color-text-secondary)]">{mapMetadata.spawnPointCount}</span>
                   </div>
                 )}
                 {mapMetadata?.fileSize != null && (
                   <div className="flex items-center gap-2 text-xs">
                     <HardDrive size={12} className="text-[var(--color-accent)]" />
-                    <span className="text-[var(--color-text-muted)]">File Size:</span>
+                    <span className="text-[var(--color-text-muted)]">{t('maps.fileSize')}</span>
                     <span className="text-[var(--color-text-secondary)]">{formatFileSize(mapMetadata.fileSize)}</span>
                   </div>
                 )}
@@ -354,14 +356,14 @@ export function MapsPage(): React.JSX.Element {
 
             {/* Right column: Minimap + registry metadata */}
             <div className="flex flex-col gap-3">
-              <h2 className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">Minimap</h2>
+              <h2 className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">{t('maps.minimap')}</h2>
               <div className="aspect-square bg-black/30 border border-[var(--color-border)] overflow-hidden">
                 {terrainBase ? (
                   <img src={terrainBase} alt="Terrain Base" className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-[var(--color-text-muted)]">
                     <Map size={48} strokeWidth={1} />
-                    <span className="ml-2 text-xs">No minimap available</span>
+                    <span className="ml-2 text-xs">{t('maps.noMinimap')}</span>
                   </div>
                 )}
               </div>
@@ -375,24 +377,24 @@ export function MapsPage(): React.JSX.Element {
               {/* Mod Registry Metadata */}
               {mapMetadata?.registryId && (
                 <div className="flex flex-col gap-3">
-                  <h2 className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider mt-2">Mod Registry</h2>
+                  <h2 className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider mt-2">{t('maps.modRegistry')}</h2>
                   <div className="flex flex-col gap-2 p-4 bg-[var(--color-surface)] border border-[var(--color-border)]">
                     <div className="flex items-center gap-2 text-xs">
                       <Info size={12} className="text-[var(--color-accent)]" />
-                      <span className="text-[var(--color-text-muted)]">Identifier:</span>
+                      <span className="text-[var(--color-text-muted)]">{t('maps.identifier')}</span>
                       <span className="text-[var(--color-text-secondary)] font-mono">{mapMetadata.registryId}</span>
                     </div>
                     {mapMetadata.registryVersion && (
                       <div className="flex items-center gap-2 text-xs">
                         <Tag size={12} className="text-[var(--color-accent)]" />
-                        <span className="text-[var(--color-text-muted)]">Version:</span>
+                        <span className="text-[var(--color-text-muted)]">{t('common.version')}:</span>
                         <span className="text-[var(--color-text-secondary)]">{mapMetadata.registryVersion}</span>
                       </div>
                     )}
                     {mapMetadata.registryAuthor && (
                       <div className="flex items-center gap-2 text-xs">
                         <User size={12} className="text-[var(--color-accent)]" />
-                        <span className="text-[var(--color-text-muted)]">Author:</span>
+                        <span className="text-[var(--color-text-muted)]">{t('common.author')}:</span>
                         <span className="text-[var(--color-text-secondary)]">
                           {Array.isArray(mapMetadata.registryAuthor) ? mapMetadata.registryAuthor.join(', ') : mapMetadata.registryAuthor}
                         </span>
@@ -401,7 +403,7 @@ export function MapsPage(): React.JSX.Element {
                     {mapMetadata.registryLicense && (
                       <div className="flex items-center gap-2 text-xs">
                         <Info size={12} className="text-[var(--color-accent)]" />
-                        <span className="text-[var(--color-text-muted)]">License:</span>
+                        <span className="text-[var(--color-text-muted)]">{t('common.license')}:</span>
                         <span className="text-[var(--color-text-secondary)]">
                           {Array.isArray(mapMetadata.registryLicense) ? mapMetadata.registryLicense.join(', ') : mapMetadata.registryLicense}
                         </span>
@@ -410,7 +412,7 @@ export function MapsPage(): React.JSX.Element {
                     {mapMetadata.registryReleaseStatus && (
                       <div className="flex items-center gap-2 text-xs">
                         <Info size={12} className="text-[var(--color-accent)]" />
-                        <span className="text-[var(--color-text-muted)]">Status:</span>
+                        <span className="text-[var(--color-text-muted)]">{t('common.status')}:</span>
                         <span className={`px-2 py-0.5 text-[10px] ${
                           mapMetadata.registryReleaseStatus === 'stable' ? 'bg-green-500/15 text-green-400' :
                           mapMetadata.registryReleaseStatus === 'testing' ? 'bg-yellow-500/15 text-yellow-400' :
@@ -423,14 +425,14 @@ export function MapsPage(): React.JSX.Element {
                     {mapMetadata.registryReleaseDate && (
                       <div className="flex items-center gap-2 text-xs">
                         <Calendar size={12} className="text-[var(--color-accent)]" />
-                        <span className="text-[var(--color-text-muted)]">Released:</span>
+                        <span className="text-[var(--color-text-muted)]">{t('maps.released')}</span>
                         <span className="text-[var(--color-text-secondary)]">{mapMetadata.registryReleaseDate}</span>
                       </div>
                     )}
                     {(mapMetadata.registryBeamngVersionMin || mapMetadata.registryBeamngVersionMax) && (
                       <div className="flex items-center gap-2 text-xs">
                         <Info size={12} className="text-[var(--color-accent)]" />
-                        <span className="text-[var(--color-text-muted)]">BeamNG Version:</span>
+                        <span className="text-[var(--color-text-muted)]">{t('maps.beamngVersion')}</span>
                         <span className="text-[var(--color-text-secondary)]">
                           {mapMetadata.registryBeamngVersionMin && `≥ ${mapMetadata.registryBeamngVersionMin}`}
                           {mapMetadata.registryBeamngVersionMin && mapMetadata.registryBeamngVersionMax && ' — '}
@@ -441,7 +443,7 @@ export function MapsPage(): React.JSX.Element {
                     {(mapMetadata.registryDownloadSize != null || mapMetadata.registryInstallSize != null) && (
                       <div className="flex items-center gap-2 text-xs">
                         <HardDrive size={12} className="text-[var(--color-accent)]" />
-                        <span className="text-[var(--color-text-muted)]">Size:</span>
+                        <span className="text-[var(--color-text-muted)]">{t('common.size')}:</span>
                         <span className="text-[var(--color-text-secondary)]">
                           {mapMetadata.registryDownloadSize != null && `${formatFileSize(mapMetadata.registryDownloadSize)} download`}
                           {mapMetadata.registryDownloadSize != null && mapMetadata.registryInstallSize != null && ' / '}
@@ -457,31 +459,31 @@ export function MapsPage(): React.JSX.Element {
                       {mapMetadata.registryResources.homepage && (
                         <a href={mapMetadata.registryResources.homepage} target="_blank" rel="noopener noreferrer"
                           className="flex items-center gap-1 px-2 py-1 text-[10px] bg-[var(--color-surface-hover)] text-[var(--color-accent)] hover:text-[var(--color-text-primary)] transition-colors">
-                          <ExternalLink size={10} /> Homepage
+                          <ExternalLink size={10} /> {t('maps.homepage')}
                         </a>
                       )}
                       {mapMetadata.registryResources.beamng_resource && (
                         <a href={mapMetadata.registryResources.beamng_resource} target="_blank" rel="noopener noreferrer"
                           className="flex items-center gap-1 px-2 py-1 text-[10px] bg-[var(--color-surface-hover)] text-[var(--color-accent)] hover:text-[var(--color-text-primary)] transition-colors">
-                          <ExternalLink size={10} /> BeamNG Resource
+                          <ExternalLink size={10} /> {t('maps.beamngResource')}
                         </a>
                       )}
                       {mapMetadata.registryResources.beammp_forum && (
                         <a href={mapMetadata.registryResources.beammp_forum} target="_blank" rel="noopener noreferrer"
                           className="flex items-center gap-1 px-2 py-1 text-[10px] bg-[var(--color-surface-hover)] text-[var(--color-accent)] hover:text-[var(--color-text-primary)] transition-colors">
-                          <ExternalLink size={10} /> BeamMP Forum
+                          <ExternalLink size={10} /> {t('maps.beammpForum')}
                         </a>
                       )}
                       {mapMetadata.registryResources.repository && (
                         <a href={mapMetadata.registryResources.repository} target="_blank" rel="noopener noreferrer"
                           className="flex items-center gap-1 px-2 py-1 text-[10px] bg-[var(--color-surface-hover)] text-[var(--color-accent)] hover:text-[var(--color-text-primary)] transition-colors">
-                          <ExternalLink size={10} /> Repository
+                          <ExternalLink size={10} /> {t('maps.repository')}
                         </a>
                       )}
                       {mapMetadata.registryResources.bugtracker && (
                         <a href={mapMetadata.registryResources.bugtracker} target="_blank" rel="noopener noreferrer"
                           className="flex items-center gap-1 px-2 py-1 text-[10px] bg-[var(--color-surface-hover)] text-[var(--color-accent)] hover:text-[var(--color-text-primary)] transition-colors">
-                          <ExternalLink size={10} /> Bug Tracker
+                          <ExternalLink size={10} /> {t('maps.bugTracker')}
                         </a>
                       )}
                     </div>

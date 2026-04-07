@@ -21,6 +21,7 @@ import { RegistryService } from '../services/RegistryService'
 import { DependencyResolver } from '../services/DependencyResolver'
 import { RoadNetwork } from '../services/RoadNetwork'
 import { TailscaleService } from '../services/TailscaleService'
+import { CareerSaveService } from '../services/CareerSaveService'
 import { parseBeamNGJson } from '../utils/parseBeamNGJson'
 import type { AppConfig, GamePaths, ServerInfo, RepoSortOrder, VehicleDetail, VehicleConfigInfo, VehicleConfigData, VehicleEditorData, SlotInfo, VariableInfo, WheelPlacement, HostedServerConfig, GPSRoute, ScheduledTask, MapRichMetadata } from '../../shared/types'
 import type { RegistrySearchOptions, RegistryRepository, BeamModMetadata, InstalledRegistryMod } from '../../shared/registry-types'
@@ -3774,7 +3775,8 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('hostedServer:create', async (_event, partial?: Partial<HostedServerConfig>) => {
-    return serverManagerService.createServer(partial)
+    const appConfig = configService.get()
+    return serverManagerService.createServer(partial, appConfig.defaultPorts)
   })
 
   ipcMain.handle('hostedServer:update', async (_event, id: string, partial: Partial<HostedServerConfig>) => {
@@ -4336,8 +4338,18 @@ export function registerIpcHandlers(): void {
     return resolver.findSupporters(identifier)
   })
 
-  // News feed
+  // News feed – cached for 1 hour
+  let newsFeedCache: {
+    items: Array<{ id: string; source: 'steam' | 'beammp'; title: string; url: string; date: number; summary: string }>
+    fetchedAt: number
+  } | null = null
+  const NEWS_CACHE_TTL = 60 * 60 * 1000 // 1 hour in ms
+
   ipcMain.handle('news:getFeed', async () => {
+    if (newsFeedCache && Date.now() - newsFeedCache.fetchedAt < NEWS_CACHE_TTL) {
+      return newsFeedCache.items
+    }
+
     const items: Array<{
       id: string
       source: 'steam' | 'beammp'
@@ -4415,6 +4427,12 @@ export function registerIpcHandlers(): void {
 
     // Sort newest first
     items.sort((a, b) => b.date - a.date)
+
+    // Only update cache if we got at least some results
+    if (items.length > 0) {
+      newsFeedCache = { items, fetchedAt: Date.now() }
+    }
+
     return items
   })
 
@@ -4422,5 +4440,97 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('tailscale:getStatus', async () => {
     return tailscaleService.getStatus()
+  })
+
+  // ── Friends ──
+
+  ipcMain.handle('friends:getAll', async () => {
+    return configService.getFriends()
+  })
+
+  ipcMain.handle('friends:add', async (_event, id: string, displayName: string) => {
+    return configService.addFriend(id, displayName)
+  })
+
+  ipcMain.handle('friends:remove', async (_event, id: string) => {
+    return configService.removeFriend(id)
+  })
+
+  ipcMain.handle('friends:update', async (_event, id: string, updates: { displayName?: string; notes?: string; tags?: string[] }) => {
+    return configService.updateFriend(id, updates)
+  })
+
+  ipcMain.handle('friends:getSessions', async () => {
+    return configService.getSessions()
+  })
+
+  ipcMain.handle('friends:recordSession', async (_event, serverIdent: string, serverName: string, players: string[]) => {
+    return configService.recordSession(serverIdent, serverName, players)
+  })
+
+  // ── Career Save Management ──
+  const careerSaveService = new CareerSaveService(configService)
+
+  ipcMain.handle('career:listProfiles', async () => {
+    return careerSaveService.listProfiles()
+  })
+
+  ipcMain.handle('career:getSlotMetadata', async (_event, profileName: string, slotName: string) => {
+    return careerSaveService.getSlotMetadata(profileName, slotName)
+  })
+
+  ipcMain.handle('career:getCareerLog', async (_event, profileName: string) => {
+    return careerSaveService.getCareerLog(profileName)
+  })
+
+  ipcMain.handle('career:deployProfile', async (_event, profileName: string) => {
+    return careerSaveService.deployProfile(profileName)
+  })
+
+  ipcMain.handle('career:undeployProfile', async (_event, profileName: string) => {
+    return careerSaveService.undeployProfile(profileName)
+  })
+
+  ipcMain.handle('career:backupSlot', async (_event, profileName: string, slotName: string) => {
+    return careerSaveService.backupSlot(profileName, slotName)
+  })
+
+  ipcMain.handle('career:backupProfile', async (_event, profileName: string) => {
+    return careerSaveService.backupProfile(profileName)
+  })
+
+  ipcMain.handle('career:listProfileBackups', async (_event, profileName?: string) => {
+    return careerSaveService.listProfileBackups(profileName)
+  })
+
+  ipcMain.handle('career:restoreProfileBackup', async (_event, backupName: string) => {
+    return careerSaveService.restoreProfileBackup(backupName)
+  })
+
+  ipcMain.handle('career:deleteProfileBackup', async (_event, backupName: string) => {
+    return careerSaveService.deleteProfileBackup(backupName)
+  })
+
+  ipcMain.handle('career:setSavePath', async (_event, savePath: string | null) => {
+    if (savePath && !existsSync(savePath)) {
+      return { success: false, error: 'Directory does not exist' }
+    }
+    await configService.update({ careerSavePath: savePath } as Partial<AppConfig>)
+    return { success: true }
+  })
+
+  ipcMain.handle('career:browseSavePath', async () => {
+    const win = BrowserWindow.getFocusedWindow()
+    if (!win) return null
+    const result = await dialog.showOpenDialog(win, {
+      title: 'Select CareerMP Saves Folder',
+      properties: ['openDirectory']
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0]
+  })
+
+  ipcMain.handle('career:getSavePath', async () => {
+    return careerSaveService.getResolvedSavesDir()
   })
 }

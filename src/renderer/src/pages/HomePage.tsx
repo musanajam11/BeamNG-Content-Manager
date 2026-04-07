@@ -14,6 +14,7 @@ import {
   ExternalLink,
   Clock
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useGameStore } from '../stores/useGameStore'
 import { useAppStore } from '../stores/useAppStore'
 import { useServerStore } from '../stores/useServerStore'
@@ -52,6 +53,7 @@ export function HomePage(): React.JSX.Element {
   const config = useAppStore((s) => s.config)
   const setPage = useAppStore((s) => s.setPage)
   const { servers, favorites, fetchServers, loadFavorites } = useServerStore()
+  const { t } = useTranslation()
 
   const [vanillaLaunching, setVanillaLaunching] = useState(false)
   const [launchError, setLaunchError] = useState<string | null>(null)
@@ -170,20 +172,20 @@ export function HomePage(): React.JSX.Element {
       <div className="px-4 pt-4 pb-4 space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-2xl font-bold text-white">Home</h1>
-          <p className="text-sm text-slate-400 mt-0.5">Launch into BeamNG.drive</p>
+          <h1 className="text-2xl font-bold text-white">{t('home.title')}</h1>
+          <p className="text-sm text-slate-400 mt-0.5">{t('home.subtitle')}</p>
         </div>
 
         {/* Game not found warning */}
         {!hasGame && (
           <div className="border border-[var(--color-accent-20)] bg-[var(--color-accent-5)] px-4 py-3">
             <p className="text-sm text-[var(--color-accent-text-muted)]">
-              BeamNG.drive installation not found.{' '}
+              {t('home.gameNotFound')}{' '}
               <button
                 onClick={() => setPage('settings')}
                 className="text-[var(--accent-primary)] hover:underline font-medium"
               >
-                Configure in Settings
+                {t('home.configureInSettings')}
               </button>
             </p>
           </div>
@@ -216,7 +218,7 @@ export function HomePage(): React.JSX.Element {
             ) : (
               <Monitor size={18} className="text-[var(--accent-primary)]" />
             )}
-            {vanillaLaunching ? 'Launching...' : isRunning ? 'Stop Game' : 'Start Singleplayer'}
+            {vanillaLaunching ? t('home.launching') : isRunning ? t('home.stopGame') : t('home.startSingleplayer')}
           </button>
         )}
 
@@ -229,9 +231,9 @@ export function HomePage(): React.JSX.Element {
             <ArrowUpCircle size={18} className="text-[var(--color-accent)] shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-[var(--color-accent-text)]">
-                {registryUpdates} mod update{registryUpdates !== 1 ? 's' : ''} available
+                {t('home.modUpdatesAvailable', { count: registryUpdates })}
               </p>
-              <p className="text-[11px] text-slate-500">Go to Registry tab to update</p>
+              <p className="text-[11px] text-slate-500">{t('home.goToRegistry')}</p>
             </div>
             <ChevronRight size={14} className="text-slate-500" />
           </button>
@@ -244,8 +246,8 @@ export function HomePage(): React.JSX.Element {
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-green-300">
                 {updateReady
-                  ? `Version ${updateReady} is ready to install`
-                  : `Version ${updateAvailable!.version} is downloading${updateProgress !== null ? ` (${updateProgress}%)` : '...'}`
+                  ? t('home.updateReady', { version: updateReady })
+                  : `${t('home.updateDownloading', { version: updateAvailable!.version })}${updateProgress !== null ? ` (${updateProgress}%)` : '...'}`
                 }
               </p>
               {updateProgress !== null && (
@@ -254,7 +256,7 @@ export function HomePage(): React.JSX.Element {
                 </div>
               )}
               {!updateReady && updateProgress === null && (
-                <p className="text-[11px] text-slate-500">Downloading update in the background</p>
+                <p className="text-[11px] text-slate-500">{t('home.downloadingBackground')}</p>
               )}
             </div>
             {updateReady && (
@@ -262,7 +264,7 @@ export function HomePage(): React.JSX.Element {
                 onClick={() => window.api.installUpdate()}
                 className="px-3 py-1.5 text-xs font-semibold bg-green-500 hover:bg-green-600 text-white rounded transition"
               >
-                Restart & Update
+                {t('home.restartUpdate')}
               </button>
             )}
           </div>
@@ -273,25 +275,25 @@ export function HomePage(): React.JSX.Element {
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Star size={14} className="text-[var(--color-accent)]" />
-              <h2 className="text-sm font-semibold text-white">Favorite Servers</h2>
+              <h2 className="text-sm font-semibold text-white">{t('home.favoriteServers')}</h2>
             </div>
             <button
               onClick={() => setPage('servers')}
               className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-white transition"
             >
-              View all <ChevronRight size={12} />
+              {t('home.viewAll')} <ChevronRight size={12} />
             </button>
           </div>
 
           {favoriteServers.length === 0 ? (
             <div className="border border-white/6 bg-white/[0.02] px-4 py-6 text-center">
               <Star size={20} className="mx-auto text-slate-600 mb-2" />
-              <p className="text-xs text-slate-500">No favorite servers yet</p>
+              <p className="text-xs text-slate-500">{t('home.noFavorites')}</p>
               <button
                 onClick={() => setPage('servers')}
                 className="text-xs text-[var(--accent-primary)] hover:underline mt-1"
               >
-                Browse servers
+                {t('home.browseServers')}
               </button>
             </div>
           ) : (
@@ -342,25 +344,25 @@ export function HomePage(): React.JSX.Element {
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Clock size={14} className="text-[var(--color-accent)]" />
-              <h2 className="text-sm font-semibold text-white">Recent Servers</h2>
+              <h2 className="text-sm font-semibold text-white">{t('home.recentServers')}</h2>
             </div>
             <button
               onClick={() => setPage('servers')}
               className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-white transition"
             >
-              View all <ChevronRight size={12} />
+              {t('home.viewAll')} <ChevronRight size={12} />
             </button>
           </div>
 
           {recentServers.length === 0 ? (
             <div className="border border-white/6 bg-white/[0.02] px-4 py-6 text-center">
               <Clock size={20} className="mx-auto text-slate-600 mb-2" />
-              <p className="text-xs text-slate-500">No recent servers yet</p>
+              <p className="text-xs text-slate-500">{t('home.noRecent')}</p>
               <button
                 onClick={() => setPage('servers')}
                 className="text-xs text-[var(--accent-primary)] hover:underline mt-1"
               >
-                Browse servers
+                {t('home.browseServers')}
               </button>
             </div>
           ) : (
@@ -410,25 +412,25 @@ export function HomePage(): React.JSX.Element {
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Package size={14} className="text-[var(--color-accent)]" />
-              <h2 className="text-sm font-semibold text-white">Recently Installed Mods</h2>
+              <h2 className="text-sm font-semibold text-white">{t('home.recentMods')}</h2>
             </div>
             <button
               onClick={() => setPage('mods')}
               className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-white transition"
             >
-              View all <ChevronRight size={12} />
+              {t('home.viewAll')} <ChevronRight size={12} />
             </button>
           </div>
 
           {recentMods.length === 0 ? (
             <div className="border border-white/6 bg-white/[0.02] px-4 py-6 text-center">
               <Package size={20} className="mx-auto text-slate-600 mb-2" />
-              <p className="text-xs text-slate-500">No mods installed yet</p>
+              <p className="text-xs text-slate-500">{t('home.noModsInstalled')}</p>
               <button
                 onClick={() => setPage('mods')}
                 className="text-xs text-[var(--accent-primary)] hover:underline mt-1"
               >
-                Browse mods
+                {t('mods.browse')}
               </button>
             </div>
           ) : (
@@ -468,18 +470,18 @@ export function HomePage(): React.JSX.Element {
         <div>
           <div className="flex items-center gap-2 mb-3">
             <Newspaper size={14} className="text-[var(--color-accent)]" />
-            <h2 className="text-sm font-semibold text-white">Recent News</h2>
+            <h2 className="text-sm font-semibold text-white">{t('home.recentNews')}</h2>
           </div>
 
           {newsLoading ? (
             <div className="border border-white/6 bg-white/[0.02] px-4 py-6 text-center">
               <Loader2 size={20} className="mx-auto text-slate-600 mb-2 animate-spin" />
-              <p className="text-xs text-slate-500">Loading news...</p>
+              <p className="text-xs text-slate-500">{t('home.loadingNews')}</p>
             </div>
           ) : newsItems.length === 0 ? (
             <div className="border border-white/6 bg-white/[0.02] px-4 py-6 text-center">
               <Newspaper size={20} className="mx-auto text-slate-600 mb-2" />
-              <p className="text-xs text-slate-500">No news available</p>
+              <p className="text-xs text-slate-500">{t('home.noNews')}</p>
             </div>
           ) : (
             <div className="space-y-2">
