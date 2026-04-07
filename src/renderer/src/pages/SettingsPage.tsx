@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/useAppStore'
 import { useThemeStore, ACCENT_PRESETS, BG_STYLES } from '../stores/useThemeStore'
 import { LANGUAGES } from '../i18n'
+import * as Flags from 'country-flag-icons/react/3x2'
 import type { AppearanceSettings } from '../../../shared/types'
 
 type SettingsTab = 'general' | 'appearance'
@@ -68,7 +69,10 @@ function LanguageSelector(): React.JSX.Element {
                 : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'
             }`}
           >
-            <span className="text-base leading-none">{lang.flag}</span>
+            {(() => {
+              const FlagComponent = Flags[lang.countryCode as keyof typeof Flags]
+              return FlagComponent ? <FlagComponent className="w-5 h-auto rounded-sm shrink-0" /> : null
+            })()}
             <span className="font-medium">{lang.nativeName}</span>
             {i18n.language === lang.code && <Check size={14} className="ml-auto" />}
           </button>

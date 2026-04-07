@@ -16,19 +16,19 @@ import fa from './locales/fa.json'
 import ur from './locales/ur.json'
 
 export const LANGUAGES = [
-  { code: 'en', name: 'English', nativeName: 'English', flag: '🇬🇧' },
-  { code: 'es', name: 'Spanish', nativeName: 'Español', flag: '🇪🇸' },
-  { code: 'pt', name: 'Portuguese', nativeName: 'Português', flag: '🇧🇷' },
-  { code: 'fr', name: 'French', nativeName: 'Français', flag: '🇫🇷' },
-  { code: 'de', name: 'German', nativeName: 'Deutsch', flag: '🇩🇪' },
-  { code: 'it', name: 'Italian', nativeName: 'Italiano', flag: '🇮🇹' },
-  { code: 'zh', name: 'Chinese', nativeName: '中文', flag: '🇨🇳' },
-  { code: 'ja', name: 'Japanese', nativeName: '日本語', flag: '🇯🇵' },
-  { code: 'ko', name: 'Korean', nativeName: '한국어', flag: '🇰🇷' },
-  { code: 'ru', name: 'Russian', nativeName: 'Русский', flag: '🇷🇺' },
-  { code: 'ar', name: 'Arabic', nativeName: 'العربية', flag: '🇸🇦' },
-  { code: 'fa', name: 'Farsi', nativeName: 'فارسی', flag: '🇮🇷' },
-  { code: 'ur', name: 'Urdu', nativeName: 'اردو', flag: '🇵🇰' }
+  { code: 'en', name: 'English', nativeName: 'English', countryCode: 'GB' },
+  { code: 'es', name: 'Spanish', nativeName: 'Español', countryCode: 'ES' },
+  { code: 'pt', name: 'Portuguese', nativeName: 'Português', countryCode: 'BR' },
+  { code: 'fr', name: 'French', nativeName: 'Français', countryCode: 'FR' },
+  { code: 'de', name: 'German', nativeName: 'Deutsch', countryCode: 'DE' },
+  { code: 'it', name: 'Italian', nativeName: 'Italiano', countryCode: 'IT' },
+  { code: 'zh', name: 'Chinese', nativeName: '中文', countryCode: 'CN' },
+  { code: 'ja', name: 'Japanese', nativeName: '日本語', countryCode: 'JP' },
+  { code: 'ko', name: 'Korean', nativeName: '한국어', countryCode: 'KR' },
+  { code: 'ru', name: 'Russian', nativeName: 'Русский', countryCode: 'RU' },
+  { code: 'ar', name: 'Arabic', nativeName: 'العربية', countryCode: 'SA' },
+  { code: 'fa', name: 'Farsi', nativeName: 'فارسی', countryCode: 'IR' },
+  { code: 'ur', name: 'Urdu', nativeName: 'اردو', countryCode: 'PK' }
 ] as const
 
 export type LanguageCode = (typeof LANGUAGES)[number]['code']
