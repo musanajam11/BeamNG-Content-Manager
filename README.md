@@ -251,6 +251,15 @@ docs/                    # Guides and documentation
 4. Push to the branch (`git push origin feature/my-feature`)
 5. Open a Pull Request
 
+> [!IMPORTANT]
+> **Branch rules for `main`:**
+> - All changes must go through a **Pull Request** — direct pushes are not allowed
+> - PRs require **1 approving review** (stale approvals are dismissed on new pushes)
+> - All **3 CI checks** (Windows, Linux, macOS) must pass before merging
+> - PRs must be **up-to-date** with `main` before merging
+> - Force pushes and branch deletion on `main` are disabled
+> - **Squash merge** is the default merge strategy
+
 See [Build Guide](docs/BUILD.md) for development setup.
 
 ---
