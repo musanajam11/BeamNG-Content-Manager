@@ -2426,6 +2426,13 @@ export function registerIpcHandlers(): void {
     return launcherService.getStatus()
   })
 
+  // Push game-status changes to renderer in real-time
+  launcherService.onStatusChange((status) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send('game:statusChange', status)
+    }
+  })
+
   ipcMain.handle('game:joinServer', async (_event, ip: string, port: number) => {
     const config = configService.get()
     const ident = `${ip}:${port}`
@@ -3522,6 +3529,76 @@ export function registerIpcHandlers(): void {
       })
     })
   }
+
+  // Full TCP probe — returns all server fields for direct-connect display
+  interface ProbeResult {
+    online: boolean
+    sname?: string
+    map?: string
+    players?: string
+    maxplayers?: string
+    modstotal?: string
+    modlist?: string
+    playerslist?: string
+  }
+
+  function probeServer(ip: string, port: string): Promise<ProbeResult> {
+    return new Promise((resolve) => {
+      const portNum = parseInt(port, 10)
+      if (!portNum || portNum < 1 || portNum > 65535) {
+        resolve({ online: false })
+        return
+      }
+
+      const sock = new net.Socket()
+      sock.setTimeout(4000)
+
+      sock.connect(portNum, ip, () => {
+        sock.write(Buffer.from('I'))
+      })
+
+      let recvBuf = Buffer.alloc(0)
+
+      sock.on('data', (chunk) => {
+        recvBuf = Buffer.concat([recvBuf, chunk])
+        if (recvBuf.length >= 4) {
+          const len = recvBuf.readUInt32LE(0)
+          if (recvBuf.length >= 4 + len) {
+            try {
+              const info = JSON.parse(recvBuf.subarray(4, 4 + len).toString('utf-8'))
+              resolve({
+                online: true,
+                sname: info.sname || info.name || undefined,
+                map: info.map || undefined,
+                players: String(info.players ?? '0'),
+                maxplayers: String(info.maxplayers ?? '0'),
+                modstotal: String(info.modstotal ?? info.mods ?? '0'),
+                modlist: info.modlist || undefined,
+                playerslist: info.playerslist || undefined
+              })
+            } catch {
+              resolve({ online: false })
+            }
+            sock.destroy()
+          }
+        }
+      })
+
+      sock.on('timeout', () => {
+        resolve({ online: false })
+        sock.destroy()
+      })
+
+      sock.on('error', () => {
+        resolve({ online: false })
+        sock.destroy()
+      })
+    })
+  }
+
+  ipcMain.handle('game:probeServer', async (_event, ip: string, port: string) => {
+    return probeServer(ip, port)
+  })
 
   // Fallback: look up the server in the backend API list (cached for 5s)
   let cachedServerList: ServerInfo[] = []

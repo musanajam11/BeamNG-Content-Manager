@@ -67,7 +67,22 @@ const api = {
     ipcRenderer.invoke('game:getVehicleDefaultPaints', vehicleName, configName) as Promise<Array<{ baseColor: number[]; metallic: number; roughness: number; clearcoat: number; clearcoatRoughness: number }>>,
   killGame: () => ipcRenderer.invoke('game:kill'),
   getGameStatus: () => ipcRenderer.invoke('game:status'),
+  onGameStatusChange: (
+    callback: (status: { running: boolean; pid: number | null; connectedServer: string | null }) => void
+  ) => {
+    const handler = (
+      _event: unknown,
+      status: { running: boolean; pid: number | null; connectedServer: string | null }
+    ): void => callback(status)
+    ipcRenderer.on('game:statusChange', handler)
+    return () => ipcRenderer.removeListener('game:statusChange', handler)
+  },
   joinServer: (ip: string, port: number) => ipcRenderer.invoke('game:joinServer', ip, port),
+  probeServer: (ip: string, port: string) =>
+    ipcRenderer.invoke('game:probeServer', ip, port) as Promise<{
+      online: boolean; sname?: string; map?: string; players?: string;
+      maxplayers?: string; modstotal?: string; playerslist?: string
+    }>,
   beammpLogin: (username: string, password: string) => ipcRenderer.invoke('game:beammpLogin', username, password),
   beammpLoginAsGuest: () => ipcRenderer.invoke('game:beammpLoginAsGuest'),
   beammpLogout: () => ipcRenderer.invoke('game:beammpLogout'),

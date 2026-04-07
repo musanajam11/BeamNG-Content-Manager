@@ -59,6 +59,10 @@ local function onUpdate(dt)
   joined = true
   log('I', 'beammpCMBridge', 'CM join signal: ' .. content.ip .. ':' .. tostring(content.port))
   if extensions.MPCoreNetwork and extensions.MPCoreNetwork.connectToServer then
+    -- Navigate to the BeamMP multiplayer menu so the loading overlay is visible
+    guihooks.trigger('MenuOpenModule', 'multiplayer')
+    -- Show immediate loading feedback
+    guihooks.trigger('LoadingInfo', {message = 'Connecting to server...'})
     log('I', 'beammpCMBridge', 'Calling MPCoreNetwork.connectToServer')
     extensions.MPCoreNetwork.connectToServer(content.ip, tonumber(content.port), "", content.name or "")
   else
@@ -212,6 +216,9 @@ export class GameLauncherService {
   private serverMsgResolve: ((msg: string) => void) | null = null
   private serverRawResolve: ((data: Buffer) => void) | null = null
   private serverRawSize: number = 0
+  private serverRawBuffer: Buffer | null = null
+  private serverRawOffset: number = 0
+  private serverRawProgressCallback: ((received: number) => void) | null = null
   private serverInRelay: boolean = false
 
   // UDP
@@ -222,10 +229,6 @@ export class GameLauncherService {
 
   // Pending server address for delayed H / UDP start (sent when game connects to proxy)
   private pendingRelayServer: { ip: string; port: number } | null = null
-
-  // Confirmation promises
-  private modLoadedFlag: boolean = false
-  private modConfirmResolve: (() => void) | null = null
 
   // Game readiness tracking
   private gameInitialized: boolean = false
@@ -447,8 +450,9 @@ export class GameLauncherService {
     const code = data[0]
     const subCode = data.length > 1 ? data[1] : ''
 
-    // Log core messages from game (skip A heartbeats and frequent relay traffic)
-    if (code !== 'A' && code !== 'E' && code !== 'O' && code !== 'V' && code !== 'W') {
+    // Log core messages from game (skip A heartbeats, Ul polling, and frequent relay traffic)
+    if (code !== 'A' && code !== 'E' && code !== 'O' && code !== 'V' && code !== 'W'
+      && !(code === 'U' && subCode === 'l') && !(code === 'U' && subCode === 'p')) {
       this.log(`Core ← Game: ${code}${subCode} (${data.length} bytes)${data.length < 80 ? ' → ' + data : ''}`)
     }
 
@@ -472,7 +476,13 @@ export class GameLauncherService {
 
       case 'C':
         // Connect to server: C<ip:port>
-        this.startServerSync(data)
+        // If we're already connected/connecting (joinServerImpl pre-connected),
+        // skip — the game just needs to connect to the proxy.
+        if (this.serverInRelay || (this.serverSocket && !this.serverSocket.destroyed)) {
+          this.log('Already connected/connecting, skipping C command')
+        } else {
+          this.startServerSync(data)
+        }
         break
 
       case 'I':
@@ -536,11 +546,6 @@ export class GameLauncherService {
         // Mod loaded confirmation
         if (!this.confList.has(data)) {
           this.confList.add(data)
-          this.modLoadedFlag = true
-          if (this.modConfirmResolve) {
-            this.modConfirmResolve()
-            this.modConfirmResolve = null
-          }
         }
         break
 
@@ -727,7 +732,7 @@ export class GameLauncherService {
 
   // ── Server Connection (C command) ──
 
-  private startServerSync(data: string): void {
+  private async startServerSync(data: string): Promise<void> {
     const hostPort = data.substring(1)
     const colonIdx = hostPort.lastIndexOf(':')
     if (colonIdx < 0) {
@@ -738,7 +743,7 @@ export class GameLauncherService {
     const ip = hostPort.substring(0, colonIdx)
     const port = parseInt(hostPort.substring(colonIdx + 1), 10)
 
-    this.checkLocalKey()
+    await this.checkLocalKey()
     this.ulStatus = 'UlLoading...'
     this.terminate = false
     this.confList.clear()
@@ -779,11 +784,7 @@ export class GameLauncherService {
         this.serverRawResolve = null
         r(Buffer.alloc(0))
       }
-      if (this.modConfirmResolve) {
-        const r = this.modConfirmResolve
-        this.modConfirmResolve = null
-        r()
-      }
+
     })
 
     serverSock.on('end', () => {
@@ -831,7 +832,9 @@ export class GameLauncherService {
     })
   }
 
-  private serverRecvRaw(size: number, timeoutMs = 60000): Promise<Buffer> {
+  private serverRecvRaw(size: number, timeoutMs?: number): Promise<Buffer> {
+    // Scale timeout: at least 60s, or allow ~10 KB/s minimum throughput, whichever is larger
+    const effectiveTimeout = timeoutMs ?? Math.max(60000, Math.ceil(size / 10240) * 1000 + 30000)
     return new Promise((resolve, reject) => {
       if (this.terminate) { reject(new Error('Terminated')); return }
       const timer = setTimeout(() => {
@@ -841,13 +844,16 @@ export class GameLauncherService {
           this.terminate = true
           resolve(Buffer.alloc(0))
         }
-      }, timeoutMs)
+      }, effectiveTimeout)
       const wrappedResolve = (val: Buffer): void => {
         clearTimeout(timer)
         resolve(val)
       }
       this.serverRawResolve = wrappedResolve
       this.serverRawSize = size
+      // Pre-allocate the target buffer and track write offset for streaming receives
+      this.serverRawBuffer = Buffer.allocUnsafe(size)
+      this.serverRawOffset = 0
       this.processServerBuffer()
     })
   }
@@ -872,13 +878,26 @@ export class GameLauncherService {
       }
       return
     }
-    if (this.serverRawResolve && this.serverRawSize > 0) {
-      if (this.serverBuffer.length >= this.serverRawSize) {
-        const data = Buffer.from(this.serverBuffer.subarray(0, this.serverRawSize))
-        this.serverBuffer = this.serverBuffer.subarray(this.serverRawSize)
+    if (this.serverRawResolve && this.serverRawSize > 0 && this.serverRawBuffer) {
+      // Stream incoming data into pre-allocated buffer instead of accumulating
+      const remaining = this.serverRawSize - this.serverRawOffset
+      if (this.serverBuffer.length > 0 && remaining > 0) {
+        const toCopy = Math.min(this.serverBuffer.length, remaining)
+        this.serverBuffer.copy(this.serverRawBuffer, this.serverRawOffset, 0, toCopy)
+        this.serverRawOffset += toCopy
+        this.serverBuffer = this.serverBuffer.subarray(toCopy)
+        if (this.serverRawProgressCallback) {
+          this.serverRawProgressCallback(this.serverRawOffset)
+        }
+      }
+      if (this.serverRawOffset >= this.serverRawSize) {
+        const data = this.serverRawBuffer
         const resolve = this.serverRawResolve
         this.serverRawResolve = null
         this.serverRawSize = 0
+        this.serverRawBuffer = null
+        this.serverRawOffset = 0
+        this.serverRawProgressCallback = null
         resolve(data)
       }
       return
@@ -938,14 +957,22 @@ export class GameLauncherService {
     }
     if (this.terminate) throw new Error('Terminated')
 
-    this.log('Handshake complete, entering relay (waiting for game to connect to proxy)')
+    this.log('Handshake complete, entering relay mode')
     this.serverInRelay = true
-
-    // Match official launcher flow:
-    // Do NOT send H or start UDP yet — wait until game connects to proxy (port 4445).
-    // P<clientId>, H, and UDP are all triggered from startGameProxyServer on accept.
-    // UlStatus stays as-is until 'M' (map) arrives from the server relay.
     this.pendingRelayServer = { ip, port }
+
+    // If the game is already connected to the proxy (early join signal flow),
+    // start relay immediately instead of waiting for the proxy callback.
+    if (this.gameProxySocket && !this.gameProxySocket.destroyed) {
+      const { ip: rIp, port: rPort } = this.pendingRelayServer
+      this.pendingRelayServer = null
+      this.log('Game already on proxy — sending P, H and starting UDP')
+      if (this.clientId >= 0) {
+        this.gameSend('P' + this.clientId.toString())
+      }
+      this.serverSendFramed('H')
+      this.startUdp(rIp, rPort)
+    }
     this.processServerBuffer()
   }
 
@@ -1006,6 +1033,10 @@ export class GameLauncherService {
         const dlResp = await this.serverRecvMsg()
         if (dlResp === 'CO' || this.terminate) { this.terminate = true; return }
         if (dlResp !== 'AG') { this.terminate = true; return }
+        // Stream progress updates to the overlay as data arrives
+        this.serverRawProgressCallback = (received: number): void => {
+          this.emitModSyncProgress({ phase: 'downloading', modIndex: i, modCount: modInfos.length, fileName: mod.file_name, received, total: mod.file_size })
+        }
         const fileData = await this.serverRecvRaw(mod.file_size)
         if (this.terminate || fileData.length !== mod.file_size) { this.terminate = true; return }
         this.emitModSyncProgress({ phase: 'downloading', modIndex: i, modCount: modInfos.length, fileName: mod.file_name, received: mod.file_size, total: mod.file_size })
@@ -1030,25 +1061,7 @@ export class GameLauncherService {
         this.terminate = true
         return
       }
-
-      this.modConfirmResolve = null
-      this.modLoadedFlag = false
-      await new Promise<void>((resolve) => {
-        // Check after assigning resolve so the 'R' handler can resolve us
-        this.modConfirmResolve = resolve
-        if (this.modLoadedFlag || this.terminate) {
-          this.modConfirmResolve = null
-          resolve()
-          return
-        }
-        setTimeout(() => {
-          if (this.modConfirmResolve === resolve) {
-            this.modConfirmResolve = null
-            this.log(`WARN: Mod load confirmation timed out for ${mod.file_name}`)
-            resolve()
-          }
-        }, 30000)
-      })
+      this.log(`Mod ${mod.file_name} placed (${i + 1}/${modInfos.length})`)
     }
 
     if (!this.terminate) {
@@ -1078,10 +1091,11 @@ export class GameLauncherService {
         this.mStatus = data
         // Store the map data and set UlStatus to done (matches official launcher).
         // The game polls Ul status — when it sees "Uldone", it requests the map
-        // via its own 'M' core message. Do NOT send proactively.
+        // via its own 'M' core message. Also forward M via proxy (official launcher
+        // forwards ALL relay messages to game, including M).
         this.ulStatus = 'Uldone'
         this.log(`Map received from server, UlStatus → Uldone: ${data.substring(0, 80)}`)
-        return
+        break // fall through to gameSend
       case 'U':
         // U (magic) is handled at raw buffer level in processServerBuffer
         // to avoid UTF-8 corruption. This case only triggers for non-binary U messages.
@@ -1175,21 +1189,26 @@ export class GameLauncherService {
       this.log('(Proxy) Game Connected!')
       this.gameProxySocket = socket
 
-      // Official launcher flow (UDPClientMain): send P<clientId> to game, then H to server,
-      // then start UDP. This ensures the game is ready to receive relay traffic.
-      if (this.clientId >= 0) {
-        this.log(`Sending P${this.clientId} to game via proxy`)
-        this.gameSend('P' + this.clientId.toString())
-      }
-
-      // Now send H to server to start relay, and start UDP
-      if (this.pendingRelayServer) {
+      // Only initiate relay handshake (P + H + UDP) if we're already in relay mode.
+      // If the game connects DURING mod sync (early join signal), just store the
+      // socket — doServerHandshake will detect it later and start relay then.
+      if (this.serverInRelay && this.pendingRelayServer) {
         const { ip, port } = this.pendingRelayServer
         this.pendingRelayServer = null
+        if (this.clientId >= 0) {
+          this.log(`Sending P${this.clientId} to game via proxy`)
+          this.gameSend('P' + this.clientId.toString())
+        }
         this.log('Sending H to server (relay start) and starting UDP')
         this.serverSendFramed('H')
         this.startUdp(ip, port)
         this.processServerBuffer()
+      } else if (this.serverInRelay && this.clientId >= 0) {
+        // Relay already active (H already sent) — just send P
+        this.log(`Sending P${this.clientId} to game via proxy (relay already active)`)
+        this.gameSend('P' + this.clientId.toString())
+      } else {
+        this.log('Game connected to proxy before relay — deferring P/H until relay starts')
       }
 
       let buf = Buffer.alloc(0)
@@ -1200,7 +1219,11 @@ export class GameLauncherService {
           if (buf.length < 4 + len) break
           const msg = buf.subarray(4, 4 + len).toString('utf-8')
           buf = buf.subarray(4 + len)
-          this.serverSend(msg)
+          // CRITICAL: Only forward game data to server when in relay mode.
+          // During mod sync, game data would corrupt the server protocol.
+          if (this.serverInRelay) {
+            this.serverSend(msg)
+          }
         }
       })
       socket.on('close', () => { this.gameProxySocket = null })
@@ -1615,43 +1638,61 @@ export class GameLauncherService {
       this.terminate = true
     }
 
-    // Store the pending join so it triggers once the game mod is ready
-    this.pendingServerJoin = { ip, port }
-
     // Launch game if not running
     if (!this.gameProcess || this.gameProcess.killed) {
       this.gameInitialized = false
       const result = await this.launchGame(paths)
       if (!result.success) {
-        this.pendingServerJoin = null
         return result
       }
     }
 
-    // If game mod is already initialized, trigger immediately
-    if (this.gameInitialized && this.coreSocket && !this.coreSocket.destroyed) {
-      this.triggerPendingJoin()
-      return { success: true }
+    // Wait for game mod to be ready (Nc auth handshake) if not already
+    if (!this.gameInitialized || !this.coreSocket || this.coreSocket.destroyed) {
+      try {
+        await this.waitForGameReady()
+      } catch {
+        return { success: false, error: 'Game did not initialize in time' }
+      }
     }
 
-    // Otherwise wait for game mod to be ready (Nc auth handshake), then trigger
+    // Set up server connection state
+    this.log(`Pre-syncing server ${ip}:${port} before game connect`)
+    await this.checkLocalKey()
+    this.ulStatus = 'UlLoading...'
+    this.terminate = false
+    this.confList.clear()
+    this.ping = -1
+    this.clientId = -1
+    this.serverInRelay = false
+    this.connectedServerAddress = `${ip}:${port}`
+    this.notifyStatusChange()
+    this.startGameProxyServer()
+
+    // Write join signal EARLY so the game starts connecting to the proxy
+    // while we handle server handshake + mod sync.  The game will connect
+    // to the proxy port and wait there for P<clientId> + relay data.
+    this.writeJoinSignal(ip, port)
+
+    // Connect to server — sets this.serverSocket, which guards the C handler
+    // from calling startServerSync when the game sends its C command.
+    this.connectToServer(ip, port)
+
+    // Wait for handshake + mod sync to complete (relay mode entered)
     try {
-      await this.waitForGameReady()
-      this.triggerPendingJoin()
-    } catch {
-      this.pendingServerJoin = null
-      return { success: false, error: 'Game did not initialize in time' }
+      await new Promise<void>((resolve, reject) => {
+        const check = setInterval(() => {
+          if (this.serverInRelay) { clearInterval(check); resolve() }
+          else if (this.terminate) { clearInterval(check); reject(new Error('Server sync failed')) }
+        }, 100)
+        setTimeout(() => { clearInterval(check); reject(new Error('Server sync timed out')) }, 300000)
+      })
+    } catch (err) {
+      return { success: false, error: (err as Error).message }
     }
 
+    this.log('Server sync complete and relay active')
     return { success: true }
-  }
-
-  private triggerPendingJoin(): void {
-    const pending = this.pendingServerJoin
-    if (!pending) return
-    this.pendingServerJoin = null
-    this.log(`Writing join signal for ${pending.ip}:${pending.port}`)
-    this.writeJoinSignal(pending.ip, pending.port)
   }
 
   private writeJoinSignal(ip: string, port: number): void {
@@ -1723,11 +1764,20 @@ export class GameLauncherService {
       pos += cdLen
     }
 
-    // Check if already patched
-    const bridgeExists = entries.some(e => e.name === 'lua/ge/extensions/beammpCMBridge.lua')
-    if (bridgeExists) {
-      this.log('BeamMP.zip already contains bridge, skipping patch')
-      return source
+    // Check if already patched with current bridge content
+    const bridgeEntry = entries.find(e => e.name === 'lua/ge/extensions/beammpCMBridge.lua')
+    if (bridgeEntry) {
+      // Verify the existing bridge content matches current BRIDGE_LUA
+      const bridgeBuf = Buffer.from(BRIDGE_LUA, 'utf-8')
+      const expectedCrc = crc32(bridgeBuf)
+      if (bridgeEntry.fileCrc === expectedCrc) {
+        this.log('BeamMP.zip already contains current bridge, skipping patch')
+        return source
+      }
+      this.log('BeamMP.zip contains outdated bridge, re-patching')
+      // Remove old bridge entry so it gets replaced
+      const idx = entries.indexOf(bridgeEntry)
+      entries.splice(idx, 1)
     }
 
     // Build output local file entries
@@ -1755,8 +1805,11 @@ export class GameLauncherService {
       }
 
       const patch = '\nload("beammpCMBridge")\nsetExtensionUnloadMode("beammpCMBridge", "manual")\n'
-      const patched = Buffer.concat([content, Buffer.from(patch, 'utf-8')])
-      modified.set(modScriptIdx, { content: patched, newCrc: crc32(patched) })
+      // Only append the patch if modScript doesn't already load the bridge
+      if (!content.toString('utf-8').includes('load("beammpCMBridge")')) {
+        const patched = Buffer.concat([content, Buffer.from(patch, 'utf-8')])
+        modified.set(modScriptIdx, { content: patched, newCrc: crc32(patched) })
+      }
     }
 
     // Write local file entries

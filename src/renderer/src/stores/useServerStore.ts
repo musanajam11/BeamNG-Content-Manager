@@ -47,23 +47,23 @@ function applyFilters(
       const onlineKeys = new Set(result.map((s) => `${s.ip}:${s.port}`))
       result = result.filter((s) => favorites.has(`${s.ip}:${s.port}`))
       // Add offline placeholders for favorited servers not in the live list
-      let dcServers: { address: string; label: string }[] = []
+      let savedMeta: Record<string, { sname?: string; map?: string; players?: string; maxplayers?: string; modstotal?: string }> = {}
       try {
-        const raw = localStorage.getItem('directConnectServers')
-        if (raw) dcServers = JSON.parse(raw)
+        const raw = localStorage.getItem('directConnectServerMeta')
+        if (raw) savedMeta = JSON.parse(raw)
       } catch { /* ignore */ }
       for (const key of favorites) {
         if (!onlineKeys.has(key)) {
           const [ip, port] = key.split(':')
-          const dc = dcServers.find((s) => s.address === key)
+          const meta = savedMeta[key]
           result.push({
             ident: key,
-            sname: dc?.label || key,
+            sname: meta?.sname || key,
             ip,
             port: port || '30814',
-            players: '0',
-            maxplayers: '0',
-            map: '',
+            players: meta?.players || '0',
+            maxplayers: meta?.maxplayers || '0',
+            map: meta?.map || '',
             sdesc: 'Offline',
             version: '',
             cversion: '',
@@ -77,7 +77,7 @@ function applyFilters(
             location: '',
             modlist: '',
             modstotalsize: '0',
-            modstotal: '0',
+            modstotal: meta?.modstotal || '0',
             playerslist: ''
           })
         }

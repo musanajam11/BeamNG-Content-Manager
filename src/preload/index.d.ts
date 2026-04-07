@@ -49,7 +49,12 @@ interface AppAPI {
   getVehicleDefaultPaints(vehicleName: string, configName: string): Promise<Array<{ baseColor: number[]; metallic: number; roughness: number; clearcoat: number; clearcoatRoughness: number }>>
   killGame(): Promise<void>
   getGameStatus(): Promise<GameStatus>
+  onGameStatusChange(callback: (status: GameStatus) => void): () => void
   joinServer(ip: string, port: number): Promise<{ success: boolean; error?: string }>
+  probeServer(ip: string, port: string): Promise<{
+    online: boolean; sname?: string; map?: string; players?: string;
+    maxplayers?: string; modstotal?: string; playerslist?: string
+  }>
   beammpLogin(username: string, password: string): Promise<{ success: boolean; username?: string; error?: string }>
   beammpLoginAsGuest(): Promise<void>
   beammpLogout(): Promise<void>

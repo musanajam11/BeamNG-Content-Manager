@@ -1,12 +1,22 @@
 import { useState, useEffect, useCallback } from 'react'
-import { X, Play, Star, Trash2, Clock } from 'lucide-react'
+import { X, Play, Star, Trash2, Clock, Users, MapPin } from 'lucide-react'
 import { useServerStore } from '../../stores/useServerStore'
+import { BeamMPText } from '../BeamMPText'
 
 interface SavedServer {
   address: string
   label: string
   favorite: boolean
   lastUsed: number
+}
+
+interface ProbeInfo {
+  online: boolean
+  sname?: string
+  map?: string
+  players?: string
+  maxplayers?: string
+  modstotal?: string
 }
 
 interface Props {
@@ -31,18 +41,51 @@ function saveToDisk(servers: SavedServer[]): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(servers))
 }
 
+function parseAddress(addr: string): { ip: string; port: number } | null {
+  const trimmed = addr.trim()
+  const colonIdx = trimmed.lastIndexOf(':')
+  if (colonIdx < 1) return null
+  const ip = trimmed.substring(0, colonIdx)
+  const port = parseInt(trimmed.substring(colonIdx + 1), 10)
+  if (!port || port < 1 || port > 65535) return null
+  return { ip, port }
+}
+
 export function DirectConnectDialog({ open, joining, onClose, onConnect }: Props): React.JSX.Element | null {
   const [address, setAddress] = useState('')
   const [label, setLabel] = useState('')
   const [saved, setSaved] = useState<SavedServer[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [probeResults, setProbeResults] = useState<Record<string, ProbeInfo>>({})
+  const [, setProbing] = useState(false)
 
   useEffect(() => {
     if (open) {
       setSaved(loadSaved())
       setError(null)
+      setProbeResults({})
     }
   }, [open])
+
+  // Probe all saved servers when dialog opens or saved list changes
+  useEffect(() => {
+    if (!open || saved.length === 0) return
+    setProbing(true)
+    const addresses = saved.map((s) => s.address)
+    Promise.all(
+      addresses.map(async (addr) => {
+        const parsed = parseAddress(addr)
+        if (!parsed) return { addr, result: { online: false } as ProbeInfo }
+        const result = await window.api.probeServer(parsed.ip, String(parsed.port))
+        return { addr, result }
+      })
+    ).then((results) => {
+      const map: Record<string, ProbeInfo> = {}
+      for (const { addr, result } of results) map[addr] = result
+      setProbeResults(map)
+      setProbing(false)
+    })
+  }, [open, saved.length])
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') onClose()
@@ -57,16 +100,6 @@ export function DirectConnectDialog({ open, joining, onClose, onConnect }: Props
   }, [open, handleKeyDown])
 
   if (!open) return null
-
-  const parseAddress = (addr: string): { ip: string; port: number } | null => {
-    const trimmed = addr.trim()
-    const colonIdx = trimmed.lastIndexOf(':')
-    if (colonIdx < 1) return null
-    const ip = trimmed.substring(0, colonIdx)
-    const port = parseInt(trimmed.substring(colonIdx + 1), 10)
-    if (!port || port < 1 || port > 65535) return null
-    return { ip, port }
-  }
 
   const handleConnect = (addr?: string): void => {
     const target = addr || address
@@ -233,6 +266,7 @@ export function DirectConnectDialog({ open, joining, onClose, onConnect }: Props
                     <SavedServerRow
                       key={s.address}
                       server={s}
+                      probe={probeResults[s.address]}
                       joining={joining}
                       onConnect={() => handleConnect(s.address)}
                       onToggleFavorite={() => toggleSavedFavorite(s.address)}
@@ -253,6 +287,7 @@ export function DirectConnectDialog({ open, joining, onClose, onConnect }: Props
                     <SavedServerRow
                       key={s.address}
                       server={s}
+                      probe={probeResults[s.address]}
                       joining={joining}
                       onConnect={() => handleConnect(s.address)}
                       onToggleFavorite={() => toggleSavedFavorite(s.address)}
@@ -271,12 +306,14 @@ export function DirectConnectDialog({ open, joining, onClose, onConnect }: Props
 
 function SavedServerRow({
   server,
+  probe,
   joining,
   onConnect,
   onToggleFavorite,
   onRemove
 }: {
   server: SavedServer
+  probe?: ProbeInfo
   joining: boolean
   onConnect: () => void
   onToggleFavorite: () => void
@@ -295,21 +332,45 @@ function SavedServerRow({
         <Star size={12} fill={server.favorite ? 'currentColor' : 'none'} />
       </button>
 
+      {/* Online/offline indicator */}
+      <div className="flex-shrink-0" title={probe ? (probe.online ? 'Online' : 'Offline') : 'Checking...'}>
+        {!probe ? (
+          <div className="h-2 w-2 rounded-full bg-slate-500 animate-pulse" />
+        ) : probe.online ? (
+          <div className="h-2 w-2 rounded-full bg-emerald-400" />
+        ) : (
+          <div className="h-2 w-2 rounded-full bg-rose-400" />
+        )}
+      </div>
+
       <button
         onClick={onConnect}
         disabled={joining}
         className="flex-1 min-w-0 text-left disabled:opacity-40"
       >
         <div className="flex items-center gap-2">
-          {server.label && (
+          {(probe?.online && probe.sname) ? (
+            <span className="truncate text-xs font-medium text-white">
+              <BeamMPText text={probe.sname} />
+            </span>
+          ) : server.label ? (
             <span className="truncate text-xs font-medium text-white">
               {server.label}
             </span>
-          )}
+          ) : null}
           <span className="truncate font-mono text-[11px] text-slate-400">
             {server.address}
           </span>
         </div>
+        {probe?.online && (
+          <div className="flex items-center gap-3 mt-0.5 text-[10px] text-slate-500">
+            {probe.players && <span className="inline-flex items-center gap-0.5"><Users size={9} /> {probe.players}/{probe.maxplayers}</span>}
+            {probe.map && <span className="inline-flex items-center gap-0.5"><MapPin size={9} /> {probe.map.split('/').pop()}</span>}
+          </div>
+        )}
+        {probe && !probe.online && (
+          <div className="mt-0.5 text-[10px] text-rose-400/70">Offline</div>
+        )}
       </button>
 
       <button

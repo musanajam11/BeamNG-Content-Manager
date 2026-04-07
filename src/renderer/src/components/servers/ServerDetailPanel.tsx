@@ -9,8 +9,10 @@ import { BeamMPText } from '../BeamMPText'
 interface Props {
   server: ServerInfo
   favorite: boolean
+  userLabel?: string | null
   joining: boolean
   joinError: string | null
+  connectedServer?: string | null
   onJoin: () => void
   onClose: () => void
   onToggleFavorite: () => void
@@ -44,7 +46,7 @@ function Badge({ children, tone = 'default' }: { children: React.ReactNode; tone
 }
 
 export function ServerDetailPanel({
-  server, favorite, joining, joinError, onJoin, onClose, onToggleFavorite,
+  server, favorite, userLabel, joining, joinError, connectedServer, onJoin, onClose, onToggleFavorite,
   queueActive, queueTarget, queueMessage, queueElapsed, onQueueStart, onQueueStop
 }: Props): React.JSX.Element {
   const playerCount = parseInt(server.players, 10) || 0
@@ -80,6 +82,8 @@ export function ServerDetailPanel({
   const isFull = playerCount >= maxPlayers && maxPlayers > 0
   const isThisQueued = queueActive && queueTarget?.ip === server.ip && queueTarget?.port === server.port
   const isOtherQueued = queueActive && !isThisQueued
+  const isConnectedHere = connectedServer === `${server.ip}:${server.port}`
+  const isConnectedElsewhere = !!connectedServer && !isConnectedHere
   const flagUrl = useFlagUrl(server.location)
 
   const popColor = fillPct >= 90 ? 'pop-fill-rose' : fillPct >= 65 ? 'pop-fill-amber' : 'pop-fill-green'
@@ -136,6 +140,12 @@ export function ServerDetailPanel({
           )}
           <BeamMPText text={server.sname} className="text-sm font-bold tracking-tight text-white line-clamp-2 leading-snug flex-1" />
         </div>
+        {userLabel && (
+          <div className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-400">
+            <span className="text-[10px] uppercase tracking-wider text-slate-500">Label:</span>
+            <span className="text-slate-300">{userLabel}</span>
+          </div>
+        )}
         <div className="flex flex-wrap gap-1.5">
           {server.official && <Badge tone="accent">Official</Badge>}
           {parseInt(server.modstotal, 10) > 0 && <Badge tone="gold">Modded</Badge>}
@@ -170,13 +180,21 @@ export function ServerDetailPanel({
                 Cancel queue
               </span>
             </button>
+          ) : isConnectedHere ? (
+            /* Currently connected to this server */
+            <div className="flex-1 border border-emerald-400/25 bg-emerald-400/10 px-4 py-2.5 text-sm font-semibold text-emerald-300 text-center">
+              <span className="inline-flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                Connected
+              </span>
+            </div>
           ) : isFull ? (
             /* Server is full, not queued — show "Wait to Join" */
             <button
               onClick={onQueueStart}
-              disabled={isOtherQueued}
+              disabled={isOtherQueued || isConnectedElsewhere || isConnectedHere}
               className="flex-1 border border-[var(--color-border-accent)] bg-[var(--color-accent-10)] px-4 py-2.5 text-sm font-semibold text-[var(--color-accent-text-muted)] transition hover:bg-[var(--color-accent-20)] disabled:opacity-40"
-              title={isOtherQueued ? 'Already queued for another server' : 'Wait for a slot to open, then auto-join'}
+              title={isOtherQueued ? 'Already queued for another server' : (isConnectedElsewhere || isConnectedHere) ? 'Already connected to a server' : 'Wait for a slot to open, then auto-join'}
             >
               <span className="inline-flex items-center gap-2">
                 <Clock size={14} />
@@ -187,13 +205,13 @@ export function ServerDetailPanel({
             /* Server has space — show normal join */
             <button
               onClick={onJoin}
-              disabled={joining || isOtherQueued}
+              disabled={joining || isOtherQueued || isConnectedElsewhere}
               className="flex-1 bg-[var(--color-accent)] px-4 py-2.5 text-sm font-semibold text-white accent-shadow-sm transition hover:opacity-95 disabled:opacity-40"
-              title={isOtherQueued ? 'Already queued for another server' : undefined}
+              title={isOtherQueued ? 'Already queued for another server' : isConnectedElsewhere ? 'Already connected to another server' : undefined}
             >
               <span className="inline-flex items-center gap-2">
                 <Play size={14} fill="currentColor" />
-                {joining ? 'Joining...' : isOtherQueued ? 'Locked — in queue' : 'Join server'}
+                {joining ? 'Joining...' : isOtherQueued ? 'Locked — in queue' : isConnectedElsewhere ? 'Connected elsewhere' : 'Join server'}
               </span>
             </button>
           )}
