@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react'
 import { FolderOpen, Globe, Check, AlertCircle, Package, Download, Upload, Palette, RotateCcw, Monitor, Type, Layers, Maximize2, PanelLeft, Eye, EyeOff, Image, X, Plus, Shuffle, Network, Languages, Terminal, Server, GripVertical, Code, AlertTriangle, ToggleLeft, ToggleRight, Copy, ChevronDown, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/useAppStore'
@@ -804,17 +804,19 @@ function BackgroundImageSection({ appearance, update }: {
   const [defaultPaths, setDefaultPaths] = useState<string[]>([])
 
   // Build the combined list: saved user list + bundled defaults (deduplicated)
-  const allImages = (() => {
+  const allImages = useMemo(() => {
     const seen = new Set<string>()
     const result: string[] = []
     for (const p of appearance.bgImageList) {
-      if (!seen.has(p)) { seen.add(p); result.push(p) }
+      const norm = p.replace(/\\/g, '/')
+      if (!seen.has(norm)) { seen.add(norm); result.push(p) }
     }
     for (const p of defaultPaths) {
-      if (!seen.has(p)) { seen.add(p); result.push(p) }
+      const norm = p.replace(/\\/g, '/')
+      if (!seen.has(norm)) { seen.add(norm); result.push(p) }
     }
     return result
-  })()
+  }, [appearance.bgImageList, defaultPaths])
 
   // Load bundled default backgrounds on mount
   useEffect(() => {
