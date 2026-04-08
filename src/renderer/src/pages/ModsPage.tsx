@@ -34,7 +34,9 @@ import {
   Flag,
   Paintbrush,
   RectangleHorizontal,
-  Cog
+  Cog,
+  Monitor,
+  Server
 } from 'lucide-react'
 import type { ModInfo, RepoMod, RepoCategory, RepoSortOrder } from '../../../shared/types'
 import type { AvailableMod, BeamModMetadata, RegistrySearchResult, ResolutionResult, InstalledRegistryMod } from '../../../shared/registry-types'
@@ -182,6 +184,8 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
   const [actionPending, setActionPending] = useState<string | null>(null)
   const [previewCache, setPreviewCache] = useState<Record<string, string | null>>({})
   const [registryInstalled, setRegistryInstalled] = useState<Record<string, InstalledRegistryMod>>({})
+  const [scopeDialogMods, setScopeDialogMods] = useState<ModInfo[]>([])
+  const [scopeDialogIndex, setScopeDialogIndex] = useState(0)
   const { dialog: confirmDialogEl, confirm } = useConfirmDialog()
   const { t } = useTranslation()
 
@@ -348,7 +352,24 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
 
   const handleInstall = async (): Promise<void> => {
     const result = await window.api.installMod()
-    if (result.success) {
+    if (result.success && result.data && result.data.length > 0) {
+      setScopeDialogMods(result.data)
+      setScopeDialogIndex(0)
+      fetchMods()
+    }
+  }
+
+  const handleScopeSelect = async (scope: 'client' | 'server' | 'both'): Promise<void> => {
+    const mod = scopeDialogMods[scopeDialogIndex]
+    if (mod) {
+      await window.api.updateModScope(mod.key, scope)
+    }
+    const nextIndex = scopeDialogIndex + 1
+    if (nextIndex < scopeDialogMods.length) {
+      setScopeDialogIndex(nextIndex)
+    } else {
+      setScopeDialogMods([])
+      setScopeDialogIndex(0)
       fetchMods()
     }
   }
@@ -787,6 +808,59 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
           </>
         )}
       </div>
+      {/* Mod Scope Classification Dialog */}
+      {scopeDialogMods.length > 0 && scopeDialogIndex < scopeDialogMods.length && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" />
+          <div className="relative w-full max-w-sm bg-[var(--color-surface)] border border-[var(--color-border)] shadow-2xl p-5 flex flex-col gap-4">
+            <div className="flex flex-col gap-1">
+              <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
+                {t('mods.classifyModScope')}
+              </h3>
+              <p className="text-sm text-[var(--color-text-secondary)] leading-relaxed">
+                {t('mods.classifyModScopeDesc', { name: scopeDialogMods[scopeDialogIndex].title || scopeDialogMods[scopeDialogIndex].fileName })}
+              </p>
+              {scopeDialogMods.length > 1 && (
+                <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                  ({scopeDialogIndex + 1} / {scopeDialogMods.length})
+                </p>
+              )}
+            </div>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => handleScopeSelect('client')}
+                className="flex items-center gap-3 px-4 py-3 text-left bg-[var(--color-surface)] border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] transition-colors"
+              >
+                <Monitor size={18} className="text-blue-400 shrink-0" />
+                <div>
+                  <div className="text-sm font-medium text-[var(--color-text-primary)]">{t('mods.scopeClientOnly')}</div>
+                  <div className="text-xs text-[var(--color-text-muted)]">{t('mods.scopeClientOnlyDesc')}</div>
+                </div>
+              </button>
+              <button
+                onClick={() => handleScopeSelect('both')}
+                className="flex items-center gap-3 px-4 py-3 text-left bg-[var(--color-surface)] border border-purple-400/30 hover:bg-purple-400/5 transition-colors"
+              >
+                <Server size={18} className="text-purple-400 shrink-0" />
+                <div>
+                  <div className="text-sm font-medium text-[var(--color-text-primary)]">{t('mods.scopeClientServer')}</div>
+                  <div className="text-xs text-[var(--color-text-muted)]">{t('mods.scopeClientServerDesc')}</div>
+                </div>
+              </button>
+              <button
+                onClick={() => handleScopeSelect('server')}
+                className="flex items-center gap-3 px-4 py-3 text-left bg-[var(--color-surface)] border border-orange-400/30 hover:bg-orange-400/5 transition-colors"
+              >
+                <Server size={18} className="text-orange-400 shrink-0" />
+                <div>
+                  <div className="text-sm font-medium text-[var(--color-text-primary)]">{t('mods.scopeServerOnly')}</div>
+                  <div className="text-xs text-[var(--color-text-muted)]">{t('mods.scopeServerOnlyDesc')}</div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {confirmDialogEl}
     </>
   )

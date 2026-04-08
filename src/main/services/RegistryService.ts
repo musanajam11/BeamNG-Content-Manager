@@ -877,32 +877,43 @@ export class RegistryService {
     await writeFile(tempPath, buffer)
 
     try {
-      const entries = await this.listZipEntries(tempPath)
-      const serverEntries = entries.filter(
-        (e) => e.startsWith('Resources/Server/') && !e.endsWith('/') && e.length > 'Resources/Server/'.length
-      )
-
-      if (serverEntries.length === 0) return []
-
-      const zipFile = await this.openZipFile(tempPath)
-      const installedFiles: string[] = []
-      try {
-        for (const entry of serverEntries) {
-          const relativePath = entry.slice('Resources/'.length)
-          const destPath = join(serverDir, 'Resources', relativePath)
-          const destDir = join(destPath, '..')
-          if (!existsSync(destDir)) await mkdir(destDir, { recursive: true })
-          const data = await this.readZipEntry(zipFile, entry)
-          await writeFile(destPath, data)
-          installedFiles.push(destPath)
-        }
-      } finally {
-        zipFile.close()
-      }
-      return installedFiles
+      return await this.extractServerComponentFromZip(tempPath, serverDir)
     } finally {
       try { await unlink(tempPath) } catch { /* ignore */ }
     }
+  }
+
+  /**
+   * Extract Resources/Server/* entries from a local zip file to a target server directory.
+   * Used for both registry mods and manually imported client+server mods.
+   */
+  async extractServerComponentFromZip(
+    zipPath: string,
+    serverDir: string
+  ): Promise<string[]> {
+    const entries = await this.listZipEntries(zipPath)
+    const serverEntries = entries.filter(
+      (e) => e.startsWith('Resources/Server/') && !e.endsWith('/') && e.length > 'Resources/Server/'.length
+    )
+
+    if (serverEntries.length === 0) return []
+
+    const zipFile = await this.openZipFile(zipPath)
+    const installedFiles: string[] = []
+    try {
+      for (const entry of serverEntries) {
+        const relativePath = entry.slice('Resources/'.length)
+        const destPath = join(serverDir, 'Resources', relativePath)
+        const destDir = join(destPath, '..')
+        if (!existsSync(destDir)) await mkdir(destDir, { recursive: true })
+        const data = await this.readZipEntry(zipFile, entry)
+        await writeFile(destPath, data)
+        installedFiles.push(destPath)
+      }
+    } finally {
+      zipFile.close()
+    }
+    return installedFiles
   }
 
   /**

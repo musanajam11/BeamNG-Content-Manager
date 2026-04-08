@@ -40,6 +40,14 @@ export interface AppearanceSettings {
   bgImageList: string[]
   /** Cycle to a random background on each launch */
   bgCycleOnLaunch: boolean
+  /** Ordered list of sidebar page IDs (determines display order) */
+  sidebarOrder: AppPage[]
+  /** Sidebar items the user has explicitly hidden */
+  sidebarHidden: AppPage[]
+  /** Custom CSS injected into the app at runtime */
+  customCSS: string
+  /** Whether custom CSS is currently active */
+  customCSSEnabled: boolean
 }
 
 export interface AppConfig {
@@ -121,6 +129,8 @@ export interface ModInfo {
   location: 'repo' | 'multiplayer' | 'other'
   /** BeamNG.com resource ID (if installed from repo browser) */
   resourceId: number | null
+  /** Multiplayer deployment scope: client-only, server-only, or both */
+  multiplayerScope: 'client' | 'server' | 'both' | null
 }
 
 export interface VehicleInfo {

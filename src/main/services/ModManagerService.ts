@@ -126,7 +126,8 @@ export class ModManagerService {
         version: entry.modData?.version_string || null,
         previewImage: null,
         location,
-        resourceId: entry.resourceId || null
+        resourceId: entry.resourceId || null,
+        multiplayerScope: entry.multiplayerScope || null
       })
     }
 
@@ -159,7 +160,8 @@ export class ModManagerService {
           version: meta.version,
           previewImage: null,
           location: 'repo',
-          resourceId: null
+          resourceId: null,
+          multiplayerScope: null
         })
       }
     } catch {
@@ -277,8 +279,25 @@ export class ModManagerService {
       version: meta.version,
       previewImage: meta.iconDataUrl,
       location: 'repo',
-      resourceId: resourceId || null
+      resourceId: resourceId || null,
+      multiplayerScope: null
     }
+  }
+
+  async updateModScope(userDir: string, modKey: string, scope: 'client' | 'server' | 'both'): Promise<void> {
+    const dbPath = join(userDir, 'mods', 'db.json')
+    let db: Record<string, unknown> = {}
+    try {
+      const raw = await readFile(dbPath, 'utf-8')
+      db = JSON.parse(stripBom(raw))
+    } catch { /* db.json may not exist */ }
+
+    const modsMap = this.getModsMap(db)
+    const entry = modsMap[modKey]
+    if (!entry) return
+    entry.multiplayerScope = scope
+    const output = this.buildDbJson(db, modsMap)
+    await writeFile(dbPath, JSON.stringify(output, null, 3), 'utf-8')
   }
 
   /** Extract metadata and icon from a mod zip file (single pass) */

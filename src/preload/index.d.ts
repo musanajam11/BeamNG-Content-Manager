@@ -115,6 +115,7 @@ interface AppAPI {
   toggleMod(modKey: string, enabled: boolean): Promise<{ success: boolean; error?: string }>
   deleteMod(modKey: string): Promise<{ success: boolean; error?: string }>
   installMod(): Promise<{ success: boolean; data?: ModInfo[]; error?: string }>
+  updateModScope(modKey: string, scope: 'client' | 'server' | 'both'): Promise<{ success: boolean; error?: string }>
   openModsFolder(): Promise<void>
   getModPreview(filePath: string): Promise<{ success: boolean; data?: string | null }>
 

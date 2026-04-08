@@ -3224,6 +3224,18 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle('mods:updateScope', async (_event, modKey: string, scope: 'client' | 'server' | 'both') => {
+    const config = configService.get()
+    const userDir = config.gamePaths?.userDir
+    if (!userDir) return { success: false, error: 'Game user directory not configured' }
+    try {
+      await modManagerService.updateModScope(userDir, modKey, scope)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
   ipcMain.handle('mods:openFolder', async () => {
     const config = configService.get()
     const userDir = config.gamePaths?.userDir
@@ -3968,17 +3980,45 @@ export function registerIpcHandlers(): void {
       })
     })
 
-    const scope = registryEntry?.metadata?.multiplayer_scope
-    const result = await serverManagerService.copyModToServer(id, modFilePath)
+    let scope = registryEntry?.metadata?.multiplayer_scope
+
+    // Fall back to manually-classified scope from db.json
+    if (!scope) {
+      const config = configService.get()
+      const userDir = config.gamePaths?.userDir
+      if (userDir) {
+        try {
+          const allMods = await modManagerService.listMods(userDir)
+          const matchedMod = allMods.find((m) => {
+            const normA = m.filePath.replace(/\\/g, '/').toLowerCase()
+            const normB = modFilePath.replace(/\\/g, '/').toLowerCase()
+            return normA === normB || normA.endsWith('/' + normB.split('/').pop()?.toLowerCase())
+          })
+          if (matchedMod?.multiplayerScope) {
+            scope = matchedMod.multiplayerScope
+          }
+        } catch { /* not critical */ }
+      }
+    }
+
+    // For server-only mods, skip client copy; for both/client, deploy to client
+    let result: { success: boolean; error?: string }
+    if (scope === 'server') {
+      // Server-only: don't copy to Resources/Client/, only extract server component below
+      result = { success: true }
+    } else {
+      result = await serverManagerService.copyModToServer(id, modFilePath)
+    }
 
     // If the mod has server components, also deploy the server plugin
     if (scope === 'both' || scope === 'server') {
-      const meta = registryEntry!.metadata
-      const serverDir = serverManagerService.getServerDir(id)
+      if (registryEntry) {
+        const meta = registryEntry.metadata
+        const serverDir = serverManagerService.getServerDir(id)
 
       // Check if the original download had a Resources/Server/ layout
       // by looking for server files in the installed_files list
-      const serverFiles = registryEntry!.installed_files?.filter((f) =>
+      const serverFiles = registryEntry.installed_files?.filter((f) =>
         f.replace(/\\/g, '/').includes('/Resources/Server/')
       )
 
@@ -4000,6 +4040,18 @@ export function registerIpcHandlers(): void {
           await registryService.installServerComponentToServer(meta, serverDir)
         } catch (err) {
           console.warn('[CopyMod] Failed to install server component:', err)
+        }
+      }
+      } else {
+        // Manual mod — extract Resources/Server/ entries from the zip
+        const serverDir = serverManagerService.getServerDir(id)
+        try {
+          const extracted = await registryService.extractServerComponentFromZip(modFilePath, serverDir)
+          if (extracted.length === 0) {
+            console.warn('[CopyMod] Manual mod marked as', scope, 'but no Resources/Server/ entries found in zip')
+          }
+        } catch (err) {
+          console.warn('[CopyMod] Failed to extract server component from manual mod:', err)
         }
       }
     }

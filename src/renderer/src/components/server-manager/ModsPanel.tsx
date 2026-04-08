@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 
 interface ModsPanelProps {
   serverId: string
-  mods: { key: string; name: string; active: boolean; filePath: string }[]
+  mods: { key: string; name: string; active: boolean; filePath: string; multiplayerScope?: string | null }[]
   onRefresh: () => void
 }
 
@@ -41,8 +41,11 @@ export function ModsPanel({ serverId, mods, onRefresh }: ModsPanelProps): React.
     }).catch(() => { /* not critical */ })
   }, [mods])
 
-  const getScope = (filePath: string): string | undefined => {
-    const fileName = filePath.replace(/\\/g, '/').split('/').pop()?.toLowerCase() ?? ''
+  const getScope = (mod: { filePath: string; multiplayerScope?: string | null }): string | undefined => {
+    // Prefer manual classification from ModInfo
+    if (mod.multiplayerScope) return mod.multiplayerScope
+    // Fall back to registry metadata
+    const fileName = mod.filePath.replace(/\\/g, '/').split('/').pop()?.toLowerCase() ?? ''
     return registryMeta[fileName]?.multiplayer_scope
   }
 
@@ -88,7 +91,7 @@ export function ModsPanel({ serverId, mods, onRefresh }: ModsPanelProps): React.
           </div>
         ) : (
           mods.map((m) => {
-            const scope = getScope(m.filePath)
+            const scope = getScope(m)
             const hasServerComponent = scope === 'both' || scope === 'server'
             const isCopying = copying === m.filePath
             const fileName = m.filePath.replace(/\\/g, '/').split('/').pop()?.toLowerCase() ?? ''

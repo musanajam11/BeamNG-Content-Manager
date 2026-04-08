@@ -162,6 +162,7 @@ const api = {
   toggleMod: (modKey: string, enabled: boolean) => ipcRenderer.invoke('mods:toggle', modKey, enabled),
   deleteMod: (modKey: string) => ipcRenderer.invoke('mods:delete', modKey),
   installMod: () => ipcRenderer.invoke('mods:install'),
+  updateModScope: (modKey: string, scope: 'client' | 'server' | 'both') => ipcRenderer.invoke('mods:updateScope', modKey, scope),
   openModsFolder: () => ipcRenderer.invoke('mods:openFolder'),
   getModPreview: (filePath: string) => ipcRenderer.invoke('mods:preview', filePath),
 

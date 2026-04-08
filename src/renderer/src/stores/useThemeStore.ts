@@ -1,5 +1,10 @@
 import { create } from 'zustand'
-import type { AppearanceSettings } from '../../../shared/types'
+import type { AppearanceSettings, AppPage } from '../../../shared/types'
+
+export const DEFAULT_SIDEBAR_ORDER: AppPage[] = [
+  'home', 'servers', 'friends', 'vehicles', 'maps', 'mods',
+  'career', 'server-admin', 'launcher', 'controls'
+]
 
 const DEFAULT_APPEARANCE: AppearanceSettings = {
   accentColor: '#f97316',
@@ -16,7 +21,11 @@ const DEFAULT_APPEARANCE: AppearanceSettings = {
   bgImageBlur: 0,
   bgImageOpacity: 0.3,
   bgImageList: [],
-  bgCycleOnLaunch: false
+  bgCycleOnLaunch: false,
+  sidebarOrder: [...DEFAULT_SIDEBAR_ORDER],
+  sidebarHidden: [],
+  customCSS: '',
+  customCSSEnabled: true
 }
 
 /** Preset accent color palettes */
@@ -211,4 +220,17 @@ function applyTheme(s: AppearanceSettings): void {
   // Accent shadow
   root.style.setProperty('--accent-shadow', `0 10px 40px ${hexToRgba(accent, 0.22)}`)
   root.style.setProperty('--accent-shadow-sm', `0 4px 20px ${hexToRgba(accent, 0.15)}`)
+
+  // Custom CSS injection
+  let styleEl = document.getElementById('user-custom-css') as HTMLStyleElement | null
+  if (s.customCSS && s.customCSSEnabled !== false) {
+    if (!styleEl) {
+      styleEl = document.createElement('style')
+      styleEl.id = 'user-custom-css'
+      document.head.appendChild(styleEl)
+    }
+    styleEl.textContent = s.customCSS
+  } else if (styleEl) {
+    styleEl.remove()
+  }
 }

@@ -32,7 +32,7 @@ interface HostedServerState {
   filePath: string
 
   /* Mods */
-  mods: { key: string; name: string; active: boolean; filePath: string }[]
+  mods: { key: string; name: string; active: boolean; filePath: string; multiplayerScope?: string | null }[]
 
   /* Confirm dialog */
   confirmDialog: {
@@ -305,7 +305,8 @@ export const useHostedServerStore = create<HostedServerState>((set, get) => ({
             key: m.key,
             name: m.title ?? m.fileName,
             active: m.enabled,
-            filePath: m.filePath
+            filePath: m.filePath,
+            multiplayerScope: m.multiplayerScope
           }))
       })
     }

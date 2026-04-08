@@ -2,7 +2,7 @@ import {
   Home,
   Server,
   Car,
-  Map,
+  Map as MapIcon,
   Package,
   Settings,
   ChevronLeft,
@@ -13,22 +13,24 @@ import {
   Gamepad2,
   Briefcase
 } from 'lucide-react'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/useAppStore'
+import { useThemeStore } from '../stores/useThemeStore'
 import type { AppPage } from '../../../shared/types'
 
-interface NavItem {
+export interface NavItem {
   id: AppPage
   labelKey: string
   icon: React.ComponentType<{ size?: number; className?: string }>
 }
 
-const navItems: NavItem[] = [
+export const ALL_NAV_ITEMS: NavItem[] = [
   { id: 'home', labelKey: 'sidebar.home', icon: Home },
   { id: 'servers', labelKey: 'sidebar.servers', icon: Server },
   { id: 'friends', labelKey: 'sidebar.friends', icon: Users },
   { id: 'vehicles', labelKey: 'sidebar.vehicles', icon: Car },
-  { id: 'maps', labelKey: 'sidebar.maps', icon: Map },
+  { id: 'maps', labelKey: 'sidebar.maps', icon: MapIcon },
   { id: 'mods', labelKey: 'sidebar.mods', icon: Package },
   { id: 'career', labelKey: 'sidebar.career', icon: Briefcase },
   { id: 'server-admin', labelKey: 'sidebar.serverManager', icon: MonitorCog },
@@ -36,13 +38,42 @@ const navItems: NavItem[] = [
   { id: 'controls', labelKey: 'sidebar.controls', icon: Gamepad2 },
 ]
 
+const itemMap = new Map(ALL_NAV_ITEMS.map((item) => [item.id, item]))
+
 const bottomItems: NavItem[] = [
   { id: 'settings', labelKey: 'sidebar.settings', icon: Settings }
 ]
 
 export function Sidebar(): React.JSX.Element {
   const { currentPage, setPage, sidebarCollapsed, toggleSidebar } = useAppStore()
+  const { appearance } = useThemeStore()
   const { t } = useTranslation()
+
+  const visibleItems = useMemo(() => {
+    const hidden = new Set(appearance.sidebarHidden ?? [])
+    const order = appearance.sidebarOrder ?? []
+    const ordered: NavItem[] = []
+    const seen = new Set<AppPage>()
+
+    // Add items in the configured order
+    for (const id of order) {
+      if (hidden.has(id)) continue
+      const item = itemMap.get(id)
+      if (item) {
+        ordered.push(item)
+        seen.add(id)
+      }
+    }
+
+    // Append any new items not in the saved order (future-proofing)
+    for (const item of ALL_NAV_ITEMS) {
+      if (!seen.has(item.id) && !hidden.has(item.id)) {
+        ordered.push(item)
+      }
+    }
+
+    return ordered
+  }, [appearance.sidebarOrder, appearance.sidebarHidden])
 
   const renderItem = ({ id, labelKey, icon: Icon }: NavItem): React.JSX.Element => {
     const active = currentPage === id
@@ -74,7 +105,7 @@ export function Sidebar(): React.JSX.Element {
       style={{ width: sidebarCollapsed ? '52px' : 'var(--sidebar-width)' }}
     >
       <nav className="flex-1 flex flex-col gap-1 p-3 pt-3">
-        {navItems.map(renderItem)}
+        {visibleItems.map(renderItem)}
       </nav>
 
       <div className="flex flex-col gap-1 p-3 border-t border-[var(--color-border)]">

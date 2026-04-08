@@ -1,13 +1,16 @@
-import { useState, useEffect, useCallback } from 'react'
-import { FolderOpen, Globe, Check, AlertCircle, Package, Download, Upload, Palette, RotateCcw, Monitor, Type, Layers, Maximize2, PanelLeft, Eye, Image, X, Plus, Shuffle, Network, Languages, Terminal, Server } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
+import { FolderOpen, Globe, Check, AlertCircle, Package, Download, Upload, Palette, RotateCcw, Monitor, Type, Layers, Maximize2, PanelLeft, Eye, EyeOff, Image, X, Plus, Shuffle, Network, Languages, Terminal, Server, GripVertical, Code, AlertTriangle, ToggleLeft, ToggleRight, Copy, ChevronDown, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/useAppStore'
-import { useThemeStore, ACCENT_PRESETS, BG_STYLES } from '../stores/useThemeStore'
+import { useThemeStore, ACCENT_PRESETS, BG_STYLES, DEFAULT_SIDEBAR_ORDER } from '../stores/useThemeStore'
+import { ALL_NAV_ITEMS } from '../components/Sidebar'
 import { LANGUAGES } from '../i18n'
 import * as Flags from 'country-flag-icons/react/3x2'
-import type { AppearanceSettings } from '../../../shared/types'
+import type { AppearanceSettings, AppPage } from '../../../shared/types'
 
-type SettingsTab = 'general' | 'appearance'
+const MonacoEditor = lazy(() => import('@monaco-editor/react').then(m => ({ default: m.default })))
+
+type SettingsTab = 'general' | 'appearance' | 'customcss'
 
 export function SettingsPage(): React.JSX.Element {
   const config = useAppStore((s) => s.config)
@@ -19,7 +22,7 @@ export function SettingsPage(): React.JSX.Element {
       <div className="flex items-center gap-3 px-5 py-4 border-b border-[var(--color-border)]">
         <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">{t('settings.title')}</h1>
         <div className="flex gap-2 ml-4">
-          {(['general', 'appearance'] as const).map((tabKey) => (
+          {(['general', 'appearance', 'customcss'] as const).map((tabKey) => (
             <button
               key={tabKey}
               onClick={() => setTab(tabKey)}
@@ -29,14 +32,14 @@ export function SettingsPage(): React.JSX.Element {
                   : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] border border-transparent'
               }`}
             >
-              {tabKey === 'general' ? t('settings.general') : t('settings.appearance')}
+              {tabKey === 'general' ? t('settings.general') : tabKey === 'appearance' ? t('settings.appearance') : t('settings.customCSSTab')}
             </button>
           ))}
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
-        {tab === 'general' ? <GeneralSettings config={config} /> : <AppearanceSettingsPanel />}
+        {tab === 'general' ? <GeneralSettings config={config} /> : tab === 'appearance' ? <AppearanceSettingsPanel /> : <CustomCSSPanel />}
       </div>
     </div>
   )
@@ -222,6 +225,14 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
               <span className="text-sm text-[var(--color-text-secondary)]">
                 {t('settings.useCustomBackend')}
               </span>
+              <a
+                href="https://github.com/musanajam11/Decentralized-BMP/tree/main"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-[var(--color-accent)] hover:underline"
+              >
+                {t('settings.whatsCustomBackend')}
+              </a>
             </div>
 
             {!useOfficialBackend && (
@@ -761,6 +772,9 @@ function AppearanceSettingsPanel(): React.JSX.Element {
           </div>
         </section>
 
+        {/* Sidebar Layout */}
+        <SidebarLayoutSection appearance={appearance} update={update} />
+
         {/* Reset */}
         <section>
           <button
@@ -993,5 +1007,487 @@ function BackgroundImageSection({ appearance, update }: {
         )}
       </div>
     </section>
+  )
+}
+
+// ── Sidebar Layout Section (Appearance tab) ──
+
+function SidebarLayoutSection({ appearance, update }: {
+  appearance: AppearanceSettings
+  update: (partial: Partial<AppearanceSettings>) => Promise<void>
+}): React.JSX.Element {
+  const { t } = useTranslation()
+  const dragItem = useRef<number | null>(null)
+  const dragOverItem = useRef<number | null>(null)
+
+  const allItems = ALL_NAV_ITEMS
+  const order: AppPage[] = appearance.sidebarOrder?.length ? appearance.sidebarOrder : DEFAULT_SIDEBAR_ORDER
+  const hidden = new Set(appearance.sidebarHidden ?? [])
+
+  // Build ordered visible list + hidden list
+  const visibleIds = order.filter((id) => !hidden.has(id) && allItems.some((n) => n.id === id))
+  const hiddenIds = allItems.filter((n) => hidden.has(n.id)).map((n) => n.id)
+
+  const handleDragStart = (index: number): void => {
+    dragItem.current = index
+  }
+  const handleDragEnter = (index: number): void => {
+    dragOverItem.current = index
+  }
+  const handleDragEnd = (): void => {
+    if (dragItem.current === null || dragOverItem.current === null) return
+    const reordered = [...visibleIds]
+    const [dragged] = reordered.splice(dragItem.current, 1)
+    reordered.splice(dragOverItem.current, 0, dragged)
+    dragItem.current = null
+    dragOverItem.current = null
+    // Persist: full order = visible reordered + hidden items at end (so they maintain position if un-hidden)
+    const fullOrder = [...reordered, ...hiddenIds]
+    update({ sidebarOrder: fullOrder })
+  }
+
+  const toggleVisibility = (id: AppPage): void => {
+    if (hidden.has(id)) {
+      update({ sidebarHidden: [...hidden].filter((h) => h !== id) })
+    } else {
+      update({ sidebarHidden: [...hidden, id] })
+    }
+  }
+
+  const resetSidebar = (): void => {
+    update({ sidebarOrder: [...DEFAULT_SIDEBAR_ORDER], sidebarHidden: [] })
+  }
+
+  const getItem = (id: AppPage): typeof allItems[number] | undefined => allItems.find((n) => n.id === id)
+
+  return (
+    <section>
+      <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
+        <PanelLeft size={16} />
+        {t('settings.sidebarLayout')}
+      </h2>
+      <p className="text-xs text-[var(--color-text-muted)] mb-3">{t('settings.sidebarLayoutDesc')}</p>
+
+      {/* Visible items — draggable */}
+      <div className="flex flex-col gap-1 mb-3">
+        {visibleIds.map((id, index) => {
+          const item = getItem(id)
+          if (!item) return null
+          const Icon = item.icon
+          return (
+            <div
+              key={id}
+              draggable
+              onDragStart={() => handleDragStart(index)}
+              onDragEnter={() => handleDragEnter(index)}
+              onDragEnd={handleDragEnd}
+              onDragOver={(e) => e.preventDefault()}
+              className="flex items-center gap-3 px-3 py-2 bg-[var(--color-surface)] border border-[var(--color-border)] cursor-grab active:cursor-grabbing hover:bg-[var(--color-surface-hover)] transition-colors select-none"
+            >
+              <GripVertical size={14} className="text-[var(--color-text-muted)] shrink-0" />
+              <Icon size={14} className="text-[var(--color-text-secondary)] shrink-0" />
+              <span className="text-sm text-[var(--color-text-primary)] flex-1">{t(item.labelKey)}</span>
+              <button
+                onClick={() => toggleVisibility(id)}
+                className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
+                title={t('settings.hideSidebarItem')}
+              >
+                <Eye size={14} />
+              </button>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Hidden items */}
+      {hiddenIds.length > 0 && (
+        <>
+          <p className="text-xs text-[var(--color-text-muted)] mb-2">{t('settings.hiddenItems')}</p>
+          <div className="flex flex-col gap-1 mb-3">
+            {hiddenIds.map((id) => {
+              const item = getItem(id)
+              if (!item) return null
+              const Icon = item.icon
+              return (
+                <div
+                  key={id}
+                  className="flex items-center gap-3 px-3 py-2 bg-[var(--color-surface)] border border-[var(--color-border)] opacity-50"
+                >
+                  <div className="w-[14px]" />
+                  <Icon size={14} className="text-[var(--color-text-muted)] shrink-0" />
+                  <span className="text-sm text-[var(--color-text-muted)] flex-1 line-through">{t(item.labelKey)}</span>
+                  <button
+                    onClick={() => toggleVisibility(id)}
+                    className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-accent)] transition-colors"
+                    title={t('settings.showSidebarItem')}
+                  >
+                    <EyeOff size={14} />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      <button
+        onClick={resetSidebar}
+        className="flex items-center gap-2 px-3 py-1.5 text-xs border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] transition-colors"
+      >
+        <RotateCcw size={12} />
+        {t('settings.resetSidebar')}
+      </button>
+    </section>
+  )
+}
+
+// ── Custom CSS Panel (own tab) ──
+
+// ── CSS Snippet Templates ──
+
+const CSS_SNIPPETS: { category: string; categoryKey: string; snippets: { name: string; nameKey: string; css: string }[] }[] = [
+  {
+    category: 'Sidebar',
+    categoryKey: 'settings.cssCatSidebar',
+    snippets: [
+      {
+        name: 'Rounded sidebar items',
+        nameKey: 'settings.cssRoundedSidebarItems',
+        css: `/* Rounded sidebar nav buttons */
+aside button {
+  border-radius: 12px;
+}`
+      },
+      {
+        name: 'Colored active indicator',
+        nameKey: 'settings.cssColoredActive',
+        css: `/* Glowing active sidebar item */
+aside button[class*="bg-"] {
+  box-shadow: inset 3px 0 0 var(--color-accent);
+}`
+      },
+      {
+        name: 'Wider sidebar',
+        nameKey: 'settings.cssWiderSidebar',
+        css: `/* Override sidebar width */
+:root {
+  --sidebar-width: 260px;
+}`
+      }
+    ]
+  },
+  {
+    category: 'Cards & Surfaces',
+    categoryKey: 'settings.cssCatCards',
+    snippets: [
+      {
+        name: 'Rounded cards',
+        nameKey: 'settings.cssRoundedCards',
+        css: `/* Rounded card corners */
+.rounded-lg, .rounded-xl {
+  border-radius: 16px !important;
+}`
+      },
+      {
+        name: 'Glow on hover',
+        nameKey: 'settings.cssGlowHover',
+        css: `/* Accent glow on card hover */
+.rounded-lg:hover, .rounded-xl:hover {
+  box-shadow: 0 0 20px var(--color-accent-25);
+}`
+      },
+      {
+        name: 'Remove all borders',
+        nameKey: 'settings.cssNoBorders',
+        css: `/* Borderless look */
+* {
+  border-color: transparent !important;
+}`
+      }
+    ]
+  },
+  {
+    category: 'Typography',
+    categoryKey: 'settings.cssCatTypography',
+    snippets: [
+      {
+        name: 'Monospace everywhere',
+        nameKey: 'settings.cssMonospace',
+        css: `/* Monospace font */
+* {
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace !important;
+}`
+      },
+      {
+        name: 'Larger text',
+        nameKey: 'settings.cssLargerText',
+        css: `/* Bump up base font size */
+:root {
+  font-size: 18px;
+}`
+      }
+    ]
+  },
+  {
+    category: 'Backgrounds & Effects',
+    categoryKey: 'settings.cssCatEffects',
+    snippets: [
+      {
+        name: 'Frosted glass panels',
+        nameKey: 'settings.cssFrostedGlass',
+        css: `/* Extra frosted glass effect */
+[class*="bg-black/"], [class*="bg-white/"] {
+  backdrop-filter: blur(20px) saturate(1.5);
+}`
+      },
+      {
+        name: 'Scanline overlay',
+        nameKey: 'settings.cssScanlines',
+        css: `/* CRT scanline effect */
+#root::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    transparent 0px,
+    rgba(0,0,0,0.03) 1px,
+    transparent 2px
+  );
+}`
+      },
+      {
+        name: 'Hide background image',
+        nameKey: 'settings.cssHideBg',
+        css: `/* Remove background image */
+[style*="background-image"] {
+  background-image: none !important;
+}`
+      }
+    ]
+  },
+  {
+    category: 'Scrollbar',
+    categoryKey: 'settings.cssCatScrollbar',
+    snippets: [
+      {
+        name: 'Thin accent scrollbar',
+        nameKey: 'settings.cssThinScrollbar',
+        css: `/* Thin accent-colored scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-accent);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent-hover);
+}`
+      },
+      {
+        name: 'Hide scrollbars',
+        nameKey: 'settings.cssHideScrollbar',
+        css: `/* Hide all scrollbars */
+::-webkit-scrollbar {
+  display: none;
+}`
+      }
+    ]
+  },
+  {
+    category: 'Animations',
+    categoryKey: 'settings.cssCatAnimations',
+    snippets: [
+      {
+        name: 'Disable all transitions',
+        nameKey: 'settings.cssNoTransitions',
+        css: `/* Instant UI — no animations */
+*, *::before, *::after {
+  transition-duration: 0s !important;
+  animation-duration: 0s !important;
+}`
+      },
+      {
+        name: 'Smooth page fade',
+        nameKey: 'settings.cssSmoothFade',
+        css: `/* Fade-in on page content */
+main > div {
+  animation: fadeIn 0.2s ease-in;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}`
+      }
+    ]
+  }
+]
+
+function CustomCSSPanel(): React.JSX.Element {
+  const { appearance, update } = useThemeStore()
+  const { t } = useTranslation()
+  const [localCSS, setLocalCSS] = useState(appearance.customCSS ?? '')
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [expandedCat, setExpandedCat] = useState<string | null>(null)
+  const [copiedSnippet, setCopiedSnippet] = useState<string | null>(null)
+
+  const cssEnabled = appearance.customCSSEnabled !== false
+
+  // Debounced save — apply live after 500ms of no typing
+  const handleChange = (value: string | undefined): void => {
+    const css = value ?? ''
+    setLocalCSS(css)
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      update({ customCSS: css })
+    }, 500)
+  }
+
+  const handleClear = (): void => {
+    setLocalCSS('')
+    update({ customCSS: '' })
+  }
+
+  const toggleCSS = (): void => {
+    update({ customCSSEnabled: !cssEnabled })
+  }
+
+  const insertSnippet = (css: string): void => {
+    const newCSS = localCSS ? `${localCSS}\n\n${css}` : css
+    setLocalCSS(newCSS)
+    update({ customCSS: newCSS })
+    setCopiedSnippet(css)
+    setTimeout(() => setCopiedSnippet(null), 1500)
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Warning banner */}
+      <div className="flex items-start gap-3 px-4 py-3 mb-4 border border-yellow-500/20 bg-yellow-500/5">
+        <AlertTriangle size={16} className="text-yellow-400 shrink-0 mt-0.5" />
+        <div className="flex-1">
+          <p className="text-sm text-yellow-300 font-medium">{t('settings.customCSSWarningTitle')}</p>
+          <p className="text-xs text-[var(--color-text-muted)] mt-1">{t('settings.customCSSWarningDesc')}</p>
+        </div>
+      </div>
+
+      {/* Header bar with toggle + clear */}
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
+          <Code size={16} />
+          {t('settings.customCSSEditor')}
+        </h2>
+        <div className="flex items-center gap-3">
+          {/* Enable/Disable toggle */}
+          <button
+            onClick={toggleCSS}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs border transition-colors ${
+              cssEnabled
+                ? 'border-[var(--color-accent-25)] text-[var(--color-accent)] bg-[var(--color-accent-subtle)]'
+                : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]'
+            }`}
+          >
+            {cssEnabled ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
+            {cssEnabled ? t('settings.cssEnabled') : t('settings.cssDisabled')}
+          </button>
+          {/* Clear button */}
+          <button
+            onClick={handleClear}
+            disabled={!localCSS}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] transition-colors disabled:opacity-30"
+          >
+            <X size={12} />
+            {t('settings.clearCSS')}
+          </button>
+        </div>
+      </div>
+
+      {!cssEnabled && localCSS && (
+        <div className="flex items-center gap-2 px-3 py-2 mb-3 text-xs text-[var(--color-text-muted)] border border-[var(--color-border)] bg-[var(--color-surface)]">
+          <EyeOff size={12} />
+          {t('settings.cssDisabledNotice')}
+        </div>
+      )}
+
+      {/* Side-by-side: Editor + Snippets */}
+      <div className="flex-1 flex gap-4 min-h-0">
+        {/* Left — Editor */}
+        <div className="flex-1 flex flex-col min-w-0">
+          <p className="text-xs text-[var(--color-text-muted)] mb-2">{t('settings.customCSSDesc')}</p>
+          <div className="flex-1 min-h-[400px] border border-[var(--color-border)] overflow-hidden">
+            <Suspense fallback={<div className="flex items-center justify-center h-full text-sm text-[var(--color-text-muted)]">Loading editor...</div>}>
+              <MonacoEditor
+                height="100%"
+                language="css"
+                theme="vs-dark"
+                value={localCSS}
+                onChange={handleChange}
+                options={{
+                  fontSize: 13,
+                  fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", Consolas, monospace',
+                  fontLigatures: true,
+                  minimap: { enabled: false },
+                  tabSize: 2,
+                  wordWrap: 'on',
+                  scrollBeyondLastLine: false,
+                  automaticLayout: true,
+                  bracketPairColorization: { enabled: true },
+                  padding: { top: 12, bottom: 12 },
+                  lineNumbers: 'on',
+                  renderLineHighlight: 'line',
+                  suggestOnTriggerCharacters: true,
+                  quickSuggestions: true,
+                  folding: true
+                }}
+              />
+            </Suspense>
+          </div>
+          <p className="text-[11px] text-[var(--color-text-muted)] mt-2">
+            {t('settings.customCSSHint')}
+          </p>
+        </div>
+
+        {/* Right — Snippet Templates */}
+        <div className="w-[280px] shrink-0 flex flex-col min-h-0">
+          <p className="text-xs font-semibold text-[var(--color-text-secondary)] mb-2">{t('settings.cssSnippets')}</p>
+          <div className="flex-1 overflow-y-auto border border-[var(--color-border)] bg-black/20">
+            {CSS_SNIPPETS.map((cat) => (
+              <div key={cat.category}>
+                <button
+                  onClick={() => setExpandedCat(expandedCat === cat.category ? null : cat.category)}
+                  className="flex items-center gap-2 w-full px-3 py-2 text-xs font-medium text-[var(--color-text-primary)] hover:bg-[var(--color-surface-hover)] transition-colors border-b border-[var(--color-border)]"
+                >
+                  {expandedCat === cat.category ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                  {t(cat.categoryKey)}
+                </button>
+                {expandedCat === cat.category && (
+                  <div className="flex flex-col">
+                    {cat.snippets.map((snippet) => (
+                      <button
+                        key={snippet.name}
+                        onClick={() => insertSnippet(snippet.css)}
+                        className="flex items-center gap-2 px-4 py-2 text-left text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)] transition-colors border-b border-[var(--color-border)]/50"
+                      >
+                        <Copy size={11} className="shrink-0 text-[var(--color-text-muted)]" />
+                        <span className="flex-1">{t(snippet.nameKey)}</span>
+                        {copiedSnippet === snippet.css && (
+                          <Check size={12} className="text-green-400 shrink-0" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-[var(--color-text-muted)] mt-2">{t('settings.cssSnippetsHint')}</p>
+        </div>
+      </div>
+    </div>
   )
 }
