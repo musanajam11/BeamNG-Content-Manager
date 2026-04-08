@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react'
-import { FolderOpen, Globe, Check, AlertCircle, Package, Download, Upload, Palette, RotateCcw, Monitor, Type, Layers, Maximize2, PanelLeft, Eye, EyeOff, Image, X, Plus, Shuffle, Network, Languages, Terminal, Server, GripVertical, Code, AlertTriangle, ToggleLeft, ToggleRight, Copy, ChevronDown, ChevronRight } from 'lucide-react'
+import { FolderOpen, Globe, Check, AlertCircle, Package, Download, Upload, Palette, RotateCcw, Monitor, Type, Layers, Maximize2, PanelLeft, Eye, EyeOff, Image, X, Plus, Shuffle, Network, Languages, Terminal, Server, GripVertical, Code, AlertTriangle, ToggleLeft, ToggleRight, ChevronDown, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/useAppStore'
 import { useThemeStore, ACCENT_PRESETS, BG_STYLES, DEFAULT_SIDEBAR_ORDER } from '../stores/useThemeStore'
@@ -803,28 +803,63 @@ function BackgroundImageSection({ appearance, update }: {
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
   const [defaultPaths, setDefaultPaths] = useState<string[]>([])
 
-  // Build the combined list: saved user list + bundled defaults (deduplicated)
+  // Extract filename from a full path (handles both / and \)
+  const basename = (p: string): string => p.replace(/\\/g, '/').split('/').pop()!.toLowerCase()
+
+  // Build the combined list: saved user list + bundled defaults (deduplicated by filename)
   const allImages = useMemo(() => {
     const seen = new Set<string>()
     const result: string[] = []
     for (const p of appearance.bgImageList) {
-      const norm = p.replace(/\\/g, '/')
-      if (!seen.has(norm)) { seen.add(norm); result.push(p) }
+      const name = basename(p)
+      if (!seen.has(name)) { seen.add(name); result.push(p) }
     }
     for (const p of defaultPaths) {
-      const norm = p.replace(/\\/g, '/')
-      if (!seen.has(norm)) { seen.add(norm); result.push(p) }
+      const name = basename(p)
+      if (!seen.has(name)) { seen.add(name); result.push(p) }
     }
     return result
   }, [appearance.bgImageList, defaultPaths])
 
-  // Load bundled default backgrounds on mount
+  // Load bundled default backgrounds on mount; reconcile stale paths from previous installs
   useEffect(() => {
     window.api.getDefaultBackgrounds().then((paths) => {
       setDefaultPaths(paths)
-      // If user has no saved list yet, populate with defaults
       if (appearance.bgImageList.length === 0 && paths.length > 0) {
+        // First run: populate with defaults
         update({ bgImageList: paths })
+      } else if (paths.length > 0) {
+        // Reconcile: replace stale default-background paths with current ones & remove dupes
+        const defaultByName = new Map<string, string>()
+        for (const p of paths) defaultByName.set(basename(p), p)
+
+        const seenNames = new Set<string>()
+        const reconciled: string[] = []
+        let changed = false
+        for (const saved of appearance.bgImageList) {
+          const name = basename(saved)
+          if (seenNames.has(name)) { changed = true; continue } // drop duplicate
+          seenNames.add(name)
+          const current = defaultByName.get(name)
+          if (current && saved !== current) {
+            reconciled.push(current) // replace stale path
+            changed = true
+          } else {
+            reconciled.push(saved)
+          }
+        }
+        if (changed) {
+          const updates: Partial<AppearanceSettings> = { bgImageList: reconciled }
+          // Fix bgImagePath too if it pointed to a stale default path
+          if (appearance.bgImagePath) {
+            const selName = basename(appearance.bgImagePath)
+            const current = defaultByName.get(selName)
+            if (current && appearance.bgImagePath !== current) {
+              updates.bgImagePath = current
+            }
+          }
+          update(updates)
+        }
       }
     })
   }, [])
@@ -1145,14 +1180,31 @@ function SidebarLayoutSection({ appearance, update }: {
 
 // ── Custom CSS Panel (own tab) ──
 
-// ── CSS Snippet Templates ──
+// ── CSS Snippet Templates (toggleable) ──
+// Each snippet has a unique `id` used as a marker comment in the CSS so we can detect & toggle it.
 
-const CSS_SNIPPETS: { category: string; categoryKey: string; snippets: { name: string; nameKey: string; css: string }[] }[] = [
+interface CSSSnippet { id: string; name: string; nameKey: string; css: string }
+interface CSSSnippetCategory { category: string; categoryKey: string; snippets: CSSSnippet[] }
+
+/** Wrap snippet CSS with marker comments so it can be identified and toggled */
+const wrapSnippet = (id: string, css: string): string => `/* [snippet:${id}] */\n${css}\n/* [/snippet:${id}] */`
+
+/** Check if a snippet is currently present in the CSS text */
+const isSnippetActive = (css: string, id: string): boolean => css.includes(`[snippet:${id}]`)
+
+/** Remove a snippet (including markers) from the CSS text */
+const removeSnippet = (css: string, id: string): string => {
+  const regex = new RegExp(`\\s*/\\* \\[snippet:${id}\\] \\*/[\\s\\S]*?/\\* \\[/snippet:${id}\\] \\*/\\s*`, 'g')
+  return css.replace(regex, '\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+const CSS_SNIPPETS: CSSSnippetCategory[] = [
   {
     category: 'Sidebar',
     categoryKey: 'settings.cssCatSidebar',
     snippets: [
       {
+        id: 'rounded-sidebar',
         name: 'Rounded sidebar items',
         nameKey: 'settings.cssRoundedSidebarItems',
         css: `/* Rounded sidebar nav buttons */
@@ -1161,6 +1213,7 @@ aside button {
 }`
       },
       {
+        id: 'colored-active',
         name: 'Colored active indicator',
         nameKey: 'settings.cssColoredActive',
         css: `/* Glowing active sidebar item */
@@ -1169,11 +1222,42 @@ aside button[class*="bg-"] {
 }`
       },
       {
+        id: 'wider-sidebar',
         name: 'Wider sidebar',
         nameKey: 'settings.cssWiderSidebar',
         css: `/* Override sidebar width */
 :root {
   --sidebar-width: 260px;
+}`
+      },
+      {
+        id: 'sidebar-hover-glow',
+        name: 'Hover glow on sidebar',
+        nameKey: 'settings.cssSidebarHoverGlow',
+        css: `/* Accent glow on sidebar item hover */
+aside button:hover {
+  background: var(--color-accent-subtle) !important;
+  box-shadow: 0 0 12px var(--color-accent-25);
+}`
+      },
+      {
+        id: 'sidebar-compact',
+        name: 'Compact sidebar',
+        nameKey: 'settings.cssSidebarCompact',
+        css: `/* Tighter sidebar spacing */
+aside button {
+  padding-top: 4px !important;
+  padding-bottom: 4px !important;
+  font-size: 12px;
+}`
+      },
+      {
+        id: 'sidebar-separator',
+        name: 'Sidebar item separators',
+        nameKey: 'settings.cssSidebarSeparators',
+        css: `/* Subtle divider between sidebar items */
+aside button {
+  border-bottom: 1px solid var(--color-border) !important;
 }`
       }
     ]
@@ -1183,6 +1267,7 @@ aside button[class*="bg-"] {
     categoryKey: 'settings.cssCatCards',
     snippets: [
       {
+        id: 'rounded-cards',
         name: 'Rounded cards',
         nameKey: 'settings.cssRoundedCards',
         css: `/* Rounded card corners */
@@ -1191,6 +1276,7 @@ aside button[class*="bg-"] {
 }`
       },
       {
+        id: 'glow-hover',
         name: 'Glow on hover',
         nameKey: 'settings.cssGlowHover',
         css: `/* Accent glow on card hover */
@@ -1199,11 +1285,49 @@ aside button[class*="bg-"] {
 }`
       },
       {
+        id: 'no-borders',
         name: 'Remove all borders',
         nameKey: 'settings.cssNoBorders',
         css: `/* Borderless look */
 * {
   border-color: transparent !important;
+}`
+      },
+      {
+        id: 'card-lift-hover',
+        name: 'Card lift on hover',
+        nameKey: 'settings.cssCardLift',
+        css: `/* Cards lift up on hover */
+.rounded-lg:hover, .rounded-xl:hover {
+  transform: translateY(-2px);
+  transition: transform 0.15s ease;
+}`
+      },
+      {
+        id: 'thicker-borders',
+        name: 'Thicker borders',
+        nameKey: 'settings.cssThickerBorders',
+        css: `/* Heavier border lines */
+.border, [class*="border-"] {
+  border-width: 2px !important;
+}`
+      },
+      {
+        id: 'accent-borders',
+        name: 'Accent-colored borders',
+        nameKey: 'settings.cssAccentBorders',
+        css: `/* Borders use accent color */
+.border, [class*="border-"] {
+  border-color: var(--color-accent-25) !important;
+}`
+      },
+      {
+        id: 'flat-cards',
+        name: 'Flat cards (no shadows)',
+        nameKey: 'settings.cssFlatCards',
+        css: `/* Remove all box shadows */
+* {
+  box-shadow: none !important;
 }`
       }
     ]
@@ -1213,6 +1337,7 @@ aside button[class*="bg-"] {
     categoryKey: 'settings.cssCatTypography',
     snippets: [
       {
+        id: 'monospace-font',
         name: 'Monospace everywhere',
         nameKey: 'settings.cssMonospace',
         css: `/* Monospace font */
@@ -1221,11 +1346,58 @@ aside button[class*="bg-"] {
 }`
       },
       {
+        id: 'larger-text',
         name: 'Larger text',
         nameKey: 'settings.cssLargerText',
         css: `/* Bump up base font size */
 :root {
   font-size: 18px;
+}`
+      },
+      {
+        id: 'smaller-text',
+        name: 'Smaller text',
+        nameKey: 'settings.cssSmallerText',
+        css: `/* Compact base font size */
+:root {
+  font-size: 13px;
+}`
+      },
+      {
+        id: 'serif-font',
+        name: 'Serif font',
+        nameKey: 'settings.cssSerifFont',
+        css: `/* Serif/editorial look */
+* {
+  font-family: 'Georgia', 'Times New Roman', serif !important;
+}`
+      },
+      {
+        id: 'uppercase-headings',
+        name: 'Uppercase headings',
+        nameKey: 'settings.cssUppercaseHeadings',
+        css: `/* All headings uppercase */
+h1, h2, h3, h4, h5, h6 {
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em;
+}`
+      },
+      {
+        id: 'text-glow',
+        name: 'Text glow effect',
+        nameKey: 'settings.cssTextGlow',
+        css: `/* Subtle glow on primary text */
+[class*="text-primary"], h1, h2, h3 {
+  text-shadow: 0 0 8px var(--color-accent-25);
+}`
+      },
+      {
+        id: 'tight-line-height',
+        name: 'Tight line spacing',
+        nameKey: 'settings.cssTightLineHeight',
+        css: `/* Compact line height */
+* {
+  line-height: 1.3 !important;
 }`
       }
     ]
@@ -1235,6 +1407,7 @@ aside button[class*="bg-"] {
     categoryKey: 'settings.cssCatEffects',
     snippets: [
       {
+        id: 'frosted-glass',
         name: 'Frosted glass panels',
         nameKey: 'settings.cssFrostedGlass',
         css: `/* Extra frosted glass effect */
@@ -1243,6 +1416,7 @@ aside button[class*="bg-"] {
 }`
       },
       {
+        id: 'scanlines',
         name: 'Scanline overlay',
         nameKey: 'settings.cssScanlines',
         css: `/* CRT scanline effect */
@@ -1260,11 +1434,77 @@ aside button[class*="bg-"] {
 }`
       },
       {
+        id: 'hide-bg-image',
         name: 'Hide background image',
         nameKey: 'settings.cssHideBg',
         css: `/* Remove background image */
 [style*="background-image"] {
   background-image: none !important;
+}`
+      },
+      {
+        id: 'vignette',
+        name: 'Vignette overlay',
+        nameKey: 'settings.cssVignette',
+        css: `/* Dark vignette edges */
+#root::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9998;
+  background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.4) 100%);
+}`
+      },
+      {
+        id: 'noise-texture',
+        name: 'Noise texture',
+        nameKey: 'settings.cssNoiseTexture',
+        css: `/* Subtle film-grain noise */
+#root::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}`
+      },
+      {
+        id: 'extra-dim-overlay',
+        name: 'Extra dim overlay',
+        nameKey: 'settings.cssExtraDim',
+        css: `/* Darken the whole UI for OLED vibes */
+#root {
+  filter: brightness(0.85);
+}`
+      },
+      {
+        id: 'high-contrast',
+        name: 'High contrast',
+        nameKey: 'settings.cssHighContrast',
+        css: `/* Increase contrast */
+#root {
+  filter: contrast(1.2);
+}`
+      },
+      {
+        id: 'saturate-boost',
+        name: 'Boost saturation',
+        nameKey: 'settings.cssSaturateBoost',
+        css: `/* More vivid colors */
+#root {
+  filter: saturate(1.4);
+}`
+      },
+      {
+        id: 'desaturate',
+        name: 'Desaturate UI',
+        nameKey: 'settings.cssDesaturate',
+        css: `/* Muted grayscale look */
+#root {
+  filter: saturate(0.3);
 }`
       }
     ]
@@ -1274,6 +1514,7 @@ aside button[class*="bg-"] {
     categoryKey: 'settings.cssCatScrollbar',
     snippets: [
       {
+        id: 'thin-scrollbar',
         name: 'Thin accent scrollbar',
         nameKey: 'settings.cssThinScrollbar',
         css: `/* Thin accent-colored scrollbar */
@@ -1292,11 +1533,33 @@ aside button[class*="bg-"] {
 }`
       },
       {
+        id: 'hide-scrollbars',
         name: 'Hide scrollbars',
         nameKey: 'settings.cssHideScrollbar',
         css: `/* Hide all scrollbars */
 ::-webkit-scrollbar {
   display: none;
+}`
+      },
+      {
+        id: 'rounded-scrollbar',
+        name: 'Rounded fat scrollbar',
+        nameKey: 'settings.cssRoundedScrollbar',
+        css: `/* Chunky rounded scrollbar */
+::-webkit-scrollbar {
+  width: 12px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-surface);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-accent-25);
+  border-radius: 6px;
+  border: 2px solid var(--color-surface);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent);
 }`
       }
     ]
@@ -1306,6 +1569,7 @@ aside button[class*="bg-"] {
     categoryKey: 'settings.cssCatAnimations',
     snippets: [
       {
+        id: 'no-transitions',
         name: 'Disable all transitions',
         nameKey: 'settings.cssNoTransitions',
         css: `/* Instant UI — no animations */
@@ -1315,6 +1579,7 @@ aside button[class*="bg-"] {
 }`
       },
       {
+        id: 'smooth-fade',
         name: 'Smooth page fade',
         nameKey: 'settings.cssSmoothFade',
         css: `/* Fade-in on page content */
@@ -1324,6 +1589,189 @@ main > div {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
+}`
+      },
+      {
+        id: 'slow-transitions',
+        name: 'Slow transitions',
+        nameKey: 'settings.cssSlowTransitions',
+        css: `/* Slower, smoother transitions */
+*, *::before, *::after {
+  transition-duration: 0.4s !important;
+}`
+      },
+      {
+        id: 'scale-hover',
+        name: 'Scale on hover',
+        nameKey: 'settings.cssScaleHover',
+        css: `/* Subtle scale-up on interactive elements */
+button:hover, a:hover, [role="button"]:hover {
+  transform: scale(1.03);
+  transition: transform 0.15s ease;
+}`
+      }
+    ]
+  },
+  {
+    category: 'Layout',
+    categoryKey: 'settings.cssCatLayout',
+    snippets: [
+      {
+        id: 'rounded-everything',
+        name: 'Round everything',
+        nameKey: 'settings.cssRoundEverything',
+        css: `/* Rounded corners on all elements */
+*, *::before, *::after {
+  border-radius: 12px !important;
+}`
+      },
+      {
+        id: 'square-everything',
+        name: 'Square everything',
+        nameKey: 'settings.cssSquareEverything',
+        css: `/* Remove all rounded corners */
+*, *::before, *::after {
+  border-radius: 0 !important;
+}`
+      },
+      {
+        id: 'compact-padding',
+        name: 'Compact padding',
+        nameKey: 'settings.cssCompactPadding',
+        css: `/* Reduce padding globally */
+main * {
+  padding-left: max(calc(var(--tw-pl, 0px) * 0.6), 0px);
+  padding-right: max(calc(var(--tw-pr, 0px) * 0.6), 0px);
+}`
+      },
+      {
+        id: 'hide-statusbar',
+        name: 'Hide status bar',
+        nameKey: 'settings.cssHideStatusbar',
+        css: `/* Hide the bottom status bar */
+footer, [class*="statusbar"], [class*="StatusBar"] {
+  display: none !important;
+}`
+      },
+      {
+        id: 'hide-titlebar',
+        name: 'Hide title bar',
+        nameKey: 'settings.cssHideTitlebar',
+        css: `/* Hide the top title bar (use with caution) */
+header, [class*="titlebar"], [class*="TitleBar"] {
+  display: none !important;
+}
+/* Restore drag region */
+#root { -webkit-app-region: drag; }
+#root button, #root a, #root input, #root textarea { -webkit-app-region: no-drag; }`
+      },
+      {
+        id: 'centered-content',
+        name: 'Centered narrow content',
+        nameKey: 'settings.cssCenteredContent',
+        css: `/* Constrain main content width */
+main > div {
+  max-width: 960px;
+  margin-left: auto;
+  margin-right: auto;
+}`
+      }
+    ]
+  },
+  {
+    category: 'Buttons & Inputs',
+    categoryKey: 'settings.cssCatButtons',
+    snippets: [
+      {
+        id: 'pill-buttons',
+        name: 'Pill-shaped buttons',
+        nameKey: 'settings.cssPillButtons',
+        css: `/* Fully rounded pill buttons */
+button {
+  border-radius: 999px !important;
+}`
+      },
+      {
+        id: 'button-outlines',
+        name: 'Outlined buttons',
+        nameKey: 'settings.cssOutlinedButtons',
+        css: `/* Outline style buttons */
+button {
+  background: transparent !important;
+  border: 1px solid var(--color-accent) !important;
+  color: var(--color-accent) !important;
+}
+button:hover {
+  background: var(--color-accent-subtle) !important;
+}`
+      },
+      {
+        id: 'input-accent-focus',
+        name: 'Accent focus ring',
+        nameKey: 'settings.cssAccentFocus',
+        css: `/* Accent-colored focus ring on inputs */
+input:focus, textarea:focus, select:focus {
+  outline: 2px solid var(--color-accent) !important;
+  outline-offset: 1px;
+  border-color: var(--color-accent) !important;
+}`
+      },
+      {
+        id: 'large-buttons',
+        name: 'Larger buttons',
+        nameKey: 'settings.cssLargeButtons',
+        css: `/* Bigger click targets */
+button {
+  min-height: 40px;
+  padding-left: 16px !important;
+  padding-right: 16px !important;
+  font-size: 14px !important;
+}`
+      }
+    ]
+  },
+  {
+    category: 'Colors & Themes',
+    categoryKey: 'settings.cssCatColors',
+    snippets: [
+      {
+        id: 'invert-ui',
+        name: 'Invert colors',
+        nameKey: 'settings.cssInvertColors',
+        css: `/* Invert the entire UI (light mode hack) */
+#root {
+  filter: invert(1) hue-rotate(180deg);
+}
+#root img, #root video {
+  filter: invert(1) hue-rotate(180deg);
+}`
+      },
+      {
+        id: 'sepia-tint',
+        name: 'Sepia tint',
+        nameKey: 'settings.cssSepiaTint',
+        css: `/* Warm sepia tone */
+#root {
+  filter: sepia(0.25);
+}`
+      },
+      {
+        id: 'hue-shift',
+        name: 'Hue shift (+90°)',
+        nameKey: 'settings.cssHueShift',
+        css: `/* Rotate all colors 90 degrees */
+#root {
+  filter: hue-rotate(90deg);
+}`
+      },
+      {
+        id: 'accent-selection',
+        name: 'Accent text selection',
+        nameKey: 'settings.cssAccentSelection',
+        css: `/* Custom text selection color */
+::selection {
+  background: var(--color-accent) !important;
+  color: white !important;
 }`
       }
     ]
@@ -1336,7 +1784,6 @@ function CustomCSSPanel(): React.JSX.Element {
   const [localCSS, setLocalCSS] = useState(appearance.customCSS ?? '')
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [expandedCat, setExpandedCat] = useState<string | null>(null)
-  const [copiedSnippet, setCopiedSnippet] = useState<string | null>(null)
 
   const cssEnabled = appearance.customCSSEnabled !== false
 
@@ -1359,13 +1806,18 @@ function CustomCSSPanel(): React.JSX.Element {
     update({ customCSSEnabled: !cssEnabled })
   }
 
-  const insertSnippet = (css: string): void => {
-    const newCSS = localCSS ? `${localCSS}\n\n${css}` : css
-    setLocalCSS(newCSS)
-    update({ customCSS: newCSS })
-    setCopiedSnippet(css)
-    setTimeout(() => setCopiedSnippet(null), 1500)
-  }
+  const toggleSnippet = useCallback((snippet: CSSSnippet): void => {
+    if (isSnippetActive(localCSS, snippet.id)) {
+      const newCSS = removeSnippet(localCSS, snippet.id)
+      setLocalCSS(newCSS)
+      update({ customCSS: newCSS })
+    } else {
+      const wrapped = wrapSnippet(snippet.id, snippet.css)
+      const newCSS = localCSS ? `${localCSS}\n\n${wrapped}` : wrapped
+      setLocalCSS(newCSS)
+      update({ customCSS: newCSS })
+    }
+  }, [localCSS, update])
 
   return (
     <div className="flex flex-col h-full">
@@ -1469,19 +1921,24 @@ function CustomCSSPanel(): React.JSX.Element {
                 </button>
                 {expandedCat === cat.category && (
                   <div className="flex flex-col">
-                    {cat.snippets.map((snippet) => (
-                      <button
-                        key={snippet.name}
-                        onClick={() => insertSnippet(snippet.css)}
-                        className="flex items-center gap-2 px-4 py-2 text-left text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)] transition-colors border-b border-[var(--color-border)]/50"
-                      >
-                        <Copy size={11} className="shrink-0 text-[var(--color-text-muted)]" />
-                        <span className="flex-1">{t(snippet.nameKey)}</span>
-                        {copiedSnippet === snippet.css && (
-                          <Check size={12} className="text-green-400 shrink-0" />
-                        )}
-                      </button>
-                    ))}
+                    {cat.snippets.map((snippet) => {
+                      const active = isSnippetActive(localCSS, snippet.id)
+                      return (
+                        <button
+                          key={snippet.id}
+                          onClick={() => toggleSnippet(snippet)}
+                          className={`flex items-center gap-2 px-4 py-2 text-left text-xs transition-colors border-b border-[var(--color-border)]/50 ${
+                            active
+                              ? 'bg-[var(--color-accent-subtle)] text-[var(--color-accent)]'
+                              : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)]'
+                          }`}
+                        >
+                          {active ? <ToggleRight size={14} className="shrink-0 text-[var(--color-accent)]" /> : <ToggleLeft size={14} className="shrink-0 text-[var(--color-text-muted)]" />}
+                          <span className="flex-1">{t(snippet.nameKey)}</span>
+                          {active && <Check size={12} className="text-[var(--color-accent)] shrink-0" />}
+                        </button>
+                      )
+                    })}
                   </div>
                 )}
               </div>

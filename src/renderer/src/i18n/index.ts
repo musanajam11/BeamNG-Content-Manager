@@ -14,6 +14,13 @@ import ru from './locales/ru.json'
 import ar from './locales/ar.json'
 import fa from './locales/fa.json'
 import ur from './locales/ur.json'
+import cs from './locales/cs.json'
+import pl from './locales/pl.json'
+import tr from './locales/tr.json'
+import sv from './locales/sv.json'
+import no from './locales/no.json'
+import da from './locales/da.json'
+import fi from './locales/fi.json'
 
 export const LANGUAGES = [
   { code: 'en', name: 'English', nativeName: 'English', countryCode: 'GB' },
@@ -28,7 +35,14 @@ export const LANGUAGES = [
   { code: 'ru', name: 'Russian', nativeName: 'Русский', countryCode: 'RU' },
   { code: 'ar', name: 'Arabic', nativeName: 'العربية', countryCode: 'SA' },
   { code: 'fa', name: 'Farsi', nativeName: 'فارسی', countryCode: 'IR' },
-  { code: 'ur', name: 'Urdu', nativeName: 'اردو', countryCode: 'PK' }
+  { code: 'ur', name: 'Urdu', nativeName: 'اردو', countryCode: 'PK' },
+  { code: 'cs', name: 'Czech', nativeName: 'Čeština', countryCode: 'CZ' },
+  { code: 'pl', name: 'Polish', nativeName: 'Polski', countryCode: 'PL' },
+  { code: 'tr', name: 'Turkish', nativeName: 'Türkçe', countryCode: 'TR' },
+  { code: 'sv', name: 'Swedish', nativeName: 'Svenska', countryCode: 'SE' },
+  { code: 'no', name: 'Norwegian', nativeName: 'Norsk', countryCode: 'NO' },
+  { code: 'da', name: 'Danish', nativeName: 'Dansk', countryCode: 'DK' },
+  { code: 'fi', name: 'Finnish', nativeName: 'Suomi', countryCode: 'FI' }
 ] as const
 
 export type LanguageCode = (typeof LANGUAGES)[number]['code']
@@ -47,7 +61,14 @@ i18n.use(initReactI18next).init({
     ru: { translation: ru },
     ar: { translation: ar },
     fa: { translation: fa },
-    ur: { translation: ur }
+    ur: { translation: ur },
+    cs: { translation: cs },
+    pl: { translation: pl },
+    tr: { translation: tr },
+    sv: { translation: sv },
+    no: { translation: no },
+    da: { translation: da },
+    fi: { translation: fi }
   },
   lng: 'en',
   fallbackLng: 'en',
