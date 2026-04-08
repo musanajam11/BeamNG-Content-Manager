@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { Trash2, Upload, Folder, File, ChevronRight, Search, FolderPlus, Copy, X, RefreshCw, Archive, Check } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ServerFileEntry } from '../../../../shared/types'
