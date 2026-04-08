@@ -128,11 +128,7 @@ export class ModManagerService {
         previewImage: null,
         location,
         resourceId: entry.resourceId || null,
-<<<<<<< Updated upstream
-        multiplayerScope: entry.multiplayerScope || null
-=======
         multiplayerScope: (entry.multiplayerScope as 'client' | 'server' | 'both') || null
->>>>>>> Stashed changes
       })
     }
 
