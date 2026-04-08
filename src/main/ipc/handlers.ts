@@ -4007,7 +4007,16 @@ export function registerIpcHandlers(): void {
       // Server-only: don't copy to Resources/Client/, only extract server component below
       result = { success: true }
     } else {
+<<<<<<< Updated upstream
       result = await serverManagerService.copyModToServer(id, modFilePath)
+=======
+      try {
+        await serverManagerService.copyModToServer(id, modFilePath)
+        result = { success: true }
+      } catch (err) {
+        result = { success: false, error: String(err) }
+      }
+>>>>>>> Stashed changes
     }
 
     // If the mod has server components, also deploy the server plugin

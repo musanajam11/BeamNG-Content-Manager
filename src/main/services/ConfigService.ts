@@ -33,7 +33,11 @@ const DEFAULT_CONFIG: AppConfig = {
     bgImageBlur: 0,
     bgImageOpacity: 0.3,
     bgImageList: [],
-    bgCycleOnLaunch: false
+    bgCycleOnLaunch: false,
+    sidebarOrder: ['home', 'servers', 'friends', 'vehicles', 'maps', 'mods', 'career', 'server-admin', 'launcher', 'controls'],
+    sidebarHidden: [],
+    customCSS: '',
+    customCSSEnabled: true
   },
   setupComplete: false,
   defaultPorts: '',
