@@ -238,6 +238,30 @@ export class GameLauncherService {
   // Log buffer for UI
   private logBuffer: string[] = []
   private readonly maxLogLines: number = 2000
+  private backendUrlResolver: (() => string) | null = null
+  private authUrlResolver: (() => string) | null = null
+
+  /** Set a callback that returns the configured backend URL */
+  setBackendUrlResolver(resolver: () => string): void {
+    this.backendUrlResolver = resolver
+  }
+
+  /** Set a callback that returns the configured auth URL */
+  setAuthUrlResolver(resolver: () => string): void {
+    this.authUrlResolver = resolver
+  }
+
+  /** Resolve the backend base URL (without trailing slash) */
+  private get backendUrl(): string {
+    const url = this.backendUrlResolver?.() || 'https://backend.beammp.com'
+    return url.replace(/\/+$/, '')
+  }
+
+  /** Resolve the auth base URL (without trailing slash) */
+  private get authUrl(): string {
+    const url = this.authUrlResolver?.() || 'https://auth.beammp.com'
+    return url.replace(/\/+$/, '')
+  }
 
   private log(message: string): void {
     const line = `[${new Date().toISOString()}] ${message}`
@@ -614,7 +638,7 @@ export class GameLauncherService {
 
   private async fetchAndSendServerList(): Promise<void> {
     try {
-      const resp = await fetch('https://backend.beammp.com/servers-info')
+      const resp = await fetch(`${this.backendUrl}/servers-info`)
       const body = await resp.text()
       this.coreSend('B' + body)
     } catch (err) {
@@ -687,7 +711,7 @@ export class GameLauncherService {
     }
 
     try {
-      const resp = await fetch('https://auth.beammp.com/userlogin', {
+      const resp = await fetch(`${this.authUrl}/userlogin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: fields
@@ -726,7 +750,7 @@ export class GameLauncherService {
   async checkLocalKey(): Promise<void> {
     if (!this.privateKey) return
     try {
-      const resp = await fetch('https://auth.beammp.com/userlogin', {
+      const resp = await fetch(`${this.authUrl}/userlogin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pk: this.privateKey })
@@ -1112,13 +1136,11 @@ export class GameLauncherService {
         return
       case 'M':
         this.mStatus = data
-        // Store the map data and set UlStatus to done (matches official launcher).
-        // The game polls Ul status — when it sees "Uldone", it requests the map
-        // via its own 'M' core message. Also forward M via proxy (official launcher
-        // forwards ALL relay messages to game, including M).
         this.ulStatus = 'Uldone'
         this.log(`Map received from server, UlStatus → Uldone: ${data.substring(0, 80)}`)
-        break // fall through to gameSend
+        // Official launcher caches M and does NOT forward it to game.
+        // The game requests map data via core socket 'M' message instead.
+        return
       case 'U':
         // U (magic) is handled at raw buffer level in processServerBuffer
         // to avoid UTF-8 corruption. This case only triggers for non-binary U messages.
@@ -1126,7 +1148,7 @@ export class GameLauncherService {
       case 'E':
       case 'K':
         this.ulStatus = 'UlDisconnected: ' + data.substring(1)
-        return
+        break // forward to game (official launcher forwards E/K)
     }
     this.gameSend(data)
   }
@@ -1145,14 +1167,50 @@ export class GameLauncherService {
     }
   }
 
+  /**
+   * Route a game→server message with the same logic as the official launcher's
+   * ServerSend (GlobalHandler.cpp).
+   *
+   * Routing rules (matching official C++ exactly):
+   *   • Code extracted only when len > 3 (otherwise C = 0 → goes UDP)
+   *   • O, T → "Ack" → TCP, compressed (SendLarge) if > 400 bytes
+   *   • N, W, Y, V, E, C → "Rel" (reliable) → TCP (plain if ≤ 1000, compressed if > 1000)
+   *   • compressBound > 1024 (~≈ len > 1024) → forced reliable
+   *   • Everything else → UDP (compressed if > 400 bytes)
+   */
   private serverSend(data: string): void {
     if (!this.serverSocket || this.serverSocket.destroyed || this.terminate) return
-    const code = data.length > 3 ? data[0] : ''
-    const reliable = 'NWYVECOTP'.includes(code) || data.length > 1000
-    if (reliable) {
-      this.serverSendFramed(data)
+    if (!data.length) return
+
+    const len = data.length
+    const code = len > 3 ? data[0] : '\0'
+    const isAck = code === 'O' || code === 'T'
+    let isRel = 'NWYVEC'.includes(code) && code !== '\0'
+    if (len > 1024) isRel = true                   // compressBound heuristic
+
+    if (isAck || isRel) {
+      if (isAck || len > 1000) {
+        this.serverSendLarge(data)                   // TCP + compression
+      } else {
+        this.serverSendFramed(data)                  // TCP, no compression
+      }
     } else {
-      this.udpSend(data)
+      this.udpSend(data)                             // UDP (compresses if > 400)
+    }
+  }
+
+  /** TCP send with ABG: compression for payloads > 400 bytes (matches SendLarge) */
+  private serverSendLarge(data: string): void {
+    if (!this.serverSocket || this.serverSocket.destroyed) return
+    const buf = Buffer.from(data, 'utf-8')
+    if (buf.length > 400) {
+      const compressed = zlib.deflateSync(buf)
+      const payload = Buffer.concat([Buffer.from('ABG:'), compressed])
+      const header = Buffer.alloc(4)
+      header.writeUInt32LE(payload.length, 0)
+      this.serverSocket.write(Buffer.concat([header, payload]))
+    } else {
+      this.serverSendFramed(data)
     }
   }
 
@@ -1187,7 +1245,6 @@ export class GameLauncherService {
 
     this.pingInterval = setInterval(() => {
       if (this.terminate) { if (this.pingInterval) clearInterval(this.pingInterval); return }
-      if (!this.magic) return // Wait for UDP auth (magic buffer received)
       this.pingStart = Date.now()
       this.udpSend('p')
     }, 1000)
@@ -1195,8 +1252,15 @@ export class GameLauncherService {
 
   private udpSend(data: string): void {
     if (!this.udpSocket || !this.udpTarget || this.clientId < 0) return
-    const packet = Buffer.from(String.fromCharCode(this.clientId + 1) + ':' + data)
-    this.udpSocket.send(packet, this.udpTarget.port, this.udpTarget.ip)
+    // Compress payloads > 400 bytes with ABG: prefix (matches official UDPSend)
+    let payload: string | Buffer = data
+    if (data.length > 400) {
+      const compressed = zlib.deflateSync(Buffer.from(data, 'utf-8'))
+      payload = Buffer.concat([Buffer.from('ABG:'), compressed])
+    }
+    const prefix = Buffer.from(String.fromCharCode(this.clientId + 1) + ':')
+    const body = typeof payload === 'string' ? Buffer.from(payload, 'utf-8') : payload
+    this.udpSocket.send(Buffer.concat([prefix, body]), this.udpTarget.port, this.udpTarget.ip)
   }
 
   private udpSendBuf(data: Buffer): void {
@@ -1311,7 +1375,7 @@ export class GameLauncherService {
   }
 
   private proxyToBackend(req: IncomingMessage, res: ServerResponse, path: string): void {
-    const url = `https://backend.beammp.com${path}`
+    const url = `${this.backendUrl}${path}`
     const headers: Record<string, string> = {
       'User-Agent': `BeamMP-Launcher/${LAUNCHER_VERSION}`
     }
@@ -1957,7 +2021,7 @@ export class GameLauncherService {
 
   async loginAsGuest(): Promise<void> {
     try {
-      const resp = await fetch('https://auth.beammp.com/userlogin', {
+      const resp = await fetch(`${this.authUrl}/userlogin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ Guest: 'Name' })
@@ -1990,7 +2054,7 @@ export class GameLauncherService {
 
   async loginToBeamMP(username: string, password: string): Promise<{ success: boolean; username?: string; error?: string }> {
     try {
-      const resp = await fetch('https://auth.beammp.com/userlogin', {
+      const resp = await fetch(`${this.authUrl}/userlogin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })

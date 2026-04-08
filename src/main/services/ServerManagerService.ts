@@ -74,11 +74,24 @@ export class ServerManagerService {
   private running = new Map<string, RunningServer>()
   private exePath: string | null = null
   private downloading = false
+  private customExeResolver: (() => string | null) | null = null
 
   constructor() {
     const base = join(app.getPath('appData'), 'BeamMP-ContentManager')
     this.serversDir = join(base, 'servers')
     this.binDir = join(base, 'bin')
+  }
+
+  /** Set a callback that returns the custom server exe path from config (or null for default) */
+  setCustomExeResolver(resolver: () => string | null): void {
+    this.customExeResolver = resolver
+  }
+
+  /** Resolve the effective exe path: custom override > built-in managed copy */
+  private resolveExePath(): string | null {
+    const custom = this.customExeResolver?.()
+    if (custom && existsSync(custom)) return custom
+    return this.exePath
   }
 
   /* ── Auth Key encryption helpers ── */
@@ -157,7 +170,8 @@ export class ServerManagerService {
 
   getExeStatus(): 'ready' | 'missing' | 'downloading' {
     if (this.downloading) return 'downloading'
-    if (this.exePath && existsSync(this.exePath)) return 'ready'
+    const effective = this.resolveExePath()
+    if (effective && existsSync(effective)) return 'ready'
     return 'missing'
   }
 
@@ -524,7 +538,8 @@ export class ServerManagerService {
     if (this.running.has(id)) {
       return { success: false, error: 'Server is already running' }
     }
-    if (!this.exePath || !existsSync(this.exePath)) {
+    const effectiveExe = this.resolveExePath()
+    if (!effectiveExe || !existsSync(effectiveExe)) {
       return { success: false, error: 'BeamMP-Server executable not found. Download or drag-and-drop the exe.' }
     }
     const config = await this.getServerConfig(id)
@@ -536,7 +551,7 @@ export class ServerManagerService {
     // Ensure this server has its own exe copy
     const localExe = this.serverExePath(id)
     if (!existsSync(localExe)) {
-      await copyFile(this.exePath, localExe)
+      await copyFile(effectiveExe, localExe)
       await this.makeExecutable(localExe)
     }
 

@@ -44,7 +44,7 @@ export function ModSyncOverlay(): React.JSX.Element | null {
   }
 
   return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center bg-[#111113]/90 backdrop-blur-sm">
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-[#111113]/90 backdrop-blur-sm">
       <div className="w-[380px] border border-white/10 bg-[#1a1a1e] rounded-lg p-6 shadow-2xl">
         {/* Header */}
         <div className="flex items-center gap-3 mb-4">

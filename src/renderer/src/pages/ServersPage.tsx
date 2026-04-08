@@ -5,8 +5,7 @@ import { ServersFilters } from '../components/servers/ServersFilters'
 import { ServerList } from '../components/servers/ServerList'
 import { ServerDetailPanel } from '../components/servers/ServerDetailPanel'
 import { ModSyncOverlay } from '../components/servers/ModSyncOverlay'
-import { LoginSheet } from '../components/servers/LoginSheet'
-import { Globe, Users, Shield, Package, Clock, X, LogIn } from 'lucide-react'
+import { Globe, Users, Shield, Package, Clock, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { BeamMPText } from '../components/BeamMPText'
 
@@ -20,10 +19,15 @@ export function ServersPage(): React.JSX.Element {
   const [joining, setJoining] = useState(false)
   const [joinError, setJoinError] = useState<string | null>(null)
 
-  // Auth gate state
-  const [authInfo, setAuthInfo] = useState<{ authenticated: boolean; username: string; guest: boolean }>({ authenticated: false, username: '', guest: false })
-  const [showLoginGate, setShowLoginGate] = useState(false)
-  const [pendingJoin, setPendingJoin] = useState<{ ip: string; port: string } | null>(null)
+  // Track whether mod sync is actively in progress
+  const [modSyncActive, setModSyncActive] = useState(false)
+
+  useEffect(() => {
+    const unsub = window.api.onModSyncProgress((p) => {
+      setModSyncActive(p.phase !== 'done')
+    })
+    return unsub
+  }, [])
 
   // Connection state (real-time)
   const [gameStatus, setGameStatus] = useState<{ running: boolean; pid: number | null; connectedServer: string | null }>({ running: false, pid: null, connectedServer: null })
@@ -146,8 +150,7 @@ export function ServersPage(): React.JSX.Element {
     if (filteredServers.length === 0 && !loading) {
       fetchServers()
     }
-    // Load initial auth & game status
-    window.api.getAuthInfo().then(setAuthInfo)
+    // Load initial game status
     window.api.getGameStatus().then(setGameStatus)
     // Listen for real-time game status changes
     const unsubStatus = window.api.onGameStatusChange(setGameStatus)
@@ -241,19 +244,14 @@ export function ServersPage(): React.JSX.Element {
     return { total, official, modded, totalPlayers }
   }, [filteredServers])
 
-  // Auth-gated join: uses cached auth state for instant response
-  const requireAuthThenJoin = useCallback((ip: string, port: string): void => {
-    if (!authInfo.authenticated) {
-      setPendingJoin({ ip, port })
-      setShowLoginGate(true)
-      return
-    }
+  // Join: backend auto-logins as guest if not authenticated
+  const handleJoinServer = useCallback((ip: string, port: string): void => {
     if (gameStatus.connectedServer) {
       setJoinError('Already connected to a server. Disconnect first.')
       return
     }
     doJoin(ip, port)
-  }, [authInfo.authenticated, gameStatus.connectedServer])
+  }, [gameStatus.connectedServer])
 
   const doJoin = async (ip: string, port: string): Promise<void> => {
     setJoining(true)
@@ -270,21 +268,11 @@ export function ServersPage(): React.JSX.Element {
 
   const handleJoin = (): void => {
     if (!selectedServer) return
-    requireAuthThenJoin(selectedServer.ip, selectedServer.port)
+    handleJoinServer(selectedServer.ip, selectedServer.port)
   }
 
   const handleDirectConnect = (ip: string, port: string): void => {
-    requireAuthThenJoin(ip, port)
-  }
-
-  const handleLoginGateSuccess = (): void => {
-    setShowLoginGate(false)
-    window.api.getAuthInfo().then(setAuthInfo)
-    if (pendingJoin) {
-      const { ip, port } = pendingJoin
-      setPendingJoin(null)
-      doJoin(ip, port)
-    }
+    handleJoinServer(ip, port)
   }
 
   return (
@@ -382,7 +370,7 @@ export function ServersPage(): React.JSX.Element {
                 </div>
               )}
 
-              {/* Mod sync progress overlay */}
+              {/* Mod sync progress overlay — always on top until complete */}
               <ModSyncOverlay />
             </div>
             {selectedServer && (
@@ -410,29 +398,8 @@ export function ServersPage(): React.JSX.Element {
         )}
       </div>
 
-      {/* Login gate modal */}
-      {showLoginGate && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="w-[420px] rounded-xl border border-white/10 bg-[#1a1a1d] p-6 shadow-2xl">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="rounded-lg bg-[var(--color-accent-10)] p-2 text-[var(--color-accent-text)]">
-                <LogIn size={18} />
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold text-white">{t('servers.signInRequired')}</h2>
-                <p className="text-xs text-slate-400">{t('servers.signInDescription')}</p>
-              </div>
-            </div>
-            <LoginSheet
-              onClose={() => { setShowLoginGate(false); setPendingJoin(null) }}
-              onSuccess={handleLoginGateSuccess}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Connecting overlay — shown while joining a server */}
-      {joining && (
+      {/* Connecting overlay — only after mod sync is done */}
+      {joining && !modSyncActive && (
         <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-[#111113]/90 backdrop-blur-sm">
           <div className="relative mb-4">
             <div className="h-10 w-10 rounded-full border-2 border-[var(--color-accent-20)]" />

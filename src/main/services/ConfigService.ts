@@ -13,6 +13,8 @@ const DEFAULT_CONFIG: AppConfig = {
     isProton: false
   },
   backendUrl: 'https://backend.beammp.com',
+  authUrl: 'https://auth.beammp.com',
+  useOfficialBackend: true,
   launcherPort: 4444,
   theme: 'dark',
   language: 'en',
@@ -35,7 +37,8 @@ const DEFAULT_CONFIG: AppConfig = {
   },
   setupComplete: false,
   defaultPorts: '',
-  careerSavePath: null
+  careerSavePath: null,
+  customServerExe: null
 }
 
 export class ConfigService {

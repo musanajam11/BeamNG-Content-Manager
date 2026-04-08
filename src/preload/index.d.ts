@@ -7,6 +7,7 @@ interface AppAPI {
   getConfig(): Promise<AppConfig>
   updateConfig(partial: Partial<AppConfig>): Promise<void>
   markSetupComplete(): Promise<void>
+  browseServerExe(): Promise<string | null>
 
   // Appearance
   setZoomFactor(factor: number): Promise<void>
@@ -67,6 +68,8 @@ interface AppAPI {
   login(username: string, password: string): Promise<AuthResult>
   checkBackendHealth(): Promise<boolean>
   setBackendUrl(url: string): Promise<void>
+  setAuthUrl(url: string): Promise<void>
+  setUseOfficialBackend(useOfficial: boolean): Promise<void>
 
   // Map Preview
   getMapPreview(mapPath: string, modZipPath?: string): Promise<string | null>

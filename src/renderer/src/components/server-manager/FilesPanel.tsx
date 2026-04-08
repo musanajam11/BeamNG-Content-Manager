@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Trash2, Upload, Folder, File, ChevronRight, Search, FolderPlus, Copy, X, RefreshCw, Archive } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { Trash2, Upload, Folder, File, ChevronRight, Search, FolderPlus, Copy, X, RefreshCw, Archive, Check } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ServerFileEntry } from '../../../../shared/types'
 import { FileEditor } from './FileEditor'
@@ -44,6 +44,9 @@ export function FilesPanel({
   const [copied, setCopied] = useState<string | null>(null)
   const [editingFile, setEditingFile] = useState<ServerFileEntry | null>(null)
   const [extracting, setExtracting] = useState<string | null>(null)
+  const [creatingFolder, setCreatingFolder] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
+  const newFolderInputRef = useRef<HTMLInputElement>(null)
 
   if (editingFile) {
     return (
@@ -77,12 +80,28 @@ export function FilesPanel({
     onRefresh()
   }
 
-  const handleNewFolder = async (): Promise<void> => {
-    const name = prompt(t('serverManager.folderNamePrompt'))
-    if (!name) return
+  const handleNewFolder = (): void => {
+    setCreatingFolder(true)
+    setNewFolderName('')
+    setTimeout(() => newFolderInputRef.current?.focus(), 0)
+  }
+
+  const handleNewFolderConfirm = async (): Promise<void> => {
+    const name = newFolderName.trim()
+    if (!name) {
+      setCreatingFolder(false)
+      return
+    }
     const sub = filePath ? `${filePath}/${name}` : name
     await window.api.hostedServerCreateFolder(serverId, sub)
+    setCreatingFolder(false)
+    setNewFolderName('')
     onRefresh()
+  }
+
+  const handleNewFolderCancel = (): void => {
+    setCreatingFolder(false)
+    setNewFolderName('')
   }
 
   const copyPath = (path: string): void => {
@@ -196,6 +215,38 @@ export function FilesPanel({
           >
             <Folder size={14} /> ..
           </button>
+        )}
+        {creatingFolder && (
+          <div className="flex items-center gap-2 w-full px-4 py-1.5 text-sm border-b border-[var(--color-border)] bg-[var(--color-surface-hover)]">
+            <FolderPlus size={14} className="text-[var(--color-accent)] shrink-0" />
+            <input
+              ref={newFolderInputRef}
+              type="text"
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleNewFolderConfirm()
+                if (e.key === 'Escape') handleNewFolderCancel()
+              }}
+              onBlur={() => { if (!newFolderName.trim()) handleNewFolderCancel() }}
+              placeholder={t('serverManager.folderNamePrompt')}
+              className="flex-1 min-w-0 text-sm bg-[var(--color-bg)] border border-[var(--color-accent)] rounded px-2 py-0.5 text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] outline-none"
+            />
+            <button
+              onClick={handleNewFolderConfirm}
+              className="p-1 rounded text-green-400 hover:text-green-300 transition-colors"
+              title={t('serverManager.confirmDialogConfirm')}
+            >
+              <Check size={14} />
+            </button>
+            <button
+              onClick={handleNewFolderCancel}
+              className="p-1 rounded text-[var(--color-text-muted)] hover:text-red-400 transition-colors"
+              title={t('serverManager.confirmDialogCancel')}
+            >
+              <X size={14} />
+            </button>
+          </div>
         )}
         {filtered.map((f) => (
           <div

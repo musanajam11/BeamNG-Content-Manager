@@ -45,6 +45,10 @@ export interface AppearanceSettings {
 export interface AppConfig {
   gamePaths: GamePaths
   backendUrl: string
+  /** Auth server URL (default: https://auth.beammp.com) */
+  authUrl: string
+  /** When true, always use official BeamMP backend/auth regardless of URL fields */
+  useOfficialBackend: boolean
   launcherPort: number
   theme: 'dark' | 'light'
   /** UI language code (e.g. 'en', 'es', 'fr') */
@@ -55,6 +59,8 @@ export interface AppConfig {
   defaultPorts: string
   /** Manual override for CareerMP save directory */
   careerSavePath: string | null
+  /** Custom BeamMP-Server executable path — null = built-in managed copy */
+  customServerExe: string | null
 }
 
 export interface ServerInfo {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { FolderOpen, Globe, Check, AlertCircle, Package, Download, Upload, Palette, RotateCcw, Monitor, Type, Layers, Maximize2, PanelLeft, Eye, Image, X, Plus, Shuffle, Network, Languages } from 'lucide-react'
+import { FolderOpen, Globe, Check, AlertCircle, Package, Download, Upload, Palette, RotateCcw, Monitor, Type, Layers, Maximize2, PanelLeft, Eye, Image, X, Plus, Shuffle, Network, Languages, Terminal, Server } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/useAppStore'
 import { useThemeStore, ACCENT_PRESETS, BG_STYLES } from '../stores/useThemeStore'
@@ -87,6 +87,8 @@ function LanguageSelector(): React.JSX.Element {
 function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.getState>['config'] }): React.JSX.Element {
   const { t } = useTranslation()
   const [backendUrl, setBackendUrl] = useState(config?.backendUrl || '')
+  const [authUrl, setAuthUrl] = useState(config?.authUrl || '')
+  const [useOfficialBackend, setUseOfficialBackend] = useState(config?.useOfficialBackend ?? true)
   const [backendHealthy, setBackendHealthy] = useState<boolean | null>(null)
   const [installDir, setInstallDir] = useState(config?.gamePaths?.installDir || '')
   const [userDir, setUserDir] = useState(config?.gamePaths?.userDir || '')
@@ -97,13 +99,17 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
   const [reposSaved, setReposSaved] = useState(false)
   const [modpackName, setModpackName] = useState('')
   const [modpackStatus, setModpackStatus] = useState<string | null>(null)
+  const [customServerExe, setCustomServerExe] = useState(config?.customServerExe || '')
 
   useEffect(() => {
     if (config) {
       setBackendUrl(config.backendUrl)
+      setAuthUrl(config.authUrl ?? '')
+      setUseOfficialBackend(config.useOfficialBackend ?? true)
       setInstallDir(config.gamePaths?.installDir ?? '')
       setUserDir(config.gamePaths?.userDir ?? '')
       setDefaultPorts(config.defaultPorts ?? '')
+      setCustomServerExe(config.customServerExe ?? '')
     }
   }, [config])
 
@@ -121,14 +127,25 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
   }
 
   const handleSave = async (): Promise<void> => {
+    // Save backend toggle
+    if (useOfficialBackend !== (config?.useOfficialBackend ?? true)) {
+      await window.api.setUseOfficialBackend(useOfficialBackend)
+    }
     if (backendUrl !== config?.backendUrl) {
       await window.api.setBackendUrl(backendUrl)
+    }
+    if (authUrl !== (config?.authUrl ?? '')) {
+      await window.api.setAuthUrl(authUrl)
     }
     if (installDir && userDir) {
       await window.api.setCustomPaths(installDir, userDir)
     }
     if (defaultPorts !== (config?.defaultPorts ?? '')) {
       await window.api.updateConfig({ defaultPorts })
+    }
+    const newServerExe = customServerExe.trim() || null
+    if (newServerExe !== (config?.customServerExe ?? null)) {
+      await window.api.updateConfig({ customServerExe: newServerExe })
     }
     await useAppStore.getState().loadConfig()
     setSaved(true)
@@ -191,27 +208,68 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
               <Globe size={16} />
               {t('settings.backendServer')}
             </h2>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={backendUrl}
-                onChange={(e) => setBackendUrl(e.target.value)}
-                placeholder="https://backend.beammp.com"
-                className="flex-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)]"
-              />
+
+            {/* Official / Custom toggle */}
+            <div className="flex items-center gap-3 mb-4">
               <button
-                onClick={checkHealth}
-                className="px-3 py-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] transition-colors"
+                onClick={() => setUseOfficialBackend(!useOfficialBackend)}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${useOfficialBackend ? 'bg-[var(--color-text-muted)]' : 'bg-[var(--color-accent)]'}`}
               >
-                {t('common.test')}
+                <span
+                  className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${useOfficialBackend ? 'translate-x-0.5' : 'translate-x-[18px]'}`}
+                />
               </button>
+              <span className="text-sm text-[var(--color-text-secondary)]">
+                {t('settings.useCustomBackend')}
+              </span>
             </div>
-            {backendHealthy !== null && (
-              <p
-                className={`mt-2 text-xs flex items-center gap-1 ${backendHealthy ? 'text-green-400' : 'text-red-400'}`}
-              >
-                {backendHealthy ? <Check size={12} /> : <AlertCircle size={12} />}
-                {backendHealthy ? t('settings.backendReachable') : t('settings.backendUnreachable')}
+
+            {!useOfficialBackend && (
+              <div className="flex flex-col gap-3">
+                {/* Backend URL */}
+                <div>
+                  <label className="text-xs text-[var(--color-text-muted)] mb-1 block">{t('settings.backendUrl')}</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={backendUrl}
+                      onChange={(e) => setBackendUrl(e.target.value)}
+                      placeholder="https://backend.beammp.com"
+                      className="flex-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)]"
+                    />
+                    <button
+                      onClick={checkHealth}
+                      className="px-3 py-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] transition-colors"
+                    >
+                      {t('common.test')}
+                    </button>
+                  </div>
+                </div>
+                {/* Auth URL */}
+                <div>
+                  <label className="text-xs text-[var(--color-text-muted)] mb-1 block">{t('settings.authUrl')}</label>
+                  <input
+                    type="text"
+                    value={authUrl}
+                    onChange={(e) => setAuthUrl(e.target.value)}
+                    placeholder="https://auth.beammp.com"
+                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)]"
+                  />
+                </div>
+                {backendHealthy !== null && (
+                  <p
+                    className={`text-xs flex items-center gap-1 ${backendHealthy ? 'text-green-400' : 'text-red-400'}`}
+                  >
+                    {backendHealthy ? <Check size={12} /> : <AlertCircle size={12} />}
+                    {backendHealthy ? t('settings.backendReachable') : t('settings.backendUnreachable')}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {useOfficialBackend && (
+              <p className="text-xs text-[var(--color-text-muted)]">
+                {t('settings.officialBackendActive')}
               </p>
             )}
           </section>
@@ -232,6 +290,53 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
             <p className="mt-2 text-xs text-[var(--color-text-muted)]">
               {t('settings.defaultPortsDescription')}
             </p>
+          </section>
+
+          {/* Custom Executables */}
+          <section>
+            <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
+              <Terminal size={16} />
+              {t('settings.customExecutables')}
+            </h2>
+            <p className="text-xs text-[var(--color-text-muted)] mb-4">
+              {t('settings.customExecutablesDesc')}
+            </p>
+            <div className="flex flex-col gap-4">
+              {/* Custom Server Exe */}
+              <div>
+                <label className="text-xs text-[var(--color-text-muted)] mb-1 flex items-center gap-1.5">
+                  <Server size={12} />
+                  {t('settings.customServerExe')}
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={customServerExe}
+                    onChange={(e) => setCustomServerExe(e.target.value)}
+                    placeholder={t('settings.customServerExePlaceholder')}
+                    className="flex-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)]"
+                  />
+                  <button
+                    onClick={async () => {
+                      const path = await window.api.browseServerExe()
+                      if (path) setCustomServerExe(path)
+                    }}
+                    className="px-3 py-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] transition-colors"
+                  >
+                    <FolderOpen size={14} />
+                  </button>
+                  {customServerExe && (
+                    <button
+                      onClick={() => setCustomServerExe('')}
+                      className="px-3 py-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-sm text-red-400 hover:text-red-300 hover:bg-[var(--color-surface-hover)] transition-colors"
+                      title={t('settings.revertToOfficial')}
+                    >
+                      <RotateCcw size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
           </section>
 
           {/* Save */}

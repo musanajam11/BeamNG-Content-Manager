@@ -123,7 +123,7 @@ app.whenReady().then(async () => {
   // Initialize services and load config
   const { config, backend, serverManager } = initializeServices()
   const appConfig = await config.load()
-  backend.setBaseUrl(appConfig.backendUrl)
+  backend.setBaseUrl(appConfig.useOfficialBackend ? 'https://backend.beammp.com' : appConfig.backendUrl)
   initVehicleAssetService(config)
   await serverManager.init()
 

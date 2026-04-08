@@ -49,11 +49,20 @@ export function initializeServices(): {
 } {
   discoveryService = new GameDiscoveryService()
   launcherService = new GameLauncherService()
+  launcherService.setBackendUrlResolver(() => {
+    const cfg = configService.get()
+    return cfg.useOfficialBackend ? 'https://backend.beammp.com' : cfg.backendUrl
+  })
+  launcherService.setAuthUrlResolver(() => {
+    const cfg = configService.get()
+    return cfg.useOfficialBackend ? 'https://auth.beammp.com' : cfg.authUrl
+  })
   configService = new ConfigService()
   backendService = new BackendApiService()
   modManagerService = new ModManagerService()
   repoService = new BeamNGRepoService()
   serverManagerService = new ServerManagerService()
+  serverManagerService.setCustomExeResolver(() => configService.get().customServerExe ?? null)
   backupSchedulerService = new BackupSchedulerService()
   taskSchedulerService = new TaskSchedulerService()
   taskSchedulerService.setDependencies(serverManagerService, backupSchedulerService)
@@ -2484,8 +2493,29 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('backend:setUrl', async (_event, url: string) => {
-    backendService.setBaseUrl(url)
     await configService.setBackendUrl(url)
+    // Only update BackendApiService if using custom backend
+    if (!configService.get().useOfficialBackend) {
+      backendService.setBaseUrl(url)
+    }
+  })
+
+  ipcMain.handle('backend:setAuthUrl', async (_event, url: string) => {
+    const cfg = configService.get()
+    cfg.authUrl = url
+    await configService.update(cfg)
+  })
+
+  ipcMain.handle('backend:setUseOfficial', async (_event, useOfficial: boolean) => {
+    const cfg = configService.get()
+    cfg.useOfficialBackend = useOfficial
+    await configService.update(cfg)
+    // Also update BackendApiService base URL
+    if (useOfficial) {
+      backendService.setBaseUrl('https://backend.beammp.com')
+    } else {
+      backendService.setBaseUrl(cfg.backendUrl)
+    }
   })
 
   // ── Map Preview ──
@@ -4566,5 +4596,21 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('career:getSavePath', async () => {
     return careerSaveService.getResolvedSavesDir()
+  })
+
+  // ── Custom Executable Paths ──
+
+  ipcMain.handle('config:browseServerExe', async () => {
+    const win = BrowserWindow.getFocusedWindow()
+    if (!win) return null
+    const result = await dialog.showOpenDialog(win, {
+      title: 'Locate BeamMP-Server executable',
+      filters: process.platform === 'win32'
+        ? [{ name: 'BeamMP-Server', extensions: ['exe'] }]
+        : [{ name: 'All Files', extensions: ['*'] }],
+      properties: ['openFile']
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0]
   })
 }

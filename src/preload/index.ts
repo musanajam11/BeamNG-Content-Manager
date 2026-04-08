@@ -6,6 +6,8 @@ const api = {
   getConfig: () => ipcRenderer.invoke('config:get'),
   updateConfig: (partial: Record<string, unknown>) => ipcRenderer.invoke('config:update', partial),
   markSetupComplete: () => ipcRenderer.invoke('config:markSetupComplete'),
+  browseServerExe: () =>
+    ipcRenderer.invoke('config:browseServerExe') as Promise<string | null>,
 
   // Appearance
   setZoomFactor: (factor: number) => ipcRenderer.invoke('appearance:setZoom', factor),
@@ -97,6 +99,8 @@ const api = {
     ipcRenderer.invoke('backend:login', username, password),
   checkBackendHealth: () => ipcRenderer.invoke('backend:checkHealth'),
   setBackendUrl: (url: string) => ipcRenderer.invoke('backend:setUrl', url),
+  setAuthUrl: (url: string) => ipcRenderer.invoke('backend:setAuthUrl', url),
+  setUseOfficialBackend: (useOfficial: boolean) => ipcRenderer.invoke('backend:setUseOfficial', useOfficial),
 
   // Map Preview
   getMapPreview: (mapPath: string, modZipPath?: string) =>
