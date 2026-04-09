@@ -80,7 +80,9 @@
     "beammpClient": "BeamMP Client {{version}}",
     "server": "Server {{version}}",
     "madeWith": "Made with ❤️",
-    "appVersion": "BeamNG CM {{version}}"
+    "appVersion": "BeamNG CM {{version}}",
+    "assetDisclaimer": "All game assets © BeamNG GmbH",
+    "assetDisclaimerFull": "All game assets including screenshots, vehicle models, maps, and related media are the property of BeamNG GmbH. This application is not affiliated with or endorsed by BeamNG GmbH."
   },
   "home": {
     "title": "Home",
@@ -382,6 +384,8 @@
     "updateCount": "{{count}} updates",
     "released": "Released",
     "byAuthor": "by {{author}}",
+    "registryVerified": "Verified registry mod",
+    "manualImport": "Manually imported mod",
     "clear": "Clear",
     "loggedIn": "Logged in",
     "logOut": "Log out",

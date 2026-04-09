@@ -431,6 +431,14 @@ See [Build Guide](docs/BUILD.md) for development setup.
 
 This project is licensed under the [GNU General Public License v3.0](LICENSE).
 
+### Asset Ownership & Third-Party Notices
+
+All game assets included in or displayed by this application — including bundled background images (screenshots from BeamNG.drive), vehicle models, maps, textures, sounds, and related media — are the exclusive property of **[BeamNG GmbH](https://www.beamng.com/)** and are **not** covered by this project's GPL-3.0 license. These assets may not be redistributed, modified, or used separately without permission from BeamNG GmbH.
+
+This project is not affiliated with, endorsed by, or sponsored by BeamNG GmbH or the BeamMP team. All trademarks and registered trademarks are the property of their respective owners.
+
+For full attribution details, see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
 ---
 
 <div align="center">

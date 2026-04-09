@@ -292,30 +292,84 @@ export class ServerManagerService {
     return join(this.serversDir, id)
   }
 
+  // ── Deploy map: tracks source mod name → deployed filenames for Resources-layout mods ──
+
+  private deployMapPath(id: string): string {
+    return join(this.serversDir, id, 'deploy_map.json')
+  }
+
+  async getDeployMap(id: string): Promise<Record<string, string[]>> {
+    const p = this.deployMapPath(id)
+    if (!existsSync(p)) return {}
+    try {
+      return JSON.parse(await readFile(p, 'utf-8'))
+    } catch {
+      return {}
+    }
+  }
+
+  async setDeployMapping(id: string, sourceFileName: string, deployedFileNames: string[]): Promise<void> {
+    const map = await this.getDeployMap(id)
+    map[sourceFileName.toLowerCase()] = deployedFileNames.map((n) => n.toLowerCase())
+    await writeFile(this.deployMapPath(id), JSON.stringify(map, null, 2))
+  }
+
+  async removeDeployMapping(id: string, sourceFileName: string): Promise<void> {
+    const map = await this.getDeployMap(id)
+    delete map[sourceFileName.toLowerCase()]
+    await writeFile(this.deployMapPath(id), JSON.stringify(map, null, 2))
+  }
+
   async getDeployedMods(id: string): Promise<string[]> {
     const config = await this.getServerConfig(id)
     if (!config) return []
     const clientDir = join(this.serversDir, id, config.resourceFolder, 'Client')
     if (!existsSync(clientDir)) return []
     const entries = await readdir(clientDir, { withFileTypes: true })
-    return entries
-      .filter((e) => !e.isDirectory() && isModArchive(e.name))
-      .map((e) => e.name.toLowerCase())
+    const onDisk = new Set(
+      entries
+        .filter((e) => !e.isDirectory() && isModArchive(e.name))
+        .map((e) => e.name.toLowerCase())
+    )
+
+    // Include source mod names from the deploy map if their deployed files exist
+    const map = await this.getDeployMap(id)
+    for (const [source, deployed] of Object.entries(map)) {
+      if (deployed.some((f) => onDisk.has(f))) {
+        onDisk.add(source)
+      }
+    }
+
+    return [...onDisk]
   }
 
   async undeployMod(id: string, modFileName: string): Promise<void> {
     const config = await this.getServerConfig(id)
     if (!config) throw new Error('Server not found')
     const serverDir = join(this.serversDir, id)
+    const needle = modFileName.toLowerCase()
 
-    // Remove client archive
-    const clientZip = join(serverDir, config.resourceFolder, 'Client', modFileName)
-    if (existsSync(clientZip)) await unlink(clientZip)
+    // Check deploy map — if this is a source name, delete the mapped files instead
+    const map = await this.getDeployMap(id)
+    const mappedFiles = map[needle]
+    if (mappedFiles && mappedFiles.length > 0) {
+      for (const mf of mappedFiles) {
+        const clientZip = join(serverDir, config.resourceFolder, 'Client', mf)
+        if (existsSync(clientZip)) await unlink(clientZip)
+        const modId = stripArchiveExt(mf)
+        const serverPlugin = join(serverDir, config.resourceFolder, 'Server', modId)
+        if (existsSync(serverPlugin)) await rm(serverPlugin, { recursive: true, force: true })
+      }
+      await this.removeDeployMapping(id, needle)
+    } else {
+      // Direct filename — remove as before
+      const clientZip = join(serverDir, config.resourceFolder, 'Client', modFileName)
+      if (existsSync(clientZip)) await unlink(clientZip)
 
-    // Remove server plugin folder (mod name without extension)
-    const modId = stripArchiveExt(modFileName)
-    const serverPlugin = join(serverDir, config.resourceFolder, 'Server', modId)
-    if (existsSync(serverPlugin)) await rm(serverPlugin, { recursive: true, force: true })
+      const modId = stripArchiveExt(modFileName)
+      const serverPlugin = join(serverDir, config.resourceFolder, 'Server', modId)
+      if (existsSync(serverPlugin)) await rm(serverPlugin, { recursive: true, force: true })
+    }
   }
 
   async getServersWithMod(modFileName: string): Promise<Array<{ id: string; name: string }>> {

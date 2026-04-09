@@ -885,6 +885,36 @@ export class RegistryService {
   }
 
   /**
+   * Extract Resources/Client/*.zip entries from a Resources-layout outer zip to a target directory.
+   * Returns the paths of the extracted client zips, or empty array if no Resources/Client/ layout.
+   */
+  async extractClientZipsFromOuterZip(
+    zipPath: string,
+    destDir: string
+  ): Promise<string[]> {
+    const entries = await this.listZipEntries(zipPath)
+    const clientZips = entries.filter(
+      (e) => e.startsWith('Resources/Client/') && e.endsWith('.zip') && !e.endsWith('/')
+    )
+    if (clientZips.length === 0) return []
+
+    const zipFile = await this.openZipFile(zipPath)
+    const extracted: string[] = []
+    try {
+      if (!existsSync(destDir)) await mkdir(destDir, { recursive: true })
+      for (const entry of clientZips) {
+        const data = await this.readZipEntry(zipFile, entry)
+        const destPath = join(destDir, posix.basename(entry))
+        await writeFile(destPath, data)
+        extracted.push(destPath)
+      }
+    } finally {
+      zipFile.close()
+    }
+    return extracted
+  }
+
+  /**
    * Extract Resources/Server/* entries from a local zip file to a target server directory.
    * Used for both registry mods and manually imported client+server mods.
    */

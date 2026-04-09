@@ -201,6 +201,7 @@ function SortableModRow({
   actionPending,
   conflictCount,
   isOverridden,
+  registrySource,
   onSelect,
   onToggle,
   onDelete,
@@ -211,6 +212,7 @@ function SortableModRow({
   actionPending: string | null
   conflictCount: number
   isOverridden: boolean
+  registrySource: 'registry' | 'manual' | null
   onSelect: (mod: ModInfo) => void
   onToggle: (mod: ModInfo) => void
   onDelete: (mod: ModInfo) => void
@@ -301,6 +303,24 @@ function SortableModRow({
               <div className="text-[11px] text-slate-500">{t('mods.byAuthor', { author: mod.author })}</div>
             )}
           </div>
+          {registrySource === 'registry' && (
+            <span
+              className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 shrink-0 text-blue-400 bg-blue-400/10 border border-blue-400/20 rounded"
+              title={t('mods.registryVerified')}
+            >
+              <BadgeCheck size={10} />
+              Registry
+            </span>
+          )}
+          {registrySource === 'manual' && (
+            <span
+              className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 shrink-0 text-slate-400 bg-slate-400/10 border border-slate-400/20 rounded"
+              title={t('mods.manualImport')}
+            >
+              <FolderOpen size={10} />
+              Manual
+            </span>
+          )}
           {conflictCount > 0 && (
             <span
               className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 shrink-0 ${
@@ -792,6 +812,14 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                           actionPending={actionPending}
                           conflictCount={getModConflictCount(mod.key)}
                           isOverridden={isModOverridden(mod.key)}
+                          registrySource={
+                            (() => {
+                              const entry = findRegistryEntry(mod)
+                              if (entry) return entry.install_source === 'registry' ? 'registry' : null
+                              if (mod.location !== 'multiplayer') return 'manual'
+                              return null
+                            })()
+                          }
                           onSelect={(m) => setSelectedMod(selectedMod?.key === m.key ? null : m)}
                           onToggle={handleToggle}
                           onDelete={handleDelete}

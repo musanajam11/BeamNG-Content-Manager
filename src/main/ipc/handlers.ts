@@ -6,8 +6,7 @@ import net from 'node:net'
 import { get as httpsGet, request as httpsRequest } from 'node:https'
 import { PNG } from 'pngjs'
 import {
-  readFirstMatch, readFirstMatchWithName, readMultiple, forEachMatch,
-  isRarFile, convertRarToZip
+  readFirstMatch, readFirstMatchWithName, readMultiple, forEachMatch
 } from '../utils/archiveConverter'
 import { GameDiscoveryService } from '../services/GameDiscoveryService'
 import { GameLauncherService } from '../services/GameLauncherService'
@@ -108,7 +107,7 @@ export function initializeServices(): {
   }
 }
 
-/** Read a preview image from a BeamNG level archive (zip or rar) */
+/** Read a preview image from a BeamNG level archive (.zip) */
 async function readPreviewFromZip(zipPath: string, levelName: string): Promise<string | null> {
   const levelDirPattern = new RegExp(
     `^levels/${levelName}/[^/]*preview[^/]*\\.(?:jpe?g|png)$`, 'i'
@@ -2441,7 +2440,7 @@ export function registerIpcHandlers(): void {
     try {
       const mods = await modManagerService.listMods(userDir || '')
       for (const mod of mods) {
-        if (mod.modType === 'terrain' && mod.enabled && mod.title) {
+        if ((mod.modType === 'terrain' || mod.modType === 'map') && mod.enabled && mod.title) {
           // Use the actual level directory name from the zip, falling back to title
           const levelDir = mod.levelDir || mod.title
           if (!seen.has(levelDir)) {
@@ -3138,18 +3137,31 @@ export function registerIpcHandlers(): void {
     try {
       const mods = await modManagerService.listMods(userDir)
 
-      // Enrich unknown mod types from registry metadata
+      // Enrich from registry metadata
       const installed = registryService.getInstalled()
       for (const mod of mods) {
-        if (mod.modType !== 'unknown') continue
         const entry = Object.values(installed).find((e) =>
           e.installed_files?.some((f) => {
             const fn = f.replace(/\\/g, '/').split('/').pop()?.toLowerCase() ?? ''
             return fn === mod.fileName.toLowerCase()
           })
         )
-        if (entry?.metadata?.mod_type) {
-          mod.modType = entry.metadata.mod_type
+        if (!entry?.metadata) continue
+        const meta = entry.metadata
+        if (mod.modType === 'unknown' && meta.mod_type) {
+          mod.modType = meta.mod_type
+        }
+        if (!mod.title && meta.name) {
+          mod.title = meta.name
+        }
+        if (!mod.author && meta.author) {
+          mod.author = Array.isArray(meta.author) ? meta.author.join(', ') : meta.author
+        }
+        if (!mod.version && meta.version) {
+          mod.version = meta.version
+        }
+        if (!mod.tagLine && meta.abstract) {
+          mod.tagLine = meta.abstract
         }
       }
 
@@ -3228,39 +3240,22 @@ export function registerIpcHandlers(): void {
     if (!userDir) return { success: false, error: 'Game user directory not configured' }
     const result = await dialog.showOpenDialog({
       title: 'Select mod archive(s)',
-      filters: [{ name: 'Mod Archives', extensions: ['zip', 'rar'] }],
+      filters: [{ name: 'Mod Archives', extensions: ['zip'] }],
       properties: ['openFile', 'multiSelections']
     })
     if (result.canceled || result.filePaths.length === 0) {
       return { success: false, error: 'Cancelled' }
     }
-    const tempDirs: string[] = []
     try {
       const installed = []
       for (const filePath of result.filePaths) {
-        let installPath = filePath
-        let originalName: string | undefined
-        if (isRarFile(filePath)) {
-          // Convert .rar to .zip in a temp directory, then install the .zip
-          const zipName = basename(filePath).replace(/\.rar$/i, '.zip')
-          const convertedPath = await convertRarToZip(filePath, zipName)
-          tempDirs.push(join(convertedPath, '..'))
-          installPath = convertedPath
-          originalName = zipName
-        }
-        const mod = await modManagerService.installMod(userDir, installPath, originalName)
+        const mod = await modManagerService.installMod(userDir, filePath)
         installed.push(mod as never)
       }
       vehicleListCache = null
       return { success: true, data: installed }
     } catch (err) {
       return { success: false, error: String(err) }
-    } finally {
-      // Clean up temp directories from RAR conversions
-      const { rm } = await import('node:fs/promises')
-      for (const dir of tempDirs) {
-        rm(dir, { recursive: true, force: true }).catch(() => {})
-      }
     }
   })
 
@@ -4156,6 +4151,27 @@ export function registerIpcHandlers(): void {
     if (scope === 'server') {
       // Server-only: don't copy to Resources/Client/, only extract server component below
       result = { success: true }
+    } else if (scope === 'both') {
+      // For scope 'both', check if it's a Resources-layout outer zip (Resources/Client/*.zip)
+      // and extract just the inner client zips instead of copying the full outer container
+      try {
+        const config = await serverManagerService.getServerConfig(id)
+        const serverDir = serverManagerService.getServerDir(id)
+        const clientDir = join(serverDir, config?.resourceFolder ?? 'Resources', 'Client')
+        const extracted = await registryService.extractClientZipsFromOuterZip(modFilePath, clientDir)
+        if (extracted.length > 0) {
+          // Record the mapping so the UI can match the source mod to the deployed files
+          const deployedNames = extracted.map((p) => basename(p))
+          await serverManagerService.setDeployMapping(id, basename(modFilePath), deployedNames)
+          result = { success: true }
+        } else {
+          // Not a Resources-layout zip — fall back to copying the full zip
+          await serverManagerService.copyModToServer(id, modFilePath)
+          result = { success: true }
+        }
+      } catch (err) {
+        result = { success: false, error: String(err) }
+      }
     } else {
       try {
         await serverManagerService.copyModToServer(id, modFilePath)
