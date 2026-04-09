@@ -1,6 +1,6 @@
 import { readFile as fsReadFile, mkdtemp, rm } from 'fs/promises'
 import { createWriteStream } from 'fs'
-import { join } from 'path'
+import { join, basename } from 'path'
 import { tmpdir } from 'os'
 import { createExtractorFromData } from 'node-unrar-js'
 import yazl from 'yazl'
@@ -282,7 +282,37 @@ export function extractByPath(archivePath: string, entryPath: string): Promise<B
   })
 }
 
-// ── RAR-to-ZIP conversion (for mod installation) ──
+// ── RAR-to-ZIP conversion ──
+
+/**
+ * Convert a .rar file to a .zip in the **same directory**, then delete the
+ * original .rar.  Returns the path to the new .zip file.
+ * Used by the mod scanner to auto-convert .rar mods so BeamNG can load them.
+ */
+export async function convertRarToZipInPlace(rarPath: string): Promise<string> {
+  const dir = join(rarPath, '..')
+  const zipName = basename(rarPath).replace(/\.rar$/i, '.zip')
+  const zipPath = join(dir, zipName)
+
+  const entries = await loadRarEntries(rarPath)
+  if (entries.length === 0) throw new Error('RAR archive contains no files')
+
+  await new Promise<void>((resolve, reject) => {
+    const zipFile = new yazl.ZipFile()
+    for (const entry of entries) {
+      zipFile.addBuffer(entry.data, entry.fileName)
+    }
+    const outStream = createWriteStream(zipPath)
+    outStream.on('error', reject)
+    outStream.on('close', () => resolve())
+    zipFile.outputStream.pipe(outStream)
+    zipFile.end()
+  })
+
+  // Remove original .rar now that the .zip is written
+  await rm(rarPath, { force: true })
+  return zipPath
+}
 
 /**
  * Convert a .rar file to a .zip file.

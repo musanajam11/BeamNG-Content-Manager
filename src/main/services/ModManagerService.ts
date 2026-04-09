@@ -1,6 +1,6 @@
 import { readFile, writeFile, readdir, unlink, copyFile, stat } from 'fs/promises'
 import { join, basename } from 'path'
-import { isModArchive, stripArchiveExt, forEachMatch, readFirstMatchWithName } from '../utils/archiveConverter'
+import { isModArchive, isRarFile, stripArchiveExt, forEachMatch, readFirstMatchWithName, convertRarToZipInPlace } from '../utils/archiveConverter'
 import type { ModInfo } from '../../shared/types'
 
 /** Strip UTF-8 BOM if present (PowerShell and some editors add it) */
@@ -97,12 +97,35 @@ export class ModManagerService {
     const seenFiles = new Set<string>()
 
     // Process db.json entries
+    let dbDirty = false
     for (const [key, entry] of Object.entries(modsMap)) {
       if (!entry.filename) continue
-      seenFiles.add(entry.filename.toLowerCase())
 
       const location = this.detectLocation(entry.dirname)
-      const filePath = join(modsRoot, location === 'repo' ? 'repo' : location === 'multiplayer' ? 'multiplayer' : '', entry.filename)
+      let fileName = entry.filename
+      let filePath = join(modsRoot, location === 'repo' ? 'repo' : location === 'multiplayer' ? 'multiplayer' : '', fileName)
+
+      // Auto-convert .rar → .zip so BeamNG can load the mod
+      if (isRarFile(fileName)) {
+        try {
+          filePath = await convertRarToZipInPlace(filePath)
+          fileName = basename(filePath)
+          // Update db.json entry to reference the new .zip
+          const newKey = stripArchiveExt(fileName).toLowerCase()
+          entry.filename = fileName
+          entry.fullpath = filePath
+          if (key !== newKey) {
+            modsMap[newKey] = entry
+            delete modsMap[key]
+          }
+          dbDirty = true
+        } catch {
+          // Conversion failed — skip this mod
+          continue
+        }
+      }
+
+      seenFiles.add(fileName.toLowerCase())
 
       let sizeBytes = entry.stat?.filesize ?? 0
       let modifiedDate = entry.stat?.modtime ? new Date(entry.stat.modtime * 1000).toISOString() : ''
@@ -118,8 +141,8 @@ export class ModManagerService {
       }
 
       mods.push({
-        key,
-        fileName: entry.filename,
+        key: stripArchiveExt(fileName).toLowerCase(),
+        fileName,
         filePath,
         sizeBytes,
         modifiedDate,
@@ -142,11 +165,23 @@ export class ModManagerService {
     try {
       const repoDir = join(modsRoot, 'repo')
       const files = await readdir(repoDir)
-      for (const file of files) {
+      for (let file of files) {
         if (!isModArchive(file)) continue
         if (seenFiles.has(file.toLowerCase())) continue
 
-        const filePath = join(repoDir, file)
+        let filePath = join(repoDir, file)
+
+        // Auto-convert .rar → .zip so BeamNG can load the mod
+        if (isRarFile(file)) {
+          try {
+            filePath = await convertRarToZipInPlace(filePath)
+            file = basename(filePath)
+            if (seenFiles.has(file.toLowerCase())) continue
+          } catch {
+            continue
+          }
+        }
+
         const s = await stat(filePath)
         const key = stripArchiveExt(file).toLowerCase()
 
@@ -175,6 +210,16 @@ export class ModManagerService {
       }
     } catch {
       // repo/ folder may not exist
+    }
+
+    // Persist db.json if any .rar entries were converted
+    if (dbDirty) {
+      try {
+        const output = this.buildDbJson(db, modsMap)
+        await writeFile(dbPath, JSON.stringify(output, null, 3), 'utf-8')
+      } catch {
+        // Non-critical — db will be updated on next scan
+      }
     }
 
     return mods
