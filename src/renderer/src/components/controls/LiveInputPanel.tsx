@@ -19,7 +19,7 @@ interface KeyboardState {
   pressedKeys: Set<string>
 }
 
-export function LiveInputPanel({ deviceType, deviceName }: LiveInputPanelProps): React.JSX.Element {
+export function LiveInputPanel({ deviceType }: LiveInputPanelProps): React.JSX.Element {
   const { t } = useTranslation()
   const [polling, setPolling] = useState(false)
   const [gamepadStates, setGamepadStates] = useState<GamepadState[]>([])
@@ -78,6 +78,8 @@ export function LiveInputPanel({ deviceType, deviceName }: LiveInputPanelProps):
         setKeyboardState({ pressedKeys: new Set() })
       }
     }
+
+    return undefined
   }, [polling, isGamepadDevice, isKeyboardDevice, pollGamepad, handleKeyDown, handleKeyUp])
 
   // Cleanup on unmount

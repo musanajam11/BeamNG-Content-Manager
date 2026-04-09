@@ -4,7 +4,6 @@ import type {
   InputAction,
   ActionCategory,
   InputBinding,
-  MergedDeviceBindings,
   SteeringFilterSettings,
   ControlsTab,
   ControlsPreset,

@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react'
-import { Sliders, RotateCcw } from 'lucide-react'
+import { useMemo } from 'react'
+import { Sliders } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { getControlDisplayName } from '../../../../shared/controlNameMaps'
 import type { InputBinding, InputAction } from '../../../../shared/types'

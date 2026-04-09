@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import { X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { domKeyToBeamNG, gamepadButtonToBeamNG, gamepadAxisToBeamNG } from '../../../../shared/controlNameMaps'
@@ -18,7 +18,6 @@ export function BindingCaptureModal({
   onCancel
 }: BindingCaptureModalProps): React.JSX.Element {
   const { t } = useTranslation()
-  const [lastInput, setLastInput] = useState<string | null>(null)
   const gamepadPollRef = useRef<number | null>(null)
   const prevButtonsRef = useRef<boolean[]>([])
   const prevAxesRef = useRef<number[]>([])
@@ -110,6 +109,8 @@ export function BindingCaptureModal({
         }
       }
     }
+
+    return undefined
   }, [deviceType, handleKeyDown, pollGamepad])
 
   const promptText =
