@@ -129,6 +129,15 @@ function applyMeshVisibility(model: THREE.Object3D, activeMeshes: Set<string>): 
 
 // ── Wheel placement: clone wheel/tire/hubcap meshes to their corner positions ──
 // Removes any previous wheel clones, resets originals, then re-builds clones.
+//
+// Coordinate spaces:
+//   - BeamNG/jbeam: X=lateral, Y=forward, Z=up (right-hand, Z-up)
+//   - model-local:  same as BeamNG (model.rotation.x = -π/2 converts to Three.js Y-up)
+//   - parent-local: may include unit-scale wrapper (e.g., 0.01 for centimeter DAEs)
+//   - world:        Three.js Y-up after model rotation
+//
+// Strategy: compute everything via world-space transforms to correctly handle
+// any unit-scale wrappers between model and mesh nodes.
 async function placeWheels(
   model: THREE.Object3D,
   vehicleName: string,
@@ -140,7 +149,6 @@ async function placeWheels(
     if (node.userData.wheelClone) toRemove.push(node)
     if (node.userData.wheelOriginal) {
       node.userData.wheelOriginal = false
-      // Visibility will be managed by applyMeshVisibility after this
     }
   })
   for (const n of toRemove) n.parent?.remove(n)
@@ -149,26 +157,9 @@ async function placeWheels(
   if (wheelPlacements.length === 0) return
 
   model.updateMatrixWorld(true)
+
+  // Corner target positions in model-local space (BeamNG coords)
   const cornerPositions: Partial<Record<string, THREE.Vector3>> = {}
-
-  // Brakedrum meshes → accurate corner centres
-  model.traverse((node) => {
-    if (!(node instanceof THREE.Mesh) || !node.geometry) return
-    const bdMatch = /_brakedrum_(R|L)$/i.exec(node.name)
-    if (!bdMatch) return
-    node.geometry.computeBoundingBox()
-    if (!node.geometry.boundingBox) return
-    const center = node.geometry.boundingBox.getCenter(new THREE.Vector3())
-    const side = bdMatch[1].toUpperCase()
-    const isFront = center.y < 0
-    if (side === 'R') {
-      cornerPositions[isFront ? 'FR' : 'RR'] = center
-    } else {
-      cornerPositions[isFront ? 'FL' : 'RL'] = center
-    }
-  })
-
-  // Fallback: handler-provided positions for corners without DAE references
   for (const p of wheelPlacements) {
     if (!cornerPositions[p.corner]) {
       cornerPositions[p.corner] = new THREE.Vector3(p.position[0], p.position[1], p.position[2])
@@ -183,49 +174,73 @@ async function placeWheels(
   }
 
   for (const [meshName, placements] of byMesh) {
-    let foundNode: THREE.Object3D | null = null
+    // Find ALL nodes with this mesh name (may exist in multiple DAE files)
+    const allInstances: THREE.Object3D[] = []
     model.traverse((node) => {
-      if (node.name === meshName && !foundNode) foundNode = node
+      if (node.name === meshName) allInstances.push(node)
     })
-    if (!foundNode) continue
-    const original = foundNode as THREE.Object3D
+    if (allInstances.length === 0) continue
+    const original = allInstances[0]
+    const parent = original.parent ?? model
 
-    // Compute mesh geometry centre in model-local space
-    let meshCenter = new THREE.Vector3(0, 0, 0)
+    // Hide ALL instances
+    for (const inst of allInstances) {
+      inst.visible = false
+      inst.userData.wheelOriginal = true
+      inst.traverse((child) => { child.visible = false })
+    }
+
+    // Find mesh geometry center in WORLD space
+    let geomCenterWorld = new THREE.Vector3()
+    let foundGeom = false
     original.traverse((child) => {
-      if (child instanceof THREE.Mesh && child.geometry && meshCenter.length() === 0) {
+      if (foundGeom) return
+      if (child instanceof THREE.Mesh && child.geometry) {
         child.geometry.computeBoundingBox()
         if (child.geometry.boundingBox) {
           const c = child.geometry.boundingBox.getCenter(new THREE.Vector3())
           c.applyMatrix4(child.matrixWorld)
-          model.worldToLocal(c)
-          meshCenter = c
+          geomCenterWorld.copy(c)
+          foundGeom = true
         }
       }
     })
 
-    const isNearOrigin = meshCenter.length() < 0.15
-    original.visible = false
-    original.userData.wheelOriginal = true
+    // Near-origin test in model-local space (for mirroring decision)
+    const geomCenterModelLocal = model.worldToLocal(geomCenterWorld.clone())
+    const isNearOrigin = geomCenterModelLocal.length() < 0.15
+
+    // Geometry center in parent-local space (for offset calculation)
+    const geomCenterParent = parent.worldToLocal(geomCenterWorld.clone())
 
     for (const p of placements) {
       const cornerPos = cornerPositions[p.corner]
       if (!cornerPos) continue
+
+      // Convert corner target: model-local → world → parent-local
+      const targetWorld = cornerPos.clone()
+      model.localToWorld(targetWorld)
+      const targetParent = parent.worldToLocal(targetWorld)
+
       const clone = original.clone(true)
       clone.visible = true
       clone.name = `${meshName}_${p.group}`
-      clone.position.set(
-        cornerPos.x - meshCenter.x,
-        cornerPos.y - meshCenter.y,
-        cornerPos.z - meshCenter.z
-      )
+      clone.userData.wheelClone = true
+
+      // clone.position = original.position + (target - geomCenter) in parent space
+      // This preserves any internal DAE offsets while shifting the geometry center
+      // to the target corner. Works correctly with unit-scale wrappers.
+      clone.position.copy(original.position)
+      clone.position.x += targetParent.x - geomCenterParent.x
+      clone.position.y += targetParent.y - geomCenterParent.y
+      clone.position.z += targetParent.z - geomCenterParent.z
+
       const isRightSide = /R\d*$/i.test(p.corner) || /R$/i.test(p.corner)
       if (isNearOrigin && isRightSide) {
         clone.scale.x *= -1
       }
-      clone.userData.wheelClone = true
       clone.traverse((child) => { child.visible = true })
-      model.add(clone)
+      parent.add(clone)
     }
   }
 }
@@ -624,24 +639,16 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
     let cancelled = false
     ;(async () => {
       const model = modelRef.current!
-      const meshList = await window.api.getActiveVehicleMeshes(vehicleName, parts)
+      const { meshes: meshList } = await window.api.getActiveVehicleMeshes(vehicleName, parts)
       if (cancelled || !modelRef.current) return
 
-      // Re-run wheel placement (also cleans up old clones/originals)
-      try {
-        await placeWheels(model, vehicleName, parts)
-      } catch (e) {
-        console.warn('[wheels] failed to re-place wheels on part change:', e)
-      }
-      if (cancelled || !modelRef.current) return
-
+      // Apply visibility first, then place wheels (which hides originals + creates clones)
       applyMeshVisibility(model, new Set(meshList))
 
-      // Re-run wheel placement with new parts
       try {
         await placeWheels(model, vehicleName, parts)
       } catch (e) {
-        console.warn('[wheels] failed to re-place wheels on part change:', e)
+        console.warn('[wheels] failed to place wheels on part change:', e)
       }
     })()
     return () => { cancelled = true }
@@ -891,7 +898,8 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
       let activeMeshList: string[] | undefined
       if (partsRef.current) {
         try {
-          activeMeshList = await window.api.getActiveVehicleMeshes(vehicleName, partsRef.current)
+          const result = await window.api.getActiveVehicleMeshes(vehicleName, partsRef.current)
+          activeMeshList = result.meshes
         } catch { /* proceed without mesh filtering */ }
       }
 

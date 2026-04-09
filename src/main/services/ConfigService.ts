@@ -3,6 +3,7 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
 import type { AppConfig } from '../../shared/types'
+import { DEFAULT_CUSTOM_CSS } from '../../shared/types'
 
 const DEFAULT_CONFIG: AppConfig = {
   gamePaths: {
@@ -36,10 +37,11 @@ const DEFAULT_CONFIG: AppConfig = {
     bgCycleOnLaunch: false,
     sidebarOrder: ['home', 'servers', 'friends', 'vehicles', 'maps', 'mods', 'career', 'server-admin', 'launcher', 'controls'],
     sidebarHidden: [],
-    customCSS: '',
+    customCSS: DEFAULT_CUSTOM_CSS,
     customCSSEnabled: true
   },
   setupComplete: false,
+  loadOrderEnforcement: false,
   defaultPorts: '',
   careerSavePath: null,
   customServerExe: null

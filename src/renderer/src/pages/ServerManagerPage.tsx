@@ -63,6 +63,7 @@ export function ServerManagerPage(): React.JSX.Element {
       {/* Header */}
       <ServerManagerToolbar
         exeStatus={store.exeStatus}
+        exeBannerHighlight={store.exeBannerHighlight}
         viewMode={store.viewMode}
         serverName={selected?.config.name}
         hasServers={store.servers.length > 0}

@@ -21,6 +21,9 @@ import sv from './locales/sv.json'
 import no from './locales/no.json'
 import da from './locales/da.json'
 import fi from './locales/fi.json'
+import lt from './locales/lt.json'
+import lv from './locales/lv.json'
+import bg from './locales/bg.json'
 
 export const LANGUAGES = [
   { code: 'en', name: 'English', nativeName: 'English', countryCode: 'GB' },
@@ -42,7 +45,10 @@ export const LANGUAGES = [
   { code: 'sv', name: 'Swedish', nativeName: 'Svenska', countryCode: 'SE' },
   { code: 'no', name: 'Norwegian', nativeName: 'Norsk', countryCode: 'NO' },
   { code: 'da', name: 'Danish', nativeName: 'Dansk', countryCode: 'DK' },
-  { code: 'fi', name: 'Finnish', nativeName: 'Suomi', countryCode: 'FI' }
+  { code: 'fi', name: 'Finnish', nativeName: 'Suomi', countryCode: 'FI' },
+  { code: 'lt', name: 'Lithuanian', nativeName: 'Lietuvių', countryCode: 'LT' },
+  { code: 'lv', name: 'Latvian', nativeName: 'Latviešu', countryCode: 'LV' },
+  { code: 'bg', name: 'Bulgarian', nativeName: 'Български', countryCode: 'BG' }
 ] as const
 
 export type LanguageCode = (typeof LANGUAGES)[number]['code']
@@ -68,7 +74,10 @@ i18n.use(initReactI18next).init({
     sv: { translation: sv },
     no: { translation: no },
     da: { translation: da },
-    fi: { translation: fi }
+    fi: { translation: fi },
+    lt: { translation: lt },
+    lv: { translation: lv },
+    bg: { translation: bg }
   },
   lng: 'en',
   fallbackLng: 'en',

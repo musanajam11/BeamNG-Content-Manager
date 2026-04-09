@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { AppearanceSettings, AppPage } from '../../../shared/types'
+import { DEFAULT_CUSTOM_CSS } from '../../../shared/types'
 
 export const DEFAULT_SIDEBAR_ORDER: AppPage[] = [
   'home', 'servers', 'friends', 'vehicles', 'maps', 'mods',
@@ -24,7 +25,7 @@ const DEFAULT_APPEARANCE: AppearanceSettings = {
   bgCycleOnLaunch: false,
   sidebarOrder: [...DEFAULT_SIDEBAR_ORDER],
   sidebarHidden: [],
-  customCSS: '',
+  customCSS: DEFAULT_CUSTOM_CSS,
   customCSSEnabled: true
 }
 

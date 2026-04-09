@@ -6,6 +6,7 @@ import type { ServerExeStatus } from '../../../../shared/types'
 
 interface ServerManagerToolbarProps {
   exeStatus: ServerExeStatus
+  exeBannerHighlight: boolean
   viewMode: 'grid' | 'detail'
   serverName?: string
   hasServers: boolean
@@ -20,6 +21,7 @@ interface ServerManagerToolbarProps {
 
 export function ServerManagerToolbar({
   exeStatus,
+  exeBannerHighlight,
   viewMode,
   serverName,
   hasServers,
@@ -33,6 +35,15 @@ export function ServerManagerToolbar({
 }: ServerManagerToolbarProps): React.JSX.Element {
   const { t } = useTranslation()
   const [dragOver, setDragOver] = useState(false)
+
+  // Ref for the exe banner — used to scroll into view on highlight
+  const exeBannerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (exeBannerHighlight && exeBannerRef.current) {
+      exeBannerRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [exeBannerHighlight])
 
   // Marquee: detect if server name overflows its container
   const containerRef = useRef<HTMLHeadingElement>(null)
@@ -75,12 +86,15 @@ export function ServerManagerToolbar({
       {/* Exe missing banner — shown globally when exe not available */}
       {exeStatus !== 'ready' && (
         <div
+          ref={exeBannerRef}
           className={`flex items-center gap-3 px-4 py-2.5 rounded-lg border transition-colors ${
-            exeStatus === 'downloading'
-              ? 'bg-yellow-500/10 border-yellow-500/30'
-              : dragOver
-                ? 'bg-[var(--color-accent-20)] border-[var(--color-accent)]'
-                : 'bg-[var(--color-accent-10)] border-[var(--color-border-accent)]'
+            exeBannerHighlight
+              ? 'bg-[var(--color-accent-20)] border-[var(--color-accent)] animate-pulse ring-2 ring-[var(--color-accent)]'
+              : exeStatus === 'downloading'
+                ? 'bg-yellow-500/10 border-yellow-500/30'
+                : dragOver
+                  ? 'bg-[var(--color-accent-20)] border-[var(--color-accent)]'
+                  : 'bg-[var(--color-accent-10)] border-[var(--color-border-accent)]'
           }`}
           onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
           onDragLeave={() => setDragOver(false)}

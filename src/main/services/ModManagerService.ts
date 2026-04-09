@@ -15,6 +15,8 @@ interface ModZipMeta {
   version: string | null
   modType: string
   iconDataUrl: string | null
+  /** Actual directory name under levels/ inside the zip (for terrain mods) */
+  levelDir: string | null
 }
 
 interface DbEntry {
@@ -35,6 +37,8 @@ interface DbEntry {
   }
   resourceId?: number
   multiplayerScope?: string | null
+  /** Actual directory name under levels/ inside the zip (for terrain mods) */
+  levelDir?: string | null
 }
 
 export class ModManagerService {
@@ -128,7 +132,9 @@ export class ModManagerService {
         previewImage: null,
         location,
         resourceId: entry.resourceId || null,
-        multiplayerScope: (entry.multiplayerScope as 'client' | 'server' | 'both') || null
+        multiplayerScope: (entry.multiplayerScope as 'client' | 'server' | 'both') || null,
+        loadOrder: null,
+        levelDir: entry.levelDir || null
       })
     }
 
@@ -162,7 +168,9 @@ export class ModManagerService {
           previewImage: null,
           location: 'repo',
           resourceId: null,
-          multiplayerScope: null
+          multiplayerScope: null,
+          loadOrder: null,
+          levelDir: meta.levelDir
         })
       }
     } catch {
@@ -261,7 +269,8 @@ export class ModManagerService {
         filesize: s.size,
         modtime: Math.floor(s.mtimeMs / 1000)
       },
-      resourceId: resourceId || undefined
+      resourceId: resourceId || undefined,
+      levelDir: meta.levelDir || undefined
     }
     const output = this.buildDbJson(db, modsMap)
     await writeFile(dbPath, JSON.stringify(output, null, 3), 'utf-8')
@@ -281,7 +290,9 @@ export class ModManagerService {
       previewImage: meta.iconDataUrl,
       location: 'repo',
       resourceId: resourceId || null,
-      multiplayerScope: null
+      multiplayerScope: null,
+      loadOrder: null,
+      levelDir: meta.levelDir
     }
   }
 
@@ -301,12 +312,38 @@ export class ModManagerService {
     await writeFile(dbPath, JSON.stringify(output, null, 3), 'utf-8')
   }
 
+  /** Manually override the mod type classification in db.json */
+  async updateModType(userDir: string, modKey: string, modType: string): Promise<void> {
+    const dbPath = join(userDir, 'mods', 'db.json')
+    let db: Record<string, unknown> = {}
+    try {
+      const raw = await readFile(dbPath, 'utf-8')
+      db = JSON.parse(stripBom(raw))
+    } catch { /* db.json may not exist */ }
+
+    const modsMap = this.getModsMap(db)
+    const entry = modsMap[modKey]
+    if (!entry) return
+    entry.modType = modType
+
+    // If reclassifying as terrain and levelDir is missing, re-scan the zip for it
+    if (modType === 'terrain' && !entry.levelDir && entry.fullpath) {
+      try {
+        const meta = await this.scanModZip(entry.fullpath)
+        if (meta.levelDir) entry.levelDir = meta.levelDir
+      } catch { /* best effort */ }
+    }
+
+    const output = this.buildDbJson(db, modsMap)
+    await writeFile(dbPath, JSON.stringify(output, null, 3), 'utf-8')
+  }
+
   /** Extract metadata and icon from a mod zip file (single pass) */
   private scanModZip(zipPath: string): Promise<ModZipMeta> {
     return new Promise((resolve) => {
       const result: ModZipMeta = {
         title: null, tagLine: null, author: null, version: null,
-        modType: 'unknown', iconDataUrl: null
+        modType: 'unknown', iconDataUrl: null, levelDir: null
       }
 
       yauzlOpen(zipPath, { lazyEntries: true }, (err, zipFile) => {
@@ -326,7 +363,16 @@ export class ModManagerService {
 
           // Detect mod type from directory structure
           if (name.startsWith('vehicles/')) hasVehicles = true
-          if (name.startsWith('levels/')) hasLevels = true
+          if (name.startsWith('levels/')) {
+            hasLevels = true
+            // Extract the actual level directory name (e.g. "drag_strip" from "levels/drag_strip/...")
+            if (!result.levelDir) {
+              const parts = name.split('/')
+              if (parts.length >= 2 && parts[1]) {
+                result.levelDir = parts[1]
+              }
+            }
+          }
           if (name.startsWith('sounds/') || name.startsWith('art/sound/')) hasSounds = true
           if (name.startsWith('ui/modules/apps/') || name.startsWith('ui/entrypoints/')) hasUI = true
 

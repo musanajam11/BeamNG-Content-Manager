@@ -1,5 +1,101 @@
 // Shared types used across main and renderer processes
 
+export const DEFAULT_CUSTOM_CSS = `/* [snippet:rounded-scrollbar] */
+/* Chunky rounded scrollbar */
+::-webkit-scrollbar {
+  width: 12px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-surface);
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-accent-25);
+  border-radius: 6px;
+  border: 2px solid var(--color-surface);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent);
+}
+/* [/snippet:rounded-scrollbar] */
+
+/* [snippet:smooth-fade] */
+/* Fade-in on page content */
+main > div {
+  animation: fadeIn 0.2s ease-in;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+/* [/snippet:smooth-fade] */
+
+/* [snippet:scale-hover] */
+/* Subtle scale-up on interactive elements (excludes toggle switches) */
+button:not([class*="rounded-full"]):hover,
+a:hover,
+[role="button"]:hover {
+  transform: scale(1.03);
+  transition: transform 0.15s ease;
+}
+/* [/snippet:scale-hover] */
+
+/* [snippet:glow-hover] */
+/* Accent glow on card hover */
+.rounded-lg:hover, .rounded-xl:hover {
+  box-shadow: 0 0 20px var(--color-accent-25);
+}
+/* [/snippet:glow-hover] */
+
+/* [snippet:card-lift-hover] */
+/* Cards lift up on hover */
+.rounded-lg:hover, .rounded-xl:hover {
+  transform: translateY(-2px);
+  transition: transform 0.15s ease;
+}
+/* [/snippet:card-lift-hover] */
+
+/* [snippet:uppercase-headings] */
+/* All headings uppercase */
+h1, h2, h3, h4, h5, h6 {
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em;
+}
+/* [/snippet:uppercase-headings] */
+
+/* [snippet:hide-statusbar] */
+/* Hide the bottom status bar */
+footer, [class*="statusbar"], [class*="StatusBar"] {
+  display: none !important;
+}
+/* [/snippet:hide-statusbar] */
+
+/* [snippet:large-buttons] */
+/* Bigger click targets (excludes toggle switches) */
+button:not([class*="rounded-full"]) {
+  min-height: 40px;
+  padding-left: 16px !important;
+  padding-right: 16px !important;
+  font-size: 14px !important;
+}
+/* [/snippet:large-buttons] */
+
+/* [snippet:sepia-tint] */
+/* Warm sepia tone */
+#root {
+  filter: sepia(0.25);
+}
+/* [/snippet:sepia-tint] */
+
+/* [snippet:accent-selection] */
+/* Custom text selection color */
+::selection {
+  background: var(--color-accent) !important;
+  color: white !important;
+}
+/* [/snippet:accent-selection] */
+`
+
 export interface GamePaths {
   installDir: string | null
   userDir: string | null
@@ -63,6 +159,8 @@ export interface AppConfig {
   language: string
   appearance: AppearanceSettings
   setupComplete: boolean
+  /** Whether load-order enforcement via filename prefixes is active */
+  loadOrderEnforcement: boolean
   /** Default ports for new server instances (comma-separated ports or ranges like "30814-30820,30900") */
   defaultPorts: string
   /** Manual override for CareerMP save directory */
@@ -131,6 +229,10 @@ export interface ModInfo {
   resourceId: number | null
   /** Multiplayer deployment scope: client-only, server-only, or both */
   multiplayerScope: 'client' | 'server' | 'both' | null
+  /** Load order position (lower = loads first). Assigned by LoadOrderService. */
+  loadOrder: number | null
+  /** Actual directory name under levels/ inside the zip (for terrain mods) */
+  levelDir: string | null
 }
 
 export interface VehicleInfo {
@@ -225,6 +327,12 @@ export interface WheelPlacement {
   position: [number, number, number]
   group: string
   corner: string
+}
+
+/** Result of getActiveVehicleMeshes — mesh names + which part owns each mesh */
+export interface ActiveMeshResult {
+  meshes: string[]
+  meshOwnership: Record<string, string>
 }
 
 export interface MapInfo {
@@ -509,4 +617,174 @@ export interface PlayerPosition {
   heading: number
   speed: number
   timestamp: number
+}
+
+/* ── Mod Load Order ── */
+
+export interface LoadOrderData {
+  version: 1
+  /** Map of modKey → load-order position (0-based, lower = loads first) */
+  orders: Record<string, number>
+}
+
+/* ── Mod Conflict Detection ── */
+
+export interface ModConflict {
+  /** The file path inside the zip that overlaps */
+  filePath: string
+  /** Mods that contain this file, with their load order */
+  mods: Array<{ modKey: string; loadOrder: number }>
+  /** The mod whose version of the file is used (highest load order = last loaded = wins) */
+  winner: string
+}
+
+export interface ModConflictReport {
+  conflicts: ModConflict[]
+  /** Mod keys that were scanned */
+  scannedMods: string[]
+  /** When the scan was performed */
+  timestamp: number
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Controls Editor Types
+   ══════════════════════════════════════════════════════════════ */
+
+export type InputDeviceType = 'keyboard' | 'mouse' | 'xinput' | 'joystick'
+
+export interface InputDevice {
+  /** File name without extension (e.g. "keyboard", "0004346E") */
+  fileName: string
+  name: string
+  vendorName?: string
+  devicetype: InputDeviceType
+  vidpid: string
+  guid?: string
+  displayName?: string
+  imagePack?: string
+  /** True if a user .diff file exists for this device */
+  hasUserOverrides: boolean
+}
+
+export interface FFBConfig {
+  forceCoef: number
+  smoothing: number
+  smoothing2: number
+  smoothing2automatic: boolean
+  lowspeedCoef: boolean
+  responseCorrected: boolean
+  responseCurve: [number, number][]
+  updateType: number
+}
+
+export interface InputBinding {
+  control: string
+  action: string
+  /** Axis linearity (0.2–5.0) — only for analog axes */
+  linearity?: number
+  /** Deadzone start (0–1) */
+  deadzone?: number
+  /** Deadzone resting point (0–1) */
+  deadzoneResting?: number
+  /** Deadzone end (0–1) */
+  deadzoneEnd?: number
+  /** Invert axis */
+  isInverted?: boolean
+  /** Steering angle for wheels */
+  angle?: number
+  /** Force feedback enabled */
+  isForceEnabled?: boolean
+  /** Force feedback config */
+  ffb?: FFBConfig
+  /** Whether this binding was removed by user */
+  isRemoved?: boolean
+  /** Whether this is a user override vs default */
+  isUserOverride?: boolean
+}
+
+export interface InputAction {
+  /** Action ID (e.g. "accelerate", "steering") */
+  id: string
+  /** Category key (e.g. "vehicle", "camera") */
+  cat: string
+  /** Sort order within category */
+  order: number
+  /** Title translation key */
+  title: string
+  /** Description translation key */
+  desc?: string
+  /** Whether axis returns to center */
+  isCentered?: boolean
+  /** Context: vlua, ts, etc. */
+  ctx?: string
+}
+
+export interface ActionCategory {
+  /** Category ID (e.g. "vehicle", "camera") */
+  id: string
+  /** Display name */
+  name: string
+  /** Sort order */
+  order: number
+}
+
+export interface MergedDeviceBindings {
+  device: InputDevice
+  bindings: InputBinding[]
+}
+
+export interface SteeringFilterSettings {
+  /* Keyboard / Gamepad filters */
+  steeringAutocenterEnabled: boolean
+  steeringSlowdownEnabled: boolean
+  steeringSlowdownStartSpeed: number
+  steeringSlowdownEndSpeed: number
+  steeringSlowdownMultiplier: number
+  steeringLimitEnabled: boolean
+  steeringLimitMultiplier?: number
+  steeringStabilizationEnabled: boolean
+  steeringStabilizationMultiplier: number
+  steeringUndersteerReductionEnabled: boolean
+  steeringUndersteerReductionMultiplier: number
+  /* Direct Input / Wheel (same keys with "Direct" suffix) */
+  steeringAutocenterEnabledDirect: boolean
+  steeringSlowdownEnabledDirect: boolean
+  steeringSlowdownStartSpeedDirect: number
+  steeringSlowdownEndSpeedDirect: number
+  steeringSlowdownMultiplierDirect: number
+  steeringLimitEnabledDirect: boolean
+  steeringLimitMultiplierDirect?: number
+  steeringStabilizationEnabledDirect: boolean
+  steeringStabilizationMultiplierDirect: number
+  steeringUndersteerReductionEnabledDirect: boolean
+  steeringUndersteerReductionMultiplierDirect: number
+}
+
+export type ControlsTab = 'bindings' | 'axes' | 'ffb' | 'filters' | 'presets' | 'liveInput'
+
+export interface ControlsPreset {
+  id: string
+  name: string
+  createdAt: number
+  deviceVidpid?: string
+  deviceName?: string
+  devicetype?: InputDeviceType
+  /** Map of diff filenames to their contents */
+  diffs: Record<string, string>
+}
+
+export type ConflictResolution = 'cancel' | 'replace' | 'bindBoth' | 'swap'
+
+export interface BindingConflict {
+  /** The control that's already bound */
+  control: string
+  /** Actions currently using this control */
+  existingActions: string[]
+  /** The new action being bound */
+  newAction: string
+}
+
+export interface LiveInputState {
+  axes: Record<string, number>
+  buttons: Record<string, boolean>
 }

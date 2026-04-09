@@ -83,6 +83,8 @@ interface HostedServerState {
   loadMods: () => Promise<void>
 
   /* Exe */
+  exeBannerHighlight: boolean
+  flashExeBanner: () => void
   browseExe: () => Promise<void>
   downloadExe: () => Promise<void>
   installExe: (path: string) => Promise<void>
@@ -116,6 +118,7 @@ export const useHostedServerStore = create<HostedServerState>((set, get) => ({
   filePath: '',
   mods: [],
   confirmDialog: { ...EMPTY_CONFIRM },
+  exeBannerHighlight: false,
   selected: null,
 
   /* ── Actions ── */
@@ -220,6 +223,10 @@ export const useHostedServerStore = create<HostedServerState>((set, get) => ({
   /* ── Lifecycle ── */
 
   startServer: async (id) => {
+    if (get().exeStatus !== 'ready') {
+      get().flashExeBanner()
+      return
+    }
     const result = await window.api.hostedServerStart(id)
     if (result.success) {
       set({ tab: 'console' })
@@ -236,6 +243,10 @@ export const useHostedServerStore = create<HostedServerState>((set, get) => ({
   },
 
   restartServer: async (id) => {
+    if (get().exeStatus !== 'ready') {
+      get().flashExeBanner()
+      return
+    }
     const result = await window.api.hostedServerRestart(id)
     if (result.success) {
       set({ tab: 'console' })
@@ -246,6 +257,10 @@ export const useHostedServerStore = create<HostedServerState>((set, get) => ({
   },
 
   startAll: async () => {
+    if (get().exeStatus !== 'ready') {
+      get().flashExeBanner()
+      return
+    }
     const { servers } = get()
     const stopped = servers.filter(
       (s) => s.status.state === 'stopped' || s.status.state === 'error'
@@ -313,6 +328,11 @@ export const useHostedServerStore = create<HostedServerState>((set, get) => ({
   },
 
   /* ── Exe ── */
+
+  flashExeBanner: () => {
+    set({ exeBannerHighlight: true })
+    setTimeout(() => set({ exeBannerHighlight: false }), 1500)
+  },
 
   browseExe: async () => {
     const path = await window.api.hostedServerBrowseExe()

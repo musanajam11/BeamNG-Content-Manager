@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import type { AppConfig, GamePaths, ServerInfo, AuthResult, GameStatus, ModInfo, RepoBrowseResult, RepoCategory, RepoSortOrder, VehicleDetail, VehicleConfigInfo, VehicleConfigData, HostedServerConfig, HostedServerStatus, HostedServerEntry, ServerFileEntry, ServerExeStatus, GPSRoute, PlayerPosition, BackupSchedule, BackupEntry, ScheduledTask, AnalyticsData, AppearanceSettings, MapRichMetadata } from '../shared/types'
+import type { AppConfig, GamePaths, ServerInfo, AuthResult, GameStatus, ModInfo, RepoBrowseResult, RepoCategory, RepoSortOrder, VehicleDetail, VehicleConfigInfo, VehicleConfigData, HostedServerConfig, HostedServerStatus, HostedServerEntry, ServerFileEntry, ServerExeStatus, GPSRoute, PlayerPosition, BackupSchedule, BackupEntry, ScheduledTask, AnalyticsData, AppearanceSettings, MapRichMetadata, LoadOrderData, ModConflictReport } from '../shared/types'
 import type { RegistryStatus, RegistrySearchOptions, RegistrySearchResult, AvailableMod, InstalledRegistryMod, ResolutionResult, RegistryRepository, BeamModMetadata, ModpackExport } from '../shared/registry-types'
 
 interface AppAPI {
@@ -43,7 +43,7 @@ interface AppAPI {
   deleteVehicleConfig(vehicleName: string, configName: string): Promise<{ success: boolean; error?: string }>
   renameVehicleConfig(vehicleName: string, oldName: string, newName: string): Promise<{ success: boolean; error?: string }>
   getVehicle3DModel(vehicleName: string, activeMeshes?: string[]): Promise<string[]>
-  getActiveVehicleMeshes(vehicleName: string, configParts: Record<string, string>): Promise<string[]>
+  getActiveVehicleMeshes(vehicleName: string, configParts: Record<string, string>): Promise<{ meshes: string[]; meshOwnership: Record<string, string> }>
   getWheelPlacements(vehicleName: string, configParts: Record<string, string>): Promise<Array<{ meshName: string; position: [number, number, number]; group: string; corner: string }>>
   getVehicleEditorData(vehicleName: string): Promise<unknown>
   getVehicleMaterials(vehicleName: string): Promise<Record<string, unknown>>
@@ -116,8 +116,18 @@ interface AppAPI {
   deleteMod(modKey: string): Promise<{ success: boolean; error?: string }>
   installMod(): Promise<{ success: boolean; data?: ModInfo[]; error?: string }>
   updateModScope(modKey: string, scope: 'client' | 'server' | 'both'): Promise<{ success: boolean; error?: string }>
+  updateModType(modKey: string, modType: string): Promise<{ success: boolean; error?: string }>
   openModsFolder(): Promise<void>
   getModPreview(filePath: string): Promise<{ success: boolean; data?: string | null }>
+
+  // Mod Load Order & Conflicts
+  getModLoadOrder(): Promise<{ success: boolean; data?: LoadOrderData; error?: string }>
+  setModLoadOrder(orderedKeys: string[]): Promise<{ success: boolean; error?: string }>
+  toggleLoadOrderEnforcement(enabled: boolean): Promise<{ success: boolean; error?: string }>
+  scanModConflicts(): Promise<{ success: boolean; data?: ModConflictReport; error?: string }>
+  getModConflicts(modKey: string): Promise<{ success: boolean; data?: { overridden: string[]; wins: string[] }; error?: string }>
+  hostedServerGetModLoadOrder(serverId: string): Promise<{ success: boolean; data?: LoadOrderData; error?: string }>
+  hostedServerSetModLoadOrder(serverId: string, orderedKeys: string[]): Promise<{ success: boolean; error?: string }>
 
   // Mod Repository
   browseRepoMods(
@@ -345,6 +355,24 @@ interface AppAPI {
   careerSetSavePath(savePath: string | null): Promise<{ success: boolean; error?: string }>
   careerBrowseSavePath(): Promise<string | null>
   careerGetSavePath(): Promise<string | null>
+
+  // Controls / Input Bindings
+  controlsGetDevices(): Promise<import('../shared/types').InputDevice[]>
+  controlsGetActions(): Promise<import('../shared/types').InputAction[]>
+  controlsGetCategories(): Promise<import('../shared/types').ActionCategory[]>
+  controlsGetBindings(deviceFileName: string): Promise<import('../shared/types').MergedDeviceBindings | null>
+  controlsSetBinding(deviceFileName: string, binding: import('../shared/types').InputBinding): Promise<import('../shared/types').MergedDeviceBindings>
+  controlsRemoveBinding(deviceFileName: string, control: string, action: string): Promise<import('../shared/types').MergedDeviceBindings>
+  controlsResetDevice(deviceFileName: string): Promise<void>
+  controlsSetFFBConfig(deviceFileName: string, control: string, ffb: import('../shared/types').FFBConfig): Promise<import('../shared/types').MergedDeviceBindings>
+  controlsGetSteeringSettings(): Promise<import('../shared/types').SteeringFilterSettings | null>
+  controlsSetSteeringSettings(settings: Partial<import('../shared/types').SteeringFilterSettings>): Promise<import('../shared/types').SteeringFilterSettings>
+  controlsListPresets(): Promise<import('../shared/types').ControlsPreset[]>
+  controlsSavePreset(name: string, deviceFileName: string, device: import('../shared/types').InputDevice): Promise<import('../shared/types').ControlsPreset>
+  controlsLoadPreset(presetId: string): Promise<void>
+  controlsDeletePreset(presetId: string): Promise<void>
+  controlsExportPreset(presetId: string): Promise<import('../shared/types').ControlsPreset>
+  controlsImportPreset(jsonString: string): Promise<import('../shared/types').ControlsPreset>
 }
 
 declare global {

@@ -36,12 +36,33 @@ import {
   RectangleHorizontal,
   Cog,
   Monitor,
-  Server
+  Server,
+  GripVertical,
+  ShieldAlert,
+  Scan
 } from 'lucide-react'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import type { ModInfo, RepoMod, RepoCategory, RepoSortOrder } from '../../../shared/types'
 import type { AvailableMod, BeamModMetadata, RegistrySearchResult, ResolutionResult, InstalledRegistryMod } from '../../../shared/registry-types'
 import { useConfirmDialog } from '../hooks/useConfirmDialog'
 import { useTranslation } from 'react-i18next'
+import { useModOrderStore } from '../stores/useModOrderStore'
 
 type ModFilter = string
 type ModsTab = 'installed' | 'browse' | 'registry'
@@ -171,6 +192,167 @@ export function ModsPage(): React.JSX.Element {
 }
 
 /* ═══════════════════════════════════════════
+   Sortable table row for drag-and-drop
+   ═══════════════════════════════════════════ */
+
+function SortableModRow({
+  mod,
+  isSelected,
+  actionPending,
+  conflictCount,
+  isOverridden,
+  onSelect,
+  onToggle,
+  onDelete,
+  t
+}: {
+  mod: ModInfo
+  isSelected: boolean
+  actionPending: string | null
+  conflictCount: number
+  isOverridden: boolean
+  onSelect: (mod: ModInfo) => void
+  onToggle: (mod: ModInfo) => void
+  onDelete: (mod: ModInfo) => void
+  t: (key: string, opts?: Record<string, unknown>) => string
+}): React.JSX.Element {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: mod.key })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : undefined
+  }
+
+  return (
+    <tr
+      ref={setNodeRef}
+      style={style}
+      onClick={() => onSelect(mod)}
+      className={`border-b border-white/4 cursor-pointer transition ${
+        isSelected
+          ? 'bg-[var(--color-accent-8)]'
+          : 'hover:bg-white/3'
+      }`}
+    >
+      {/* Drag handle */}
+      <td className="px-2 py-3 w-8">
+        {mod.enabled && (
+          <button
+            {...attributes}
+            {...listeners}
+            className="text-slate-600 hover:text-slate-300 cursor-grab active:cursor-grabbing touch-none"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <GripVertical size={14} />
+          </button>
+        )}
+      </td>
+
+      {/* Load order # */}
+      <td className="px-2 py-3 w-10 text-center">
+        {mod.loadOrder !== null && mod.enabled && (
+          <span className="text-[10px] font-mono text-slate-500">
+            {mod.loadOrder + 1}
+          </span>
+        )}
+      </td>
+
+      {/* Toggle */}
+      <td className="px-4 py-3">
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggle(mod)
+          }}
+          disabled={actionPending === mod.key || mod.location === 'multiplayer'}
+          className="text-slate-300 transition hover:text-white disabled:opacity-40"
+          title={mod.enabled ? t('mods.disableMod') : t('mods.enableMod')}
+        >
+          {mod.enabled ? (
+            <ToggleRight size={20} className="text-[var(--color-accent)]" />
+          ) : (
+            <ToggleLeft size={20} />
+          )}
+        </button>
+      </td>
+
+      {/* Mod name + conflict indicator */}
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="font-medium text-white truncate max-w-[260px]">
+              {mod.title || mod.fileName}
+            </div>
+            {mod.title && (
+              <div className="text-[11px] text-slate-500 truncate max-w-[260px]">
+                {mod.fileName}
+              </div>
+            )}
+            {mod.author && (
+              <div className="text-[11px] text-slate-500">{t('mods.byAuthor', { author: mod.author })}</div>
+            )}
+          </div>
+          {conflictCount > 0 && (
+            <span
+              className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 shrink-0 ${
+                isOverridden
+                  ? 'text-amber-400 bg-amber-400/10 border border-amber-400/20'
+                  : 'text-emerald-400 bg-emerald-400/10 border border-emerald-400/20'
+              }`}
+              title={isOverridden
+                ? t('mods.conflictsOverridden', { count: conflictCount })
+                : t('mods.conflictsWins', { count: conflictCount })}
+            >
+              <ShieldAlert size={10} />
+              {conflictCount}
+            </span>
+          )}
+        </div>
+      </td>
+
+      {/* Type */}
+      <td className="px-4 py-3">
+        <div className="inline-flex items-center gap-1.5 text-xs text-slate-400">
+          {modTypeIcon(mod.modType)}
+          {mod.modType || t('mods.otherType')}
+        </div>
+      </td>
+
+      {/* Size */}
+      <td className="px-4 py-3 text-right text-xs text-slate-400">
+        {formatBytes(mod.sizeBytes)}
+      </td>
+
+      {/* Actions */}
+      <td className="px-4 py-3 text-right">
+        {mod.location !== 'multiplayer' && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete(mod)
+            }}
+            disabled={actionPending === mod.key}
+            className="text-slate-500 transition hover:text-rose-400 disabled:opacity-40"
+            title={t('mods.deleteMod')}
+          >
+            <Trash2 size={14} />
+          </button>
+        )}
+      </td>
+    </tr>
+  )
+}
+
+/* ═══════════════════════════════════════════
    Installed Mods View
    ═══════════════════════════════════════════ */
 
@@ -188,6 +370,25 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
   const [scopeDialogIndex, setScopeDialogIndex] = useState(0)
   const { dialog: confirmDialogEl, confirm } = useConfirmDialog()
   const { t } = useTranslation()
+
+  // Load order store
+  const {
+    enforcement,
+    conflictReport,
+    scanningConflicts,
+    fetchLoadOrder,
+    setLoadOrder,
+    setEnforcement,
+    scanConflicts,
+    getModConflictCount,
+    isModOverridden
+  } = useModOrderStore()
+
+  // DnD sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
 
   const fetchMods = async (): Promise<void> => {
     setLoading(true)
@@ -208,6 +409,7 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
 
   useEffect(() => {
     fetchMods()
+    fetchLoadOrder()
     window.api.registryGetInstalled().then(setRegistryInstalled).catch(() => {})
   }, [])
 
@@ -268,9 +470,15 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
       )
     }
 
-    // Sort: enabled first, then alphabetically by title/filename
+    // Sort: enabled first (by load order), then disabled alphabetically
     result = [...result].sort((a, b) => {
       if (a.enabled !== b.enabled) return a.enabled ? -1 : 1
+      // Both enabled: sort by load order
+      if (a.enabled && b.enabled) {
+        const orderA = a.loadOrder ?? 999
+        const orderB = b.loadOrder ?? 999
+        if (orderA !== orderB) return orderA - orderB
+      }
       const nameA = (a.title || a.fileName).toLowerCase()
       const nameB = (b.title || b.fileName).toLowerCase()
       return nameA.localeCompare(nameB)
@@ -378,6 +586,31 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
     window.api.openModsFolder()
   }
 
+  const handleDragEnd = (event: DragEndEvent): void => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+
+    const enabledMods = filteredMods.filter((m) => m.enabled)
+    const oldIndex = enabledMods.findIndex((m) => m.key === active.id)
+    const newIndex = enabledMods.findIndex((m) => m.key === over.id)
+    if (oldIndex === -1 || newIndex === -1) return
+
+    const reordered = arrayMove(enabledMods, oldIndex, newIndex)
+    const orderedKeys = reordered.map((m) => m.key)
+
+    // Optimistically update local mod state
+    setMods((prev) => {
+      const updated = [...prev]
+      for (const mod of updated) {
+        const idx = orderedKeys.indexOf(mod.key)
+        mod.loadOrder = idx >= 0 ? idx : null
+      }
+      return updated
+    })
+
+    setLoadOrder(orderedKeys)
+  }
+
   return (
     <>
       {/* Header */}
@@ -392,6 +625,29 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
             )}
           </div>
           <div className="flex items-center gap-2">
+            {/* Enforcement toggle */}
+            <button
+              onClick={() => setEnforcement(!enforcement)}
+              className={`inline-flex items-center gap-1.5 border px-3 py-2 text-xs transition ${
+                enforcement
+                  ? 'border-[var(--color-border-accent)] bg-[var(--color-accent-10)] text-[var(--color-accent-text)]'
+                  : 'border-white/10 bg-white/5 text-slate-400 hover:text-slate-300 hover:bg-white/10'
+              }`}
+              title={t('mods.enforcementTooltip')}
+            >
+              <Shield size={13} />
+              {t('mods.enforceOrder')}
+            </button>
+            {/* Scan conflicts */}
+            <button
+              onClick={scanConflicts}
+              disabled={scanningConflicts}
+              className="inline-flex items-center gap-1.5 border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300 transition hover:bg-white/10 disabled:opacity-50"
+              title={t('mods.scanConflictsTooltip')}
+            >
+              {scanningConflicts ? <Loader2 size={13} className="animate-spin" /> : <Scan size={13} />}
+              {t('mods.scanConflicts')}
+            </button>
             <button
               onClick={fetchMods}
               className="inline-flex items-center gap-1.5 border border-white/10 bg-white/5 px-4 py-2 text-xs text-slate-300 transition hover:bg-white/10"
@@ -506,94 +762,46 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
           <>
             {/* Mod list */}
             <div className="flex-1 min-w-0 overflow-y-auto">
-              <table className="w-full text-sm">
-                <thead className="sticky top-0 z-10 bg-[#111113] border-b border-white/6">
-                  <tr className="text-[10px] uppercase tracking-[0.12em] text-slate-500">
-                    <th className="text-left px-4 py-2.5 font-medium">{t('mods.tableStatus')}</th>
-                    <th className="text-left px-4 py-2.5 font-medium">{t('mods.tableMod')}</th>
-                    <th className="text-left px-4 py-2.5 font-medium">{t('mods.tableType')}</th>
-                    <th className="text-right px-4 py-2.5 font-medium">{t('mods.tableSize')}</th>
-                    <th className="text-right px-4 py-2.5 font-medium">{t('mods.tableActions')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredMods.map((mod) => (
-                    <tr
-                      key={mod.key}
-                      onClick={() => setSelectedMod(selectedMod?.key === mod.key ? null : mod)}
-                      className={`border-b border-white/4 cursor-pointer transition ${
-                        selectedMod?.key === mod.key
-                          ? 'bg-[var(--color-accent-8)]'
-                          : 'hover:bg-white/3'
-                      }`}
-                    >
-                      {/* Toggle */}
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleToggle(mod)
-                          }}
-                          disabled={actionPending === mod.key || mod.location === 'multiplayer'}
-                          className="text-slate-300 transition hover:text-white disabled:opacity-40"
-                          title={mod.enabled ? t('mods.disableMod') : t('mods.enableMod')}
-                        >
-                          {mod.enabled ? (
-                            <ToggleRight size={20} className="text-[var(--color-accent)]" />
-                          ) : (
-                            <ToggleLeft size={20} />
-                          )}
-                        </button>
-                      </td>
-
-                      {/* Mod name */}
-                      <td className="px-4 py-3">
-                        <div className="font-medium text-white truncate max-w-[300px]">
-                          {mod.title || mod.fileName}
-                        </div>
-                        {mod.title && (
-                          <div className="text-[11px] text-slate-500 truncate max-w-[300px]">
-                            {mod.fileName}
-                          </div>
-                        )}
-                        {mod.author && (
-                          <div className="text-[11px] text-slate-500">{t('mods.byAuthor', { author: mod.author })}</div>
-                        )}
-                      </td>
-
-                      {/* Type */}
-                      <td className="px-4 py-3">
-                        <div className="inline-flex items-center gap-1.5 text-xs text-slate-400">
-                          {modTypeIcon(mod.modType)}
-                          {mod.modType || t('mods.otherType')}
-                        </div>
-                      </td>
-
-                      {/* Size */}
-                      <td className="px-4 py-3 text-right text-xs text-slate-400">
-                        {formatBytes(mod.sizeBytes)}
-                      </td>
-
-                      {/* Actions */}
-                      <td className="px-4 py-3 text-right">
-                        {mod.location !== 'multiplayer' && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleDelete(mod)
-                            }}
-                            disabled={actionPending === mod.key}
-                            className="text-slate-500 transition hover:text-rose-400 disabled:opacity-40"
-                            title={t('mods.deleteMod')}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </td>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 z-10 bg-[#111113] border-b border-white/6">
+                    <tr className="text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                      <th className="w-8 px-2 py-2.5"></th>
+                      <th className="w-10 px-2 py-2.5 font-medium text-center">#</th>
+                      <th className="text-left px-4 py-2.5 font-medium">{t('mods.tableStatus')}</th>
+                      <th className="text-left px-4 py-2.5 font-medium">{t('mods.tableMod')}</th>
+                      <th className="text-left px-4 py-2.5 font-medium">{t('mods.tableType')}</th>
+                      <th className="text-right px-4 py-2.5 font-medium">{t('mods.tableSize')}</th>
+                      <th className="text-right px-4 py-2.5 font-medium">{t('mods.tableActions')}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <SortableContext
+                    items={filteredMods.filter((m) => m.enabled).map((m) => m.key)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <tbody>
+                      {filteredMods.map((mod) => (
+                        <SortableModRow
+                          key={mod.key}
+                          mod={mod}
+                          isSelected={selectedMod?.key === mod.key}
+                          actionPending={actionPending}
+                          conflictCount={getModConflictCount(mod.key)}
+                          isOverridden={isModOverridden(mod.key)}
+                          onSelect={(m) => setSelectedMod(selectedMod?.key === m.key ? null : m)}
+                          onToggle={handleToggle}
+                          onDelete={handleDelete}
+                          t={t}
+                        />
+                      ))}
+                    </tbody>
+                  </SortableContext>
+                </table>
+              </DndContext>
             </div>
 
             {/* Detail panel */}
@@ -647,10 +855,30 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">{t('common.type')}</span>
-                    <span className="text-slate-300 inline-flex items-center gap-1">
-                      {modTypeIcon(selectedMod.modType)}
-                      {selectedRegistryEntry?.metadata.mod_type || selectedMod.modType}
-                    </span>
+                    {(selectedMod.modType === 'unknown' || selectedMod.modType === 'other') && !selectedRegistryEntry?.metadata.mod_type ? (
+                      <select
+                        value={selectedMod.modType}
+                        onChange={async (e) => {
+                          const newType = e.target.value
+                          const result = await window.api.updateModType(selectedMod.key, newType)
+                          if (result.success) {
+                            setMods((prev) => prev.map((m) => m.key === selectedMod.key ? { ...m, modType: newType } : m))
+                          }
+                        }}
+                        className="text-xs bg-[var(--color-surface)] border border-[var(--color-border)] text-slate-300 rounded px-1 py-0.5 outline-none focus:border-[var(--color-border-accent)]"
+                      >
+                        <option value="unknown">{t('mods.otherType')}</option>
+                        <option value="terrain">{t('mods.mapType')}</option>
+                        <option value="vehicle">{t('mods.vehicleType')}</option>
+                        <option value="sound">{t('mods.sounds')}</option>
+                        <option value="ui_app">{t('mods.uiApps')}</option>
+                      </select>
+                    ) : (
+                      <span className="text-slate-300 inline-flex items-center gap-1">
+                        {modTypeIcon(selectedMod.modType)}
+                        {selectedRegistryEntry?.metadata.mod_type || selectedMod.modType}
+                      </span>
+                    )}
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">{t('common.size')}</span>
@@ -771,6 +999,52 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                     })}
                   </div>
                 )}
+
+                {/* File Conflicts */}
+                {(() => {
+                  const conflicts = conflictReport
+                    ? conflictReport.conflicts.filter((c) => c.mods.some((m) => m.modKey === selectedMod.key))
+                    : []
+                  if (conflicts.length === 0) return null
+                  const overridden = conflicts.filter((c) => c.winner !== selectedMod.key)
+                  const wins = conflicts.filter((c) => c.winner === selectedMod.key)
+                  return (
+                    <div className="border-t border-white/6 pt-3 space-y-2">
+                      <span className="text-[10px] uppercase tracking-[0.12em] text-slate-500">
+                        {t('mods.fileConflicts')} ({conflicts.length})
+                      </span>
+                      {overridden.length > 0 && (
+                        <div className="space-y-1">
+                          <div className="text-[10px] text-amber-400 font-medium">{t('mods.overriddenBy')} ({overridden.length})</div>
+                          {overridden.slice(0, 10).map((c) => (
+                            <div key={c.filePath} className="text-[11px] text-slate-400 truncate" title={c.filePath}>
+                              <span className="text-amber-400/60">↓</span> {c.filePath.split('/').pop()} → {c.winner}
+                            </div>
+                          ))}
+                          {overridden.length > 10 && (
+                            <div className="text-[10px] text-slate-500">+{overridden.length - 10} {t('common.more')}</div>
+                          )}
+                        </div>
+                      )}
+                      {wins.length > 0 && (
+                        <div className="space-y-1">
+                          <div className="text-[10px] text-emerald-400 font-medium">{t('mods.winsOver')} ({wins.length})</div>
+                          {wins.slice(0, 10).map((c) => {
+                            const losers = c.mods.filter((m) => m.modKey !== selectedMod.key).map((m) => m.modKey)
+                            return (
+                              <div key={c.filePath} className="text-[11px] text-slate-400 truncate" title={c.filePath}>
+                                <span className="text-emerald-400/60">↑</span> {c.filePath.split('/').pop()} → {losers.join(', ')}
+                              </div>
+                            )
+                          })}
+                          {wins.length > 10 && (
+                            <div className="text-[10px] text-slate-500">+{wins.length - 10} {t('common.more')}</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
 
                 {/* Actions */}
                 {selectedMod.location !== 'multiplayer' && (

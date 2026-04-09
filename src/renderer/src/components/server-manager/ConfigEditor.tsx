@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import type { HostedServerConfig } from '../../../../shared/types'
 import { BeamMPNameEditor } from './BeamMPNameEditor'
 
-type MapEntry = { name: string; source: 'stock' | 'mod' }
+type MapEntry = { name: string; source: 'stock' | 'mod'; levelDir?: string }
 
 interface ConfigEditorProps {
   draft: Partial<HostedServerConfig>
@@ -173,8 +173,11 @@ export function ConfigEditor({
             onChange={(e) => setDraft({ ...draft, map: e.target.value })}
             className="px-2 py-1.5 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:border-[var(--color-border-accent)] outline-none rounded"
           >
+            <option value="" disabled>{t('serverManager.selectMap')}</option>
             {mapList.map((m) => {
-              const val = `/levels/${m.name}/info.json`
+              // For mod maps, use the actual level directory name; for stock maps, use the name
+              const dirName = m.levelDir || m.name
+              const val = `/levels/${dirName}/info.json`
               return (
                 <option key={val} value={val}>
                   {formatMapName(m.name)}{m.source === 'mod' ? ' (mod)' : ''}

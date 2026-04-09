@@ -58,7 +58,7 @@ const api = {
   getVehicle3DModel: (vehicleName: string, activeMeshes?: string[]) =>
     ipcRenderer.invoke('game:getVehicle3DModel', vehicleName, activeMeshes) as Promise<string[]>,
   getActiveVehicleMeshes: (vehicleName: string, configParts: Record<string, string>) =>
-    ipcRenderer.invoke('game:getActiveVehicleMeshes', vehicleName, configParts) as Promise<string[]>,
+    ipcRenderer.invoke('game:getActiveVehicleMeshes', vehicleName, configParts) as Promise<{ meshes: string[]; meshOwnership: Record<string, string> }>,
   getWheelPlacements: (vehicleName: string, configParts: Record<string, string>) =>
     ipcRenderer.invoke('game:getWheelPlacements', vehicleName, configParts) as Promise<Array<{ meshName: string; position: [number, number, number]; group: string; corner: string }>>,
   getVehicleEditorData: (vehicleName: string) =>
@@ -163,8 +163,20 @@ const api = {
   deleteMod: (modKey: string) => ipcRenderer.invoke('mods:delete', modKey),
   installMod: () => ipcRenderer.invoke('mods:install'),
   updateModScope: (modKey: string, scope: 'client' | 'server' | 'both') => ipcRenderer.invoke('mods:updateScope', modKey, scope),
+  updateModType: (modKey: string, modType: string) => ipcRenderer.invoke('mods:updateType', modKey, modType),
   openModsFolder: () => ipcRenderer.invoke('mods:openFolder'),
   getModPreview: (filePath: string) => ipcRenderer.invoke('mods:preview', filePath),
+
+  // Mod Load Order
+  getModLoadOrder: () => ipcRenderer.invoke('mods:getLoadOrder'),
+  setModLoadOrder: (orderedKeys: string[]) => ipcRenderer.invoke('mods:setLoadOrder', orderedKeys),
+  toggleLoadOrderEnforcement: (enabled: boolean) => ipcRenderer.invoke('mods:toggleEnforcement', enabled),
+
+  // Mod Conflict Detection
+  scanModConflicts: () =>
+    ipcRenderer.invoke('mods:scanConflicts') as Promise<{ success: boolean; data?: import('../shared/types').ModConflictReport; error?: string }>,
+  getModConflicts: (modKey: string) =>
+    ipcRenderer.invoke('mods:getModConflicts', modKey) as Promise<{ success: boolean; data?: import('../shared/types').ModConflict[]; error?: string }>,
 
   // Mod Repository
   browseRepoMods: (categoryId: number, page: number, sort: string) =>
@@ -299,6 +311,10 @@ const api = {
     ipcRenderer.invoke('hostedServer:getPlayerPositions', id),
   hostedServerDeployTracker: (id: string) =>
     ipcRenderer.invoke('hostedServer:deployTracker', id),
+  hostedServerGetModLoadOrder: (id: string) =>
+    ipcRenderer.invoke('hostedServer:getModLoadOrder', id),
+  hostedServerSetModLoadOrder: (id: string, orderedKeys: string[]) =>
+    ipcRenderer.invoke('hostedServer:setModLoadOrder', id, orderedKeys),
 
   // Backup Schedule
   hostedServerGetSchedule: (id: string) =>
@@ -481,7 +497,41 @@ const api = {
   careerBrowseSavePath: () =>
     ipcRenderer.invoke('career:browseSavePath') as Promise<string | null>,
   careerGetSavePath: () =>
-    ipcRenderer.invoke('career:getSavePath') as Promise<string | null>
+    ipcRenderer.invoke('career:getSavePath') as Promise<string | null>,
+
+  // Controls / Input Bindings
+  controlsGetDevices: () =>
+    ipcRenderer.invoke('controls:getDevices'),
+  controlsGetActions: () =>
+    ipcRenderer.invoke('controls:getActions'),
+  controlsGetCategories: () =>
+    ipcRenderer.invoke('controls:getCategories'),
+  controlsGetBindings: (deviceFileName: string) =>
+    ipcRenderer.invoke('controls:getBindings', deviceFileName),
+  controlsSetBinding: (deviceFileName: string, binding: unknown) =>
+    ipcRenderer.invoke('controls:setBinding', deviceFileName, binding),
+  controlsRemoveBinding: (deviceFileName: string, control: string, action: string) =>
+    ipcRenderer.invoke('controls:removeBinding', deviceFileName, control, action),
+  controlsResetDevice: (deviceFileName: string) =>
+    ipcRenderer.invoke('controls:resetDevice', deviceFileName),
+  controlsSetFFBConfig: (deviceFileName: string, control: string, ffb: unknown) =>
+    ipcRenderer.invoke('controls:setFFBConfig', deviceFileName, control, ffb),
+  controlsGetSteeringSettings: () =>
+    ipcRenderer.invoke('controls:getSteeringSettings'),
+  controlsSetSteeringSettings: (settings: unknown) =>
+    ipcRenderer.invoke('controls:setSteeringSettings', settings),
+  controlsListPresets: () =>
+    ipcRenderer.invoke('controls:listPresets'),
+  controlsSavePreset: (name: string, deviceFileName: string, device: unknown) =>
+    ipcRenderer.invoke('controls:savePreset', name, deviceFileName, device),
+  controlsLoadPreset: (presetId: string) =>
+    ipcRenderer.invoke('controls:loadPreset', presetId),
+  controlsDeletePreset: (presetId: string) =>
+    ipcRenderer.invoke('controls:deletePreset', presetId),
+  controlsExportPreset: (presetId: string) =>
+    ipcRenderer.invoke('controls:exportPreset', presetId),
+  controlsImportPreset: (jsonString: string) =>
+    ipcRenderer.invoke('controls:importPreset', jsonString)
 }
 
 if (process.contextIsolated) {

@@ -22,8 +22,11 @@ import { DependencyResolver } from '../services/DependencyResolver'
 import { RoadNetwork } from '../services/RoadNetwork'
 import { TailscaleService } from '../services/TailscaleService'
 import { CareerSaveService } from '../services/CareerSaveService'
+import { LoadOrderService } from '../services/LoadOrderService'
+import { ConflictDetectionService } from '../services/ConflictDetectionService'
+import { InputBindingsService } from '../services/InputBindingsService'
 import { parseBeamNGJson } from '../utils/parseBeamNGJson'
-import type { AppConfig, GamePaths, ServerInfo, RepoSortOrder, VehicleDetail, VehicleConfigInfo, VehicleConfigData, VehicleEditorData, SlotInfo, VariableInfo, WheelPlacement, HostedServerConfig, GPSRoute, ScheduledTask, MapRichMetadata } from '../../shared/types'
+import type { AppConfig, GamePaths, ServerInfo, RepoSortOrder, VehicleDetail, VehicleConfigInfo, VehicleConfigData, VehicleEditorData, SlotInfo, VariableInfo, WheelPlacement, ActiveMeshResult, HostedServerConfig, GPSRoute, ScheduledTask, MapRichMetadata } from '../../shared/types'
 import type { RegistrySearchOptions, RegistryRepository, BeamModMetadata, InstalledRegistryMod } from '../../shared/registry-types'
 
 let discoveryService: GameDiscoveryService
@@ -38,6 +41,9 @@ let taskSchedulerService: TaskSchedulerService
 let analyticsService: AnalyticsService
 let registryService: RegistryService
 let tailscaleService: TailscaleService
+let loadOrderService: LoadOrderService
+let conflictDetectionService: ConflictDetectionService
+let inputBindingsService: InputBindingsService
 
 export function initializeServices(): {
   config: ConfigService
@@ -69,6 +75,9 @@ export function initializeServices(): {
   analyticsService = new AnalyticsService()
   registryService = new RegistryService()
   tailscaleService = new TailscaleService()
+  loadOrderService = new LoadOrderService()
+  conflictDetectionService = new ConflictDetectionService()
+  inputBindingsService = new InputBindingsService()
   registryService.setModManager(modManagerService)
 
   // Initialize backup scheduler (resume saved schedules)
@@ -1780,151 +1789,255 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // ── Get Active Vehicle Meshes via slot tree walk ──
-  // Builds a part database (meshes + slots) from jbeam files, then walks the slot tree
-  // from the root part using config.parts to resolve which parts are active.
-  // Returns the list of mesh names that should be visible.
-  ipcMain.handle(
-    'game:getActiveVehicleMeshes',
-    async (_event, vehicleName: string, configParts: Record<string, string>): Promise<string[]> => {
-      const config = configService.get()
-      const installDir = config.gamePaths?.installDir
-      if (!installDir) return []
+  // ── Shared JBeam Part Database + Slot Tree Utility ──
+  // Used by both getActiveVehicleMeshes and getWheelPlacements to avoid code duplication.
 
-      // Part database: partName → { meshes, slots }
-      interface PartEntry {
-        meshes: string[]
-        slots: { name: string; defaultPart: string }[]
-      }
-      const partDB: Record<string, PartEntry> = {}
+  interface FlexbodyEntry { mesh: string; groups: string[] }
+  interface SlotEntry { name: string; defaultPart: string; allowTypes?: string[]; denyTypes?: string[] }
+  interface PartEntry {
+    slotType?: string
+    meshes: FlexbodyEntry[]
+    propMeshes: string[]
+    slots: SlotEntry[]
+  }
 
-      let skipExisting = false
-      const buildPartDB = (_fn: string, data: Buffer): void => {
-        try {
-          const parsed = parseBeamNGJson<Record<string, Record<string, unknown>>>(data.toString('utf-8'))
-          for (const [partName, partDef] of Object.entries(parsed)) {
-            if (!partDef || typeof partDef !== 'object') continue
-            if (skipExisting && partDB[partName]) continue
-            const entry: PartEntry = { meshes: [], slots: [] }
+  interface SlotWalkResult {
+    activeMeshes: string[]
+    meshOwnership: Record<string, string>
+    activeNodeGroups: Set<string>
+    activeParts: string[]
+  }
 
-            // Extract meshes from flexbodies
-            const flexbodies = partDef.flexbodies as unknown[][]
-            if (Array.isArray(flexbodies)) {
-              let meshCol = 0
-              for (const row of flexbodies) {
-                if (!Array.isArray(row)) continue
-                if (typeof row[0] === 'string' && row[0] === 'mesh') { meshCol = 0; continue }
-                if (typeof row[meshCol] === 'string') {
-                  entry.meshes.push(row[meshCol] as string)
-                }
-              }
-            }
+  function buildPartDB(
+    rawParts: Record<string, Record<string, unknown>>
+  ): Record<string, PartEntry> {
+    const partDB: Record<string, PartEntry> = {}
+    for (const [partName, partDef] of Object.entries(rawParts)) {
+      if (!partDef || typeof partDef !== 'object') continue
+      const entry: PartEntry = { meshes: [], propMeshes: [], slots: [] }
 
-            // Extract meshes from props
-            const props = partDef.props as unknown[][]
-            if (Array.isArray(props)) {
-              let meshCol = -1
-              for (const row of props) {
-                if (!Array.isArray(row)) continue
-                if (meshCol === -1) {
-                  const idx = row.indexOf('mesh')
-                  if (idx >= 0) { meshCol = idx; continue }
-                }
-                if (meshCol >= 0 && typeof row[meshCol] === 'string') {
-                  entry.meshes.push(row[meshCol] as string)
-                }
-              }
-            }
+      // slotType
+      if (typeof partDef.slotType === 'string') entry.slotType = partDef.slotType
 
-            // Extract slots from slots2 (newer format)
-            // Header: ["name", "allowTypes", "denyTypes", "default", "description"]
-            const slots2 = partDef.slots2 as unknown[][]
-            if (Array.isArray(slots2)) {
-              let nameCol = 0, defaultCol = 3
-              for (const row of slots2) {
-                if (!Array.isArray(row)) continue
-                // Detect header row
-                if (row.includes('name') && row.includes('default')) {
-                  nameCol = row.indexOf('name')
-                  defaultCol = row.indexOf('default')
-                  continue
-                }
-                const slotName = typeof row[nameCol] === 'string' ? row[nameCol] as string : ''
-                const defaultPart = typeof row[defaultCol] === 'string' ? row[defaultCol] as string : ''
-                if (slotName) entry.slots.push({ name: slotName, defaultPart })
-              }
-            }
-
-            // Extract slots from slots (older format)
-            // Each row: ["slotType", "defaultPart", "description"]
-            const slots = partDef.slots as unknown[][]
-            if (Array.isArray(slots) && !slots2) {
-              for (const row of slots) {
-                if (!Array.isArray(row)) continue
-                // Skip header rows
-                if (row.includes('type') && row.includes('default')) continue
-                const slotName = typeof row[0] === 'string' ? row[0] as string : ''
-                const defaultPart = typeof row[1] === 'string' ? row[1] as string : ''
-                if (slotName) entry.slots.push({ name: slotName, defaultPart })
-              }
-            }
-
-            partDB[partName] = entry
+      // flexbodies → mesh + groups
+      const flexbodies = partDef.flexbodies as unknown[][]
+      if (Array.isArray(flexbodies)) {
+        let meshCol = -1, groupCol = -1
+        for (const row of flexbodies) {
+          if (!Array.isArray(row)) continue
+          if (row.includes('mesh')) {
+            meshCol = row.indexOf('mesh')
+            groupCol = row.indexOf('[group]:')
+            continue
           }
-        } catch { /* skip malformed jbeam files */ }
-      }
-
-      // Scan vehicle zip first, then common.zip (skip parts already defined by vehicle)
-      const vehicleZip = getVehicleZipPath(vehicleName, installDir)
-      await readEntriesFromZip(vehicleZip, (fn) => fn.endsWith('.jbeam'), buildPartDB)
-      skipExisting = true
-      const commonZip = join(installDir, 'content', 'vehicles', 'common.zip')
-      try {
-        await readEntriesFromZip(commonZip, (fn) => fn.endsWith('.jbeam'), buildPartDB)
-      } catch { /* common.zip may not exist */ }
-
-      // Walk the slot tree from root part
-      const activeMeshes: string[] = []
-      const visited = new Set<string>()
-
-      function walk(partName: string): void {
-        if (!partName || visited.has(partName)) return
-        visited.add(partName)
-        const part = partDB[partName]
-        if (!part) return
-
-        // Collect this part's meshes
-        activeMeshes.push(...part.meshes)
-
-        // Recurse into slots
-        for (const slot of part.slots) {
-          const assigned = configParts[slot.name]
-          // "" = explicitly removed, undefined = use default
-          if (assigned === '') continue
-          const resolved = assigned ?? slot.defaultPart
-          if (resolved) walk(resolved)
+          if (meshCol < 0) continue
+          const mesh = typeof row[meshCol] === 'string' ? (row[meshCol] as string) : ''
+          if (!mesh) continue
+          let groups: string[] = []
+          if (groupCol >= 0) {
+            const gv = row[groupCol]
+            if (typeof gv === 'string') groups = gv.split(',').map(s => s.trim()).filter(Boolean)
+            else if (Array.isArray(gv)) groups = (gv as unknown[]).filter(g => typeof g === 'string').map(g => (g as string).trim())
+          }
+          entry.meshes.push({ mesh, groups })
         }
       }
 
-      walk(vehicleName) // root part name = vehicle model name
-      return activeMeshes
-    }
-  )
+      // props → mesh names only
+      const props = partDef.props as unknown[][]
+      if (Array.isArray(props)) {
+        let meshCol = -1
+        for (const row of props) {
+          if (!Array.isArray(row)) continue
+          if (meshCol === -1) { const idx = row.indexOf('mesh'); if (idx >= 0) { meshCol = idx; continue } }
+          if (meshCol >= 0 && typeof row[meshCol] === 'string') entry.propMeshes.push(row[meshCol] as string)
+        }
+      }
 
-  // ── Get Wheel Placements ──
-  // Walks the slot tree to find active wheel/tire/hubcap parts, extracts their flexbody
-  // group assignments + node positions from hub parts to compute 3D wheel placement data.
-  // Returns an array of { meshName, position, group } for each wheel instance.
+      // slots2 (newer) — extract allowTypes/denyTypes
+      const slots2 = partDef.slots2 as unknown[][]
+      if (Array.isArray(slots2)) {
+        let nameCol = 0, defaultCol = 3, allowCol = 1, denyCol = 2
+        for (const row of slots2) {
+          if (!Array.isArray(row)) continue
+          if (row.includes('name') && row.includes('default')) {
+            nameCol = row.indexOf('name')
+            defaultCol = row.indexOf('default')
+            const ai = row.indexOf('allowTypes'); if (ai >= 0) allowCol = ai
+            const di = row.indexOf('denyTypes'); if (di >= 0) denyCol = di
+            continue
+          }
+          const slotName = typeof row[nameCol] === 'string' ? (row[nameCol] as string) : ''
+          const defaultPart = typeof row[defaultCol] === 'string' ? (row[defaultCol] as string) : ''
+          if (!slotName) continue
+          const slot: SlotEntry = { name: slotName, defaultPart }
+          const allow = row[allowCol]
+          if (typeof allow === 'string' && allow) slot.allowTypes = allow.split(',').map(s => s.trim()).filter(Boolean)
+          const deny = row[denyCol]
+          if (typeof deny === 'string' && deny) slot.denyTypes = deny.split(',').map(s => s.trim()).filter(Boolean)
+          entry.slots.push(slot)
+        }
+      }
+
+      // slots (older) — no allow/deny
+      const slotsArr = partDef.slots as unknown[][]
+      if (Array.isArray(slotsArr) && !slots2) {
+        for (const row of slotsArr) {
+          if (!Array.isArray(row)) continue
+          if (row.includes('type') && row.includes('default')) continue
+          const slotName = typeof row[0] === 'string' ? (row[0] as string) : ''
+          const defaultPart = typeof row[1] === 'string' ? (row[1] as string) : ''
+          if (slotName) entry.slots.push({ name: slotName, defaultPart })
+        }
+      }
+
+      partDB[partName] = entry
+    }
+    return partDB
+  }
+
+  /** Check if a part's slotType is compatible with a slot's allow/deny lists */
+  function isSlotTypeCompatible(partSlotType: string | undefined, slot: SlotEntry): boolean {
+    if (!slot.allowTypes && !slot.denyTypes) return true
+    if (!partSlotType) return true // root parts and untyped parts always pass
+    if (slot.denyTypes?.includes(partSlotType)) return false
+    if (slot.allowTypes && slot.allowTypes.length > 0) return slot.allowTypes.includes(partSlotType)
+    return true
+  }
+
+  /** Collect node group names from raw jbeam nodes AND pressureWheels sections */
+  function collectNodeGroups(rawParts: Record<string, Record<string, unknown>>, activePartNames: string[]): Set<string> {
+    const groups = new Set<string>()
+    const applyGroup = (groupVal: unknown, target: Set<string>): void => {
+      if (typeof groupVal === 'string') {
+        for (const g of groupVal.split(',')) { const t = g.trim(); if (t) target.add(t) }
+      } else if (Array.isArray(groupVal)) {
+        for (const g of groupVal) { const t = String(g).trim(); if (t) target.add(t) }
+      }
+    }
+    for (const partName of activePartNames) {
+      const partDef = rawParts[partName]
+      if (!partDef) continue
+      // Scan nodes sections
+      const nodes = partDef.nodes as unknown[] | undefined
+      if (Array.isArray(nodes)) {
+        for (const item of nodes) {
+          if (item && typeof item === 'object' && !Array.isArray(item)) {
+            const opt = item as Record<string, unknown>
+            if (opt.group !== undefined) applyGroup(opt.group, groups)
+            continue
+          }
+          if (!Array.isArray(item)) continue
+          for (const el of item) {
+            if (el && typeof el === 'object' && !Array.isArray(el)) {
+              const obj = el as Record<string, unknown>
+              if (obj.group !== undefined) applyGroup(obj.group, groups)
+            }
+          }
+        }
+      }
+      // Scan pressureWheels for hubGroup and group columns (these define wheel/tire groups
+      // that are dynamically generated at runtime — they don't appear in nodes sections)
+      const pw = partDef.pressureWheels as unknown[] | undefined
+      if (Array.isArray(pw)) {
+        let pwHeaders: unknown[] | null = null
+        for (const row of pw) {
+          if (!Array.isArray(row)) continue
+          if (row.includes('name')) { pwHeaders = row; continue }
+          if (!pwHeaders) continue
+          const hgIdx = pwHeaders.indexOf('hubGroup')
+          const gIdx = pwHeaders.indexOf('group')
+          if (hgIdx >= 0) {
+            const val = row[hgIdx]
+            if (typeof val === 'string' && val) groups.add(val)
+          }
+          if (gIdx >= 0) {
+            const val = row[gIdx]
+            if (typeof val === 'string' && val) groups.add(val)
+          }
+        }
+      }
+    }
+    return groups
+  }
+
+  /** Walk the slot tree, validate slotTypes, collect meshes with group filtering */
+  function walkSlotTree(
+    partDB: Record<string, PartEntry>,
+    rawParts: Record<string, Record<string, unknown>>,
+    rootPartName: string,
+    configParts: Record<string, string>
+  ): SlotWalkResult {
+    const activeParts: string[] = []
+    const visited = new Set<string>()
+
+    function walk(partName: string): void {
+      if (!partName || visited.has(partName)) return
+      visited.add(partName)
+      const part = partDB[partName]
+      if (!part) return
+      activeParts.push(partName)
+
+      for (const slot of part.slots) {
+        const assigned = configParts[slot.name]
+        if (assigned === '') continue // explicitly removed
+        let resolved = assigned ?? slot.defaultPart
+        // Validate slotType if assigned part doesn't match, fall back to default
+        if (resolved && assigned !== undefined && partDB[resolved]) {
+          if (!isSlotTypeCompatible(partDB[resolved].slotType, slot)) {
+            resolved = slot.defaultPart // fall back
+            if (resolved && partDB[resolved] && !isSlotTypeCompatible(partDB[resolved].slotType, slot)) {
+              continue // default also invalid → skip
+            }
+          }
+        }
+        if (resolved) walk(resolved)
+      }
+    }
+    walk(rootPartName)
+
+    // Collect active node groups
+    const activeNodeGroups = collectNodeGroups(rawParts, activeParts)
+
+    // Collect meshes with group filtering + ownership
+    const activeMeshes: string[] = []
+    const meshOwnership: Record<string, string> = {}
+    for (const partName of activeParts) {
+      const part = partDB[partName]
+      if (!part) continue
+      for (const fb of part.meshes) {
+        // Group filter: if flexbody has groups, at least one must exist in active node groups
+        if (fb.groups.length > 0 && !fb.groups.some(g => activeNodeGroups.has(g))) continue
+        if (!meshOwnership[fb.mesh]) {
+          activeMeshes.push(fb.mesh)
+          meshOwnership[fb.mesh] = partName
+        }
+      }
+      // Props always pass (no group filtering)
+      for (const mesh of part.propMeshes) {
+        if (!meshOwnership[mesh]) {
+          activeMeshes.push(mesh)
+          meshOwnership[mesh] = partName
+        }
+      }
+    }
+
+    return { activeMeshes, meshOwnership, activeNodeGroups, activeParts }
+  }
+
+  // ── Get Active Vehicle Meshes via slot tree walk ──
+  // Builds a part database (meshes + slots) from jbeam files, then walks the slot tree
+  // from the root part using config.parts to resolve which parts are active.
+  // Returns the list of mesh names that should be visible + ownership map.
   ipcMain.handle(
-    'game:getWheelPlacements',
-    async (_event, vehicleName: string, configParts: Record<string, string>): Promise<WheelPlacement[]> => {
+    'game:getActiveVehicleMeshes',
+    async (_event, vehicleName: string, configParts: Record<string, string>): Promise<ActiveMeshResult> => {
       const config = configService.get()
       const installDir = config.gamePaths?.installDir
-      if (!installDir) return []
+      if (!installDir) return { meshes: [], meshOwnership: {} }
 
-      // Full part database: raw jbeam definitions
+      // Scan all jbeam files into raw parts
       const rawParts: Record<string, Record<string, unknown>> = {}
-
       let skipExisting = false
       const scanJbeam = (_fn: string, data: Buffer): void => {
         try {
@@ -1943,56 +2056,47 @@ export function registerIpcHandlers(): void {
       const commonZip = join(installDir, 'content', 'vehicles', 'common.zip')
       try { await readEntriesFromZip(commonZip, (fn) => fn.endsWith('.jbeam'), scanJbeam) } catch { /* */ }
 
-      // Extract slots from a part definition
-      function getSlots(partDef: Record<string, unknown>): { name: string; defaultPart: string }[] {
-        const slots: { name: string; defaultPart: string }[] = []
-        const slots2 = partDef.slots2 as unknown[][] | undefined
-        if (Array.isArray(slots2)) {
-          let nameCol = 0, defaultCol = 3
-          for (const row of slots2) {
-            if (!Array.isArray(row)) continue
-            if (row.includes('name') && row.includes('default')) {
-              nameCol = row.indexOf('name'); defaultCol = row.indexOf('default'); continue
-            }
-            const slotName = typeof row[nameCol] === 'string' ? row[nameCol] as string : ''
-            const defaultPart = typeof row[defaultCol] === 'string' ? row[defaultCol] as string : ''
-            if (slotName) slots.push({ name: slotName, defaultPart })
+      // Build enriched part DB + walk with validation
+      const partDB = buildPartDB(rawParts)
+      const result = walkSlotTree(partDB, rawParts, vehicleName, configParts)
+      return { meshes: result.activeMeshes, meshOwnership: result.meshOwnership }
+    }
+  )
+
+  // ── Get Wheel Placements ──
+  // Uses shared slot-tree walk, then computes wheel hub centers from pressureWheels
+  // node1:/node2: midpoints (authoritative), falling back to hub group medians.
+  ipcMain.handle(
+    'game:getWheelPlacements',
+    async (_event, vehicleName: string, configParts: Record<string, string>): Promise<WheelPlacement[]> => {
+      const config = configService.get()
+      const installDir = config.gamePaths?.installDir
+      if (!installDir) return []
+
+      // Scan all jbeam into raw definitions
+      const rawParts: Record<string, Record<string, unknown>> = {}
+      let skipExisting = false
+      const scanJbeam = (_fn: string, data: Buffer): void => {
+        try {
+          const parsed = parseBeamNGJson<Record<string, Record<string, unknown>>>(data.toString('utf-8'))
+          for (const [partName, partDef] of Object.entries(parsed)) {
+            if (!partDef || typeof partDef !== 'object') continue
+            if (skipExisting && rawParts[partName]) continue
+            rawParts[partName] = partDef
           }
-        }
-        const slotsArr = partDef.slots as unknown[][] | undefined
-        if (Array.isArray(slotsArr) && !slots2) {
-          for (const row of slotsArr) {
-            if (!Array.isArray(row)) continue
-            if (row.includes('type') && row.includes('default')) continue
-            const slotName = typeof row[0] === 'string' ? row[0] as string : ''
-            const defaultPart = typeof row[1] === 'string' ? row[1] as string : ''
-            if (slotName) slots.push({ name: slotName, defaultPart })
-          }
-        }
-        return slots
+        } catch { /* skip malformed */ }
       }
+      const vehicleZip = getVehicleZipPath(vehicleName, installDir)
+      await readEntriesFromZip(vehicleZip, (fn) => fn.endsWith('.jbeam'), scanJbeam)
+      skipExisting = true
+      const commonZip = join(installDir, 'content', 'vehicles', 'common.zip')
+      try { await readEntriesFromZip(commonZip, (fn) => fn.endsWith('.jbeam'), scanJbeam) } catch { /* */ }
 
-      // Walk the slot tree to find all active parts
-      const activeParts: string[] = []
-      const visited = new Set<string>()
-      function walk(partName: string): void {
-        if (!partName || visited.has(partName)) return
-        visited.add(partName)
-        const partDef = rawParts[partName]
-        if (!partDef) return
-        activeParts.push(partName)
-        for (const slot of getSlots(partDef)) {
-          const assigned = configParts[slot.name]
-          if (assigned === '') continue
-          const resolved = assigned ?? slot.defaultPart
-          if (resolved) walk(resolved)
-        }
-      }
-      walk(vehicleName)
+      // Build part DB + walk slot tree using shared utility (with slotType validation)
+      const partDB = buildPartDB(rawParts)
+      const { activeParts } = walkSlotTree(partDB, rawParts, vehicleName, configParts)
 
-
-
-      // ── 1. Collect ALL node positions and group memberships ──
+      // ── 1. Collect ALL node positions and group memberships from active parts ──
       const allNodes: Record<string, [number, number, number]> = {}
       const groupNodeIds: Record<string, string[]> = {}
 
@@ -2001,23 +2105,16 @@ export function registerIpcHandlers(): void {
         if (!partDef) continue
         const nodes = partDef.nodes as unknown[] | undefined
         if (!Array.isArray(nodes)) continue
-
         let headers: unknown[] | null = null
         let currentGroups: string[] = []
-
-        // Helper: update currentGroups from a group property value
         const applyGroup = (groupVal: unknown): void => {
           if (typeof groupVal === 'string') {
-            currentGroups = groupVal.split(',').map(s => (s as string).trim()).filter(Boolean)
+            currentGroups = groupVal.split(',').map(s => s.trim()).filter(Boolean)
           } else if (Array.isArray(groupVal)) {
             currentGroups = (groupVal as string[]).map(s => String(s).trim()).filter(Boolean)
-          } else {
-            currentGroups = []
-          }
+          } else { currentGroups = [] }
         }
-
         for (const item of nodes) {
-          // Standalone group object between rows: {"group": "..."}
           if (item && typeof item === 'object' && !Array.isArray(item)) {
             const opt = item as Record<string, unknown>
             if (opt.group !== undefined) applyGroup(opt.group)
@@ -2026,28 +2123,24 @@ export function registerIpcHandlers(): void {
           if (!Array.isArray(item)) continue
           if (item.includes('id') && item.includes('posX')) { headers = item; continue }
           if (!headers) continue
-
-          // Check for inline group objects within the data row
           for (const el of item) {
             if (el && typeof el === 'object' && !Array.isArray(el)) {
               const obj = el as Record<string, unknown>
               if (obj.group !== undefined) applyGroup(obj.group)
             }
           }
-
           const idIdx = headers.indexOf('id')
           const xIdx = headers.indexOf('posX')
           const yIdx = headers.indexOf('posY')
           const zIdx = headers.indexOf('posZ')
           if (idIdx < 0 || xIdx < 0 || yIdx < 0 || zIdx < 0) continue
-
-          const nodeId = typeof item[idIdx] === 'string' ? item[idIdx] as string : ''
+          const nodeId = typeof item[idIdx] === 'string' ? (item[idIdx] as string) : ''
           if (!nodeId) continue
-          const x = typeof item[xIdx] === 'number' ? item[xIdx] as number : 0
-          const y = typeof item[yIdx] === 'number' ? item[yIdx] as number : 0
-          const z = typeof item[zIdx] === 'number' ? item[zIdx] as number : 0
-
-          allNodes[nodeId] = [x, y, z]
+          allNodes[nodeId] = [
+            typeof item[xIdx] === 'number' ? (item[xIdx] as number) : 0,
+            typeof item[yIdx] === 'number' ? (item[yIdx] as number) : 0,
+            typeof item[zIdx] === 'number' ? (item[zIdx] as number) : 0
+          ]
           for (const g of currentGroups) {
             if (!groupNodeIds[g]) groupNodeIds[g] = []
             groupNodeIds[g].push(nodeId)
@@ -2055,58 +2148,51 @@ export function registerIpcHandlers(): void {
         }
       }
 
-      // Helper: median of an array of numbers (robust to outlier nodes like upper strut mounts)
       const median = (arr: number[]): number => {
         const sorted = [...arr].sort((a, b) => a - b)
         const mid = Math.floor(sorted.length / 2)
         return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
       }
 
-      // ── 2. Discover ALL wheel corners from pressureWheels ──
-      // Instead of hardcoding FR/FL/RR/RL, discover corners dynamically from pressureWheels data.
-      // This supports multi-axle vehicles (citybus: RL1/RR1/RL2/RR2), semi trucks (R0R/R0L/R1R/R1L),
-      // steering wheels (pigeon: STR/STL), trailers, and any modded vehicle layout.
+      // ── 2. Discover wheel corners from pressureWheels ──
+      // node1:/node2: only have X (lateral) offsets in jbeam — Y and Z are 0 (set at runtime).
+      // Hub group median is the best source; nodeArm is a single-node fallback.
       const discoveredCorners = new Set<string>()
       const hubCenters: Record<string, [number, number, number]> = {}
+      const nodeArmPositions: Record<string, [number, number, number]> = {}
 
-      // Pass 1: Scan pressureWheels for corner names and nodeArm positions  
       for (const partName of activeParts) {
         const partDef = rawParts[partName]
         if (!partDef) continue
         const pw = partDef.pressureWheels as unknown[] | undefined
         if (!Array.isArray(pw)) continue
-
         let pwHeaders: unknown[] | null = null
         for (const row of pw) {
           if (!Array.isArray(row)) continue
-          if (row.includes('name')) {
-            pwHeaders = row; continue
-          }
+          if (row.includes('name')) { pwHeaders = row; continue }
           if (!pwHeaders) continue
           const nameIdx = pwHeaders.indexOf('name')
           const name = typeof row[nameIdx] === 'string' ? (row[nameIdx] as string) : ''
           if (!name) continue
           discoveredCorners.add(name)
 
-          // Use nodeArm position as initial hub center estimate
-          if (!hubCenters[name]) {
+          // Save nodeArm position separately — only used as LAST fallback
+          if (!nodeArmPositions[name]) {
             const armIdx = pwHeaders.indexOf('nodeArm:')
             if (armIdx >= 0) {
               const armNode = typeof row[armIdx] === 'string' ? (row[armIdx] as string) : ''
-              if (armNode && allNodes[armNode]) {
-                hubCenters[name] = [...allNodes[armNode]]
-              }
+              if (armNode && allNodes[armNode]) nodeArmPositions[name] = [...allNodes[armNode]]
             }
           }
         }
       }
 
-      // If no pressureWheels found, fall back to standard 4 corners
       if (discoveredCorners.size === 0) {
         for (const c of ['FR', 'FL', 'RR', 'RL']) discoveredCorners.add(c)
       }
 
-      // Pass 2: Try exact hub groups (_hub_FR, _hub_RL1, etc.) — median node position
+      // Priority 1: exact hub groups (_hub_FR, _hub_RL1, etc.) — median (best full 3D)
+      // Hub groups have the most nodes with real 3D positions, making median robust.
       for (const corner of discoveredCorners) {
         const suffix = `_hub_${corner}`
         for (const [g, nodeIds] of Object.entries(groupNodeIds)) {
@@ -2124,8 +2210,10 @@ export function registerIpcHandlers(): void {
         }
       }
 
-      // Pass 3: For standard FR/FL/RR/RL corners still missing, try combined axle groups
-      // (_hub_F splits by X sign, _hub_R splits by X sign)
+      // Priority 2: combined axle groups (_hub_F → split by X sign)
+      // For X: use average of the 2 outermost nodes (biased toward wheel face),
+      // because inner structural nodes (shock mounts, trailing arms) drag median inward.
+      // For Y, Z: median works well (structural spread is smaller).
       const axisPairs: Array<[string, string, string]> = [['F', 'FR', 'FL'], ['R', 'RR', 'RL']]
       for (const [axle, rightCorner, leftCorner] of axisPairs) {
         if (hubCenters[rightCorner] && hubCenters[leftCorner]) continue
@@ -2134,131 +2222,132 @@ export function registerIpcHandlers(): void {
         for (const [g, nodeIds] of Object.entries(groupNodeIds)) {
           if (g.endsWith(suffix) && !g.endsWith(`_hub_F${axle}`) && !g.endsWith(`_hub_R${axle}`)) {
             const positions = nodeIds.map(id => allNodes[id]).filter(Boolean)
-            const right = positions.filter(p => p[0] < 0) // negative X = right side
-            const left = positions.filter(p => p[0] > 0)  // positive X = left side
+            const right = positions.filter(p => p[0] < 0)
+            const left = positions.filter(p => p[0] > 0)
+            const outerBiasedX = (side: [number, number, number][]): number => {
+              if (side.length <= 2) return median(side.map(p => p[0]))
+              // Sort by |X| descending (outermost first), average top 2
+              const sorted = [...side].sort((a, b) => Math.abs(b[0]) - Math.abs(a[0]))
+              return (sorted[0][0] + sorted[1][0]) / 2
+            }
             if (right.length > 0 && !hubCenters[rightCorner]) {
-              hubCenters[rightCorner] = [
-                median(right.map(p => p[0])),
-                median(right.map(p => p[1])),
-                median(right.map(p => p[2]))
-              ]
+              hubCenters[rightCorner] = [outerBiasedX(right), median(right.map(p => p[1])), median(right.map(p => p[2]))]
             }
             if (left.length > 0 && !hubCenters[leftCorner]) {
-              hubCenters[leftCorner] = [
-                median(left.map(p => p[0])),
-                median(left.map(p => p[1])),
-                median(left.map(p => p[2]))
-              ]
+              hubCenters[leftCorner] = [outerBiasedX(left), median(left.map(p => p[1])), median(left.map(p => p[2]))]
             }
             break
           }
         }
       }
 
-      // ── 3. Override hub centers with absolute brake flexbody positions ──
-      // Brake parts often have explicit absolute pos values (|Y| > 0.1) that are
-      // more accurate than node-computed hub centers (e.g., front disc brake positions).
-      // Dynamic regex: match any discovered corner suffix
-      const allCornerNames = [...discoveredCorners]
-      const cornerPattern = allCornerNames.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
-      const cornerRx = new RegExp(`(?:wheelhub|wheel|tire|hubcap|trimring)_(${cornerPattern})\\b`, 'i')
-      for (const partName of activeParts) {
-        const partDef = rawParts[partName]
-        if (!partDef) continue
-        const fb = partDef.flexbodies as unknown[] | undefined
-        if (!Array.isArray(fb)) continue
-
-        let meshCol = -1, groupCol = -1, posCol = -1
-        for (const row of fb) {
-          if (!Array.isArray(row)) continue
-          if (row.includes('mesh')) {
-            meshCol = row.indexOf('mesh')
-            groupCol = row.indexOf('[group]:')
-            posCol = row.indexOf('pos')
-            continue
-          }
-          if (meshCol < 0 || posCol < 0) continue
-          const posVal = row[posCol]
-          if (!posVal || typeof posVal !== 'object' || Array.isArray(posVal)) continue
-          const pos = posVal as { x?: number; y?: number; z?: number }
-          if (Math.abs(pos.y ?? 0) < 0.1) continue // relative pos, skip
-
-          let groups: string[] = []
-          if (groupCol >= 0) {
-            const gv = row[groupCol]
-            if (typeof gv === 'string') groups = gv.split(',').map(s => s.trim())
-            else if (Array.isArray(gv)) groups = (gv as unknown[]).filter(g => typeof g === 'string').map(g => (g as string).trim())
-          }
-          for (const g of groups) {
-            const m = cornerRx.exec(g)
-            if (m) {
-              const corner = m[1].toUpperCase()
-              if (discoveredCorners.has(corner)) {
-                hubCenters[corner] = [pos.x ?? 0, pos.y ?? 0, pos.z ?? 0]
-              }
-              break
-            }
-          }
+      // Priority 3: nodeArm fallback for any corners still without positions
+      for (const corner of discoveredCorners) {
+        if (!hubCenters[corner] && nodeArmPositions[corner]) {
+          hubCenters[corner] = nodeArmPositions[corner]
         }
       }
 
-
-
-      // ── 4. Scan ALL active parts for flexbodies attached to wheel corners ──
+      // ── 3. Scan active parts for wheel-related flexbodies ──
+      const allCornerNames = [...discoveredCorners]
+      const cornerPattern = allCornerNames.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+      const cornerRx = new RegExp(`(?:wheelhub|wheel|tire|hubcap|trimring)_(${cornerPattern})\\b`, 'i')
       const placements: WheelPlacement[] = []
+      const seenMeshCorner = new Set<string>() // deduplicate mesh+corner combos
 
       for (const partName of activeParts) {
         const partDef = rawParts[partName]
         if (!partDef) continue
-
         const fb = partDef.flexbodies as unknown[] | undefined
         if (!Array.isArray(fb)) continue
-
         let meshCol = -1, groupCol = -1
         for (const row of fb) {
           if (!Array.isArray(row)) continue
-          if (row.includes('mesh')) {
-            meshCol = row.indexOf('mesh')
-            groupCol = row.indexOf('[group]:')
-            continue
-          }
+          if (row.includes('mesh')) { meshCol = row.indexOf('mesh'); groupCol = row.indexOf('[group]:'); continue }
           if (meshCol < 0) continue
-          const meshName = typeof row[meshCol] === 'string' ? row[meshCol] as string : ''
+          const meshName = typeof row[meshCol] === 'string' ? (row[meshCol] as string) : ''
           if (!meshName) continue
-
-          // Parse groups
           let groups: string[] = []
           if (groupCol >= 0) {
             const groupVal = row[groupCol]
-            if (typeof groupVal === 'string') {
-              groups = groupVal.split(',').map(s => s.trim())
-            } else if (Array.isArray(groupVal)) {
-              groups = (groupVal as unknown[]).filter(g => typeof g === 'string').map(g => (g as string).trim())
-            }
+            if (typeof groupVal === 'string') groups = groupVal.split(',').map(s => s.trim())
+            else if (Array.isArray(groupVal)) groups = (groupVal as unknown[]).filter(g => typeof g === 'string').map(g => (g as string).trim())
           }
           if (groups.length === 0) continue
-
-          // Determine corner from group names (wheel_FR → FR, tire_RL1 → RL1, etc.)
           let corner: string | null = null
           let bestGroup = ''
           for (const g of groups) {
             const m = cornerRx.exec(g)
-            if (m) {
-              corner = m[1].toUpperCase()
-              bestGroup = g
-              break
-            }
+            if (m) { corner = m[1].toUpperCase(); bestGroup = g; break }
           }
           if (!corner || !hubCenters[corner]) continue
-
-          placements.push({
-            meshName,
-            position: hubCenters[corner],
-            group: bestGroup,
-            corner
-          })
+          const key = `${meshName}::${corner}`
+          if (seenMeshCorner.has(key)) continue
+          seenMeshCorner.add(key)
+          placements.push({ meshName, position: hubCenters[corner], group: bestGroup, corner })
         }
       }
+
+      // ── DIAGNOSTIC: dump placement data to file ──
+      try {
+        const { writeFileSync } = await import('fs')
+        const { join: pjoin } = await import('path')
+        const debugPath = pjoin(installDir, '..', 'wheel-debug.txt')
+        const lines: string[] = [`=== getWheelPlacements for ${vehicleName} ===`, `Time: ${new Date().toISOString()}`, '']
+
+        lines.push('--- Discovered corners ---')
+        for (const c of discoveredCorners) {
+          const pos = hubCenters[c]
+          lines.push(`  ${c}: ${pos ? `[${pos[0].toFixed(4)}, ${pos[1].toFixed(4)}, ${pos[2].toFixed(4)}]` : 'NO POSITION'}`)
+        }
+
+        lines.push('', '--- Hub groups found ---')
+        for (const [g, nodeIds] of Object.entries(groupNodeIds)) {
+          if (g.includes('hub') || g.includes('wheel') || g.includes('tire')) {
+            const positions = nodeIds.map(id => allNodes[id]).filter(Boolean)
+            lines.push(`  group "${g}": ${nodeIds.length} node IDs, ${positions.length} with positions`)
+            for (const id of nodeIds) {
+              const pos = allNodes[id]
+              if (pos) lines.push(`    ${id}: [${pos[0].toFixed(4)}, ${pos[1].toFixed(4)}, ${pos[2].toFixed(4)}]`)
+              else lines.push(`    ${id}: NO POSITION (probably dynamic)`)
+            }
+          }
+        }
+
+        lines.push('', '--- Placements ---')
+        for (const p of placements) {
+          lines.push(`  mesh="${p.meshName}" corner=${p.corner} group="${p.group}" pos=[${p.position[0].toFixed(4)}, ${p.position[1].toFixed(4)}, ${p.position[2].toFixed(4)}]`)
+        }
+
+        lines.push('', '--- All pressureWheels nodeArm data ---')
+        for (const partName of activeParts) {
+          const partDef = rawParts[partName]
+          if (!partDef) continue
+          const pw = partDef.pressureWheels as unknown[] | undefined
+          if (!Array.isArray(pw)) continue
+          let pwHeaders: unknown[] | null = null
+          for (const row of pw) {
+            if (!Array.isArray(row)) continue
+            if (row.includes('name')) { pwHeaders = row; continue }
+            if (!pwHeaders) continue
+            const nameIdx = pwHeaders.indexOf('name')
+            const armIdx = pwHeaders.indexOf('nodeArm:')
+            const n1Idx = pwHeaders.indexOf('node1:')
+            const n2Idx = pwHeaders.indexOf('node2:')
+            const hubIdx = pwHeaders.indexOf('hubGroup')
+            const name = typeof row[nameIdx] === 'string' ? (row[nameIdx] as string) : ''
+            const arm = armIdx >= 0 && typeof row[armIdx] === 'string' ? (row[armIdx] as string) : ''
+            const n1 = n1Idx >= 0 && typeof row[n1Idx] === 'string' ? (row[n1Idx] as string) : ''
+            const n2 = n2Idx >= 0 && typeof row[n2Idx] === 'string' ? (row[n2Idx] as string) : ''
+            const hub = hubIdx >= 0 && typeof row[hubIdx] === 'string' ? (row[hubIdx] as string) : ''
+            if (name) {
+              lines.push(`  ${name}: nodeArm=${arm}${arm && allNodes[arm] ? `[${allNodes[arm][0].toFixed(4)},${allNodes[arm][1].toFixed(4)},${allNodes[arm][2].toFixed(4)}]` : ''} node1=${n1}${n1 && allNodes[n1] ? `[${allNodes[n1][0].toFixed(4)},${allNodes[n1][1].toFixed(4)},${allNodes[n1][2].toFixed(4)}]` : ''} node2=${n2}${n2 && allNodes[n2] ? `[${allNodes[n2][0].toFixed(4)},${allNodes[n2][1].toFixed(4)},${allNodes[n2][2].toFixed(4)}]` : ''} hubGroup=${hub}`)
+            }
+          }
+        }
+
+        writeFileSync(debugPath, lines.join('\n'), 'utf-8')
+      } catch { /* ignore debug errors */ }
 
       return placements
     }
@@ -2396,11 +2485,11 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  ipcMain.handle('game:listMaps', async (): Promise<{ name: string; source: 'stock' | 'mod'; modZipPath?: string }[]> => {
+  ipcMain.handle('game:listMaps', async (): Promise<{ name: string; source: 'stock' | 'mod'; modZipPath?: string; levelDir?: string }[]> => {
     const config = configService.get()
     const installDir = config.gamePaths?.installDir
     const userDir = config.gamePaths?.userDir
-    const maps: { name: string; source: 'stock' | 'mod'; modZipPath?: string }[] = []
+    const maps: { name: string; source: 'stock' | 'mod'; modZipPath?: string; levelDir?: string }[] = []
     const seen = new Set<string>()
 
     // 1) Stock maps from installDir/content/levels/
@@ -2422,9 +2511,13 @@ export function registerIpcHandlers(): void {
     try {
       const mods = await modManagerService.listMods(userDir || '')
       for (const mod of mods) {
-        if (mod.modType === 'terrain' && mod.enabled && mod.title && !seen.has(mod.title)) {
-          seen.add(mod.title)
-          maps.push({ name: mod.title, source: 'mod', modZipPath: mod.filePath })
+        if (mod.modType === 'terrain' && mod.enabled && mod.title) {
+          // Use the actual level directory name from the zip, falling back to title
+          const levelDir = mod.levelDir || mod.title
+          if (!seen.has(levelDir)) {
+            seen.add(levelDir)
+            maps.push({ name: mod.title, source: 'mod', modZipPath: mod.filePath, levelDir })
+          }
         }
       }
     } catch { /* ignore */ }
@@ -3141,6 +3234,12 @@ export function registerIpcHandlers(): void {
         }
       }
 
+      // Enrich with load order positions
+      const loadOrder = await loadOrderService.getClientOrder()
+      for (const mod of mods) {
+        mod.loadOrder = loadOrder.orders[mod.key] ?? null
+      }
+
       return { success: true, data: mods }
     } catch (err) {
       return { success: false, error: String(err) }
@@ -3155,6 +3254,7 @@ export function registerIpcHandlers(): void {
       await modManagerService.toggleMod(userDir, modKey, enabled)
       // Invalidate vehicle list cache so mod vehicles appear/disappear
       vehicleListCache = null
+      conflictDetectionService.invalidate()
       return { success: true }
     } catch (err) {
       return { success: false, error: String(err) }
@@ -3189,11 +3289,15 @@ export function registerIpcHandlers(): void {
     try {
       await modManagerService.deleteMod(userDir, modKey)
       cleanupRegistry()
+      loadOrderService.removeClientEntry(modKey).catch(() => {})
+      conflictDetectionService.invalidate()
       vehicleListCache = null
       return { success: true }
     } catch (err) {
       // File may already be gone — still clean up registry
       cleanupRegistry()
+      loadOrderService.removeClientEntry(modKey).catch(() => {})
+      conflictDetectionService.invalidate()
       vehicleListCache = null
       return { success: true }
     }
@@ -3236,6 +3340,21 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle('mods:updateType', async (_event, modKey: string, modType: string) => {
+    const allowedTypes = ['terrain', 'vehicle', 'sound', 'ui_app', 'unknown']
+    if (!allowedTypes.includes(modType)) return { success: false, error: 'Invalid mod type' }
+    const config = configService.get()
+    const userDir = config.gamePaths?.userDir
+    if (!userDir) return { success: false, error: 'Game user directory not configured' }
+    try {
+      await modManagerService.updateModType(userDir, modKey, modType)
+      vehicleListCache = null
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
   ipcMain.handle('mods:openFolder', async () => {
     const config = configService.get()
     const userDir = config.gamePaths?.userDir
@@ -3250,6 +3369,98 @@ export function registerIpcHandlers(): void {
       return { success: true, data: preview }
     } catch {
       return { success: false, data: null }
+    }
+  })
+
+  // ── Mod Load Order ──
+  ipcMain.handle('mods:getLoadOrder', async () => {
+    try {
+      const data = await loadOrderService.getClientOrder()
+      return { success: true, data }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('mods:setLoadOrder', async (_event, orderedKeys: string[]) => {
+    try {
+      const data = await loadOrderService.setClientOrder(orderedKeys)
+      conflictDetectionService.invalidate()
+      // If enforcement is enabled, apply prefixes
+      const config = configService.get()
+      if (config.loadOrderEnforcement && config.gamePaths?.userDir) {
+        await loadOrderService.applyPrefixes(config.gamePaths.userDir)
+      }
+      return { success: true, data }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('mods:toggleEnforcement', async (_event, enabled: boolean) => {
+    try {
+      const config = configService.get()
+      const userDir = config.gamePaths?.userDir
+      if (!userDir) return { success: false, error: 'Game user directory not configured' }
+
+      if (enabled) {
+        await loadOrderService.applyPrefixes(userDir)
+      } else {
+        await loadOrderService.stripPrefixes(userDir)
+      }
+      await configService.update({ loadOrderEnforcement: enabled })
+      vehicleListCache = null
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  // ── Mod Conflict Detection ──
+  ipcMain.handle('mods:scanConflicts', async () => {
+    const config = configService.get()
+    const userDir = config.gamePaths?.userDir
+    if (!userDir) return { success: false, error: 'Game user directory not configured' }
+    try {
+      const mods = await modManagerService.listMods(userDir)
+      const order = await loadOrderService.getClientOrder()
+      const report = await conflictDetectionService.scanConflicts(mods, order)
+      return { success: true, data: report }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('mods:getModConflicts', async (_event, modKey: string) => {
+    try {
+      const conflicts = conflictDetectionService.getModConflicts(modKey)
+      return { success: true, data: conflicts }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  // ── Server Mod Load Order ──
+  ipcMain.handle('hostedServer:getModLoadOrder', async (_event, serverId: string) => {
+    try {
+      const data = await loadOrderService.getServerOrder(serverId)
+      return { success: true, data }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('hostedServer:setModLoadOrder', async (_event, serverId: string, orderedKeys: string[]) => {
+    try {
+      const data = await loadOrderService.setServerOrder(serverId, orderedKeys)
+      // If enforcement is enabled, apply prefixes to server too
+      const config = configService.get()
+      if (config.loadOrderEnforcement) {
+        await loadOrderService.applyServerPrefixes(serverId)
+      }
+      return { success: true, data }
+    } catch (err) {
+      return { success: false, error: String(err) }
     }
   })
 
@@ -3859,8 +4070,9 @@ export function registerIpcHandlers(): void {
         const userDir = config.gamePaths?.userDir
         if (userDir) {
           const mods = await modManagerService.listMods(userDir)
+          // Match by levelDir first (actual directory name), then fall back to title
           const mapMod = mods.find(
-            (m) => m.modType === 'terrain' && m.enabled && m.title === mapName
+            (m) => m.modType === 'terrain' && m.enabled && (m.levelDir === mapName || m.title === mapName)
           )
           if (mapMod?.filePath) {
             // Remove any previously deployed map mods (terrain zips) from this server
@@ -4669,5 +4881,112 @@ export function registerIpcHandlers(): void {
     })
     if (result.canceled || result.filePaths.length === 0) return null
     return result.filePaths[0]
+  })
+
+  // ── Controls / Input Bindings ──
+
+  ipcMain.handle('controls:getDevices', async () => {
+    const cfg = configService.get()
+    const installDir = cfg.gamePaths?.installDir
+    const userDir = cfg.gamePaths?.userDir
+    if (!installDir || !userDir) return []
+    return inputBindingsService.listDevices(installDir, userDir)
+  })
+
+  ipcMain.handle('controls:getActions', async () => {
+    const cfg = configService.get()
+    const installDir = cfg.gamePaths?.installDir
+    if (!installDir) return []
+    return inputBindingsService.getActions(installDir)
+  })
+
+  ipcMain.handle('controls:getCategories', async () => {
+    const cfg = configService.get()
+    const installDir = cfg.gamePaths?.installDir
+    if (!installDir) return []
+    return inputBindingsService.getCategories(installDir)
+  })
+
+  ipcMain.handle('controls:getBindings', async (_event, deviceFileName: string) => {
+    const cfg = configService.get()
+    const installDir = cfg.gamePaths?.installDir
+    const userDir = cfg.gamePaths?.userDir
+    if (!installDir || !userDir) return null
+    return inputBindingsService.getMergedBindings(installDir, userDir, deviceFileName)
+  })
+
+  ipcMain.handle('controls:setBinding', async (_event, deviceFileName: string, binding: unknown) => {
+    const cfg = configService.get()
+    const installDir = cfg.gamePaths?.installDir
+    const userDir = cfg.gamePaths?.userDir
+    if (!installDir || !userDir) throw new Error('Game paths not configured')
+    return inputBindingsService.setBinding(installDir, userDir, deviceFileName, binding as import('../../shared/types').InputBinding)
+  })
+
+  ipcMain.handle('controls:removeBinding', async (_event, deviceFileName: string, control: string, action: string) => {
+    const cfg = configService.get()
+    const installDir = cfg.gamePaths?.installDir
+    const userDir = cfg.gamePaths?.userDir
+    if (!installDir || !userDir) throw new Error('Game paths not configured')
+    return inputBindingsService.removeBinding(installDir, userDir, deviceFileName, control, action)
+  })
+
+  ipcMain.handle('controls:resetDevice', async (_event, deviceFileName: string) => {
+    const cfg = configService.get()
+    const userDir = cfg.gamePaths?.userDir
+    if (!userDir) throw new Error('Game paths not configured')
+    return inputBindingsService.resetDevice(userDir, deviceFileName)
+  })
+
+  ipcMain.handle('controls:setFFBConfig', async (_event, deviceFileName: string, control: string, ffb: unknown) => {
+    const cfg = configService.get()
+    const installDir = cfg.gamePaths?.installDir
+    const userDir = cfg.gamePaths?.userDir
+    if (!installDir || !userDir) throw new Error('Game paths not configured')
+    return inputBindingsService.setFFBConfig(installDir, userDir, deviceFileName, control, ffb as import('../../shared/types').FFBConfig)
+  })
+
+  ipcMain.handle('controls:getSteeringSettings', async () => {
+    const cfg = configService.get()
+    const userDir = cfg.gamePaths?.userDir
+    if (!userDir) return null
+    return inputBindingsService.getSteeringSettings(userDir)
+  })
+
+  ipcMain.handle('controls:setSteeringSettings', async (_event, settings: unknown) => {
+    const cfg = configService.get()
+    const userDir = cfg.gamePaths?.userDir
+    if (!userDir) throw new Error('Game paths not configured')
+    return inputBindingsService.setSteeringSettings(userDir, settings as Partial<import('../../shared/types').SteeringFilterSettings>)
+  })
+
+  ipcMain.handle('controls:listPresets', async () => {
+    return inputBindingsService.listPresets()
+  })
+
+  ipcMain.handle('controls:savePreset', async (_event, name: string, deviceFileName: string, device: unknown) => {
+    const cfg = configService.get()
+    const userDir = cfg.gamePaths?.userDir
+    if (!userDir) throw new Error('Game paths not configured')
+    return inputBindingsService.savePreset(name, deviceFileName, userDir, device as import('../../shared/types').InputDevice)
+  })
+
+  ipcMain.handle('controls:loadPreset', async (_event, presetId: string) => {
+    const cfg = configService.get()
+    const userDir = cfg.gamePaths?.userDir
+    if (!userDir) throw new Error('Game paths not configured')
+    return inputBindingsService.loadPreset(presetId, userDir)
+  })
+
+  ipcMain.handle('controls:deletePreset', async (_event, presetId: string) => {
+    return inputBindingsService.deletePreset(presetId)
+  })
+
+  ipcMain.handle('controls:exportPreset', async (_event, presetId: string) => {
+    return inputBindingsService.exportPreset(presetId)
+  })
+
+  ipcMain.handle('controls:importPreset', async (_event, jsonString: string) => {
+    return inputBindingsService.importPreset(jsonString)
   })
 }
