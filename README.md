@@ -27,7 +27,7 @@ Manage mods, vehicles, maps, servers, friends, career saves, and more — from a
 
 <div align="center">
 
-![Screenshot](Docs/screenshots/screenshot%20(1).png)
+![Screenshot](docs/screenshots/screenshot%20(1).png)
 
 <details>
 <summary><b>View all screenshots</b></summary>
@@ -35,14 +35,14 @@ Manage mods, vehicles, maps, servers, friends, career saves, and more — from a
 
 | | |
 |:---:|:---:|
-| ![Screenshot 2](Docs/screenshots/screenshot%20(2).png) | ![Screenshot 3](Docs/screenshots/screenshot%20(3).png) |
-| ![Screenshot 4](Docs/screenshots/screenshot%20(4).png) | ![Screenshot 5](Docs/screenshots/screenshot%20(5).png) |
-| ![Screenshot 6](Docs/screenshots/screenshot%20(6).png) | ![Screenshot 7](Docs/screenshots/screenshot%20(7).png) |
-| ![Screenshot 8](Docs/screenshots/screenshot%20(8).png) | ![Screenshot 9](Docs/screenshots/screenshot%20(9).png) |
-| ![Screenshot 10](Docs/screenshots/screenshot%20(10).png) | ![Screenshot 11](Docs/screenshots/screenshot%20(11).png) |
-| ![Screenshot 12](Docs/screenshots/screenshot%20(12).png) | ![Screenshot 13](Docs/screenshots/screenshot%20(13).png) |
-| ![Screenshot 14](Docs/screenshots/screenshot%20(14).png) | ![Screenshot 15](Docs/screenshots/screenshot%20(15).png) |
-| ![Screenshot 16](Docs/screenshots/screenshot%20(16).png) | |
+| ![Screenshot 2](docs/screenshots/screenshot%20(2).png) | ![Screenshot 3](docs/screenshots/screenshot%20(3).png) |
+| ![Screenshot 4](docs/screenshots/screenshot%20(4).png) | ![Screenshot 5](docs/screenshots/screenshot%20(5).png) |
+| ![Screenshot 6](docs/screenshots/screenshot%20(6).png) | ![Screenshot 7](docs/screenshots/screenshot%20(7).png) |
+| ![Screenshot 8](docs/screenshots/screenshot%20(8).png) | ![Screenshot 9](docs/screenshots/screenshot%20(9).png) |
+| ![Screenshot 10](docs/screenshots/screenshot%20(10).png) | ![Screenshot 11](docs/screenshots/screenshot%20(11).png) |
+| ![Screenshot 12](docs/screenshots/screenshot%20(12).png) | ![Screenshot 13](docs/screenshots/screenshot%20(13).png) |
+| ![Screenshot 14](docs/screenshots/screenshot%20(14).png) | ![Screenshot 15](docs/screenshots/screenshot%20(15).png) |
+| ![Screenshot 16](docs/screenshots/screenshot%20(16).png) | |
 
 </details>
 
