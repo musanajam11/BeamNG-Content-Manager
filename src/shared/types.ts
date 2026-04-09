@@ -30,63 +30,6 @@ main > div {
 }
 /* [/snippet:smooth-fade] */
 
-/* [snippet:scale-hover] */
-/* Subtle scale-up on interactive elements (excludes toggle switches) */
-button:not([class*="rounded-full"]):hover,
-a:hover,
-[role="button"]:hover {
-  transform: scale(1.03);
-  transition: transform 0.15s ease;
-}
-/* [/snippet:scale-hover] */
-
-/* [snippet:glow-hover] */
-/* Accent glow on card hover */
-.rounded-lg:hover, .rounded-xl:hover {
-  box-shadow: 0 0 20px var(--color-accent-25);
-}
-/* [/snippet:glow-hover] */
-
-/* [snippet:card-lift-hover] */
-/* Cards lift up on hover */
-.rounded-lg:hover, .rounded-xl:hover {
-  transform: translateY(-2px);
-  transition: transform 0.15s ease;
-}
-/* [/snippet:card-lift-hover] */
-
-/* [snippet:uppercase-headings] */
-/* All headings uppercase */
-h1, h2, h3, h4, h5, h6 {
-  text-transform: uppercase !important;
-  letter-spacing: 0.05em;
-}
-/* [/snippet:uppercase-headings] */
-
-/* [snippet:hide-statusbar] */
-/* Hide the bottom status bar */
-footer, [class*="statusbar"], [class*="StatusBar"] {
-  display: none !important;
-}
-/* [/snippet:hide-statusbar] */
-
-/* [snippet:large-buttons] */
-/* Bigger click targets (excludes toggle switches) */
-button:not([class*="rounded-full"]) {
-  min-height: 40px;
-  padding-left: 16px !important;
-  padding-right: 16px !important;
-  font-size: 14px !important;
-}
-/* [/snippet:large-buttons] */
-
-/* [snippet:sepia-tint] */
-/* Warm sepia tone */
-#root {
-  filter: sepia(0.25);
-}
-/* [/snippet:sepia-tint] */
-
 /* [snippet:accent-selection] */
 /* Custom text selection color */
 ::selection {
