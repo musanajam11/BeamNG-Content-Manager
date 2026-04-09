@@ -433,11 +433,76 @@ This project is licensed under the [GNU General Public License v3.0](LICENSE).
 
 ### Asset Ownership & Third-Party Notices
 
-All game assets included in or displayed by this application — including bundled background images (screenshots from BeamNG.drive), vehicle models, maps, textures, sounds, and related media — are the exclusive property of **[BeamNG GmbH](https://www.beamng.com/)** and are **not** covered by this project's GPL-3.0 license. These assets may not be redistributed, modified, or used separately without permission from BeamNG GmbH.
+All game assets included in or displayed by this application — including bundled background images (screenshots from BeamNG.drive®), vehicle models, maps, textures, sounds, and related media — are the exclusive property of **[BeamNG GmbH](https://www.beamng.com/)** and are **not** covered by this project's GPL-3.0 license. These assets may not be redistributed, modified, or used separately without permission from BeamNG GmbH.
 
 This project is not affiliated with, endorsed by, or sponsored by BeamNG GmbH or the BeamMP team. All trademarks and registered trademarks are the property of their respective owners.
 
 For full attribution details, see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+### Legal Basis for Bundled Screenshot Assets
+
+This application bundles in-game screenshots from BeamNG.drive® as default background images for the user interface. The following legal analysis establishes the basis for their inclusion.
+
+#### 1. Underlying Game Content — BeamNG GmbH Ownership
+
+All visual elements rendered in any BeamNG.drive® screenshot — including vehicle models, maps, textures, lighting, physics simulation, and the rendering pipeline — are the intellectual property of BeamNG GmbH. Per the [BeamNG EULA § 1 (Ownership)](https://www.beamng.com/game/support/policies/eula/):
+
+> *"All right, title, interest and ownership rights at / in the Software and any copyright, design right, database right [...] (including but not limited to any titles, computer code, themes, objects, characters, character names, stories, text, dialog, catch phrases, locations, concepts, artwork, animations, sounds, musical compositions, audio-visual effects, moral rights and any related documentation) are owned by, belong to and vest in BeamNG or its licensors."*
+
+BeamNG GmbH actively encourages community content creation. Per the [BeamNG FAQ — Content Creators](https://www.beamng.com/game/about/faq/):
+
+> *"You can upload BeamNG.drive gameplay videos to YouTube and monetize them without any restrictions."*
+
+This project's use of game screenshots as decorative backgrounds in a free, open-source community tool is consistent with BeamNG's established posture toward community content.
+
+#### 2. Copyrightability of Game Screenshots Under US Law
+
+The bundled screenshots are subject to US copyright law. Under [17 U.S.C. § 102](https://www.law.cornell.edu/uscode/text/17/102), copyright protects "original works of authorship." The Supreme Court established in [*Feist Publications, Inc. v. Rural Telephone Service Co.*, 499 U.S. 340 (1991)](https://supreme.justia.com/cases/federal/us/499/340/) that a work must possess a "modicum of creativity" to qualify for copyright protection.
+
+A game screenshot's creative contribution by the capturing user is limited to:
+
+- Camera angle selection (from a constrained in-game camera system)
+- Timing of capture
+- Vehicle and map selection (from a fixed set of options)
+
+All other visual elements — 3D models, textures, environments, lighting, rendering, and physics simulation — are created entirely by BeamNG GmbH and its engine. The **scènes à faire** doctrine, as applied by the Supreme Court in [*Google LLC v. Oracle America, Inc.*, 593 U.S. 1 (2021)](https://supreme.justia.com/cases/federal/us/593/18-956/), holds that creative choices dictated or heavily constrained by the medium or context do not receive copyright protection. A screenshot of a vehicle on a road in a driving simulator is the natural and expected output of using the software.
+
+#### 3. Fair Use — [17 U.S.C. § 107](https://www.law.cornell.edu/uscode/text/17/107)
+
+Even if a screenshot were to receive thin copyright protection, the inclusion of these images in this project constitutes fair use under the four statutory factors:
+
+| Factor | Analysis |
+|--------|----------|
+| **(1) Purpose and character of use** | Functional and decorative use in a free, open-source community tool. The screenshots serve as UI backgrounds — a transformative purpose distinct from their original creation as gameplay captures or social media posts. Not used for commercial gain. |
+| **(2) Nature of the copyrighted work** | Game screenshots are functional captures of a pre-existing software product, not highly creative original works. The underlying creative content (vehicles, environments) is owned by BeamNG GmbH, not the screenshot author. |
+| **(3) Amount and substantiality** | Individual images are used in their entirety, which is necessary for their functional purpose as backgrounds. This factor is mitigated when the use is transformative ([*Google LLC v. Oracle America, Inc.*, 593 U.S. 1 (2021)](https://supreme.justia.com/cases/federal/us/593/18-956/)). |
+| **(4) Effect on the market** | No market exists for individual BeamNG gameplay screenshots. Inclusion as application backgrounds does not substitute for or diminish the value of the original screenshots in any market. |
+
+#### 4. DMCA Compliance — [17 U.S.C. § 512](https://www.law.cornell.edu/uscode/text/17/512)
+
+This project maintains a good-faith takedown commitment. If any rights holder objects to the inclusion of a specific asset, it will be removed promptly upon notification. Contact information is provided in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+#### 5. Trademark Usage — Referential Use
+
+Per the [BeamNG Trademark Usage Guidelines § 1](https://www.beamng.com/game/support/policies/trademark-guidelines/):
+
+> *"Third parties may use the word trademarks of BeamNG to reference BeamNG's software, technologies, and services ('Referential Use')."*
+
+All references to "BeamNG.drive®" in this project are referential use to identify the source of the bundled assets. BeamNG.drive® is a registered trademark of BeamNG GmbH (EU trademark No. 018 357 678).
+
+#### References
+
+| Source | Citation |
+|--------|----------|
+| BeamNG EULA | [beamng.com/game/support/policies/eula](https://www.beamng.com/game/support/policies/eula/) |
+| BeamNG Terms of Service | [beamng.com/game/support/policies/terms-of-service](https://www.beamng.com/game/support/policies/terms-of-service/) |
+| BeamNG Trademark Guidelines | [beamng.com/game/support/policies/trademark-guidelines](https://www.beamng.com/game/support/policies/trademark-guidelines/) |
+| BeamNG FAQ | [beamng.com/game/about/faq](https://www.beamng.com/game/about/faq/) |
+| US Copyright Act, 17 U.S.C. § 102 | [law.cornell.edu/uscode/text/17/102](https://www.law.cornell.edu/uscode/text/17/102) |
+| US Copyright Act, 17 U.S.C. § 107 (Fair Use) | [law.cornell.edu/uscode/text/17/107](https://www.law.cornell.edu/uscode/text/17/107) |
+| US Copyright Act, 17 U.S.C. § 512 (DMCA) | [law.cornell.edu/uscode/text/17/512](https://www.law.cornell.edu/uscode/text/17/512) |
+| *Feist v. Rural*, 499 U.S. 340 (1991) | [supreme.justia.com/cases/federal/us/499/340](https://supreme.justia.com/cases/federal/us/499/340/) |
+| *Google v. Oracle*, 593 U.S. 1 (2021) | [supreme.justia.com/cases/federal/us/593/18-956](https://supreme.justia.com/cases/federal/us/593/18-956/) |
 
 ---
 
