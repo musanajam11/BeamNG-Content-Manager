@@ -17,7 +17,7 @@ Manage mods, vehicles, maps, servers, and more — from a single app.
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
-[**Download**](releases/) · [**Build from Source**](docs/BUILD.md) · [**Report Bug**](https://github.com/musanajam11/BeamNG-Content-Manager/issues) · [**Request Feature**](https://github.com/musanajam11/BeamNG-Content-Manager/issues)
+[**Download**](https://github.com/musanajam11/BeamNG-Content-Manager/releases/latest) · [**Build from Source**](docs/BUILD.md) · [**Report Bug**](https://github.com/musanajam11/BeamNG-Content-Manager/issues) · [**Request Feature**](https://github.com/musanajam11/BeamNG-Content-Manager/issues)
 
 </div>
 
