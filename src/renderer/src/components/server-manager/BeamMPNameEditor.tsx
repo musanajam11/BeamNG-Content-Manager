@@ -383,7 +383,7 @@ export function BeamMPNameEditor({ value, onChange, error }: BeamMPNameEditorPro
           </button>
           {showColors && (
             <div className="absolute top-full left-0 mt-1 z-50 p-2 rounded border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg">
-              <div className="grid grid-cols-8 gap-1">
+              <div className="grid grid-cols-8 gap-1 overflow-hidden p-0.5">
                 {COLORS.map(({ code, hex, label }) => (
                   <button
                     key={code}

@@ -29,7 +29,7 @@ export function FFBSettingsPanel({
   onUpdate
 }: FFBSettingsPanelProps): React.JSX.Element {
   const { t } = useTranslation()
-  const config = ffbConfig ?? DEFAULT_FFB
+  const config = { ...DEFAULT_FFB, ...(ffbConfig ?? {}) }
 
   return (
     <div className="space-y-4 max-w-3xl">
@@ -214,9 +214,15 @@ function ResponseCurveEditor({
   const { t } = useTranslation()
   const svgRef = useRef<SVGSVGElement>(null)
   const [dragging, setDragging] = useState<number | null>(null)
+  // Local points state for smooth dragging without IPC round-trip
+  const [localPoints, setLocalPoints] = useState<[number, number][] | null>(null)
 
   const SIZE = 200
   const PAD = 24
+
+  // Use local points during drag, prop points otherwise
+  const activePoints: [number, number][] =
+    localPoints ?? (Array.isArray(points) ? points : [[0, 0], [1, 1]])
 
   const toSvg = useCallback(
     (p: [number, number]): [number, number] => [
@@ -235,8 +241,11 @@ function ResponseCurveEditor({
   )
 
   const sortedPoints = useMemo(
-    () => [...points].sort((a, b) => a[0] - b[0]),
-    [points]
+    () =>
+      [...activePoints]
+        .filter((p) => Array.isArray(p) && p.length >= 2)
+        .sort((a, b) => a[0] - b[0]),
+    [activePoints]
   )
 
   const pathD = useMemo(() => {
@@ -247,13 +256,15 @@ function ResponseCurveEditor({
 
   const handleMouseDown = (idx: number, e: React.MouseEvent): void => {
     e.preventDefault()
-    // Don't allow dragging first and last points' x
     setDragging(idx)
+    // Start local editing from current sorted points
+    setLocalPoints([...sortedPoints])
   }
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
-      if (dragging === null || !svgRef.current) return
+      if (dragging === null || !svgRef.current || !localPoints) return
+      if (dragging < 0 || dragging >= sortedPoints.length) return
       const rect = svgRef.current.getBoundingClientRect()
       const x = e.clientX - rect.left
       const y = e.clientY - rect.top
@@ -268,14 +279,22 @@ function ResponseCurveEditor({
       } else {
         newPoints[dragging] = [nx, ny]
       }
-      onChange(newPoints)
+      setLocalPoints(newPoints)
     },
-    [dragging, sortedPoints, fromSvg, onChange]
+    [dragging, sortedPoints, localPoints, fromSvg]
   )
 
   const handleMouseUp = useCallback(() => {
+    if (dragging !== null && localPoints) {
+      // Commit final position to backend
+      const finalPoints = [...localPoints]
+        .filter((p) => Array.isArray(p) && p.length >= 2)
+        .sort((a, b) => a[0] - b[0])
+      onChange(finalPoints)
+    }
     setDragging(null)
-  }, [])
+    setLocalPoints(null)
+  }, [dragging, localPoints, onChange])
 
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {

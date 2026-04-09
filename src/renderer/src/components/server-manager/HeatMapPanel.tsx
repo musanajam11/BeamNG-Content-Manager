@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { GPSRoute, PlayerPosition, HostedServerEntry } from '../../../../shared/types'
+import type { PlayerPosition, HostedServerEntry } from '../../../../shared/types'
 import { getBounds, worldToNorm } from './mapBounds'
 import HeatMapScene from './HeatMapScene'
 import HeatMapToolbar from './HeatMapToolbar'
@@ -11,10 +11,7 @@ interface HeatMapPanelProps {
 }
 
 export default function HeatMapPanel({ server }: HeatMapPanelProps): React.JSX.Element {
-  const [routes, setRoutes] = useState<GPSRoute[]>([])
   const [players, setPlayers] = useState<PlayerPosition[]>([])
-  const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null)
-  const [mode, setMode] = useState<'view' | 'plot'>('view')
   const [trackerDeployed, setTrackerDeployed] = useState(false)
   const [showHeatmap, setShowHeatmap] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -23,11 +20,6 @@ export default function HeatMapPanel({ server }: HeatMapPanelProps): React.JSX.E
 
   const bounds = getBounds(server.config.map)
   const isRunning = server.status.state === 'running'
-
-  /* ── Load routes on mount ────────────────────────────────────── */
-  useEffect(() => {
-    window.api.hostedServerGetRoutes(server.config.id).then(setRoutes).catch(() => {})
-  }, [server.config.id])
 
   /* ── Poll player positions while server is running ───────────── */
   useEffect(() => {
@@ -67,88 +59,6 @@ export default function HeatMapPanel({ server }: HeatMapPanelProps): React.JSX.E
     }
   }, [isRunning, server.config.id])
 
-  /* ── Route management callbacks ──────────────────────────────── */
-  const handleCreateRoute = useCallback(() => {
-    const route: GPSRoute = {
-      id: crypto.randomUUID(),
-      name: `Route ${routes.length + 1}`,
-      waypoints: [],
-      color: `hsl(${Math.floor(Math.random() * 360)}, 70%, 55%)`,
-      createdAt: Date.now()
-    }
-    window.api.hostedServerSaveRoute(server.config.id, route).then((updated) => {
-      setRoutes(updated)
-      setSelectedRouteId(route.id)
-      setMode('plot')
-    })
-  }, [routes.length, server.config.id])
-
-  const handleDeleteRoute = useCallback(
-    (id: string) => {
-      window.api.hostedServerDeleteRoute(server.config.id, id).then(setRoutes)
-      if (selectedRouteId === id) {
-        setSelectedRouteId(null)
-        setMode('view')
-      }
-    },
-    [server.config.id, selectedRouteId]
-  )
-
-  const handleMapClick = useCallback(
-    (worldX: number, worldY: number) => {
-      if (!selectedRouteId) return
-      const route = routes.find((r) => r.id === selectedRouteId)
-      if (!route) return
-
-      const newWp = { id: crypto.randomUUID(), x: worldX, y: worldY }
-      const prevWp = route.waypoints.length > 0 ? route.waypoints[route.waypoints.length - 1] : null
-
-      const updated: GPSRoute = {
-        ...route,
-        waypoints: [...route.waypoints, newWp],
-        pathSegments: route.pathSegments ? [...route.pathSegments] : []
-      }
-
-      if (prevWp) {
-        // Compute road-following path for the new segment
-        window.api
-          .findMapRoute(server.config.map, prevWp.x, prevWp.y, worldX, worldY)
-          .then((path) => {
-            const seg = path.length > 0 ? path : [{ x: prevWp.x, y: prevWp.y }, { x: worldX, y: worldY }]
-            const withPath: GPSRoute = {
-              ...updated,
-              pathSegments: [...(updated.pathSegments || []), seg]
-            }
-            window.api.hostedServerSaveRoute(server.config.id, withPath).then(setRoutes)
-          })
-          .catch(() => {
-            // Fallback to straight line
-            const seg = [{ x: prevWp.x, y: prevWp.y }, { x: worldX, y: worldY }]
-            const withPath: GPSRoute = {
-              ...updated,
-              pathSegments: [...(updated.pathSegments || []), seg]
-            }
-            window.api.hostedServerSaveRoute(server.config.id, withPath).then(setRoutes)
-          })
-      } else {
-        // First waypoint — no segment yet
-        window.api.hostedServerSaveRoute(server.config.id, updated).then(setRoutes)
-      }
-    },
-    [selectedRouteId, routes, server.config.id, server.config.map]
-  )
-
-  const handleColorChange = useCallback(
-    (routeId: string, color: string) => {
-      const route = routes.find((r) => r.id === routeId)
-      if (!route) return
-      window.api
-        .hostedServerSaveRoute(server.config.id, { ...route, color })
-        .then(setRoutes)
-    },
-    [routes, server.config.id]
-  )
-
   const handleDeployTracker = useCallback(() => {
     window.api
       .hostedServerDeployTracker(server.config.id)
@@ -165,20 +75,12 @@ export default function HeatMapPanel({ server }: HeatMapPanelProps): React.JSX.E
   return (
     <div className="flex flex-col h-full">
       <HeatMapToolbar
-        routes={routes}
-        selectedRouteId={selectedRouteId}
-        mode={mode}
         playerCount={players.length}
         trackerDeployed={trackerDeployed}
         showHeatmap={showHeatmap}
         onToggleHeatmap={() => setShowHeatmap((v) => !v)}
         onClearHeatmap={handleClearHeatmap}
-        onSelectRoute={setSelectedRouteId}
-        onCreateRoute={handleCreateRoute}
-        onDeleteRoute={handleDeleteRoute}
-        onModeChange={setMode}
         onDeployTracker={handleDeployTracker}
-        onColorChange={handleColorChange}
       />
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -187,22 +89,14 @@ export default function HeatMapPanel({ server }: HeatMapPanelProps): React.JSX.E
           <HeatMapScene
             mapPath={server.config.map}
             players={players}
-            routes={routes}
-            mode={mode}
+            routes={[]}
+            mode="view"
             bounds={bounds}
             showHeatmap={showHeatmap}
             heatGrid={heatGridRef.current}
             heatGridVersion={heatGridVersion}
             heatGridRes={HEATMAP_RES}
-            onMapClick={handleMapClick}
           />
-
-          {/* Floating mode hint */}
-          {mode === 'plot' && (
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full bg-indigo-500/20 border border-indigo-500/30 text-xs text-indigo-200 backdrop-blur-sm pointer-events-none">
-              Click on the map to place waypoints
-            </div>
-          )}
         </div>
 
         {/* Player sidebar */}

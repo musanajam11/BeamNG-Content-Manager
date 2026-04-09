@@ -18,6 +18,7 @@ export function ServersPage(): React.JSX.Element {
   } = useServerStore()
   const [joining, setJoining] = useState(false)
   const [joinError, setJoinError] = useState<string | null>(null)
+  const [highlightSignIn, setHighlightSignIn] = useState(false)
 
   // Track whether mod sync is actively in progress
   const [modSyncActive, setModSyncActive] = useState(false)
@@ -216,6 +217,16 @@ export function ServersPage(): React.JSX.Element {
 
   const handleQueueStart = async (): Promise<void> => {
     if (!selectedServer) return
+    // Check auth — require sign in before queuing
+    try {
+      const auth = await window.api.getAuthInfo()
+      if (!auth.authenticated) {
+        setJoinError(t('servers.signInRequired'))
+        setHighlightSignIn(true)
+        setTimeout(() => setHighlightSignIn(false), 3000)
+        return
+      }
+    } catch { /* proceed anyway if check fails */ }
     setQueueActive(true)
     setQueueTarget({ ip: selectedServer.ip, port: selectedServer.port, sname: selectedServer.sname })
     setQueueMessage('Starting queue...')
@@ -244,14 +255,24 @@ export function ServersPage(): React.JSX.Element {
     return { total, official, modded, totalPlayers }
   }, [filteredServers])
 
-  // Join: backend auto-logins as guest if not authenticated
-  const handleJoinServer = useCallback((ip: string, port: string): void => {
+  // Join: check auth first, then connect
+  const handleJoinServer = useCallback(async (ip: string, port: string): Promise<void> => {
     if (gameStatus.connectedServer) {
       setJoinError('Already connected to a server. Disconnect first.')
       return
     }
+    // Check auth — require sign in before joining
+    try {
+      const auth = await window.api.getAuthInfo()
+      if (!auth.authenticated) {
+        setJoinError(t('servers.signInRequired'))
+        setHighlightSignIn(true)
+        setTimeout(() => setHighlightSignIn(false), 3000)
+        return
+      }
+    } catch { /* proceed anyway if check fails */ }
     doJoin(ip, port)
-  }, [gameStatus.connectedServer])
+  }, [gameStatus.connectedServer, t])
 
   const doJoin = async (ip: string, port: string): Promise<void> => {
     setJoining(true)
@@ -284,6 +305,7 @@ export function ServersPage(): React.JSX.Element {
           searchQuery={searchQuery}
           loading={loading}
           joining={joining}
+          highlightSignIn={highlightSignIn}
           onSearch={setSearchQuery}
           onRefresh={fetchServers}
           onDirectConnect={handleDirectConnect}

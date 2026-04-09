@@ -36,7 +36,7 @@ const api = {
   launchVanilla: (config?: { mode?: string; level?: string; vehicle?: string }) =>
     ipcRenderer.invoke('game:launchVanilla', config),
   listMaps: () =>
-    ipcRenderer.invoke('game:listMaps') as Promise<{ name: string; source: 'stock' | 'mod' }[]>,
+    ipcRenderer.invoke('game:listMaps') as Promise<{ name: string; source: 'stock' | 'mod'; modZipPath?: string; levelDir?: string }[]>,
   listVehicles: () =>
     ipcRenderer.invoke('game:listVehicles'),
   getVehiclePreview: (vehicleName: string) =>
@@ -531,7 +531,19 @@ const api = {
   controlsExportPreset: (presetId: string) =>
     ipcRenderer.invoke('controls:exportPreset', presetId),
   controlsImportPreset: (jsonString: string) =>
-    ipcRenderer.invoke('controls:importPreset', jsonString)
+    ipcRenderer.invoke('controls:importPreset', jsonString),
+
+  // GPS Tracker
+  gpsDeployTracker: () =>
+    ipcRenderer.invoke('gps:deployTracker'),
+  gpsUndeployTracker: () =>
+    ipcRenderer.invoke('gps:undeployTracker'),
+  gpsIsTrackerDeployed: () =>
+    ipcRenderer.invoke('gps:isTrackerDeployed'),
+  gpsGetTelemetry: () =>
+    ipcRenderer.invoke('gps:getTelemetry'),
+  gpsGetMapPOIs: (mapName: string) =>
+    ipcRenderer.invoke('gps:getMapPOIs', mapName) as Promise<import('../shared/types').GPSMapPOI[]>
 }
 
 if (process.contextIsolated) {

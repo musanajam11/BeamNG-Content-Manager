@@ -911,12 +911,240 @@ export function registerIpcHandlers(): void {
   // ── Game Launcher ──
   ipcMain.handle('game:launch', async (): Promise<{ success: boolean; error?: string }> => {
     const config = configService.get()
-    return launcherService.launchGame(config.gamePaths)
+    const rendererArgs = config.renderer === 'vulkan' ? ['-vulkan'] : config.renderer === 'dx11' ? ['-dx11'] : []
+    return launcherService.launchGame(config.gamePaths, { args: rendererArgs })
   })
 
   ipcMain.handle('game:launchVanilla', async (_event, config?: { mode?: string; level?: string; vehicle?: string }): Promise<{ success: boolean; error?: string }> => {
-    const gamePaths = configService.get().gamePaths
-    return launcherService.launchVanilla(gamePaths, config)
+    const appConfig = configService.get()
+    const rendererArgs = appConfig.renderer === 'vulkan' ? ['-vulkan'] : appConfig.renderer === 'dx11' ? ['-dx11'] : []
+    return launcherService.launchVanilla(appConfig.gamePaths, config, { args: rendererArgs })
+  })
+
+  // ── GPS Tracker ──
+  ipcMain.handle('gps:deployTracker', async (): Promise<{ success: boolean; error?: string }> => {
+    const userDir = configService.get().gamePaths?.userDir
+    if (!userDir) return { success: false, error: 'User data folder not configured' }
+    return launcherService.deployGPSTracker(userDir)
+  })
+
+  ipcMain.handle('gps:undeployTracker', async (): Promise<{ success: boolean; error?: string }> => {
+    const userDir = configService.get().gamePaths?.userDir
+    if (!userDir) return { success: false, error: 'User data folder not configured' }
+    return launcherService.undeployGPSTracker(userDir)
+  })
+
+  ipcMain.handle('gps:isTrackerDeployed', async (): Promise<boolean> => {
+    return launcherService.isGPSTrackerDeployed()
+  })
+
+  ipcMain.handle('gps:getTelemetry', async () => {
+    return launcherService.getGPSTelemetry()
+  })
+
+  // ── GPS Map POIs ──
+  const poiCache = new Map<string, import('../../shared/types').GPSMapPOI[]>()
+
+  /** Turn raw POI names (e.g. "spawns_gasStation01_parking", "gasStation_01") into short readable labels */
+  function cleanPOIName(raw: string, type: import('../../shared/types').GPSMapPOI['type']): string {
+    // Strip common prefixes like "spawn_", "spawns_", "dropPlayerAtXxx_"
+    let name = raw.replace(/^(spawns?_|dropplayerat_?)/i, '')
+    // Strip numeric suffixes like "_01", "_02", trailing digits
+    name = name.replace(/[_\-]?\d+$/g, '')
+    // Replace underscores/camelCase with spaces
+    name = name.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim()
+    // Title-case
+    name = name.replace(/\b\w/g, c => c.toUpperCase())
+    // If the name ended up empty or is just the type name, use a nice default
+    if (!name || name.length < 2) {
+      const defaults: Record<string, string> = {
+        spawn: 'Spawn', gas_station: 'Gas Station', garage: 'Garage',
+        dealership: 'Dealership', shop: 'Shop', restaurant: 'Restaurant',
+        mechanic: 'Mechanic', waypoint: 'Waypoint'
+      }
+      name = defaults[type] || 'POI'
+    }
+    return name
+  }
+
+  ipcMain.handle('gps:getMapPOIs', async (_event, mapName: string): Promise<import('../../shared/types').GPSMapPOI[]> => {
+    if (poiCache.has(mapName)) return poiCache.get(mapName)!
+    const pois: import('../../shared/types').GPSMapPOI[] = []
+    const config = configService.get()
+    const installDir = config.gamePaths?.installDir
+    if (!installDir) { poiCache.set(mapName, pois); return pois }
+
+    const zipPath = join(installDir, 'content', 'levels', `${mapName}.zip`)
+    try { await access(zipPath) } catch { poiCache.set(mapName, pois); return pois }
+
+    // 1. Extract spawn points from info.json
+    const infoRaw = await readRawFromZip(zipPath, new RegExp(`^levels/${mapName}/info\\.json$`, 'i'))
+    if (infoRaw) {
+      try {
+        const info = parseBeamNGJson<Record<string, unknown>>(infoRaw.toString('utf-8'))
+        if (Array.isArray(info.spawnPoints)) {
+          for (const sp of info.spawnPoints) {
+            if (sp && typeof sp === 'object' && 'objectname' in sp) {
+              pois.push({ type: 'spawn', name: cleanPOIName(String((sp as Record<string, unknown>).translationId || (sp as Record<string, unknown>).objectname || 'Spawn'), 'spawn'), x: 0, y: 0 })
+            }
+          }
+        }
+      } catch { /* ignore */ }
+    }
+
+    // 2. Extract spawn positions from PlayerDropPoints scene files
+    await new Promise<void>((resolve) => {
+      yauzlOpen(zipPath, { lazyEntries: true }, (err, zipFile) => {
+        if (err || !zipFile) { resolve(); return }
+        const pending: Promise<void>[] = []
+        zipFile.readEntry()
+        zipFile.on('entry', (entry) => {
+          const fn = entry.fileName
+          // SpawnSphere entries in PlayerDropPoints
+          if (fn.startsWith(`levels/${mapName}/`) && /playerdroppoints/i.test(fn) && fn.endsWith('items.level.json')) {
+            const p = new Promise<void>((res) => {
+              zipFile.openReadStream(entry, (streamErr, stream) => {
+                if (streamErr || !stream) { res(); return }
+                const chunks: Buffer[] = []
+                stream.on('data', (chunk: Buffer) => chunks.push(chunk))
+                stream.on('end', () => {
+                  try {
+                    const text = Buffer.concat(chunks).toString('utf-8')
+                    for (const line of text.split('\n')) {
+                      const trimmed = line.trim()
+                      if (!trimmed.startsWith('{')) continue
+                      try {
+                        const obj = parseBeamNGJson<Record<string, unknown>>(trimmed)
+                        if (obj.class === 'SpawnSphere' && Array.isArray(obj.position)) {
+                          const pos = obj.position as number[]
+                          pois.push({ type: 'spawn', name: cleanPOIName(String(obj.name || 'Spawn Point'), 'spawn'), x: pos[0], y: pos[1] })
+                        }
+                      } catch { /* skip */ }
+                    }
+                  } catch { /* skip */ }
+                  res()
+                })
+              })
+            })
+            pending.push(p)
+          }
+          // Facilities data (gas stations, garages, dealerships, etc.)
+          if (fn.startsWith(`levels/${mapName}/`) && /facilities\.facilities\.json$/i.test(fn)) {
+            const p = new Promise<void>((res) => {
+              zipFile.openReadStream(entry, (streamErr, stream) => {
+                if (streamErr || !stream) { res(); return }
+                const chunks: Buffer[] = []
+                stream.on('data', (chunk: Buffer) => chunks.push(chunk))
+                stream.on('end', () => {
+                  try {
+                    const data = parseBeamNGJson<Record<string, unknown[]>>(Buffer.concat(chunks).toString('utf-8'))
+                    const facilityMap: Record<string, import('../../shared/types').GPSMapPOI['type']> = {
+                      gasStations: 'gas_station', garages: 'garage', dealerships: 'dealership',
+                      computers: 'shop'
+                    }
+                    for (const [key, poiType] of Object.entries(facilityMap)) {
+                      if (Array.isArray(data[key])) {
+                        for (const fac of data[key]) {
+                          const f = fac as Record<string, unknown>
+                          // Facilities reference zones from companion sites file;
+                          // we store the name for now — position resolved from sites file below
+                          pois.push({ type: poiType, name: cleanPOIName(String(f.name || key), poiType), x: 0, y: 0 })
+                        }
+                      }
+                    }
+                  } catch { /* skip */ }
+                  res()
+                })
+              })
+            })
+            pending.push(p)
+          }
+          // Facilities sites data (actual positions)
+          if (fn.startsWith(`levels/${mapName}/`) && /facilities\.sites\.json$/i.test(fn)) {
+            const p = new Promise<void>((res) => {
+              zipFile.openReadStream(entry, (streamErr, stream) => {
+                if (streamErr || !stream) { res(); return }
+                const chunks: Buffer[] = []
+                stream.on('data', (chunk: Buffer) => chunks.push(chunk))
+                stream.on('end', () => {
+                  try {
+                    const data = parseBeamNGJson<Record<string, unknown>>(Buffer.concat(chunks).toString('utf-8'))
+                    // parkingSpots have pos arrays [x, y, z] — use them as POI locations
+                    if (Array.isArray(data.parkingSpots)) {
+                      for (const spot of data.parkingSpots as Record<string, unknown>[]) {
+                        if (Array.isArray(spot.pos)) {
+                          const pos = spot.pos as number[]
+                          const name = String(spot.name || 'Parking')
+                          // Match parking spots to facility POIs by name prefix
+                          const matched = pois.find(p => p.x === 0 && p.y === 0 && name.toLowerCase().includes(p.name.toLowerCase()))
+                          if (matched) {
+                            matched.x = pos[0]; matched.y = pos[1]
+                          }
+                        }
+                      }
+                    }
+                    // zones have vertices — use centroid as position
+                    if (Array.isArray(data.zones)) {
+                      for (const zone of data.zones as Record<string, unknown>[]) {
+                        if (Array.isArray(zone.vertices) && zone.vertices.length > 0) {
+                          const verts = zone.vertices as number[][]
+                          const cx = verts.reduce((s, v) => s + v[0], 0) / verts.length
+                          const cy = verts.reduce((s, v) => s + v[1], 0) / verts.length
+                          const name = String(zone.name || '')
+                          // Match zones to unresolved facility POIs
+                          const matched = pois.find(p => p.x === 0 && p.y === 0 && name.toLowerCase().includes(p.name.toLowerCase()))
+                          if (matched) {
+                            matched.x = cx; matched.y = cy
+                          }
+                        }
+                      }
+                    }
+                  } catch { /* skip */ }
+                  res()
+                })
+              })
+            })
+            pending.push(p)
+          }
+          // Delivery facilities (restaurants, shops, warehouses, etc.)
+          if (fn.startsWith(`levels/${mapName}/`) && /delivery.*\.facilities\.json$/i.test(fn)) {
+            const p = new Promise<void>((res) => {
+              zipFile.openReadStream(entry, (streamErr, stream) => {
+                if (streamErr || !stream) { res(); return }
+                const chunks: Buffer[] = []
+                stream.on('data', (chunk: Buffer) => chunks.push(chunk))
+                stream.on('end', () => {
+                  try {
+                    const data = parseBeamNGJson<Record<string, unknown[]>>(Buffer.concat(chunks).toString('utf-8'))
+                    for (const [key, items] of Object.entries(data)) {
+                      if (!Array.isArray(items)) continue
+                      let poiType: import('../../shared/types').GPSMapPOI['type'] = 'shop'
+                      const k = key.toLowerCase()
+                      if (k.includes('restaurant') || k.includes('food')) poiType = 'restaurant'
+                      else if (k.includes('mechanic') || k.includes('repair')) poiType = 'mechanic'
+                      for (const item of items) {
+                        const f = item as Record<string, unknown>
+                        pois.push({ type: poiType, name: cleanPOIName(String(f.name || key), poiType), x: 0, y: 0 })
+                      }
+                    }
+                  } catch { /* skip */ }
+                  res()
+                })
+              })
+            })
+            pending.push(p)
+          }
+          zipFile.readEntry()
+        })
+        zipFile.on('end', () => { Promise.all(pending).then(() => resolve()) })
+        zipFile.on('error', () => resolve())
+      })
+    })
+
+    // Filter out POIs that still have no position (couldn't resolve from sites)
+    const resolved = pois.filter(p => p.x !== 0 || p.y !== 0)
+    poiCache.set(mapName, resolved)
+    return resolved
   })
 
   // ── Vehicle scanning ──
@@ -2545,7 +2773,8 @@ export function registerIpcHandlers(): void {
     const config = configService.get()
     const ident = `${ip}:${port}`
     configService.addRecentServer(ident).catch(() => {})
-    return launcherService.joinServer(ip, port, config.gamePaths)
+    const rendererArgs = config.renderer === 'vulkan' ? ['-vulkan'] : config.renderer === 'dx11' ? ['-dx11'] : []
+    return launcherService.joinServer(ip, port, config.gamePaths, { args: rendererArgs })
   })
 
   ipcMain.handle('game:beammpLogin', async (_event, username: string, password: string) => {
@@ -3980,10 +4209,12 @@ export function registerIpcHandlers(): void {
 
           // Trigger the join
           const config = configService.get()
+          const queueRendererArgs = config.renderer === 'vulkan' ? ['-vulkan'] : config.renderer === 'dx11' ? ['-dx11'] : []
           const result = await launcherService.joinServer(
             savedTarget.ip,
             parseInt(savedTarget.port, 10),
-            config.gamePaths
+            config.gamePaths,
+            { args: queueRendererArgs }
           )
 
           win?.webContents.send('queue:joined', {

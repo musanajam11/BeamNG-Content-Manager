@@ -29,7 +29,7 @@ interface AppAPI {
   // Game Launcher
   launchGame(): Promise<{ success: boolean; error?: string }>
   launchVanilla(config?: { mode?: string; level?: string; vehicle?: string }): Promise<{ success: boolean; error?: string }>
-  listMaps(): Promise<{ name: string; source: 'stock' | 'mod'; modZipPath?: string }[]>
+  listMaps(): Promise<{ name: string; source: 'stock' | 'mod'; modZipPath?: string; levelDir?: string }[]>
   listVehicles(): Promise<{
     name: string; displayName: string; brand: string; type: string;
     bodyStyle: string; country: string; source: 'stock' | 'mod'; configCount: number
@@ -373,6 +373,13 @@ interface AppAPI {
   controlsDeletePreset(presetId: string): Promise<void>
   controlsExportPreset(presetId: string): Promise<import('../shared/types').ControlsPreset>
   controlsImportPreset(jsonString: string): Promise<import('../shared/types').ControlsPreset>
+
+  // GPS Tracker
+  gpsDeployTracker(): Promise<{ success: boolean; error?: string }>
+  gpsUndeployTracker(): Promise<{ success: boolean; error?: string }>
+  gpsIsTrackerDeployed(): Promise<boolean>
+  gpsGetTelemetry(): Promise<import('../shared/types').GPSTelemetry | null>
+  gpsGetMapPOIs(mapName: string): Promise<import('../shared/types').GPSMapPOI[]>
 }
 
 declare global {

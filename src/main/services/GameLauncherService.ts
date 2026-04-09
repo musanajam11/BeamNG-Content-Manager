@@ -47,7 +47,34 @@ local function onExtensionLoaded()
   log('I', 'beammpCMBridge', 'BeamMP Content Manager bridge extension loaded')
 end
 
+-- ── GPS tracker hot-load support ──
+local gpsSignalFile = "settings/BeamCM/gps_signal.json"
+local gpsPollInterval = 0.5
+local gpsTimer = 0
+local gpsLoaded = false
+
+local function pollGpsSignal(dt)
+  gpsTimer = gpsTimer + dt
+  if gpsTimer < gpsPollInterval then return end
+  gpsTimer = 0
+  local sig = jsonReadFile(gpsSignalFile)
+  if not sig or sig.processed then return end
+  jsonWriteFile(gpsSignalFile, {action = sig.action, processed = true})
+  if sig.action == "load" and not gpsLoaded then
+    log('I', 'beammpCMBridge', 'Hot-loading GPS tracker extension')
+    extensions.load('beamcmGPS')
+    gpsLoaded = true
+  elseif sig.action == "unload" and gpsLoaded then
+    log('I', 'beammpCMBridge', 'Unloading GPS tracker extension')
+    extensions.unload('beamcmGPS')
+    gpsLoaded = false
+  end
+end
+
 local function onUpdate(dt)
+  -- GPS hot-load polling always runs
+  pollGpsSignal(dt)
+
   if joined then return end
   timer = timer + dt
   if timer < pollInterval then return end
@@ -150,9 +177,145 @@ local function onClientStartMission()
   end
 end
 
+-- ── GPS tracker hot-load support ──
+local gpsSignalFile = "settings/BeamCM/gps_signal.json"
+local gpsPollInterval = 0.5
+local gpsTimer = 0
+local gpsLoaded = false
+
+local function pollGpsSignal(dt)
+  gpsTimer = gpsTimer + dt
+  if gpsTimer < gpsPollInterval then return end
+  gpsTimer = 0
+  local sig = jsonReadFile(gpsSignalFile)
+  if not sig or sig.processed then return end
+  jsonWriteFile(gpsSignalFile, {action = sig.action, processed = true})
+  if sig.action == "load" and not gpsLoaded then
+    log('I', 'beamcmBridge', 'Hot-loading GPS tracker extension')
+    extensions.load('beamcmGPS')
+    gpsLoaded = true
+  elseif sig.action == "unload" and gpsLoaded then
+    log('I', 'beamcmBridge', 'Unloading GPS tracker extension')
+    extensions.unload('beamcmGPS')
+    gpsLoaded = false
+  end
+end
+
+local origOnUpdate = onUpdate
+local function onUpdateWithGps(dt)
+  origOnUpdate(dt)
+  pollGpsSignal(dt)
+end
+
 M.onExtensionLoaded = onExtensionLoaded
-M.onUpdate = onUpdate
+M.onUpdate = onUpdateWithGps
 M.onClientStartMission = onClientStartMission
+return M
+`
+
+// ── GPS Tracker Lua scripts ──
+
+// GE extension: reads vehicle position each frame and writes it to a JSON file for the Content Manager
+const GPS_TRACKER_GE_LUA = `
+local M = {}
+local telemetryFile = "settings/BeamCM/gps_telemetry.json"
+local sendInterval = 0.05 -- 20 Hz
+local timer = 0
+
+local function onExtensionLoaded()
+  log('I', 'beamcmGPS', 'BeamCM GPS tracker extension loaded')
+end
+
+local function onExtensionUnloaded()
+  log('I', 'beamcmGPS', 'BeamCM GPS tracker extension unloaded')
+end
+
+local function getOtherVehicles(myVeh)
+  local others = {}
+  local count = be:getObjectCount()
+  for i = 0, count - 1 do
+    local obj = be:getObject(i)
+    if obj and obj ~= myVeh then
+      local p = obj:getPosition()
+      local d = obj:getDirectionVector()
+      local v = obj:getVelocity()
+      local name = ""
+      -- Try to get player name from BeamMP if available
+      if MPVehicleGE and MPVehicleGE.getVehicleByGameID then
+        local mpData = MPVehicleGE.getVehicleByGameID(obj:getID())
+        if mpData and mpData.ownerName then
+          name = mpData.ownerName
+        end
+      end
+      table.insert(others, {
+        x = p.x, y = p.y, z = p.z,
+        heading = math.atan2(d.x, d.y),
+        speed = v:length(),
+        name = name
+      })
+    end
+  end
+  return others
+end
+
+local function getNavRoute()
+  -- Read the active GPS navigation route from core_groundMarkers
+  if not core_groundMarkers or not core_groundMarkers.currentlyHasTarget or not core_groundMarkers.currentlyHasTarget() then
+    return nil
+  end
+  local rp = core_groundMarkers.routePlanner
+  if not rp or not rp.path or #rp.path == 0 then return nil end
+  -- Sample the route: take every Nth point to keep the JSON manageable
+  local route = {}
+  local step = math.max(1, math.floor(#rp.path / 200))
+  for i = 1, #rp.path, step do
+    local node = rp.path[i]
+    if node and node.pos then
+      table.insert(route, {x = node.pos.x, y = node.pos.y})
+    end
+  end
+  -- Always include the final destination
+  local last = rp.path[#rp.path]
+  if last and last.pos and (#route == 0 or route[#route].x ~= last.pos.x or route[#route].y ~= last.pos.y) then
+    table.insert(route, {x = last.pos.x, y = last.pos.y})
+  end
+  return route
+end
+
+local function onUpdate(dt)
+  timer = timer + dt
+  if timer < sendInterval then return end
+  timer = 0
+  local veh = be:getPlayerVehicle(0)
+  if not veh then return end
+  local pos = veh:getPosition()
+  local vel = veh:getVelocity()
+  local dir = veh:getDirectionVector()
+  local heading = math.atan2(dir.x, dir.y)
+  local speed = vel:length()
+  local levelName = ""
+  if getMissionFilename then
+    levelName = getMissionFilename() or ""
+  end
+  if (levelName == "" or levelName == "unknown") and getCurrentLevelIdentifier then
+    levelName = getCurrentLevelIdentifier() or ""
+  end
+  jsonWriteFile(telemetryFile, {
+    x = pos.x,
+    y = pos.y,
+    z = pos.z,
+    heading = heading,
+    speed = speed,
+    map = levelName,
+    others = getOtherVehicles(veh),
+    route = getNavRoute(),
+    t = os.clock()
+  })
+end
+
+M.onExtensionLoaded = onExtensionLoaded
+M.onExtensionUnloaded = onExtensionUnloaded
+M.onUpdate = onUpdate
 return M
 `
 
@@ -200,6 +363,7 @@ export class GameLauncherService {
   private mStatus: string = ' '
   private ping: number = -1
   private terminate: boolean = false
+  private terminateReason: string = ''
   private confList: Set<string> = new Set()
   private clientId: number = -1
   private magic: Buffer | null = null
@@ -241,6 +405,11 @@ export class GameLauncherService {
   private backendUrlResolver: (() => string) | null = null
   private authUrlResolver: (() => string) | null = null
 
+  // GPS tracker
+  private gpsFilePoller: ReturnType<typeof setInterval> | null = null
+  private gpsTrackerDeployed: boolean = false
+  private latestGpsTelemetry: import('../../shared/types').GPSTelemetry | null = null
+
   /** Set a callback that returns the configured backend URL */
   setBackendUrlResolver(resolver: () => string): void {
     this.backendUrlResolver = resolver
@@ -261,6 +430,36 @@ export class GameLauncherService {
   private get authUrl(): string {
     const url = this.authUrlResolver?.() || 'https://auth.beammp.com'
     return url.replace(/\/+$/, '')
+  }
+
+  /** Set terminate flag with a specific human-readable reason */
+  private terminateWith(reason: string): void {
+    this.terminate = true
+    if (!this.terminateReason) this.terminateReason = reason
+    this.log(`Terminate: ${reason}`)
+  }
+
+  /** Parse a BeamMP server E/K error message into a human-readable string */
+  private parseServerError(raw: string, fallback: string): string {
+    if (!raw || raw.length < 2) return fallback
+    const code = raw[0]
+    const msg = raw.substring(1).trim()
+    if (code === 'K') {
+      return msg ? `Kicked by server: ${msg}` : 'Kicked by server'
+    }
+    // E prefix — various server errors
+    const lower = msg.toLowerCase()
+    if (lower.includes('full')) return 'Server is full'
+    if (lower.includes('ban')) return `Banned from server: ${msg}`
+    if (lower.includes('auth') || lower.includes('invalid key') || lower.includes('not authenticated')) {
+      return `Authentication failed: ${msg}`
+    }
+    if (lower.includes('version') || lower.includes('outdated') || lower.includes('update')) {
+      return `Version mismatch: ${msg}`
+    }
+    if (lower.includes('whitelist')) return `Not on server whitelist: ${msg}`
+    if (lower.includes('timeout')) return 'Connection timed out'
+    return msg || fallback
   }
 
   private log(message: string): void {
@@ -793,6 +992,7 @@ export class GameLauncherService {
     await this.checkLocalKey()
     this.ulStatus = 'UlLoading...'
     this.terminate = false
+    this.terminateReason = ''
     this.confList.clear()
     this.ping = -1
     this.clientId = -1
@@ -818,7 +1018,7 @@ export class GameLauncherService {
     serverSock.on('error', (err) => {
       this.log(`ERROR: Server connection error: ${err.message}`)
       this.ulStatus = 'UlConnection Failed!'
-      this.terminate = true
+      this.terminateWith(`Connection failed: ${err.message}`)
       this.coreSend('L')
       // Reject any pending server recv promises so awaits don't hang
       if (this.serverMsgResolve) {
@@ -836,14 +1036,21 @@ export class GameLauncherService {
 
     serverSock.on('end', () => {
       this.log('Server connection ended (remote closed)')
-      this.terminate = true
+      this.terminateWith('Server closed the connection')
     })
 
     serverSock.on('close', () => {
       this.log('Server connection closed')
+      const wasInRelay = this.serverInRelay
       this.connectedServerAddress = null
       this.serverInRelay = false
       this.notifyStatusChange()
+      // If we were in relay (game was actively connected to server), kill the game
+      // so the user doesn't get stranded at the main menu
+      if (wasInRelay) {
+        this.log('Connection lost while in relay — killing game')
+        this.killGame()
+      }
     })
 
     serverSock.connect(port, ip, () => {
@@ -852,7 +1059,7 @@ export class GameLauncherService {
       this.doServerHandshake(ip, port).catch((err) => {
         this.log(`ERROR: Handshake failed: ${err.message || err}`)
         this.ulStatus = 'UlConnection Failed!'
-        this.terminate = true
+        this.terminateWith((err as Error).message || String(err))
         this.coreSend('L')
         serverSock.destroy()
       })
@@ -866,7 +1073,7 @@ export class GameLauncherService {
         if (this.serverMsgResolve === wrappedResolve) {
           this.serverMsgResolve = null
           this.log('ERROR: serverRecvMsg timed out')
-          this.terminate = true
+          this.terminateWith('Server response timed out')
           resolve('')
         }
       }, timeoutMs)
@@ -888,7 +1095,7 @@ export class GameLauncherService {
         if (this.serverRawResolve === wrappedResolve) {
           this.serverRawResolve = null
           this.log(`ERROR: serverRecvRaw timed out waiting for ${size} bytes`)
-          this.terminate = true
+          this.terminateWith('Mod download timed out')
           resolve(Buffer.alloc(0))
         }
       }, effectiveTimeout)
@@ -972,26 +1179,37 @@ export class GameLauncherService {
     this.serverSendFramed('VC' + LAUNCHER_VERSION)
     const vResp = await this.serverRecvMsg()
     this.log(`Handshake: version response: ${vResp?.substring(0, 50)}`)
-    if (!vResp || vResp[0] === 'E' || vResp[0] === 'K') {
-      throw new Error('Server rejected version: ' + vResp)
+    if (!vResp) {
+      throw new Error('Server did not respond to version check (may be offline or unreachable)')
+    }
+    if (vResp[0] === 'E' || vResp[0] === 'K') {
+      throw new Error(this.parseServerError(vResp, 'Server rejected connection'))
     }
 
     this.log(`Handshake: sending publicKey (${(this.publicKey || '').length} chars)`)
     this.serverSendFramed(this.publicKey || '')
-    if (this.terminate) throw new Error('Terminated (after key send)')
+    if (this.terminate) throw new Error(this.terminateReason || 'Connection lost during authentication')
 
     const pResp = await this.serverRecvMsg()
-    if (!pResp || pResp[0] !== 'P') throw new Error('Expected P<id>, got: ' + pResp)
+    if (!pResp) {
+      throw new Error('Server did not respond to authentication (connection may have been dropped)')
+    }
+    if (pResp[0] === 'E' || pResp[0] === 'K') {
+      throw new Error(this.parseServerError(pResp, 'Authentication rejected'))
+    }
+    if (pResp[0] !== 'P') throw new Error('Unexpected server response during auth: ' + pResp.substring(0, 80))
     const idStr = pResp.substring(1)
-    if (!/^\d+$/.test(idStr)) throw new Error('Invalid client ID: ' + idStr)
+    if (!/^\d+$/.test(idStr)) throw new Error('Server returned invalid client ID: ' + idStr)
     this.clientId = parseInt(idStr, 10)
     this.log(`Client ID: ${this.clientId}`)
 
     this.serverSendFramed('SR')
     this.log('Handshake: sent SR, waiting for mod list')
-    if (this.terminate) throw new Error('Terminated')
+    if (this.terminate) throw new Error(this.terminateReason || 'Connection lost')
     const modResp = await this.serverRecvMsg()
-    if (modResp[0] === 'E' || modResp[0] === 'K') throw new Error('Server error: ' + modResp)
+    if (modResp[0] === 'E' || modResp[0] === 'K') {
+      throw new Error(this.parseServerError(modResp, 'Server rejected during mod sync'))
+    }
 
     this.log(`Mod info received (${modResp.length} bytes)`)
 
@@ -1002,7 +1220,7 @@ export class GameLauncherService {
     } else {
       await this.syncMods(modResp)
     }
-    if (this.terminate) throw new Error('Terminated')
+    if (this.terminate) throw new Error(this.terminateReason || 'Mod sync failed')
 
     this.log('Handshake complete, entering relay mode')
     this.serverInRelay = true
@@ -1054,7 +1272,7 @@ export class GameLauncherService {
       const mod = modInfos[i]
       if (mod.hash_algorithm !== 'sha256' || mod.hash.length < 8) {
         this.log(`ERROR: Bad hash for ${mod.file_name}`)
-        this.terminate = true
+        this.terminateWith(`Mod "${mod.file_name}" has an invalid hash — server may be misconfigured`)
         return
       }
 
@@ -1072,26 +1290,26 @@ export class GameLauncherService {
       }
 
       if (needDownload) {
-        if (mod.protected) { this.terminate = true; return }
+        if (mod.protected) { this.terminateWith(`Mod "${mod.file_name}" is protected and cannot be downloaded`); return }
         this.ulStatus = `UlDownloading Resource ${i + 1}/${modInfos.length}: ${mod.file_name}`
         this.emitModSyncProgress({ phase: 'downloading', modIndex: i, modCount: modInfos.length, fileName: mod.file_name, received: 0, total: mod.file_size })
         this.log(`Downloading ${mod.file_name} (${mod.file_size} bytes)`)
         this.serverSendFramed('f' + mod.file_name)
         const dlResp = await this.serverRecvMsg()
-        if (dlResp === 'CO' || this.terminate) { this.terminate = true; return }
-        if (dlResp !== 'AG') { this.terminate = true; return }
+        if (dlResp === 'CO' || this.terminate) { this.terminateWith(`Server refused to send mod "${mod.file_name}"`); return }
+        if (dlResp !== 'AG') { this.terminateWith(`Unexpected response downloading mod "${mod.file_name}": ${dlResp?.substring(0, 40)}`); return }
         // Stream progress updates to the overlay as data arrives
         this.serverRawProgressCallback = (received: number): void => {
           this.emitModSyncProgress({ phase: 'downloading', modIndex: i, modCount: modInfos.length, fileName: mod.file_name, received, total: mod.file_size })
         }
         const fileData = await this.serverRecvRaw(mod.file_size)
-        if (this.terminate || fileData.length !== mod.file_size) { this.terminate = true; return }
+        if (this.terminate || fileData.length !== mod.file_size) { this.terminateWith(`Download of "${mod.file_name}" was incomplete (got ${fileData.length} of ${mod.file_size} bytes)`); return }
         this.emitModSyncProgress({ phase: 'downloading', modIndex: i, modCount: modInfos.length, fileName: mod.file_name, received: mod.file_size, total: mod.file_size })
         writeFileSync(cachedPath, fileData)
         const hash = await this.hashFile(cachedPath)
         if (hash !== mod.hash) {
           try { unlinkSync(cachedPath) } catch { /* */ }
-          this.terminate = true
+          this.terminateWith(`Hash mismatch for "${mod.file_name}" — downloaded file is corrupted`)
           return
         }
         this.log(`Downloaded ${mod.file_name}`)
@@ -1105,7 +1323,7 @@ export class GameLauncherService {
         renameSync(tmpPath, destPath)
       } catch (err) {
         this.log(`ERROR: Failed to copy mod: ${err}`)
-        this.terminate = true
+        this.terminateWith(`Failed to install mod "${mod.file_name}": ${err}`)
         return
       }
       this.log(`Mod ${mod.file_name} placed (${i + 1}/${modInfos.length})`)
@@ -1146,9 +1364,15 @@ export class GameLauncherService {
         // to avoid UTF-8 corruption. This case only triggers for non-binary U messages.
         break
       case 'E':
-      case 'K':
+      case 'K': {
+        const reason = this.parseServerError(data, 'Disconnected by server')
         this.ulStatus = 'UlDisconnected: ' + data.substring(1)
-        break // forward to game (official launcher forwards E/K)
+        this.log(`Server sent ${code} — killing game: ${reason}`)
+        this.terminateWith(reason)
+        this.netReset()
+        this.killGame()
+        return // don't forward to game — it's being killed
+      }
     }
     this.gameSend(data)
   }
@@ -1597,7 +1821,8 @@ export class GameLauncherService {
    */
   async launchVanilla(
     paths: GamePaths,
-    config?: { mode?: string; level?: string; vehicle?: string }
+    config?: { mode?: string; level?: string; vehicle?: string },
+    options?: { args?: string[] }
   ): Promise<{ success: boolean; error?: string }> {
     if (this.gameProcess && !this.gameProcess.killed) {
       return { success: false, error: 'Game is already running' }
@@ -1626,7 +1851,7 @@ export class GameLauncherService {
     }
 
     // Build command-line args — use -level for direct level loading
-    const args: string[] = []
+    const args: string[] = [...(options?.args ?? [])]
     if (config?.mode === 'freeroam' && config.level) {
       // BeamNG prepends "levels/" internally, so just pass the folder name
       args.push('-level', `${config.level}/info.json`)
@@ -1709,11 +1934,11 @@ export class GameLauncherService {
     }
   }
 
-  joinServer(ip: string, port: number, paths: GamePaths): Promise<{ success: boolean; error?: string }> {
-    return this.joinServerImpl(ip, port, paths)
+  joinServer(ip: string, port: number, paths: GamePaths, options?: { args?: string[] }): Promise<{ success: boolean; error?: string }> {
+    return this.joinServerImpl(ip, port, paths, options)
   }
 
-  private async joinServerImpl(ip: string, port: number, paths: GamePaths): Promise<{ success: boolean; error?: string }> {
+  private async joinServerImpl(ip: string, port: number, paths: GamePaths, options?: { args?: string[] }): Promise<{ success: boolean; error?: string }> {
     // Auto-login as guest if not authenticated
     if (!this.loginAuth) {
       await this.loginAsGuest()
@@ -1728,7 +1953,7 @@ export class GameLauncherService {
     // Launch game if not running
     if (!this.gameProcess || this.gameProcess.killed) {
       this.gameInitialized = false
-      const result = await this.launchGame(paths)
+      const result = await this.launchGame(paths, options)
       if (!result.success) {
         return result
       }
@@ -1748,6 +1973,7 @@ export class GameLauncherService {
     await this.checkLocalKey()
     this.ulStatus = 'UlLoading...'
     this.terminate = false
+    this.terminateReason = ''
     this.confList.clear()
     this.ping = -1
     this.clientId = -1
@@ -1756,13 +1982,10 @@ export class GameLauncherService {
     this.notifyStatusChange()
     this.startGameProxyServer()
 
-    // Write join signal EARLY so the game starts connecting to the proxy
-    // while we handle server handshake + mod sync.  The game will connect
-    // to the proxy port and wait there for P<clientId> + relay data.
-    this.writeJoinSignal(ip, port)
-
-    // Connect to server — sets this.serverSocket, which guards the C handler
-    // from calling startServerSync when the game sends its C command.
+    // Connect to server — do the handshake + mod sync BEFORE telling
+    // the game to connect.  This way, if the server rejects us (full,
+    // banned, version mismatch, etc.) we never send the join signal
+    // and can kill the game cleanly instead of it landing on the menu.
     this.connectToServer(ip, port)
 
     // Wait for handshake + mod sync to complete (relay mode entered)
@@ -1770,15 +1993,20 @@ export class GameLauncherService {
       await new Promise<void>((resolve, reject) => {
         const check = setInterval(() => {
           if (this.serverInRelay) { clearInterval(check); resolve() }
-          else if (this.terminate) { clearInterval(check); reject(new Error('Server sync failed')) }
+          else if (this.terminate) { clearInterval(check); reject(new Error(this.terminateReason || 'Server sync failed')) }
         }, 100)
-        setTimeout(() => { clearInterval(check); reject(new Error('Server sync timed out')) }, 300000)
+        setTimeout(() => { clearInterval(check); reject(new Error('Server connection timed out after 5 minutes')) }, 300000)
       })
     } catch (err) {
-      return { success: false, error: (err as Error).message }
+      const errorMsg = (err as Error).message
+      this.log(`Server join failed, killing game: ${errorMsg}`)
+      this.killGame()
+      return { success: false, error: errorMsg }
     }
 
-    this.log('Server sync complete and relay active')
+    // Handshake succeeded — NOW tell the game to connect
+    this.writeJoinSignal(ip, port)
+    this.log('Server sync complete and relay active — join signal sent to game')
     return { success: true }
   }
 
@@ -2103,7 +2331,122 @@ export class GameLauncherService {
     this.corePort = port
   }
 
+  // ── GPS Tracker ──
+
+  deployGPSTracker(userDir: string): { success: boolean; error?: string } {
+    try {
+      const extDir = join(userDir, 'lua', 'ge', 'extensions')
+      mkdirSync(extDir, { recursive: true })
+      writeFileSync(join(extDir, 'beamcmGPS.lua'), GPS_TRACKER_GE_LUA.trim())
+      // Write signal so the running bridge can hot-load it mid-game
+      const signalDir = join(userDir, 'settings', 'BeamCM')
+      mkdirSync(signalDir, { recursive: true })
+      writeFileSync(join(signalDir, 'gps_signal.json'), JSON.stringify({ action: 'load', processed: false }))
+      // Clear stale telemetry from previous session so the UI doesn't show old data
+      const staleTelemetry = join(signalDir, 'gps_telemetry.json')
+      if (existsSync(staleTelemetry)) unlinkSync(staleTelemetry)
+      this.latestGpsTelemetry = null
+      this.gpsTrackerDeployed = true
+      this.log('GPS tracker deployed to ' + join(extDir, 'beamcmGPS.lua'))
+      this.startGpsFilePoller(userDir)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: `Failed to deploy GPS tracker: ${err}` }
+    }
+  }
+
+  undeployGPSTracker(userDir: string): { success: boolean; error?: string } {
+    try {
+      // Write unload signal so the running bridge can hot-unload it mid-game
+      const signalDir = join(userDir, 'settings', 'BeamCM')
+      mkdirSync(signalDir, { recursive: true })
+      writeFileSync(join(signalDir, 'gps_signal.json'), JSON.stringify({ action: 'unload', processed: false }))
+      const extPath = join(userDir, 'lua', 'ge', 'extensions', 'beamcmGPS.lua')
+      if (existsSync(extPath)) unlinkSync(extPath)
+      // Clean up telemetry file
+      const telemetryPath = join(userDir, 'settings', 'BeamCM', 'gps_telemetry.json')
+      if (existsSync(telemetryPath)) unlinkSync(telemetryPath)
+      this.gpsTrackerDeployed = false
+      this.latestGpsTelemetry = null
+      this.stopGpsFilePoller()
+      this.log('GPS tracker undeployed')
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: `Failed to undeploy GPS tracker: ${err}` }
+    }
+  }
+
+  isGPSTrackerDeployed(): boolean {
+    return this.gpsTrackerDeployed
+  }
+
+  getGPSTelemetry(): import('../../shared/types').GPSTelemetry | null {
+    return this.latestGpsTelemetry
+  }
+
+  private startGpsFilePoller(userDir: string): void {
+    if (this.gpsFilePoller) return
+    const telemetryPath = join(userDir, 'settings', 'BeamCM', 'gps_telemetry.json')
+    let lastT = 0
+    let lastUpdateTime = Date.now()
+    const STALE_TIMEOUT = 3000 // 3 seconds with no new data → game is loading/transitioning
+    this.gpsFilePoller = setInterval(() => {
+      try {
+        if (!existsSync(telemetryPath)) {
+          // File gone (deleted on deploy or undeploy) — clear telemetry
+          if (this.latestGpsTelemetry) {
+            this.latestGpsTelemetry = null
+            lastT = 0
+          }
+          return
+        }
+        const raw = readFileSync(telemetryPath, 'utf-8')
+        const data = JSON.parse(raw)
+        if (typeof data.x !== 'number' || typeof data.y !== 'number') return
+        // Deduplicate: only update if the Lua-side timestamp changed
+        if (data.t === lastT) {
+          // Stale check: if the Lua side stopped writing (map change / no vehicle), clear telemetry
+          if (this.latestGpsTelemetry && Date.now() - lastUpdateTime > STALE_TIMEOUT) {
+            this.latestGpsTelemetry = null
+          }
+          return
+        }
+        lastT = data.t
+        lastUpdateTime = Date.now()
+        this.latestGpsTelemetry = {
+          x: data.x,
+          y: data.y,
+          z: data.z ?? 0,
+          heading: data.heading ?? 0,
+          speed: data.speed ?? 0,
+          timestamp: Date.now(),
+          map: typeof data.map === 'string' && data.map ? data.map : undefined,
+          otherPlayers: Array.isArray(data.others) ? data.others.map((o: Record<string, unknown>) => ({
+            x: typeof o.x === 'number' ? o.x : 0,
+            y: typeof o.y === 'number' ? o.y : 0,
+            z: typeof o.z === 'number' ? o.z : 0,
+            heading: typeof o.heading === 'number' ? o.heading : 0,
+            speed: typeof o.speed === 'number' ? o.speed : 0,
+            name: typeof o.name === 'string' ? o.name : ''
+          })) : undefined,
+          navRoute: Array.isArray(data.route) ? data.route.filter((pt: Record<string, unknown>) =>
+            typeof pt.x === 'number' && typeof pt.y === 'number'
+          ).map((pt: Record<string, unknown>) => ({ x: pt.x as number, y: pt.y as number })) : undefined
+        }
+      } catch { /* file may be mid-write, skip this tick */ }
+    }, 100) // 10 Hz polling
+    this.log('GPS file poller started on ' + telemetryPath)
+  }
+
+  private stopGpsFilePoller(): void {
+    if (this.gpsFilePoller) {
+      clearInterval(this.gpsFilePoller)
+      this.gpsFilePoller = null
+    }
+  }
+
   private shutdown(): void {
+    this.stopGpsFilePoller()
     this.netReset()
     if (this.coreSocket) {
       this.coreSocket.destroy()

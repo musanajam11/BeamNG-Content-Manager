@@ -110,6 +110,8 @@ export interface AppConfig {
   careerSavePath: string | null
   /** Custom BeamMP-Server executable path — null = built-in managed copy */
   customServerExe: string | null
+  /** Graphics renderer to use when launching BeamNG.drive */
+  renderer: 'ask' | 'dx11' | 'vulkan'
 }
 
 export interface ServerInfo {
@@ -398,6 +400,7 @@ export type AppPage =
   | 'launcher'
   | 'controls'
   | 'career'
+  | 'live-gps'
 
 /* ── Hosted Server Manager ── */
 
@@ -560,6 +563,36 @@ export interface PlayerPosition {
   heading: number
   speed: number
   timestamp: number
+}
+
+/** Telemetry packet from the local GPS tracker vehicle protocol */
+export interface GPSPlayerInfo {
+  x: number
+  y: number
+  z: number
+  heading: number
+  speed: number
+  name: string
+}
+
+export interface GPSTelemetry {
+  x: number
+  y: number
+  z: number
+  heading: number
+  speed: number
+  timestamp: number
+  map?: string
+  otherPlayers?: GPSPlayerInfo[]
+  /** Active navigation route — array of 2D waypoints from player to destination */
+  navRoute?: Array<{ x: number; y: number }>
+}
+
+export interface GPSMapPOI {
+  type: 'spawn' | 'gas_station' | 'garage' | 'dealership' | 'shop' | 'restaurant' | 'mechanic' | 'waypoint'
+  name: string
+  x: number
+  y: number
 }
 
 /* ── Mod Load Order ── */

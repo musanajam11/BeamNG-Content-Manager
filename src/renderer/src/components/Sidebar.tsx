@@ -11,7 +11,8 @@ import {
   MonitorCog,
   Users,
   Gamepad2,
-  Briefcase
+  Briefcase,
+  Navigation2
 } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -36,6 +37,7 @@ export const ALL_NAV_ITEMS: NavItem[] = [
   { id: 'server-admin', labelKey: 'sidebar.serverManager', icon: MonitorCog },
   { id: 'launcher', labelKey: 'sidebar.launcher', icon: Terminal },
   { id: 'controls', labelKey: 'sidebar.controls', icon: Gamepad2 },
+  { id: 'live-gps', labelKey: 'sidebar.liveGPS', icon: Navigation2 },
 ]
 
 const itemMap = new Map(ALL_NAV_ITEMS.map((item) => [item.id, item]))

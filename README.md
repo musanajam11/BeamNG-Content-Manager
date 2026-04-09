@@ -207,6 +207,61 @@ Pull mod metadata from configurable repositories (name, URL, priority). Verified
 - **Steam/Proton Launch** — on Linux, launches through `steam -applaunch 284160` with Proton prefix detection
 - **Log Viewer** — color-coded log output (info/warn/error/debug categories), text filter, auto-scroll with scroll-lock threshold, copy-to-clipboard, and export/download as text file
 - **Auth Key Management** — saved BeamMP authentication key with validation and guest mode option
+- **Auto-Kill on Join Failure** — automatically terminates BeamNG.drive when the server rejects the connection (kick, ban, full, auth error) or the connection drops during an active relay session, preventing the game from being stuck at the main menu
+
+</details>
+
+### Live GPS Tracking
+
+<details>
+<summary>Real-time GPS telemetry overlay during gameplay with route, POI, and multiplayer support</summary>
+
+- **Tracker Deployment** — deploys a Lua GE extension (`beamcmGPS.lua`) to the game that writes telemetry at 20 Hz to a JSON file, read by the app via file-based IPC at 10 Hz
+- **Map Auto-Detection** — automatically identifies the current map using `getMissionFilename()` with `getCurrentLevelIdentifier()` fallback; case-insensitive matching against both map name and level directory
+- **2D Minimap Canvas** — overhead map rendering with world-bounds alignment, panning, and smooth zoom controls
+- **Player Arrow** — orange directional arrow showing the player's real-time position and heading on the minimap
+- **Speed Display** — live speed readout from vehicle telemetry
+- **Navigation Route Overlay** — reads the in-game route planner path and renders it as a cyan dashed line on the minimap
+- **Other Players (Multiplayer)** — displays other connected players as blue dots on the minimap in BeamMP sessions
+- **Points of Interest** — renders map-specific POIs (spawn points, landmarks, facilities) with hover highlighting and labels
+- **Follow Player Mode** — toggle to auto-center the camera on the player position while preserving the current zoom level
+- **Zoom Controls** — zoom in/out buttons with smooth scaling
+- **Stale Data Detection** — detects when telemetry data is outdated and shows a waiting indicator
+- **GPS Signal Status** — visual indicators for tracker deployment state, signal acquisition, and active tracking
+
+</details>
+
+### Controls & Input Editor
+
+<details>
+<summary>Full input binding, force feedback, steering filter, and preset management for all devices</summary>
+
+**Input Binding Management**
+- Auto-detect connected devices: keyboard, mouse, gamepads, and steering wheels
+- Per-device binding editor — view and rebind all game actions with conflict detection and resolution (replace, bind both, or swap)
+- Full-text action search and reset-to-defaults per device
+
+**Axis Configuration**
+- Deadzone range control per axis
+- Linearity / response curves with visual feedback
+- Steering angle limits for wheel users
+
+**Force Feedback (FFB)**
+- Strength, smoothing, and response correction sliders
+- Update mode selector (Fast / Smooth / Legacy)
+- Low-speed force compensation toggle
+
+**Steering Filters & Assists**
+- Autocenter strength and speed-sensitive steering slowdown
+- Steering rotation hard limit
+- Stabilization assist (oversteer reduction) and understeer reduction
+
+**Preset Management**
+- Save, load, and delete named presets for the entire control configuration
+- Export and import presets as shareable files
+
+**Live Input Monitor**
+- Real-time device polling with axis value visualization and button press state indicators
 
 </details>
 
@@ -220,6 +275,7 @@ Pull mod metadata from configurable repositories (name, URL, priority). Verified
 - Custom backend server URL with live health-check indicator; backend selection (official vs. custom) with auth URL configuration
 - Configurable mod registry repositories — add multiple sources with name, URL, and priority; reorder via drag
 - Default server ports and custom server executable path
+- Graphics renderer selection — choose DirectX 11 or Vulkan (or prompt each launch)
 - CareerMP save path override
 - Modpack export (`.beampack` JSON bundle of selected mods) and import with conflict resolution
 
@@ -289,8 +345,7 @@ Pull mod metadata from configurable repositories (name, URL, priority). Verified
 > These features are functional but actively being refined.
 
 - **3D Vehicle Viewer & Editor** — COLLADA `.dae` model loader with multi-DAE assembly (body, cargo, mechanicals) and DDS texture support (BC1–BC7 compression formats). Mesh classification identifies paint, chrome, glass, rubber, and interior surfaces. Multi-zone paint system (3 zones) with swatchable color palette, metallic/roughness/clearcoat per zone, and material defaults + config overrides. Showroom environment with gradient skybox and reflective ground plane. Wheel placement computed from hub node positions (median/midpoint/arm fallback with FR/FL/RR/RL corner detection). Render options panel for wireframe, normals, bounding boxes, and material overlays.
-- **Player Heat Map** — 3D terrain visualization (512×512 heightmap) with textured ground. Live player positions displayed as directional cones. Density heat map overlay with configurable color ramp. GPS route planner with road-network A\* pathfinding and ribbon visualization.
-- **Input Controls Editor** — keyboard, gamepad, and steering wheel binding editor with action assignment, FFB (Force Feedback) curves, dead zone configuration, and per-device setups.
+- **Player Heat Map** — 3D terrain visualization (512×512 heightmap) with textured ground. Live player positions displayed as directional cones. Density heat map overlay with configurable color ramp.
 
 ---
 

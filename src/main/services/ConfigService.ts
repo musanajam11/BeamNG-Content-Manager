@@ -44,7 +44,8 @@ const DEFAULT_CONFIG: AppConfig = {
   loadOrderEnforcement: false,
   defaultPorts: '',
   careerSavePath: null,
-  customServerExe: null
+  customServerExe: null,
+  renderer: 'ask'
 }
 
 export class ConfigService {

@@ -148,6 +148,10 @@ export function HomePage(): React.JSX.Element {
 
   const handleJoinServer = async (server: ServerInfo): Promise<void> => {
     try {
+      const auth = await window.api.getAuthInfo()
+      if (!auth.authenticated) return
+    } catch { /* proceed if check fails */ }
+    try {
       await window.api.joinServer(server.ip, parseInt(server.port, 10))
     } catch { /* handled elsewhere */ }
   }

@@ -103,6 +103,7 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
   const [modpackName, setModpackName] = useState('')
   const [modpackStatus, setModpackStatus] = useState<string | null>(null)
   const [customServerExe, setCustomServerExe] = useState(config?.customServerExe || '')
+  const [renderer, setRenderer] = useState<'ask' | 'dx11' | 'vulkan'>(config?.renderer ?? 'ask')
 
   useEffect(() => {
     if (config) {
@@ -113,6 +114,7 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
       setUserDir(config.gamePaths?.userDir ?? '')
       setDefaultPorts(config.defaultPorts ?? '')
       setCustomServerExe(config.customServerExe ?? '')
+      setRenderer(config.renderer ?? 'ask')
     }
   }, [config])
 
@@ -149,6 +151,9 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
     const newServerExe = customServerExe.trim() || null
     if (newServerExe !== (config?.customServerExe ?? null)) {
       await window.api.updateConfig({ customServerExe: newServerExe })
+    }
+    if (renderer !== (config?.renderer ?? 'ask')) {
+      await window.api.updateConfig({ renderer })
     }
     await useAppStore.getState().loadConfig()
     setSaved(true)
@@ -301,6 +306,36 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
             <p className="mt-2 text-xs text-[var(--color-text-muted)]">
               {t('settings.defaultPortsDescription')}
             </p>
+          </section>
+
+          {/* Game Launching */}
+          <section>
+            <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
+              <Monitor size={16} />
+              {t('settings.gameLaunching')}
+            </h2>
+            <div>
+              <label className="text-xs text-[var(--color-text-muted)] mb-2 block">{t('settings.renderer')}</label>
+              <div className="flex gap-2">
+                {(['ask', 'dx11', 'vulkan'] as const).map((opt) => (
+                  <button
+                    key={opt}
+                    onClick={() => setRenderer(opt)}
+                    className={`px-4 py-2 rounded-lg border text-sm transition-colors ${
+                      renderer === opt
+                        ? 'border-[var(--color-accent)] bg-[var(--color-accent)]/10 text-[var(--color-accent)]'
+                        : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'
+                    }`}
+                  >
+                    {opt === 'ask' ? t('settings.rendererAsk') : opt === 'dx11' ? 'DirectX 11' : 'Vulkan'}
+                    {renderer === opt && <Check size={12} className="inline ml-1.5" />}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-[var(--color-text-muted)]">
+                {t('settings.rendererDescription')}
+              </p>
+            </div>
           </section>
 
           {/* Custom Executables */}
@@ -509,7 +544,7 @@ function AppearanceSettingsPanel(): React.JSX.Element {
             <Palette size={16} />
             {t('settings.accentColor')}
           </h2>
-          <div className="grid grid-cols-12 gap-1.5" style={{ marginBottom: 24 }}>
+          <div className="grid grid-cols-12 gap-1.5 overflow-hidden p-1" style={{ marginBottom: 24 }}>
             {ACCENT_PRESETS.map((preset) => (
               <button
                 key={preset.color}

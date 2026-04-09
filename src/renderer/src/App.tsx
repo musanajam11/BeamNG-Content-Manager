@@ -14,6 +14,7 @@ import { LauncherPage } from './pages/LauncherPage'
 import { ControlsPage } from './pages/ControlsPage'
 import { ServerManagerPage } from './pages/ServerManagerPage'
 import { CareerPage } from './pages/CareerPage'
+import { LiveGPSPage } from './pages/LiveGPSPage'
 import { SetupWizard } from './pages/SetupWizard'
 import { useAppStore } from './stores/useAppStore'
 import { useThemeStore } from './stores/useThemeStore'
@@ -43,6 +44,8 @@ function PageRouter(): React.JSX.Element {
       return <ServerManagerPage />
     case 'career':
       return <CareerPage />
+    case 'live-gps':
+      return <LiveGPSPage />
     case 'settings':
       return <SettingsPage />
     default:

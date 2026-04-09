@@ -9,6 +9,7 @@ interface Props {
   searchQuery: string
   loading: boolean
   joining: boolean
+  highlightSignIn?: boolean
   onSearch: (query: string) => void
   onRefresh: () => void
   onDirectConnect: (ip: string, port: string) => void
@@ -18,6 +19,7 @@ export function ServersToolbar({
   searchQuery,
   loading,
   joining,
+  highlightSignIn,
   onSearch,
   onRefresh,
   onDirectConnect
@@ -33,6 +35,13 @@ export function ServersToolbar({
   useEffect(() => {
     refreshAuth()
   }, [])
+
+  // Auto-open login sheet when sign-in is highlighted
+  useEffect(() => {
+    if (highlightSignIn && !authInfo.authenticated) {
+      setShowLogin(true)
+    }
+  }, [highlightSignIn, authInfo.authenticated])
 
   const refreshAuth = async (): Promise<void> => {
     const info = await window.api.getAuthInfo()
@@ -108,7 +117,9 @@ export function ServersToolbar({
           ) : (
             <button
               onClick={() => setShowLogin(!showLogin)}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-accent)] px-3 py-2 text-xs font-medium text-white accent-shadow-sm transition hover:opacity-95"
+              className={`inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-accent)] px-3 py-2 text-xs font-medium text-white accent-shadow-sm transition hover:opacity-95 ${
+                highlightSignIn ? 'animate-pulse ring-2 ring-[var(--color-accent)] ring-offset-2 ring-offset-[#0f0f1a]' : ''
+              }`}
             >
               <LogIn size={13} />
               {t('servers.signIn')}
