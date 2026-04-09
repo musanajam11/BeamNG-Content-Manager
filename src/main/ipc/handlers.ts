@@ -6,8 +6,8 @@ import net from 'node:net'
 import { get as httpsGet, request as httpsRequest } from 'node:https'
 import { PNG } from 'pngjs'
 import {
-  readFirstMatch, readFirstMatchWithName, readMultiple, forEachMatch, listEntries,
-  isModArchive, isRarFile, stripArchiveExt, convertRarToZip
+  readFirstMatch, readFirstMatchWithName, readMultiple, forEachMatch,
+  isRarFile, convertRarToZip
 } from '../utils/archiveConverter'
 import { GameDiscoveryService } from '../services/GameDiscoveryService'
 import { GameLauncherService } from '../services/GameLauncherService'

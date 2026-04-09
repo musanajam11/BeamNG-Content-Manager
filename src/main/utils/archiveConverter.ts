@@ -35,7 +35,7 @@ interface RarEntry {
 
 async function loadRarEntries(archivePath: string): Promise<RarEntry[]> {
   const rarBuffer = await fsReadFile(archivePath)
-  const extractor = await createExtractorFromData({ data: rarBuffer })
+  const extractor = await createExtractorFromData({ data: rarBuffer.buffer.slice(rarBuffer.byteOffset, rarBuffer.byteOffset + rarBuffer.byteLength) as ArrayBuffer })
   const extracted = extractor.extract()
   const results: RarEntry[] = []
   for (const file of extracted.files) {

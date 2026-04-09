@@ -1,6 +1,6 @@
 import { readFile, writeFile, readdir, unlink, copyFile, stat } from 'fs/promises'
 import { join, basename } from 'path'
-import { isModArchive, stripArchiveExt, forEachMatch, readFirstMatch, readFirstMatchWithName } from '../utils/archiveConverter'
+import { isModArchive, stripArchiveExt, forEachMatch, readFirstMatchWithName } from '../utils/archiveConverter'
 import type { ModInfo } from '../../shared/types'
 
 /** Strip UTF-8 BOM if present (PowerShell and some editors add it) */
