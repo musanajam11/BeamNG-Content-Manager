@@ -1,4 +1,5 @@
 import { Pencil, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { InputAction, InputBinding } from '../../../../shared/types'
 import { getControlDisplayName } from '../../../../shared/controlNameMaps'
 
@@ -10,6 +11,7 @@ interface BindingRowProps {
 }
 
 export function BindingRow({ action, bindings, onEdit, onClear }: BindingRowProps): React.JSX.Element {
+  const { t } = useTranslation()
   const displayTitle = action.title.startsWith('ui.')
     ? formatActionId(action.id)
     : action.title
@@ -44,7 +46,7 @@ export function BindingRow({ action, bindings, onEdit, onClear }: BindingRowProp
               <button
                 onClick={(e) => { e.stopPropagation(); onClear(b.control, action.id) }}
                 className="opacity-0 group-hover:opacity-100 ml-0.5 p-0.5 rounded hover:bg-red-500/20 hover:text-red-400 transition-all"
-                title="Clear"
+                title={t('controls.clearBinding')}
               >
                 <X size={10} />
               </button>
@@ -59,7 +61,7 @@ export function BindingRow({ action, bindings, onEdit, onClear }: BindingRowProp
       <button
         onClick={() => onEdit(action)}
         className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-[var(--color-accent-subtle)] text-[var(--color-text-muted)] hover:text-[var(--color-accent)] transition-all shrink-0"
-        title="Edit binding"
+        title={t('controls.editBinding')}
       >
         <Pencil size={12} />
       </button>

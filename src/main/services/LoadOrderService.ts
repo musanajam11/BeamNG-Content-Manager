@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir, readdir, rename as fsRename, stat } from 'f
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
+import { isModArchive, stripArchiveExt } from '../utils/archiveConverter'
 import type { LoadOrderData } from '../../shared/types'
 
 /** Strip UTF-8 BOM if present */
@@ -133,7 +134,7 @@ export class LoadOrderService {
       }
 
       // Update db.json entry
-      const newKey = prefixed.replace(/\.zip$/i, '').toLowerCase()
+      const newKey = stripArchiveExt(prefixed).toLowerCase()
       entry.filename = prefixed
       entry.fullpath = newPath
       // If key changed, move the entry
@@ -187,7 +188,7 @@ export class LoadOrderService {
         continue
       }
 
-      const newKey = stripped.replace(/\.zip$/i, '').toLowerCase()
+      const newKey = stripArchiveExt(stripped).toLowerCase()
       entry.filename = stripped
       entry.fullpath = newPath
 
@@ -217,9 +218,9 @@ export class LoadOrderService {
 
     const files = await readdir(clientDir)
     for (const file of files) {
-      if (!file.toLowerCase().endsWith('.zip')) continue
+      if (!isModArchive(file)) continue
       const stripped = file.replace(PREFIX_RE, '')
-      const key = stripped.replace(/\.zip$/i, '').toLowerCase()
+      const key = stripArchiveExt(stripped).toLowerCase()
       const position = order.orders[key]
       if (position === undefined) continue
 
@@ -246,7 +247,7 @@ export class LoadOrderService {
 
     const files = await readdir(clientDir)
     for (const file of files) {
-      if (!file.toLowerCase().endsWith('.zip') || !PREFIX_RE.test(file)) continue
+      if (!isModArchive(file) || !PREFIX_RE.test(file)) continue
       const stripped = file.replace(PREFIX_RE, '')
       const oldPath = join(clientDir, file)
       const newPath = join(clientDir, stripped)

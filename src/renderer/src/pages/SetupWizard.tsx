@@ -25,17 +25,17 @@ export function SetupWizard(): React.JSX.Element {
         setInstallDir(paths.installDir ?? '')
         setUserDir(paths.userDir ?? '')
       } else {
-        setPathError('Could not auto-detect BeamNG.drive. Please enter paths manually.')
+        setPathError(t('setup.autoDetectFailed'))
       }
     } catch {
-      setPathError('Auto-detection failed. Please enter paths manually.')
+      setPathError(t('setup.autoDetectError'))
     }
     setDetecting(false)
   }
 
   const handleValidatePaths = async (): Promise<void> => {
     if (!installDir || !userDir) {
-      setPathError('Both paths are required.')
+      setPathError(t('setup.pathsRequired'))
       return
     }
     try {

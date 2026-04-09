@@ -1,5 +1,5 @@
 import { join } from 'node:path'
-import { open as yauzlOpen } from 'yauzl'
+import { extractByPath } from '../utils/archiveConverter'
 import { ConfigService } from './ConfigService'
 
 let configService: ConfigService | null = null
@@ -23,33 +23,9 @@ export function initVehicleAssetService(config: ConfigService): void {
   configService = config
 }
 
-/** Try to extract an entry from a zip, case-insensitive. Returns null if not found. */
-function extractFromZip(zipPath: string, entryPath: string): Promise<Buffer | null> {
-  return new Promise((resolve) => {
-    const target = entryPath.toLowerCase()
-    yauzlOpen(zipPath, { lazyEntries: true }, (err, zipFile) => {
-      if (err || !zipFile) { resolve(null); return }
-      let found = false
-      zipFile.readEntry()
-      zipFile.on('entry', (entry) => {
-        if (found) return
-        if (entry.fileName.toLowerCase() === target) {
-          found = true
-          zipFile.openReadStream(entry, (err2, stream) => {
-            if (err2 || !stream) { zipFile.close(); resolve(null); return }
-            const chunks: Buffer[] = []
-            stream.on('data', (c: Buffer) => chunks.push(c))
-            stream.on('end', () => { zipFile.close(); resolve(Buffer.concat(chunks)) })
-            stream.on('error', () => { zipFile.close(); resolve(null) })
-          })
-        } else {
-          zipFile.readEntry()
-        }
-      })
-      zipFile.on('end', () => { if (!found) resolve(null) })
-      zipFile.on('error', () => resolve(null))
-    })
-  })
+/** Try to extract an entry from an archive, case-insensitive. Returns null if not found. */
+function extractFromZip(archivePath: string, entryPath: string): Promise<Buffer | null> {
+  return extractByPath(archivePath, entryPath)
 }
 
 /** Extract a file from a vehicle zip and return it as a Buffer */

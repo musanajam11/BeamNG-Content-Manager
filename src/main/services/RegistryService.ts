@@ -7,6 +7,7 @@ import { pipeline } from 'stream/promises'
 import { Readable } from 'stream'
 import { app, BrowserWindow, session } from 'electron'
 import { open as yauzlOpen, type Entry, type ZipFile } from 'yauzl'
+import { listEntries as listArchiveEntries } from '../utils/archiveConverter'
 import type {
   BeamModMetadata,
   LocalRegistry,
@@ -1084,19 +1085,7 @@ export class RegistryService {
   }
 
   private listZipEntries(zipPath: string): Promise<string[]> {
-    return new Promise((resolve, reject) => {
-      yauzlOpen(zipPath, { lazyEntries: true }, (err, zf) => {
-        if (err || !zf) { reject(err || new Error('Failed to open zip')); return }
-        const entries: string[] = []
-        zf.on('entry', (entry: Entry) => {
-          entries.push(entry.fileName)
-          zf.readEntry()
-        })
-        zf.on('end', () => resolve(entries))
-        zf.on('error', reject)
-        zf.readEntry()
-      })
-    })
+    return listArchiveEntries(zipPath)
   }
 
   private openZipFile(zipPath: string): Promise<ZipFile> {

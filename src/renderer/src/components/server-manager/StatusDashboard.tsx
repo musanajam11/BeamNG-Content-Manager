@@ -84,7 +84,7 @@ export function StatusDashboard({
       }
     } catch {
       setPortTestState('error')
-      setPortTestError('Failed to test port')
+      setPortTestError(t('serverManager.portTestFailed'))
     }
   }, [config.port])
 
@@ -301,11 +301,11 @@ export function StatusDashboard({
             {tailscale && tailscale.installed && tailscale.running && tailscale.ip && (
               <div className="border border-green-500/30 bg-green-500/5 p-4 rounded">
                 <h4 className="text-xs font-semibold text-green-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <CheckCircle size={12} /> Tailscale is running
+                  <CheckCircle size={12} /> {t('serverManager.tailscaleRunning')}
                 </h4>
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-[var(--color-text-muted)]">Your Tailscale Address</span>
+                    <span className="text-xs text-[var(--color-text-muted)]">{t('serverManager.tailscaleAddress')}</span>
                     <div className="flex items-center gap-1.5">
                       <span className="text-sm font-mono text-[var(--color-accent)]">{tailscale.ip}:{config.port}</span>
                       <button
@@ -318,12 +318,12 @@ export function StatusDashboard({
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-[var(--color-text-muted)]">Device</span>
+                    <span className="text-xs text-[var(--color-text-muted)]">{t('serverManager.tailscaleDevice')}</span>
                     <span className="text-sm text-[var(--color-text-secondary)]">{tailscale.hostname}</span>
                   </div>
                   {tailscale.peers.length > 0 && (
                     <div className="mt-2 pt-2 border-t border-green-500/20">
-                      <span className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wider">Peers on your Tailnet</span>
+                      <span className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wider">{t('serverManager.tailscalePeers')}</span>
                       <div className="mt-1.5 space-y-1">
                         {tailscale.peers.map((peer) => (
                           <div key={peer.hostname} className="flex items-center justify-between text-xs">
@@ -346,16 +346,16 @@ export function StatusDashboard({
             {tailscale && !tailscale.installed && (
               <div className="border border-yellow-500/30 bg-yellow-500/5 p-4 rounded">
                 <h4 className="text-xs font-semibold text-yellow-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <AlertTriangle size={12} /> Tailscale not installed
+                  <AlertTriangle size={12} /> {t('serverManager.tailscaleNotInstalled')}
                 </h4>
                 <p className="text-xs text-[var(--color-text-secondary)] mb-2">
-                  You'll need to install Tailscale first. It's free for personal use and takes about a minute.
+                  {t('serverManager.tailscaleNotInstalledDesc')}
                 </p>
                 <button
                   onClick={() => window.open('https://tailscale.com/download', '_blank')}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[var(--color-accent)] hover:opacity-90 text-white transition-opacity"
                 >
-                  <Download size={12} /> Download Tailscale
+                  <Download size={12} /> {t('serverManager.tailscaleDownload')}
                 </button>
               </div>
             )}
@@ -364,10 +364,10 @@ export function StatusDashboard({
             {tailscale && tailscale.installed && !tailscale.running && (
               <div className="border border-yellow-500/30 bg-yellow-500/5 p-4 rounded">
                 <h4 className="text-xs font-semibold text-yellow-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                  <AlertTriangle size={12} /> Tailscale not connected
+                  <AlertTriangle size={12} /> {t('serverManager.tailscaleNotConnected')}
                 </h4>
                 <p className="text-xs text-[var(--color-text-secondary)]">
-                  Tailscale is installed but not running. Open the Tailscale app and sign in to connect.
+                  {t('serverManager.tailscaleNotConnectedDesc')}
                 </p>
               </div>
             )}
@@ -376,61 +376,59 @@ export function StatusDashboard({
             <div>
               <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
                 <Globe size={16} />
-                Host a server without port forwarding using Tailscale
+                {t('serverManager.tailscaleGuideTitle')}
               </h3>
               <p className="text-xs text-[var(--color-text-secondary)] mb-4 leading-relaxed">
-                Tailscale creates a private mesh network (called a "tailnet") between your devices and your friends' devices.
-                Once everyone is on the same tailnet, your friends can connect directly to your BeamMP server using your
-                Tailscale IP address — no router configuration, no port forwarding, no hassle.
+                {t('serverManager.tailscaleGuideDesc')}
               </p>
             </div>
 
             {/* Steps for you */}
             <div>
-              <h4 className="text-xs font-semibold text-[var(--color-accent)] uppercase tracking-wider mb-2">What you need to do (host)</h4>
+              <h4 className="text-xs font-semibold text-[var(--color-accent)] uppercase tracking-wider mb-2">{t('serverManager.tailscaleHostSteps')}</h4>
               <ol className="space-y-2 text-xs text-[var(--color-text-secondary)] list-decimal list-inside">
                 <li>
-                  <strong className="text-[var(--color-text-primary)]">Install Tailscale</strong> — download it from{' '}
+                  <strong className="text-[var(--color-text-primary)]">{t('serverManager.tailscaleHostStep1Title')}</strong> — {t('serverManager.tailscaleHostStep1Desc')}{' '}
                   <button onClick={() => window.open('https://tailscale.com/download', '_blank')} className="text-[var(--color-accent)] hover:underline inline-flex items-center gap-0.5">
                     tailscale.com <ExternalLink size={10} />
                   </button>{' '}
-                  and sign in with Google, Microsoft, or GitHub.
+                  {t('serverManager.tailscaleHostStep1Suffix')}
                 </li>
                 <li>
-                  <strong className="text-[var(--color-text-primary)]">Share your tailnet</strong> — go to the{' '}
+                  <strong className="text-[var(--color-text-primary)]">{t('serverManager.tailscaleHostStep2Title')}</strong> — {t('serverManager.tailscaleHostStep2Desc')}{' '}
                   <button onClick={() => window.open('https://login.tailscale.com/admin/users', '_blank')} className="text-[var(--color-accent)] hover:underline inline-flex items-center gap-0.5">
-                    Tailscale admin panel <ExternalLink size={10} />
+                    {t('serverManager.tailscaleAdminPanel')} <ExternalLink size={10} />
                   </button>{' '}
-                  and invite your friends by email. They'll get a link to join your network.
+                  {t('serverManager.tailscaleHostStep2Suffix')}
                 </li>
                 <li>
-                  <strong className="text-[var(--color-text-primary)]">Start your BeamMP server</strong> — launch the server from this page like normal.
+                  <strong className="text-[var(--color-text-primary)]">{t('serverManager.tailscaleHostStep3Title')}</strong> — {t('serverManager.tailscaleHostStep3Desc')}
                 </li>
                 <li>
-                  <strong className="text-[var(--color-text-primary)]">Share your Tailscale address</strong> — give your friends your Tailscale IP and port
+                  <strong className="text-[var(--color-text-primary)]">{t('serverManager.tailscaleHostStep4Title')}</strong> — {t('serverManager.tailscaleHostStep4Desc')}
                   {tailscale?.ip && (
                     <span className="font-mono text-[var(--color-accent)] ml-1">({tailscale.ip}:{config.port})</span>
                   )}{'. '}
-                  They'll use this to direct-connect in BeamMP.
+                  {t('serverManager.tailscaleHostStep4Suffix')}
                 </li>
               </ol>
             </div>
 
             {/* Steps for friends */}
             <div>
-              <h4 className="text-xs font-semibold text-[var(--color-accent)] uppercase tracking-wider mb-2">What your friends need to do</h4>
+              <h4 className="text-xs font-semibold text-[var(--color-accent)] uppercase tracking-wider mb-2">{t('serverManager.tailscaleFriendSteps')}</h4>
               <ol className="space-y-2 text-xs text-[var(--color-text-secondary)] list-decimal list-inside">
                 <li>
-                  <strong className="text-[var(--color-text-primary)]">Install Tailscale</strong> — same as above,{' '}
+                  <strong className="text-[var(--color-text-primary)]">{t('serverManager.tailscaleFriendStep1Title')}</strong> — {t('serverManager.tailscaleFriendStep1Desc')}{' '}
                   <button onClick={() => window.open('https://tailscale.com/download', '_blank')} className="text-[var(--color-accent)] hover:underline inline-flex items-center gap-0.5">
-                    download here <ExternalLink size={10} />
+                    {t('serverManager.tailscaleFriendStep1Link')} <ExternalLink size={10} />
                   </button>.
                 </li>
                 <li>
-                  <strong className="text-[var(--color-text-primary)]">Accept your invite</strong> — they'll receive an email invite to join your tailnet. Click the link and sign in.
+                  <strong className="text-[var(--color-text-primary)]">{t('serverManager.tailscaleFriendStep2Title')}</strong> — {t('serverManager.tailscaleFriendStep2Desc')}
                 </li>
                 <li>
-                  <strong className="text-[var(--color-text-primary)]">Direct Connect in BeamMP</strong> — open BeamMP, click "Direct Connect", and enter your Tailscale IP and port
+                  <strong className="text-[var(--color-text-primary)]">{t('serverManager.tailscaleFriendStep3Title')}</strong> — {t('serverManager.tailscaleFriendStep3Desc')}
                   {tailscale?.ip && (
                     <span className="font-mono text-[var(--color-accent)] ml-1">({tailscale.ip}:{config.port})</span>
                   )}.
@@ -440,13 +438,13 @@ export function StatusDashboard({
 
             {/* FAQ */}
             <div className="border-t border-[var(--color-border)] pt-4">
-              <h4 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">Good to know</h4>
+              <h4 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">{t('serverManager.tailscaleGoodToKnow')}</h4>
               <ul className="space-y-1.5 text-xs text-[var(--color-text-muted)]">
-                <li>• Tailscale is <strong className="text-[var(--color-text-secondary)]">free for personal use</strong> (up to 100 devices, 3 users).</li>
-                <li>• Your server will appear as <strong className="text-[var(--color-text-secondary)]">Private</strong> in the server list — only friends on your tailnet can see or join it.</li>
-                <li>• Traffic is <strong className="text-[var(--color-text-secondary)]">encrypted end-to-end</strong> and goes directly between devices (no relay servers).</li>
-                <li>• Connection quality is the same as a regular direct connection — no extra latency.</li>
-                <li>• Tailscale runs in the background and auto-connects on boot.</li>
+                <li dangerouslySetInnerHTML={{ __html: '• ' + t('serverManager.tailscaleFreeNote') }} />
+                <li dangerouslySetInnerHTML={{ __html: '• ' + t('serverManager.tailscalePrivateNote') }} />
+                <li dangerouslySetInnerHTML={{ __html: '• ' + t('serverManager.tailscaleEncryptedNote') }} />
+                <li>• {t('serverManager.tailscaleLatencyNote')}</li>
+                <li>• {t('serverManager.tailscaleAutoNote')}</li>
               </ul>
             </div>
           </div>

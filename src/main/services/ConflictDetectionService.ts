@@ -1,4 +1,4 @@
-import { open as yauzlOpen, type Entry } from 'yauzl'
+import { listEntries } from '../utils/archiveConverter'
 import type { ModInfo, ModConflict, ModConflictReport, LoadOrderData } from '../../shared/types'
 
 /**
@@ -77,26 +77,8 @@ export class ConflictDetectionService {
     )
   }
 
-  /** List all file entry paths inside a zip */
-  private listZipEntries(zipPath: string): Promise<string[]> {
-    return new Promise((resolve) => {
-      const entries: string[] = []
-      yauzlOpen(zipPath, { lazyEntries: true }, (err, zipFile) => {
-        if (err || !zipFile) {
-          resolve(entries)
-          return
-        }
-        zipFile.readEntry()
-        zipFile.on('entry', (entry: Entry) => {
-          entries.push(entry.fileName)
-          zipFile.readEntry()
-        })
-        zipFile.on('end', () => {
-          zipFile.close()
-          resolve(entries)
-        })
-        zipFile.on('error', () => resolve(entries))
-      })
-    })
+  /** List all file entry paths inside an archive */
+  private listZipEntries(archivePath: string): Promise<string[]> {
+    return listEntries(archivePath)
   }
 }

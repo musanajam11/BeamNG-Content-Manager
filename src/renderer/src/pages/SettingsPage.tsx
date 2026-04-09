@@ -984,7 +984,7 @@ function BackgroundImageSection({ appearance, update }: {
                 <button
                   onClick={(e) => { e.stopPropagation(); removeFromList(path) }}
                   className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 hover:bg-red-600 rounded-full p-0.5"
-                  title="Remove from list"
+                  title={t('settings.removeFromList')}
                 >
                   <X size={10} className="text-red-400 hover:text-white" />
                 </button>

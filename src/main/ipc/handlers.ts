@@ -4,8 +4,11 @@ import { existsSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import net from 'node:net'
 import { get as httpsGet, request as httpsRequest } from 'node:https'
-import { open as yauzlOpen } from 'yauzl'
 import { PNG } from 'pngjs'
+import {
+  readFirstMatch, readFirstMatchWithName, readMultiple, forEachMatch, listEntries,
+  isModArchive, isRarFile, stripArchiveExt, convertRarToZip
+} from '../utils/archiveConverter'
 import { GameDiscoveryService } from '../services/GameDiscoveryService'
 import { GameLauncherService } from '../services/GameLauncherService'
 import { ConfigService } from '../services/ConfigService'
@@ -105,110 +108,29 @@ export function initializeServices(): {
   }
 }
 
-/** Read a preview image from a BeamNG level zip file */
-function readPreviewFromZip(zipPath: string, levelName: string): Promise<string | null> {
-  return new Promise((resolve) => {
-    yauzlOpen(zipPath, { lazyEntries: true }, (err, zipFile) => {
-      if (err || !zipFile) { resolve(null); return }
-
-      // Matches any *preview*.jpg/png directly inside the level folder (not in subfolders).
-      // Covers: <name>_preview1.jpg, <name>_01_preview.jpg, <name>_preview1_v2.jpg,
-      //         preview.jpg, <short>_preview.jpg, etc.
-      const levelDirPattern = new RegExp(
-        `^levels/${levelName}/[^/]*preview[^/]*\\.(?:jpe?g|png)$`, 'i'
-      )
-
-      let found = false
-      zipFile.readEntry()
-      zipFile.on('entry', (entry) => {
-        if (found) return
-        if (levelDirPattern.test(entry.fileName)) {
-          found = true
-          zipFile.openReadStream(entry, (streamErr, stream) => {
-            if (streamErr || !stream) { zipFile.close(); resolve(null); return }
-            const chunks: Buffer[] = []
-            stream.on('data', (chunk: Buffer) => chunks.push(chunk))
-            stream.on('end', () => {
-              zipFile.close()
-              const buffer = Buffer.concat(chunks)
-              const ext = entry.fileName.split('.').pop()?.toLowerCase() || 'jpg'
-              const mime = ext === 'png' ? 'image/png' : 'image/jpeg'
-              resolve(`data:${mime};base64,${buffer.toString('base64')}`)
-            })
-            stream.on('error', () => { zipFile.close(); resolve(null) })
-          })
-        } else {
-          zipFile.readEntry()
-        }
-      })
-      zipFile.on('end', () => { if (!found) resolve(null) })
-      zipFile.on('error', () => resolve(null))
-    })
-  })
+/** Read a preview image from a BeamNG level archive (zip or rar) */
+async function readPreviewFromZip(zipPath: string, levelName: string): Promise<string | null> {
+  const levelDirPattern = new RegExp(
+    `^levels/${levelName}/[^/]*preview[^/]*\\.(?:jpe?g|png)$`, 'i'
+  )
+  const result = await readFirstMatchWithName(zipPath, levelDirPattern)
+  if (!result) return null
+  const ext = result.fileName.split('.').pop()?.toLowerCase() || 'jpg'
+  const mime = ext === 'png' ? 'image/png' : 'image/jpeg'
+  return `data:${mime};base64,${result.data.toString('base64')}`
 }
 
-/** Read raw bytes of first file matching a regex from a zip */
+/** Read raw bytes of first file matching a regex from an archive */
 function readRawFromZip(zipPath: string, pattern: RegExp): Promise<Buffer | null> {
-  return new Promise((resolve) => {
-    yauzlOpen(zipPath, { lazyEntries: true }, (err, zipFile) => {
-      if (err || !zipFile) { resolve(null); return }
-      let found = false
-      zipFile.readEntry()
-      zipFile.on('entry', (entry) => {
-        if (found) return
-        if (pattern.test(entry.fileName)) {
-          found = true
-          zipFile.openReadStream(entry, (streamErr, stream) => {
-            if (streamErr || !stream) { zipFile.close(); resolve(null); return }
-            const chunks: Buffer[] = []
-            stream.on('data', (chunk: Buffer) => chunks.push(chunk))
-            stream.on('end', () => { zipFile.close(); resolve(Buffer.concat(chunks)) })
-            stream.on('error', () => { zipFile.close(); resolve(null) })
-          })
-        } else {
-          zipFile.readEntry()
-        }
-      })
-      zipFile.on('end', () => { if (!found) resolve(null) })
-      zipFile.on('error', () => resolve(null))
-    })
-  })
+  return readFirstMatch(zipPath, pattern)
 }
 
 /**
- * Read multiple files from a zip in a single pass.
+ * Read multiple files from an archive in a single pass.
  * Returns a Map of filename → Buffer for each matched file.
  */
 function readMultipleFromZip(zipPath: string, fileNames: string[]): Promise<Map<string, Buffer>> {
-  const wanted = new Set(fileNames.map(f => f.replace(/\\/g, '/')))
-  return new Promise((resolve) => {
-    const results = new Map<string, Buffer>()
-    yauzlOpen(zipPath, { lazyEntries: true }, (err, zipFile) => {
-      if (err || !zipFile) { resolve(results); return }
-      let pending = 0
-      zipFile.readEntry()
-      zipFile.on('entry', (entry) => {
-        if (wanted.has(entry.fileName) && !results.has(entry.fileName)) {
-          pending++
-          zipFile.openReadStream(entry, (streamErr, stream) => {
-            if (streamErr || !stream) { pending--; zipFile.readEntry(); return }
-            const chunks: Buffer[] = []
-            stream.on('data', (chunk: Buffer) => chunks.push(chunk))
-            stream.on('end', () => {
-              results.set(entry.fileName, Buffer.concat(chunks))
-              pending--
-              if (results.size === wanted.size) { zipFile.close(); resolve(results) }
-              else zipFile.readEntry()
-            })
-          })
-        } else {
-          zipFile.readEntry()
-        }
-      })
-      zipFile.on('end', () => { if (pending === 0) resolve(results) })
-      zipFile.on('error', () => resolve(results))
-    })
-  })
+  return readMultiple(zipPath, fileNames)
 }
 
 interface MinimapTile {
@@ -232,135 +154,84 @@ const ROUTE_MATERIAL_RE = /^(road|asphalt|concrete|dirt_road|dirt|gravel|decalro
 const ROUTE_SKIP_RE = /^(line_|road_marking|road_edge|road_slash|track_rubber|road_rubber|road_crack|road_patch|repair|spraypaint|crossing_|bank_erosion|grass_|mud_|.*skidmark|.*tread_?mark|.*tiretrack)/i
 
 /**
- * Read all DecalRoad definitions from a level zip.
+ * Read all DecalRoad definitions from a level archive.
  * Returns an array of roads, each with nodes [x, y, width] and material.
  */
-function readDecalRoadsFromZip(
+async function readDecalRoadsFromZip(
   zipPath: string, levelName: string
 ): Promise<{ nodes: DecalRoadNode[]; material: string }[]> {
-  return new Promise((resolve) => {
-    const roads: { nodes: DecalRoadNode[]; material: string }[] = []
-    const levelPrefix = `levels/${levelName}/`
-    const pending: Promise<void>[] = []
+  const roads: { nodes: DecalRoadNode[]; material: string }[] = []
+  const levelPrefix = `levels/${levelName}/`
 
-    yauzlOpen(zipPath, { lazyEntries: true }, (err, zipFile) => {
-      if (err || !zipFile) { resolve(roads); return }
-
-      zipFile.readEntry()
-      zipFile.on('entry', (entry) => {
-        // Match items.level.json files under DecalRoad or decalroad directories
-        if (entry.fileName.startsWith(levelPrefix) &&
-            /decalroad/i.test(entry.fileName) &&
-            entry.fileName.endsWith('items.level.json')) {
-          const p = new Promise<void>((res) => {
-            zipFile.openReadStream(entry, (streamErr, stream) => {
-              if (streamErr || !stream) { res(); return }
-              const chunks: Buffer[] = []
-              stream.on('data', (chunk: Buffer) => chunks.push(chunk))
-              stream.on('end', () => {
-                try {
-                  const text = Buffer.concat(chunks).toString('utf-8')
-                  // File is newline-delimited JSON objects
-                  const lines = text.split('\n')
-                  for (const line of lines) {
-                    const trimmed = line.trim()
-                    if (!trimmed || !trimmed.startsWith('{')) continue
-                    try {
-                      const obj = JSON.parse(trimmed)
-                      if (obj.class !== 'DecalRoad' || !Array.isArray(obj.nodes)) continue
-                      const mat = obj.material || ''
-                      // Skip markings and invisible roads
-                      if (SKIP_MATERIAL_RE.test(mat)) continue
-                      // Only include actual road surfaces or roads with significant width
-                      const nodes: DecalRoadNode[] = obj.nodes.map((n: number[]) => ({
-                        x: n[0], y: n[1], width: n[3] || 3
-                      }))
-                      // Skip very thin elements (< 2m = likely markings)
-                      if (nodes.length >= 2 && nodes[0].width >= 2) {
-                        roads.push({ nodes, material: mat })
-                      }
-                    } catch { /* skip malformed lines */ }
-                  }
-                } catch { /* skip parse errors */ }
-                res()
-              })
-            })
-          })
-          pending.push(p)
+  await forEachMatch(
+    zipPath,
+    (fn) => fn.startsWith(levelPrefix) && /decalroad/i.test(fn) && fn.endsWith('items.level.json'),
+    (_fn, data) => {
+      try {
+        const text = data.toString('utf-8')
+        const lines = text.split('\n')
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (!trimmed || !trimmed.startsWith('{')) continue
+          try {
+            const obj = JSON.parse(trimmed)
+            if (obj.class !== 'DecalRoad' || !Array.isArray(obj.nodes)) continue
+            const mat = obj.material || ''
+            if (SKIP_MATERIAL_RE.test(mat)) continue
+            const nodes: DecalRoadNode[] = obj.nodes.map((n: number[]) => ({
+              x: n[0], y: n[1], width: n[3] || 3
+            }))
+            if (nodes.length >= 2 && nodes[0].width >= 2) {
+              roads.push({ nodes, material: mat })
+            }
+          } catch { /* skip malformed lines */ }
         }
-        zipFile.readEntry()
-      })
-      zipFile.on('end', () => {
-        Promise.all(pending).then(() => resolve(roads))
-      })
-      zipFile.on('error', () => resolve(roads))
-    })
-  })
+      } catch { /* skip parse errors */ }
+    }
+  )
+
+  return roads
 }
 
 /**
  * Read DecalRoad defs for routing — includes road_invisible and other driveable surfaces,
  * but excludes decorative overlays (tire marks, cracks, paint, rubber marks).
  */
-function readRoutableRoadsFromZip(
+async function readRoutableRoadsFromZip(
   zipPath: string, levelName: string
 ): Promise<{ nodes: DecalRoadNode[]; material: string }[]> {
-  return new Promise((resolve) => {
-    const roads: { nodes: DecalRoadNode[]; material: string }[] = []
-    const levelPrefix = `levels/${levelName}/`
-    const pending: Promise<void>[] = []
+  const roads: { nodes: DecalRoadNode[]; material: string }[] = []
+  const levelPrefix = `levels/${levelName}/`
 
-    yauzlOpen(zipPath, { lazyEntries: true }, (err, zipFile) => {
-      if (err || !zipFile) { resolve(roads); return }
-
-      zipFile.readEntry()
-      zipFile.on('entry', (entry) => {
-        if (entry.fileName.startsWith(levelPrefix) &&
-            /decalroad/i.test(entry.fileName) &&
-            entry.fileName.endsWith('items.level.json')) {
-          const p = new Promise<void>((res) => {
-            zipFile.openReadStream(entry, (streamErr, stream) => {
-              if (streamErr || !stream) { res(); return }
-              const chunks: Buffer[] = []
-              stream.on('data', (chunk: Buffer) => chunks.push(chunk))
-              stream.on('end', () => {
-                try {
-                  const text = Buffer.concat(chunks).toString('utf-8')
-                  const lines = text.split('\n')
-                  for (const line of lines) {
-                    const trimmed = line.trim()
-                    if (!trimmed || !trimmed.startsWith('{')) continue
-                    try {
-                      const obj = JSON.parse(trimmed)
-                      if (obj.class !== 'DecalRoad' || !Array.isArray(obj.nodes)) continue
-                      const mat = obj.material || ''
-                      // Skip decorative overlays
-                      if (ROUTE_SKIP_RE.test(mat)) continue
-                      // Include driveable surfaces (road_invisible, asphalt, concrete, dirt, etc.)
-                      if (!ROUTE_MATERIAL_RE.test(mat)) continue
-                      const nodes: DecalRoadNode[] = obj.nodes.map((n: number[]) => ({
-                        x: n[0], y: n[1], width: n[3] || 3
-                      }))
-                      if (nodes.length >= 2 && nodes[0].width >= 2) {
-                        roads.push({ nodes, material: mat })
-                      }
-                    } catch { /* skip malformed lines */ }
-                  }
-                } catch { /* skip parse errors */ }
-                res()
-              })
-            })
-          })
-          pending.push(p)
+  await forEachMatch(
+    zipPath,
+    (fn) => fn.startsWith(levelPrefix) && /decalroad/i.test(fn) && fn.endsWith('items.level.json'),
+    (_fn, data) => {
+      try {
+        const text = data.toString('utf-8')
+        const lines = text.split('\n')
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (!trimmed || !trimmed.startsWith('{')) continue
+          try {
+            const obj = JSON.parse(trimmed)
+            if (obj.class !== 'DecalRoad' || !Array.isArray(obj.nodes)) continue
+            const mat = obj.material || ''
+            if (ROUTE_SKIP_RE.test(mat)) continue
+            if (!ROUTE_MATERIAL_RE.test(mat)) continue
+            const nodes: DecalRoadNode[] = obj.nodes.map((n: number[]) => ({
+              x: n[0], y: n[1], width: n[3] || 3
+            }))
+            if (nodes.length >= 2 && nodes[0].width >= 2) {
+              roads.push({ nodes, material: mat })
+            }
+          } catch { /* skip malformed lines */ }
         }
-        zipFile.readEntry()
-      })
-      zipFile.on('end', () => {
-        Promise.all(pending).then(() => resolve(roads))
-      })
-      zipFile.on('error', () => resolve(roads))
-    })
-  })
+      } catch { /* skip parse errors */ }
+    }
+  )
+
+  return roads
 }
 
 /** Draw a thick line segment on a PNG buffer */
@@ -744,71 +615,19 @@ function readHeightmapFromZip(zipPath: string, levelName: string): Promise<strin
   })
 }
 
-/** Read first image matching a regex from a zip, return as data URL */
-function readImageFromZip(zipPath: string, pattern: RegExp): Promise<string | null> {
-  return new Promise((resolve) => {
-    yauzlOpen(zipPath, { lazyEntries: true }, (err, zipFile) => {
-      if (err || !zipFile) { resolve(null); return }
-
-      let found = false
-      zipFile.readEntry()
-      zipFile.on('entry', (entry) => {
-        if (found) return
-        if (pattern.test(entry.fileName)) {
-          found = true
-          zipFile.openReadStream(entry, (streamErr, stream) => {
-            if (streamErr || !stream) { zipFile.close(); resolve(null); return }
-            const chunks: Buffer[] = []
-            stream.on('data', (chunk: Buffer) => chunks.push(chunk))
-            stream.on('end', () => {
-              zipFile.close()
-              const buffer = Buffer.concat(chunks)
-              const ext = entry.fileName.split('.').pop()?.toLowerCase() || 'png'
-              const mime = ext === 'png' ? 'image/png' : 'image/jpeg'
-              resolve(`data:${mime};base64,${buffer.toString('base64')}`)
-            })
-            stream.on('error', () => { zipFile.close(); resolve(null) })
-          })
-        } else {
-          zipFile.readEntry()
-        }
-      })
-      zipFile.on('end', () => { if (!found) resolve(null) })
-      zipFile.on('error', () => resolve(null))
-    })
-  })
+/** Read first image matching a regex from an archive, return as data URL */
+async function readImageFromZip(zipPath: string, pattern: RegExp): Promise<string | null> {
+  const result = await readFirstMatchWithName(zipPath, pattern)
+  if (!result) return null
+  const ext = result.fileName.split('.').pop()?.toLowerCase() || 'png'
+  const mime = ext === 'png' ? 'image/png' : 'image/jpeg'
+  return `data:${mime};base64,${result.data.toString('base64')}`
 }
 
-/** Read first text file matching a regex from a zip, return as string */
-function readTextFromZip(zipPath: string, pattern: RegExp): Promise<string | null> {
-  return new Promise((resolve) => {
-    yauzlOpen(zipPath, { lazyEntries: true }, (err, zipFile) => {
-      if (err || !zipFile) { resolve(null); return }
-
-      let found = false
-      zipFile.readEntry()
-      zipFile.on('entry', (entry) => {
-        if (found) return
-        if (pattern.test(entry.fileName)) {
-          found = true
-          zipFile.openReadStream(entry, (streamErr, stream) => {
-            if (streamErr || !stream) { zipFile.close(); resolve(null); return }
-            const chunks: Buffer[] = []
-            stream.on('data', (chunk: Buffer) => chunks.push(chunk))
-            stream.on('end', () => {
-              zipFile.close()
-              resolve(Buffer.concat(chunks).toString('utf-8'))
-            })
-            stream.on('error', () => { zipFile.close(); resolve(null) })
-          })
-        } else {
-          zipFile.readEntry()
-        }
-      })
-      zipFile.on('end', () => { if (!found) resolve(null) })
-      zipFile.on('error', () => resolve(null))
-    })
-  })
+/** Read first text file matching a regex from an archive, return as string */
+async function readTextFromZip(zipPath: string, pattern: RegExp): Promise<string | null> {
+  const result = await readFirstMatch(zipPath, pattern)
+  return result ? result.toString('utf-8') : null
 }
 
 export function registerIpcHandlers(): void {
@@ -992,154 +811,86 @@ export function registerIpcHandlers(): void {
       } catch { /* ignore */ }
     }
 
-    // 2. Extract spawn positions from PlayerDropPoints scene files
-    await new Promise<void>((resolve) => {
-      yauzlOpen(zipPath, { lazyEntries: true }, (err, zipFile) => {
-        if (err || !zipFile) { resolve(); return }
-        const pending: Promise<void>[] = []
-        zipFile.readEntry()
-        zipFile.on('entry', (entry) => {
-          const fn = entry.fileName
-          // SpawnSphere entries in PlayerDropPoints
-          if (fn.startsWith(`levels/${mapName}/`) && /playerdroppoints/i.test(fn) && fn.endsWith('items.level.json')) {
-            const p = new Promise<void>((res) => {
-              zipFile.openReadStream(entry, (streamErr, stream) => {
-                if (streamErr || !stream) { res(); return }
-                const chunks: Buffer[] = []
-                stream.on('data', (chunk: Buffer) => chunks.push(chunk))
-                stream.on('end', () => {
-                  try {
-                    const text = Buffer.concat(chunks).toString('utf-8')
-                    for (const line of text.split('\n')) {
-                      const trimmed = line.trim()
-                      if (!trimmed.startsWith('{')) continue
-                      try {
-                        const obj = parseBeamNGJson<Record<string, unknown>>(trimmed)
-                        if (obj.class === 'SpawnSphere' && Array.isArray(obj.position)) {
-                          const pos = obj.position as number[]
-                          pois.push({ type: 'spawn', name: cleanPOIName(String(obj.name || 'Spawn Point'), 'spawn'), x: pos[0], y: pos[1] })
-                        }
-                      } catch { /* skip */ }
-                    }
-                  } catch { /* skip */ }
-                  res()
-                })
-              })
-            })
-            pending.push(p)
+    // 2. Extract spawn positions, facilities, and delivery data from scene files
+    const levelPrefix = `levels/${mapName}/`
+    await forEachMatch(
+      zipPath,
+      (fn) => fn.startsWith(levelPrefix) && (
+        (/playerdroppoints/i.test(fn) && fn.endsWith('items.level.json')) ||
+        /facilities\.facilities\.json$/i.test(fn) ||
+        /facilities\.sites\.json$/i.test(fn) ||
+        /delivery.*\.facilities\.json$/i.test(fn)
+      ),
+      (fn, data) => {
+        try {
+          const text = data.toString('utf-8')
+          if (/playerdroppoints/i.test(fn) && fn.endsWith('items.level.json')) {
+            for (const line of text.split('\n')) {
+              const trimmed = line.trim()
+              if (!trimmed.startsWith('{')) continue
+              try {
+                const obj = parseBeamNGJson<Record<string, unknown>>(trimmed)
+                if (obj.class === 'SpawnSphere' && Array.isArray(obj.position)) {
+                  const pos = obj.position as number[]
+                  pois.push({ type: 'spawn', name: cleanPOIName(String(obj.name || 'Spawn Point'), 'spawn'), x: pos[0], y: pos[1] })
+                }
+              } catch { /* skip */ }
+            }
+          } else if (/facilities\.facilities\.json$/i.test(fn)) {
+            const fdata = parseBeamNGJson<Record<string, unknown[]>>(text)
+            const facilityMap: Record<string, import('../../shared/types').GPSMapPOI['type']> = {
+              gasStations: 'gas_station', garages: 'garage', dealerships: 'dealership',
+              computers: 'shop'
+            }
+            for (const [key, poiType] of Object.entries(facilityMap)) {
+              if (Array.isArray(fdata[key])) {
+                for (const fac of fdata[key]) {
+                  const f = fac as Record<string, unknown>
+                  pois.push({ type: poiType, name: cleanPOIName(String(f.name || key), poiType), x: 0, y: 0 })
+                }
+              }
+            }
+          } else if (/facilities\.sites\.json$/i.test(fn)) {
+            const sdata = parseBeamNGJson<Record<string, unknown>>(text)
+            if (Array.isArray(sdata.parkingSpots)) {
+              for (const spot of sdata.parkingSpots as Record<string, unknown>[]) {
+                if (Array.isArray(spot.pos)) {
+                  const pos = spot.pos as number[]
+                  const name = String(spot.name || 'Parking')
+                  const matched = pois.find(p => p.x === 0 && p.y === 0 && name.toLowerCase().includes(p.name.toLowerCase()))
+                  if (matched) { matched.x = pos[0]; matched.y = pos[1] }
+                }
+              }
+            }
+            if (Array.isArray(sdata.zones)) {
+              for (const zone of sdata.zones as Record<string, unknown>[]) {
+                if (Array.isArray(zone.vertices) && zone.vertices.length > 0) {
+                  const verts = zone.vertices as number[][]
+                  const cx = verts.reduce((s, v) => s + v[0], 0) / verts.length
+                  const cy = verts.reduce((s, v) => s + v[1], 0) / verts.length
+                  const name = String(zone.name || '')
+                  const matched = pois.find(p => p.x === 0 && p.y === 0 && name.toLowerCase().includes(p.name.toLowerCase()))
+                  if (matched) { matched.x = cx; matched.y = cy }
+                }
+              }
+            }
+          } else if (/delivery.*\.facilities\.json$/i.test(fn)) {
+            const ddata = parseBeamNGJson<Record<string, unknown[]>>(text)
+            for (const [key, items] of Object.entries(ddata)) {
+              if (!Array.isArray(items)) continue
+              let poiType: import('../../shared/types').GPSMapPOI['type'] = 'shop'
+              const k = key.toLowerCase()
+              if (k.includes('restaurant') || k.includes('food')) poiType = 'restaurant'
+              else if (k.includes('mechanic') || k.includes('repair')) poiType = 'mechanic'
+              for (const item of items) {
+                const f = item as Record<string, unknown>
+                pois.push({ type: poiType, name: cleanPOIName(String(f.name || key), poiType), x: 0, y: 0 })
+              }
+            }
           }
-          // Facilities data (gas stations, garages, dealerships, etc.)
-          if (fn.startsWith(`levels/${mapName}/`) && /facilities\.facilities\.json$/i.test(fn)) {
-            const p = new Promise<void>((res) => {
-              zipFile.openReadStream(entry, (streamErr, stream) => {
-                if (streamErr || !stream) { res(); return }
-                const chunks: Buffer[] = []
-                stream.on('data', (chunk: Buffer) => chunks.push(chunk))
-                stream.on('end', () => {
-                  try {
-                    const data = parseBeamNGJson<Record<string, unknown[]>>(Buffer.concat(chunks).toString('utf-8'))
-                    const facilityMap: Record<string, import('../../shared/types').GPSMapPOI['type']> = {
-                      gasStations: 'gas_station', garages: 'garage', dealerships: 'dealership',
-                      computers: 'shop'
-                    }
-                    for (const [key, poiType] of Object.entries(facilityMap)) {
-                      if (Array.isArray(data[key])) {
-                        for (const fac of data[key]) {
-                          const f = fac as Record<string, unknown>
-                          // Facilities reference zones from companion sites file;
-                          // we store the name for now — position resolved from sites file below
-                          pois.push({ type: poiType, name: cleanPOIName(String(f.name || key), poiType), x: 0, y: 0 })
-                        }
-                      }
-                    }
-                  } catch { /* skip */ }
-                  res()
-                })
-              })
-            })
-            pending.push(p)
-          }
-          // Facilities sites data (actual positions)
-          if (fn.startsWith(`levels/${mapName}/`) && /facilities\.sites\.json$/i.test(fn)) {
-            const p = new Promise<void>((res) => {
-              zipFile.openReadStream(entry, (streamErr, stream) => {
-                if (streamErr || !stream) { res(); return }
-                const chunks: Buffer[] = []
-                stream.on('data', (chunk: Buffer) => chunks.push(chunk))
-                stream.on('end', () => {
-                  try {
-                    const data = parseBeamNGJson<Record<string, unknown>>(Buffer.concat(chunks).toString('utf-8'))
-                    // parkingSpots have pos arrays [x, y, z] — use them as POI locations
-                    if (Array.isArray(data.parkingSpots)) {
-                      for (const spot of data.parkingSpots as Record<string, unknown>[]) {
-                        if (Array.isArray(spot.pos)) {
-                          const pos = spot.pos as number[]
-                          const name = String(spot.name || 'Parking')
-                          // Match parking spots to facility POIs by name prefix
-                          const matched = pois.find(p => p.x === 0 && p.y === 0 && name.toLowerCase().includes(p.name.toLowerCase()))
-                          if (matched) {
-                            matched.x = pos[0]; matched.y = pos[1]
-                          }
-                        }
-                      }
-                    }
-                    // zones have vertices — use centroid as position
-                    if (Array.isArray(data.zones)) {
-                      for (const zone of data.zones as Record<string, unknown>[]) {
-                        if (Array.isArray(zone.vertices) && zone.vertices.length > 0) {
-                          const verts = zone.vertices as number[][]
-                          const cx = verts.reduce((s, v) => s + v[0], 0) / verts.length
-                          const cy = verts.reduce((s, v) => s + v[1], 0) / verts.length
-                          const name = String(zone.name || '')
-                          // Match zones to unresolved facility POIs
-                          const matched = pois.find(p => p.x === 0 && p.y === 0 && name.toLowerCase().includes(p.name.toLowerCase()))
-                          if (matched) {
-                            matched.x = cx; matched.y = cy
-                          }
-                        }
-                      }
-                    }
-                  } catch { /* skip */ }
-                  res()
-                })
-              })
-            })
-            pending.push(p)
-          }
-          // Delivery facilities (restaurants, shops, warehouses, etc.)
-          if (fn.startsWith(`levels/${mapName}/`) && /delivery.*\.facilities\.json$/i.test(fn)) {
-            const p = new Promise<void>((res) => {
-              zipFile.openReadStream(entry, (streamErr, stream) => {
-                if (streamErr || !stream) { res(); return }
-                const chunks: Buffer[] = []
-                stream.on('data', (chunk: Buffer) => chunks.push(chunk))
-                stream.on('end', () => {
-                  try {
-                    const data = parseBeamNGJson<Record<string, unknown[]>>(Buffer.concat(chunks).toString('utf-8'))
-                    for (const [key, items] of Object.entries(data)) {
-                      if (!Array.isArray(items)) continue
-                      let poiType: import('../../shared/types').GPSMapPOI['type'] = 'shop'
-                      const k = key.toLowerCase()
-                      if (k.includes('restaurant') || k.includes('food')) poiType = 'restaurant'
-                      else if (k.includes('mechanic') || k.includes('repair')) poiType = 'mechanic'
-                      for (const item of items) {
-                        const f = item as Record<string, unknown>
-                        pois.push({ type: poiType, name: cleanPOIName(String(f.name || key), poiType), x: 0, y: 0 })
-                      }
-                    }
-                  } catch { /* skip */ }
-                  res()
-                })
-              })
-            })
-            pending.push(p)
-          }
-          zipFile.readEntry()
-        })
-        zipFile.on('end', () => { Promise.all(pending).then(() => resolve()) })
-        zipFile.on('error', () => resolve())
-      })
-    })
+        } catch { /* skip */ }
+      }
+    )
 
     // Filter out POIs that still have no position (couldn't resolve from sites)
     const resolved = pois.filter(p => p.x !== 0 || p.y !== 0)
@@ -1178,67 +929,18 @@ export function registerIpcHandlers(): void {
   let vehicleListCache: VehicleListItem[] | null = null
   let vehicleListPromise: Promise<VehicleListItem[]> | null = null
 
-  /** Read all matching entries from a zip, calling handler for each match */
+  /** Read all matching entries from an archive, calling handler for each match */
   function readEntriesFromZip(
     zipPath: string,
     matcher: (fileName: string) => boolean,
     handler: (fileName: string, data: Buffer) => void
   ): Promise<void> {
-    return new Promise((resolve) => {
-      yauzlOpen(zipPath, { lazyEntries: true }, (err, zipFile) => {
-        if (err || !zipFile) { resolve(); return }
-        let pending = 0
-        let ended = false
-        const checkDone = (): void => { if (ended && pending === 0) { zipFile.close(); resolve() } }
-        zipFile.readEntry()
-        zipFile.on('entry', (entry) => {
-          if (matcher(entry.fileName)) {
-            pending++
-            zipFile.openReadStream(entry, (err2, stream) => {
-              if (err2 || !stream) { pending--; checkDone(); zipFile.readEntry(); return }
-              const chunks: Buffer[] = []
-              stream.on('data', (c: Buffer) => chunks.push(c))
-              stream.on('end', () => {
-                handler(entry.fileName, Buffer.concat(chunks))
-                pending--
-                checkDone()
-              })
-            })
-          }
-          zipFile.readEntry()
-        })
-        zipFile.on('end', () => { ended = true; checkDone() })
-        zipFile.on('error', () => resolve())
-      })
-    })
+    return forEachMatch(zipPath, matcher, handler)
   }
 
-  /** Read a single entry from a zip */
+  /** Read a single entry from an archive */
   function readSingleFromZip(zipPath: string, pattern: RegExp): Promise<Buffer | null> {
-    return new Promise((resolve) => {
-      yauzlOpen(zipPath, { lazyEntries: true }, (err, zipFile) => {
-        if (err || !zipFile) { resolve(null); return }
-        let found = false
-        zipFile.readEntry()
-        zipFile.on('entry', (entry) => {
-          if (found) return
-          if (pattern.test(entry.fileName)) {
-            found = true
-            zipFile.openReadStream(entry, (err2, stream) => {
-              if (err2 || !stream) { zipFile.close(); resolve(null); return }
-              const chunks: Buffer[] = []
-              stream.on('data', (c: Buffer) => chunks.push(c))
-              stream.on('end', () => { zipFile.close(); resolve(Buffer.concat(chunks)) })
-              stream.on('error', () => { zipFile.close(); resolve(null) })
-            })
-          } else {
-            zipFile.readEntry()
-          }
-        })
-        zipFile.on('end', () => { if (!found) resolve(null) })
-        zipFile.on('error', () => resolve(null))
-      })
-    })
+    return readFirstMatch(zipPath, pattern)
   }
 
   async function scanVehicleZip(zipPath: string, modelName: string): Promise<VehicleListItem | null> {
@@ -3127,23 +2829,11 @@ export function registerIpcHandlers(): void {
     // Determine the internal level folder name (mod zips may use different internal names)
     let internalName = mapName
     if (zipPath && modZipPath) {
-      // For mod zips, scan for the levels/*/info.json path to get the actual internal name
-      const infoRaw = await readRawFromZip(zipPath, /^levels\/([^\/]+)\/info\.json$/i)
-      if (infoRaw) {
-        // We got data, but we need the actual folder name — re-scan with a capture
-        internalName = await new Promise<string>((resolve) => {
-          yauzlOpen(zipPath!, { lazyEntries: true }, (err, zf) => {
-            if (err || !zf) { resolve(mapName); return }
-            zf.readEntry()
-            zf.on('entry', (entry) => {
-              const match = entry.fileName.match(/^levels\/([^\/]+)\/info\.json$/i)
-              if (match) { zf.close(); resolve(match[1]) }
-              else zf.readEntry()
-            })
-            zf.on('end', () => resolve(mapName))
-            zf.on('error', () => resolve(mapName))
-          })
-        })
+      // For mod archives, scan for the levels/*/info.json path to get the actual internal name
+      const result = await readFirstMatchWithName(zipPath, /^levels\/([^\/]+)\/info\.json$/i)
+      if (result) {
+        const match = result.fileName.match(/^levels\/([^\/]+)\/info\.json$/i)
+        if (match) internalName = match[1]
       }
     }
 
@@ -3537,23 +3227,40 @@ export function registerIpcHandlers(): void {
     const userDir = config.gamePaths?.userDir
     if (!userDir) return { success: false, error: 'Game user directory not configured' }
     const result = await dialog.showOpenDialog({
-      title: 'Select mod zip file(s)',
-      filters: [{ name: 'Zip Archives', extensions: ['zip'] }],
+      title: 'Select mod archive(s)',
+      filters: [{ name: 'Mod Archives', extensions: ['zip', 'rar'] }],
       properties: ['openFile', 'multiSelections']
     })
     if (result.canceled || result.filePaths.length === 0) {
       return { success: false, error: 'Cancelled' }
     }
+    const tempDirs: string[] = []
     try {
       const installed = []
       for (const filePath of result.filePaths) {
-        const mod = await modManagerService.installMod(userDir, filePath)
+        let installPath = filePath
+        let originalName: string | undefined
+        if (isRarFile(filePath)) {
+          // Convert .rar to .zip in a temp directory, then install the .zip
+          const zipName = basename(filePath).replace(/\.rar$/i, '.zip')
+          const convertedPath = await convertRarToZip(filePath, zipName)
+          tempDirs.push(join(convertedPath, '..'))
+          installPath = convertedPath
+          originalName = zipName
+        }
+        const mod = await modManagerService.installMod(userDir, installPath, originalName)
         installed.push(mod as never)
       }
       vehicleListCache = null
       return { success: true, data: installed }
     } catch (err) {
       return { success: false, error: String(err) }
+    } finally {
+      // Clean up temp directories from RAR conversions
+      const { rm } = await import('node:fs/promises')
+      for (const dir of tempDirs) {
+        rm(dir, { recursive: true, force: true }).catch(() => {})
+      }
     }
   })
 

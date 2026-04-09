@@ -6,6 +6,7 @@ import { spawn, ChildProcess } from 'child_process'
 import { randomUUID } from 'crypto'
 import { get as httpsGet } from 'https'
 import { open as yauzlOpen, type Entry } from 'yauzl'
+import { isModArchive, stripArchiveExt } from '../utils/archiveConverter'
 import type {
   HostedServerConfig,
   HostedServerStatus,
@@ -298,7 +299,7 @@ export class ServerManagerService {
     if (!existsSync(clientDir)) return []
     const entries = await readdir(clientDir, { withFileTypes: true })
     return entries
-      .filter((e) => !e.isDirectory() && e.name.toLowerCase().endsWith('.zip'))
+      .filter((e) => !e.isDirectory() && isModArchive(e.name))
       .map((e) => e.name.toLowerCase())
   }
 
@@ -307,12 +308,12 @@ export class ServerManagerService {
     if (!config) throw new Error('Server not found')
     const serverDir = join(this.serversDir, id)
 
-    // Remove client zip
+    // Remove client archive
     const clientZip = join(serverDir, config.resourceFolder, 'Client', modFileName)
     if (existsSync(clientZip)) await unlink(clientZip)
 
-    // Remove server plugin folder (mod name without .zip)
-    const modId = modFileName.replace(/\.zip$/i, '')
+    // Remove server plugin folder (mod name without extension)
+    const modId = stripArchiveExt(modFileName)
     const serverPlugin = join(serverDir, config.resourceFolder, 'Server', modId)
     if (existsSync(serverPlugin)) await rm(serverPlugin, { recursive: true, force: true })
   }

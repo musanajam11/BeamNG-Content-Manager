@@ -1,6 +1,6 @@
 import { readFile, writeFile, readdir, unlink, copyFile, stat } from 'fs/promises'
 import { join, basename } from 'path'
-import { open as yauzlOpen, type Entry } from 'yauzl'
+import { isModArchive, stripArchiveExt, forEachMatch, readFirstMatch, readFirstMatchWithName } from '../utils/archiveConverter'
 import type { ModInfo } from '../../shared/types'
 
 /** Strip UTF-8 BOM if present (PowerShell and some editors add it) */
@@ -138,17 +138,17 @@ export class ModManagerService {
       })
     }
 
-    // Scan repo/ for any zips not in db.json
+    // Scan repo/ for any archives not in db.json
     try {
       const repoDir = join(modsRoot, 'repo')
       const files = await readdir(repoDir)
       for (const file of files) {
-        if (!file.toLowerCase().endsWith('.zip')) continue
+        if (!isModArchive(file)) continue
         if (seenFiles.has(file.toLowerCase())) continue
 
         const filePath = join(repoDir, file)
         const s = await stat(filePath)
-        const key = file.replace(/\.zip$/i, '').toLowerCase()
+        const key = stripArchiveExt(file).toLowerCase()
 
         // Scan zip for metadata
         const meta = await this.scanModZip(filePath)
@@ -223,7 +223,7 @@ export class ModManagerService {
       // Not in db — try to find matching zip in repo/
       const repoDir = join(userDir, 'mods', 'repo')
       const files = await readdir(repoDir)
-      const match = files.find((f) => f.replace(/\.zip$/i, '').toLowerCase() === modKey)
+      const match = files.find((f) => stripArchiveExt(f).toLowerCase() === modKey)
       if (match) {
         await unlink(join(repoDir, match))
       }
@@ -239,9 +239,9 @@ export class ModManagerService {
 
     await copyFile(sourcePath, destPath)
     const s = await stat(destPath)
-    const key = fileName.replace(/\.zip$/i, '').toLowerCase()
+    const key = stripArchiveExt(fileName).toLowerCase()
 
-    // Scan zip for metadata
+    // Scan archive for metadata
     const meta = await this.scanModZip(destPath)
 
     // Write to db.json
@@ -338,138 +338,69 @@ export class ModManagerService {
     await writeFile(dbPath, JSON.stringify(output, null, 3), 'utf-8')
   }
 
-  /** Extract metadata and icon from a mod zip file (single pass) */
-  private scanModZip(zipPath: string): Promise<ModZipMeta> {
-    return new Promise((resolve) => {
-      const result: ModZipMeta = {
-        title: null, tagLine: null, author: null, version: null,
-        modType: 'unknown', iconDataUrl: null, levelDir: null
+  /** Extract metadata and icon from a mod archive (single pass) */
+  private async scanModZip(archivePath: string): Promise<ModZipMeta> {
+    const result: ModZipMeta = {
+      title: null, tagLine: null, author: null, version: null,
+      modType: 'unknown', iconDataUrl: null, levelDir: null
+    }
+
+    let hasVehicles = false
+    let hasLevels = false
+    let hasSounds = false
+    let hasUI = false
+
+    await forEachMatch(
+      archivePath,
+      () => true, // match all entries to detect mod type from paths
+      (name, data) => {
+        // Detect mod type from directory structure
+        if (name.startsWith('vehicles/')) hasVehicles = true
+        if (name.startsWith('levels/')) {
+          hasLevels = true
+          if (!result.levelDir) {
+            const parts = name.split('/')
+            if (parts.length >= 2 && parts[1]) result.levelDir = parts[1]
+          }
+        }
+        if (name.startsWith('sounds/') || name.startsWith('art/sound/')) hasSounds = true
+        if (name.startsWith('ui/modules/apps/') || name.startsWith('ui/entrypoints/')) hasUI = true
+
+        // Read mod_info/<id>/info.json
+        if (/^mod_info\/[^/]+\/info\.json$/i.test(name) && !result.title) {
+          try {
+            const info = JSON.parse(data.toString('utf-8'))
+            result.title = info.title || null
+            result.tagLine = info.tag_line || null
+            result.author = info.username || null
+            result.version = info.version_string || null
+          } catch { /* malformed json */ }
+        }
+
+        // Read mod_info/<id>/icon.jpg|png
+        if (/^mod_info\/[^/]+\/icon\.(jpe?g|png)$/i.test(name) && !result.iconDataUrl) {
+          const ext = name.split('.').pop()?.toLowerCase() || 'jpg'
+          const mime = ext === 'png' ? 'image/png' : 'image/jpeg'
+          result.iconDataUrl = `data:${mime};base64,${data.toString('base64')}`
+        }
       }
+    )
 
-      yauzlOpen(zipPath, { lazyEntries: true }, (err, zipFile) => {
-        if (err || !zipFile) { resolve(result); return }
+    if (hasLevels) result.modType = 'terrain'
+    else if (hasVehicles) result.modType = 'vehicle'
+    else if (hasSounds) result.modType = 'sound'
+    else if (hasUI) result.modType = 'ui_app'
 
-        let hasVehicles = false
-        let hasLevels = false
-        let hasSounds = false
-        let hasUI = false
-        let pendingStreams = 0
-
-        const advance = (): void => { zipFile.readEntry() }
-
-        zipFile.readEntry()
-        zipFile.on('entry', (entry: Entry) => {
-          const name = entry.fileName
-
-          // Detect mod type from directory structure
-          if (name.startsWith('vehicles/')) hasVehicles = true
-          if (name.startsWith('levels/')) {
-            hasLevels = true
-            // Extract the actual level directory name (e.g. "drag_strip" from "levels/drag_strip/...")
-            if (!result.levelDir) {
-              const parts = name.split('/')
-              if (parts.length >= 2 && parts[1]) {
-                result.levelDir = parts[1]
-              }
-            }
-          }
-          if (name.startsWith('sounds/') || name.startsWith('art/sound/')) hasSounds = true
-          if (name.startsWith('ui/modules/apps/') || name.startsWith('ui/entrypoints/')) hasUI = true
-
-          // Read mod_info/<id>/info.json
-          if (/^mod_info\/[^/]+\/info\.json$/i.test(name) && !result.title) {
-            pendingStreams++
-            zipFile.openReadStream(entry, (sErr, stream) => {
-              if (sErr || !stream) { pendingStreams--; advance(); return }
-              const chunks: Buffer[] = []
-              stream.on('data', (chunk: Buffer) => chunks.push(chunk))
-              stream.on('end', () => {
-                try {
-                  const info = JSON.parse(Buffer.concat(chunks).toString('utf-8'))
-                  result.title = info.title || null
-                  result.tagLine = info.tag_line || null
-                  result.author = info.username || null
-                  result.version = info.version_string || null
-                } catch { /* malformed json */ }
-                pendingStreams--
-                advance()
-              })
-              stream.on('error', () => { pendingStreams--; advance() })
-            })
-            return
-          }
-
-          // Read mod_info/<id>/icon.jpg|png
-          if (/^mod_info\/[^/]+\/icon\.(jpe?g|png)$/i.test(name) && !result.iconDataUrl) {
-            pendingStreams++
-            zipFile.openReadStream(entry, (sErr, stream) => {
-              if (sErr || !stream) { pendingStreams--; advance(); return }
-              const chunks: Buffer[] = []
-              stream.on('data', (chunk: Buffer) => chunks.push(chunk))
-              stream.on('end', () => {
-                const buffer = Buffer.concat(chunks)
-                const ext = name.split('.').pop()?.toLowerCase() || 'jpg'
-                const mime = ext === 'png' ? 'image/png' : 'image/jpeg'
-                result.iconDataUrl = `data:${mime};base64,${buffer.toString('base64')}`
-                pendingStreams--
-                advance()
-              })
-              stream.on('error', () => { pendingStreams--; advance() })
-            })
-            return
-          }
-
-          advance()
-        })
-
-        zipFile.on('end', () => {
-          if (hasLevels) result.modType = 'terrain'
-          else if (hasVehicles) result.modType = 'vehicle'
-          else if (hasSounds) result.modType = 'sound'
-          else if (hasUI) result.modType = 'ui_app'
-          zipFile.close()
-          resolve(result)
-        })
-
-        zipFile.on('error', () => resolve(result))
-      })
-    })
+    return result
   }
 
-  /** Extract the preview icon from a mod zip as a data: URL */
-  async getModPreview(zipPath: string): Promise<string | null> {
-    return new Promise((resolve) => {
-      yauzlOpen(zipPath, { lazyEntries: true }, (err, zipFile) => {
-        if (err || !zipFile) { resolve(null); return }
-
-        let found = false
-        zipFile.readEntry()
-        zipFile.on('entry', (entry: Entry) => {
-          if (found) return
-
-          if (/^mod_info\/[^/]+\/icon\.(jpe?g|png)$/i.test(entry.fileName)) {
-            found = true
-            zipFile.openReadStream(entry, (sErr, stream) => {
-              if (sErr || !stream) { zipFile.close(); resolve(null); return }
-              const chunks: Buffer[] = []
-              stream.on('data', (chunk: Buffer) => chunks.push(chunk))
-              stream.on('end', () => {
-                zipFile.close()
-                const buffer = Buffer.concat(chunks)
-                const ext = entry.fileName.split('.').pop()?.toLowerCase() || 'jpg'
-                const mime = ext === 'png' ? 'image/png' : 'image/jpeg'
-                resolve(`data:${mime};base64,${buffer.toString('base64')}`)
-              })
-              stream.on('error', () => { zipFile.close(); resolve(null) })
-            })
-          } else {
-            zipFile.readEntry()
-          }
-        })
-        zipFile.on('end', () => { if (!found) resolve(null) })
-        zipFile.on('error', () => resolve(null))
-      })
-    })
+  /** Extract the preview icon from a mod archive as a data: URL */
+  async getModPreview(archivePath: string): Promise<string | null> {
+    const result = await readFirstMatchWithName(archivePath, /^mod_info\/[^/]+\/icon\.(jpe?g|png)$/i)
+    if (!result) return null
+    const ext = result.fileName.split('.').pop()?.toLowerCase() || 'jpg'
+    const mime = ext === 'png' ? 'image/png' : 'image/jpeg'
+    return `data:${mime};base64,${result.data.toString('base64')}`
   }
 
   /** Open the mods folder in the system file explorer */

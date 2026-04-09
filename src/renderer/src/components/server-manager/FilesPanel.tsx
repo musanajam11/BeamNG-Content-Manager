@@ -265,7 +265,7 @@ export function FilesPanel({
               <button
                 onClick={() => isEditable(f.name) ? setEditingFile(f) : undefined}
                 className={`flex items-center gap-2 flex-1 min-w-0 text-left ${isEditable(f.name) ? 'text-[var(--color-text-primary)] cursor-pointer hover:text-[var(--color-accent)]' : 'text-[var(--color-text-secondary)] cursor-default'}`}
-                title={isEditable(f.name) ? 'Click to edit' : undefined}
+                title={isEditable(f.name) ? t('serverManager.clickToEdit') : undefined}
               >
                 <File size={14} className="shrink-0" />
                 <span className="truncate">{f.name}</span>
@@ -317,7 +317,7 @@ export function FilesPanel({
                 <button
                   onClick={() => setDeleteTarget(f.path)}
                   className="opacity-0 group-hover:opacity-100 p-1 rounded text-[var(--color-text-muted)] hover:text-red-400 transition-all"
-                  title="Delete"
+                  title={t('serverManager.deleteFile')}
                 >
                   <Trash2 size={12} />
                 </button>
