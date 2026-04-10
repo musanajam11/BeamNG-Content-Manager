@@ -539,47 +539,81 @@ export class RegistryService {
         }
       }
 
-      // Use BeamNG.com session cookies when downloading from beamng.com
-      const headers: Record<string, string> = { 'User-Agent': 'BeamMP-ContentManager/1.0' }
-      if (downloadUrl.includes('beamng.com')) {
-        try {
-          const beamngSession = session.fromPartition('persist:beamng')
-          const cookies = await beamngSession.cookies.get({ url: 'https://www.beamng.com' })
-          const cookieStr = cookies.map((c) => `${c.name}=${c.value}`).join('; ')
-          if (cookieStr) headers['Cookie'] = cookieStr
-        } catch { /* no beamng session available */ }
-      }
-
-      const dlRes = await fetch(downloadUrl, { headers })
-      if (!dlRes.ok) {
-        if (dlRes.status === 403 && downloadUrl.includes('beamng.com')) {
-          return { success: false, installedFiles: [], error: 'BeamNG.com login required. Log in via the Browse tab first.' }
-        }
-        return { success: false, installedFiles: [], error: `Download failed: ${dlRes.status}` }
-      }
-
-      const contentLength = parseInt(dlRes.headers.get('content-length') ?? '0', 10)
-      const body = dlRes.body
+      // For BeamNG.com URLs, use Electron's net module via session which handles cookies/redirects natively
+      // (Node's fetch() with manual Cookie headers gets 403 from XenForo)
+      const isBeamNG = downloadUrl.includes('beamng.com')
       let buffer: Buffer
 
-      if (body && contentLength > 0) {
-        // Stream download with progress
-        const chunks: Buffer[] = []
-        let received = 0
-        const reader = body.getReader()
-        for (;;) {
-          const { done, value } = await reader.read()
-          if (done) break
-          const chunk = Buffer.from(value)
-          chunks.push(chunk)
-          received += chunk.length
-          sendProgress(received, contentLength)
+      if (isBeamNG) {
+        const beamngSession = session.fromPartition('persist:beamng')
+        const cookies = await beamngSession.cookies.get({ url: 'https://www.beamng.com' })
+        const loggedIn = cookies.some(c => c.name === 'xf_user' || c.name === 'xf_session')
+        if (!loggedIn) {
+          return { success: false, installedFiles: [], error: 'BeamNG.com login required. Log in via the Browse tab first.' }
         }
-        buffer = Buffer.concat(chunks)
-      } else {
+        const { net } = await import('electron')
+
+        // XenForo rejects bare resource ID URLs — need to fetch the resource page
+        // and extract the real download link (includes slug + version param)
+        const resourcePageUrl = downloadUrl.replace(/\/download\/?.*$/, '/')
+        const pageRes = await net.fetch(resourcePageUrl, { session: beamngSession })
+        if (!pageRes.ok) {
+          return { success: false, installedFiles: [], error: `Failed to load resource page: ${pageRes.status}` }
+        }
+        const html = await pageRes.text()
+        const hrefMatch = html.match(/href="([^"]*\/download[^"]*)"/i)
+        let realDownloadUrl = downloadUrl
+        if (hrefMatch?.[1]) {
+          realDownloadUrl = hrefMatch[1]
+          if (!realDownloadUrl.startsWith('http')) {
+            realDownloadUrl = `https://www.beamng.com/${realDownloadUrl.replace(/^\//, '')}`
+          }
+        }
+        const dlRes = await net.fetch(realDownloadUrl, { session: beamngSession })
+        if (!dlRes.ok) {
+          if (dlRes.status === 403) {
+            return { success: false, installedFiles: [], error: 'BeamNG.com login required. Log in via the Browse tab first.' }
+          }
+          return { success: false, installedFiles: [], error: `Download failed: ${dlRes.status}` }
+        }
+
+        const contentLength = parseInt(dlRes.headers.get('content-length') ?? '0', 10)
         const arrayBuf = await dlRes.arrayBuffer()
         buffer = Buffer.from(arrayBuf)
-        sendProgress(buffer.length, buffer.length)
+        sendProgress(buffer.length, contentLength || buffer.length)
+
+        // Check we got a real file, not an HTML login page
+        if (buffer.length < 100 || buffer.subarray(0, 15).toString().includes('<!DOCTYPE')) {
+          return { success: false, installedFiles: [], error: 'BeamNG.com returned a login page — try logging in again via the Browse tab.' }
+        }
+      } else {
+        const headers: Record<string, string> = { 'User-Agent': 'BeamMP-ContentManager/1.0' }
+        const dlRes = await fetch(downloadUrl, { headers })
+        if (!dlRes.ok) {
+          return { success: false, installedFiles: [], error: `Download failed: ${dlRes.status}` }
+        }
+
+        const contentLength = parseInt(dlRes.headers.get('content-length') ?? '0', 10)
+        const body = dlRes.body
+
+        if (body && contentLength > 0) {
+          const chunks: Buffer[] = []
+          let received = 0
+          const reader = body.getReader()
+          for (;;) {
+            const { done, value } = await reader.read()
+            if (done) break
+            const chunk = Buffer.from(value)
+            chunks.push(chunk)
+            received += chunk.length
+            sendProgress(received, contentLength)
+          }
+          buffer = Buffer.concat(chunks)
+        } else {
+          const arrayBuf = await dlRes.arrayBuffer()
+          buffer = Buffer.from(arrayBuf)
+          sendProgress(buffer.length, buffer.length)
+        }
       }
 
       // 2. Verify SHA256 hash

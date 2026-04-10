@@ -1176,11 +1176,11 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
               </div>
             )}
 
-            <div className="flex items-center gap-2">
+            <div className="space-y-2">
               <select
                 value={cmpSelectedVersion}
                 onChange={(e) => setCmpSelectedVersion(e.target.value)}
-                className="flex-1 px-3 py-1.5 text-sm bg-black/20 rounded-lg border border-[var(--color-border)] text-white"
+                className="w-full px-3 py-1.5 text-sm bg-black/20 rounded-lg border border-[var(--color-border)] text-white"
               >
                 {cmpReleases.map((r) => (
                   <option key={r.version} value={r.version}>
@@ -1191,10 +1191,10 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
               <button
                 onClick={handleInstallCareerMP}
                 disabled={cmpInstalling || !selectedServerId && !customServerDir}
-                className="flex items-center gap-1.5 px-4 py-1.5 text-sm rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white font-medium transition-colors disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white font-medium transition-colors disabled:opacity-50"
               >
                 {cmpInstalling ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                {t('career.mod.install')}
+                Install CareerMP Only
               </button>
             </div>
             {cmpMsg && (
@@ -1285,7 +1285,7 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
                 className="w-full flex items-center justify-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-medium transition-colors disabled:opacity-50"
               >
                 {rlsInstalling ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                {t('career.mod.install')} RLS
+                Install CareerMP+RLS
               </button>
             </div>
             {rlsMsg && (
