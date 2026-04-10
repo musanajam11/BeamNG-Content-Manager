@@ -19,6 +19,8 @@ Manage mods, vehicles, maps, servers, friends, career saves, and more — from a
 
 [**Download**](https://github.com/musanajam11/BeamNG-Content-Manager/releases/latest) · [**Build from Source**](docs/BUILD.md) · [**Report Bug**](https://github.com/musanajam11/BeamNG-Content-Manager/issues) · [**Request Feature**](https://github.com/musanajam11/BeamNG-Content-Manager/issues)
 
+[![Try the Demo](https://img.shields.io/badge/%F0%9F%8E%AE_Try_the_Demo-Live_Preview-blueviolet?style=for-the-badge&logoColor=white)](https://musanajam11.github.io/BeamNG-Content-Manager/)
+
 </div>
 
 ---
