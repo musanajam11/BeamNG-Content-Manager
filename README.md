@@ -27,7 +27,7 @@ Manage mods, vehicles, maps, servers, friends, career saves, and more — from a
 
 <div align="center">
 
-![Home](Docs/screenshots/Home.jpg)
+![Home](docs/screenshots/Home.jpg)
 
 <details>
 <summary><b>View all screenshots</b></summary>
@@ -35,17 +35,17 @@ Manage mods, vehicles, maps, servers, friends, career saves, and more — from a
 
 | | |
 |:---:|:---:|
-| ![Server List](Docs/screenshots/server-list.jpg) | ![Servers Overview](Docs/screenshots/Servers-overview.jpg) |
-| ![Server Config](Docs/screenshots/Servers-server.jpg) | ![Server Config Editor](Docs/screenshots/Servers-server-config.jpg) |
-| ![Server Scheduler](Docs/screenshots/Servers-server-scheduler.jpg) | ![Friends](Docs/screenshots/friends.jpg) |
-| ![Cars Overview](Docs/screenshots/cars-overview.jpg) | ![Cars Editor](Docs/screenshots/cars-editor.jpg) |
-| ![Maps](Docs/screenshots/Maps.jpg) | ![Map Selection](Docs/screenshots/map-selection.jpg) |
-| ![Mods Installed](Docs/screenshots/Mods-installed.jpg) | ![Mods Browse](Docs/screenshots/Mods-browse.jpg) |
-| ![Mods Registry](Docs/screenshots/mods-registry.jpg) | ![Live GPS](Docs/screenshots/Live-GPS.png) |
-| ![Controls Live Input](Docs/screenshots/Controls-liveinput.jpg) | ![Career Overview](Docs/screenshots/Career-Overview.jpg) |
-| ![Career Saved](Docs/screenshots/Career-Saved.jpg) | ![Career Easy Install](Docs/screenshots/Career-EasyInstall.jpg) |
-| ![Settings General](Docs/screenshots/Settings-general.jpg) | ![Settings Appearance](Docs/screenshots/Settings-appearance.jpg) |
-| ![Settings Custom CSS](Docs/screenshots/Settings-CustomCSS.jpg) | |
+| ![Server List](docs/screenshots/server-list.jpg) | ![Servers Overview](docs/screenshots/Servers-overview.jpg) |
+| ![Server Config](docs/screenshots/Servers-server.jpg) | ![Server Config Editor](docs/screenshots/Servers-server-config.jpg) |
+| ![Server Scheduler](docs/screenshots/Servers-server-scheduler.jpg) | ![Friends](docs/screenshots/friends.jpg) |
+| ![Cars Overview](docs/screenshots/cars-overview.jpg) | ![Cars Editor](docs/screenshots/cars-editor.jpg) |
+| ![Maps](docs/screenshots/Maps.jpg) | ![Map Selection](docs/screenshots/map-selection.jpg) |
+| ![Mods Installed](docs/screenshots/Mods-installed.jpg) | ![Mods Browse](docs/screenshots/Mods-browse.jpg) |
+| ![Mods Registry](docs/screenshots/mods-registry.jpg) | ![Live GPS](docs/screenshots/Live-GPS.png) |
+| ![Controls Live Input](docs/screenshots/Controls-liveinput.jpg) | ![Career Overview](docs/screenshots/Career-Overview.jpg) |
+| ![Career Saved](docs/screenshots/Career-Saved.jpg) | ![Career Easy Install](docs/screenshots/Career-EasyInstall.jpg) |
+| ![Settings General](docs/screenshots/Settings-general.jpg) | ![Settings Appearance](docs/screenshots/Settings-appearance.jpg) |
+| ![Settings Custom CSS](docs/screenshots/Settings-CustomCSS.jpg) | |
 
 </details>
 
