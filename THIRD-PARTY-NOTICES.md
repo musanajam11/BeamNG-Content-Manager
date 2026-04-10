@@ -57,7 +57,6 @@ All background images in this directory are in-game screenshots from BeamNG.driv
 - These images depict vehicles, environments, and other in-game content from **BeamNG.drive®**, which is the property of **BeamNG GmbH** (<https://www.beamng.com/>).
 - All vehicle models, maps, textures, visual designs, and other game assets depicted are **© BeamNG GmbH**.
 - These assets are **not** covered by the project's GPL-3.0 license and may **not** be redistributed, modified, or used separately from this project without permission from BeamNG GmbH.
-- If BeamNG GmbH requests removal of any asset, it will be removed promptly.
 
 ### Contact
 
@@ -85,4 +84,4 @@ For any concerns regarding the use of BeamNG.drive® assets in this project, ple
 
 ---
 
-_This notice file is provided in good faith to attribute rights to their respective owners and to comply with BeamNG's published policies. If you believe any content in this project infringes on your rights, please open an issue or contact the maintainers._
+_This notice file is provided in good faith to attribute rights to their respective owners and to comply with BeamNG's published policies._

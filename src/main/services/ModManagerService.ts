@@ -21,6 +21,7 @@ interface ModZipMeta {
 
 interface DbEntry {
   active: boolean
+  modname?: string
   filename: string
   fullpath: string
   dirname: string
@@ -76,6 +77,29 @@ export class ModManagerService {
     if (db.header) result.header = db.header
     Object.assign(result, modsMap)
     return result
+  }
+
+  /** Repair db.json entries that are missing the modname field (prevents BeamMP Lua crash) */
+  async repairModNames(userDir: string): Promise<void> {
+    const dbPath = join(userDir, 'mods', 'db.json')
+    let db: Record<string, unknown> = {}
+    try {
+      const raw = await readFile(dbPath, 'utf-8')
+      db = JSON.parse(stripBom(raw))
+    } catch { return }
+
+    const modsMap = this.getModsMap(db)
+    let dirty = false
+    for (const [key, entry] of Object.entries(modsMap)) {
+      if (!entry.modname) {
+        entry.modname = key
+        dirty = true
+      }
+    }
+    if (dirty) {
+      const output = this.buildDbJson(db, modsMap)
+      await writeFile(dbPath, JSON.stringify(output, null, 3), 'utf-8')
+    }
   }
 
   /** Read and return the full mod list by combining db.json metadata with disk files */
@@ -257,7 +281,8 @@ export class ModManagerService {
 
     const modsMap = this.getModsMap(db)
     modsMap[key] = {
-      active: true,
+      active: false,
+      modname: key,
       filename: fileName,
       fullpath: destPath,
       dirname: repoDir,
@@ -284,7 +309,7 @@ export class ModManagerService {
       filePath: destPath,
       sizeBytes: s.size,
       modifiedDate: s.mtime.toISOString(),
-      enabled: true,
+      enabled: false,
       modType: meta.modType,
       title: meta.title,
       tagLine: meta.tagLine,

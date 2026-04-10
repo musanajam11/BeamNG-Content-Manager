@@ -356,6 +356,39 @@ interface AppAPI {
   careerBrowseSavePath(): Promise<string | null>
   careerGetSavePath(): Promise<string | null>
 
+  // Career Mod Management
+  careerFetchCareerMPReleases(): Promise<Array<{
+    version: string
+    name: string
+    changelog: string
+    prerelease: boolean
+    publishedAt: string
+    downloadUrl: string
+    size: number
+    downloads: number
+  }>>
+  careerFetchRLSReleases(): Promise<Array<{
+    version: string
+    rlsBaseVersion: string
+    name: string
+    changelog: string
+    prerelease: boolean
+    publishedAt: string
+    trafficUrl: string | null
+    noTrafficUrl: string | null
+    trafficSize: number
+    noTrafficSize: number
+    downloads: number
+  }>>
+  careerInstallCareerMP(downloadUrl: string, version: string, serverDir: string): Promise<{ success: boolean; error?: string }>
+  careerInstallRLS(downloadUrl: string, version: string, traffic: boolean, serverDir: string): Promise<{ success: boolean; error?: string }>
+  careerGetInstalledMods(serverDir: string): Promise<{
+    careerMP: { version: string; installedAt: string } | null
+    rls: { version: string; traffic: boolean; installedAt: string } | null
+  }>
+  careerBrowseServerDir(): Promise<string | null>
+  careerGetServerDir(serverId: string): Promise<string>
+
   // Controls / Input Bindings
   controlsGetDevices(): Promise<import('../shared/types').InputDevice[]>
   controlsGetActions(): Promise<import('../shared/types').InputAction[]>

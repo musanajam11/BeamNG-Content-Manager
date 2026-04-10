@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { Play, Square, RotateCcw, Clock, Cpu, HardDrive, Users, Wifi, Copy, AlertTriangle, Search, CheckCircle, XCircle, Loader2, Globe, Download, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react'
+import { Play, Square, RotateCcw, Clock, Cpu, HardDrive, Users, Wifi, Copy, AlertTriangle, Search, CheckCircle, XCircle, Loader2, Globe, Download, ChevronDown, ChevronUp, ExternalLink, Plug } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { HostedServerEntry, ServerExeStatus } from '../../../../shared/types'
 
@@ -39,6 +39,10 @@ export function StatusDashboard({
   const [portTestError, setPortTestError] = useState<string | null>(null)
   const [tailscale, setTailscale] = useState<TailscaleStatus | null>(null)
   const [showTailscale, setShowTailscale] = useState(false)
+
+  // Direct connect state
+  const [connecting, setConnecting] = useState(false)
+  const [connectError, setConnectError] = useState<string | null>(null)
 
   // Live uptime — computed from startedAt so it survives navigation
   const [liveUptime, setLiveUptime] = useState(() =>
@@ -89,6 +93,25 @@ export function StatusDashboard({
   }, [config.port])
 
   const connectionString = publicIp ? `${publicIp}:${config.port}` : `:${config.port}`
+
+  const handleDirectConnect = useCallback(async () => {
+    setConnecting(true)
+    setConnectError(null)
+    try {
+      const auth = await window.api.getAuthInfo()
+      if (!auth.authenticated) {
+        setConnectError(t('serverManager.directConnectSignIn'))
+        setConnecting(false)
+        return
+      }
+      const result = await window.api.joinServer('127.0.0.1', config.port)
+      if (!result.success) setConnectError(result.error || t('serverManager.directConnectFailed'))
+    } catch (err) {
+      setConnectError(String(err))
+    } finally {
+      setConnecting(false)
+    }
+  }, [config.port, t])
 
   return (
     <div className="flex-1 overflow-y-auto p-5">
@@ -172,7 +195,19 @@ export function StatusDashboard({
                 >
                   <Square size={14} /> {t('serverManager.stop')}
                 </button>
+                <button
+                  onClick={handleDirectConnect}
+                  disabled={connecting}
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-[var(--color-accent)] hover:opacity-90 text-white transition-opacity disabled:opacity-50"
+                  title={t('serverManager.directConnectTooltip')}
+                >
+                  {connecting ? <Loader2 size={14} className="animate-spin" /> : <Plug size={14} />}
+                  {t('serverManager.directConnect')}
+                </button>
               </>
+            )}
+            {connectError && (
+              <p className="text-xs text-red-400 mt-2">{connectError}</p>
             )}
           </div>
         </div>

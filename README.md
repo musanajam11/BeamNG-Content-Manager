@@ -478,11 +478,7 @@ Even if a screenshot were to receive thin copyright protection, the inclusion of
 | **(3) Amount and substantiality** | Individual images are used in their entirety, which is necessary for their functional purpose as backgrounds. This factor is mitigated when the use is transformative ([*Google LLC v. Oracle America, Inc.*, 593 U.S. 1 (2021)](https://supreme.justia.com/cases/federal/us/593/18-956/)). |
 | **(4) Effect on the market** | No market exists for individual BeamNG gameplay screenshots. Inclusion as application backgrounds does not substitute for or diminish the value of the original screenshots in any market. |
 
-#### 4. DMCA Compliance — [17 U.S.C. § 512](https://www.law.cornell.edu/uscode/text/17/512)
-
-This project maintains a good-faith takedown commitment. If any rights holder objects to the inclusion of a specific asset, it will be removed promptly upon notification. Contact information is provided in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
-
-#### 5. Trademark Usage — Referential Use
+#### 4. Trademark Usage — Referential Use
 
 Per the [BeamNG Trademark Usage Guidelines § 1](https://www.beamng.com/game/support/policies/trademark-guidelines/):
 
@@ -500,7 +496,6 @@ All references to "BeamNG.drive®" in this project are referential use to identi
 | BeamNG FAQ | [beamng.com/game/about/faq](https://www.beamng.com/game/about/faq/) |
 | US Copyright Act, 17 U.S.C. § 102 | [law.cornell.edu/uscode/text/17/102](https://www.law.cornell.edu/uscode/text/17/102) |
 | US Copyright Act, 17 U.S.C. § 107 (Fair Use) | [law.cornell.edu/uscode/text/17/107](https://www.law.cornell.edu/uscode/text/17/107) |
-| US Copyright Act, 17 U.S.C. § 512 (DMCA) | [law.cornell.edu/uscode/text/17/512](https://www.law.cornell.edu/uscode/text/17/512) |
 | *Feist v. Rural*, 499 U.S. 340 (1991) | [supreme.justia.com/cases/federal/us/499/340](https://supreme.justia.com/cases/federal/us/499/340/) |
 | *Google v. Oracle*, 593 U.S. 1 (2021) | [supreme.justia.com/cases/federal/us/593/18-956](https://supreme.justia.com/cases/federal/us/593/18-956/) |
 

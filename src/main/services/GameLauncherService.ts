@@ -7,7 +7,8 @@ import {
   writeFileSync,
   unlinkSync,
   renameSync,
-  createReadStream
+  createReadStream,
+  readdirSync
 } from 'fs'
 import { join, extname, basename } from 'path'
 import {
@@ -361,6 +362,8 @@ export class GameLauncherService {
   private gameProxySocket: net.Socket | null = null
   private ulStatus: string = 'Ulstart'
   private mStatus: string = ' '
+  private cachedModList: string = ''
+  private preSyncActive: boolean = false
   private ping: number = -1
   private terminate: boolean = false
   private terminateReason: string = ''
@@ -724,8 +727,23 @@ export class GameLauncherService {
         // Connect to server: C<ip:port>
         // If we're already connected/connecting (joinServerImpl pre-connected),
         // skip — the game just needs to connect to the proxy.
-        if (this.serverInRelay || (this.serverSocket && !this.serverSocket.destroyed)) {
-          this.log('Already connected/connecting, skipping C command')
+        if (this.preSyncActive && this.serverInRelay) {
+          this.preSyncActive = false
+          this.log('Pre-synced connection active, sending L to game and staging Uldone')
+          // NOW send L to trigger the game's loading state machine.
+          // We withheld it during pre-sync so the game wouldn't try to
+          // mount/load the map before connectToServer was called.
+          this.ulStatus = 'UlLoading...'
+          this.coreSend('L' + this.cachedModList)
+          // Delay Uldone to give the game time to mount mods via loadServerMods()
+          // before it requests the map. Without this delay, expandMissionFileName()
+          // fails for mod maps (e.g. freedom) because the zip hasn't been indexed yet.
+          setTimeout(() => {
+            this.ulStatus = 'Uldone'
+          }, 3000)
+        } else if (this.serverInRelay || (this.serverSocket && !this.serverSocket.destroyed)) {
+          this.log('Already connected/connecting, re-sending L to game')
+          this.coreSend('L' + this.cachedModList)
         } else {
           this.startServerSync(data)
         }
@@ -780,9 +798,15 @@ export class GameLauncherService {
       case 'Q':
         // Quit commands
         if (subCode === 'S') {
-          this.netReset()
-          this.terminate = true
-          this.ping = -1
+          // If we're in pre-sync, the game may send QS because it tried to process
+          // a stale state. Ignore it to preserve the relay.
+          if (this.preSyncActive && this.serverInRelay) {
+            this.log('QS received during pre-sync — ignoring (relay preserved)')
+          } else {
+            this.netReset()
+            this.terminate = true
+            this.ping = -1
+          }
         } else if (subCode === 'G') {
           // Game wants launcher to close — we stay open
         }
@@ -1215,7 +1239,10 @@ export class GameLauncherService {
 
     if (!modResp || modResp === '-') {
       this.log('No mods required')
-      this.coreSend('L')
+      this.cachedModList = ''
+      if (!this.preSyncActive) {
+        this.coreSend('L')
+      }
       this.serverSendFramed('Done')
     } else {
       await this.syncMods(modResp)
@@ -1260,11 +1287,37 @@ export class GameLauncherService {
 
     if (!existsSync(this.cachingDirectory)) mkdirSync(this.cachingDirectory, { recursive: true })
 
-    const modNames = modInfos.map((m) => m.file_name).join(';')
-    this.coreSend('L' + modNames)
+    const modNames = modInfos.map((m) => m.file_name).filter(Boolean).join(';')
+    this.cachedModList = modNames
+    // During pre-sync, DON'T send L yet — it would trigger the game's loading
+    // state machine before connectToServer is called, causing mod map loads to
+    // fail (expandMissionFileName returns false for unindexed mod levels).
+    // L will be sent when the game sends C.
+    if (!this.preSyncActive) {
+      this.coreSend('L' + modNames)
+    }
 
     const modsDir = join(this.gameUserDir, 'mods', 'multiplayer')
     if (!existsSync(modsDir)) mkdirSync(modsDir, { recursive: true })
+
+    // Clean up stale mods from previous sessions that aren't needed by this server.
+    // The game's MPModManager iterates ALL zips in mods/multiplayer and calls
+    // isModAllowed(modName) for each — if a leftover zip has no valid info.json
+    // (nil modName), the Lua crashes with "bad argument #1 to 'lower'".
+    const requiredFiles = new Set(modInfos.map((m) => m.file_name.toLowerCase()))
+    try {
+      for (const file of readdirSync(modsDir)) {
+        if (!file.toLowerCase().endsWith('.zip')) continue
+        // Never remove BeamMP.zip — it's the core multiplayer mod
+        if (file.toLowerCase() === 'beammp.zip') continue
+        if (!requiredFiles.has(file.toLowerCase())) {
+          try {
+            unlinkSync(join(modsDir, file))
+            this.log(`Removed stale mod: ${file}`)
+          } catch { /* ignore removal errors */ }
+        }
+      }
+    } catch { /* ignore if directory read fails */ }
 
     this.log(`Syncing ${modInfos.length} mods...`)
 
@@ -1354,8 +1407,12 @@ export class GameLauncherService {
         return
       case 'M':
         this.mStatus = data
-        this.ulStatus = 'Uldone'
-        this.log(`Map received from server, UlStatus → Uldone: ${data.substring(0, 80)}`)
+        // During pre-sync, don't set Uldone yet — it will be staged when the
+        // game sends C. Otherwise the game's state machine runs too early.
+        if (!this.preSyncActive) {
+          this.ulStatus = 'Uldone'
+        }
+        this.log(`Map received from server, cached map: ${data.substring(0, 80)}`)
         // Official launcher caches M and does NOT forward it to game.
         // The game requests map data via core socket 'M' message instead.
         return
@@ -1675,6 +1732,8 @@ export class GameLauncherService {
     this.serverRawResolve = null
     this.terminate = false
     this.ulStatus = 'Ulstart'
+    this.cachedModList = ''
+    this.preSyncActive = false
     this.mStatus = ' '
     this.connectedServerAddress = null
 
@@ -1970,6 +2029,7 @@ export class GameLauncherService {
 
     // Set up server connection state
     this.log(`Pre-syncing server ${ip}:${port} before game connect`)
+    this.preSyncActive = true
     await this.checkLocalKey()
     this.ulStatus = 'UlLoading...'
     this.terminate = false
@@ -2000,6 +2060,7 @@ export class GameLauncherService {
     } catch (err) {
       const errorMsg = (err as Error).message
       this.log(`Server join failed, killing game: ${errorMsg}`)
+      this.preSyncActive = false
       this.killGame()
       return { success: false, error: errorMsg }
     }
@@ -2079,20 +2140,43 @@ export class GameLauncherService {
       pos += cdLen
     }
 
-    // Check if already patched with current bridge content
+    // Check if bridge already present and current
+    let bridgeAlreadyCurrent = false
     const bridgeEntry = entries.find(e => e.name === 'lua/ge/extensions/beammpCMBridge.lua')
     if (bridgeEntry) {
-      // Verify the existing bridge content matches current BRIDGE_LUA
       const bridgeBuf = Buffer.from(BRIDGE_LUA, 'utf-8')
       const expectedCrc = crc32(bridgeBuf)
       if (bridgeEntry.fileCrc === expectedCrc) {
-        this.log('BeamMP.zip already contains current bridge, skipping patch')
-        return source
+        bridgeAlreadyCurrent = true
+      } else {
+        this.log('BeamMP.zip contains outdated bridge, re-patching')
+        // Remove old bridge entry so it gets replaced
+        const idx = entries.indexOf(bridgeEntry)
+        entries.splice(idx, 1)
       }
-      this.log('BeamMP.zip contains outdated bridge, re-patching')
-      // Remove old bridge entry so it gets replaced
-      const idx = entries.indexOf(bridgeEntry)
-      entries.splice(idx, 1)
+    }
+
+    // Check if MPModManager.lua already has nil guard
+    const modManagerEntry = entries.find(e => e.name === 'lua/ge/extensions/MPModManager.lua')
+    let modManagerAlreadyPatched = false
+    if (modManagerEntry) {
+      const mmLocalNameLen = source.readUInt16LE(modManagerEntry.localOff + 26)
+      const mmLocalExtraLen = source.readUInt16LE(modManagerEntry.localOff + 28)
+      const mmStart = modManagerEntry.localOff + 30 + mmLocalNameLen + mmLocalExtraLen
+      const mmComp = source.subarray(mmStart, mmStart + modManagerEntry.compSize)
+      let mmRaw: Buffer
+      if (modManagerEntry.compression === 8) {
+        mmRaw = zlib.inflateRawSync(mmComp)
+      } else {
+        mmRaw = Buffer.from(mmComp)
+      }
+      modManagerAlreadyPatched = mmRaw.toString('utf-8').includes('if not modName then return false end')
+    }
+
+    // Skip rebuild entirely if everything is already patched
+    if (bridgeAlreadyCurrent && modManagerAlreadyPatched) {
+      this.log('BeamMP.zip already fully patched, skipping')
+      return source
     }
 
     // Build output local file entries
@@ -2127,6 +2211,62 @@ export class GameLauncherService {
       }
     }
 
+    // Patch MPModManager.lua to add nil guards (prevents crash when mods in db.json lack modname)
+    const modManagerIdx = entries.findIndex(e => e.name === 'lua/ge/extensions/MPModManager.lua')
+    if (modManagerIdx >= 0) {
+      const mm = entries[modManagerIdx]
+      const mmNameLen = source.readUInt16LE(mm.localOff + 26)
+      const mmExtraLen = source.readUInt16LE(mm.localOff + 28)
+      const mmDataStart = mm.localOff + 30 + mmNameLen + mmExtraLen
+      const mmCompData = source.subarray(mmDataStart, mmDataStart + mm.compSize)
+
+      let mmContent: Buffer
+      if (mm.compression === 8) {
+        mmContent = zlib.inflateRawSync(mmCompData)
+      } else {
+        mmContent = Buffer.from(mmCompData)
+      }
+
+      let luaStr = mmContent.toString('utf-8')
+      let mmPatched = false
+
+      // Guard isModAllowed against nil modName
+      const isModAllowedSig = 'local function isModAllowed(modName)\n\tfor'
+      if (luaStr.includes(isModAllowedSig) && !luaStr.includes('if not modName then return false end')) {
+        luaStr = luaStr.replace(
+          isModAllowedSig,
+          'local function isModAllowed(modName)\n\tif not modName then return false end\n\tfor'
+        )
+        mmPatched = true
+      }
+
+      // Guard isModWhitelisted against nil modName
+      const isWhitelistedSig = 'local function isModWhitelisted(modName)\n\tfor'
+      if (luaStr.includes(isWhitelistedSig) && !luaStr.includes('if not modName then return true end')) {
+        luaStr = luaStr.replace(
+          isWhitelistedSig,
+          'local function isModWhitelisted(modName)\n\tif not modName then return true end\n\tfor'
+        )
+        mmPatched = true
+      }
+
+      // Guard checkMod against nil mod.modname
+      const checkModSig = 'local function checkMod(mod)'
+      if (luaStr.includes(checkModSig) && !luaStr.includes('if not mod.modname then return end')) {
+        luaStr = luaStr.replace(
+          checkModSig,
+          'local function checkMod(mod)\n\tif not mod.modname then return end'
+        )
+        mmPatched = true
+      }
+
+      if (mmPatched) {
+        const patchedBuf = Buffer.from(luaStr, 'utf-8')
+        modified.set(modManagerIdx, { content: patchedBuf, newCrc: crc32(patchedBuf) })
+        this.log('Patched MPModManager.lua with nil modName guards')
+      }
+    }
+
     // Write local file entries
     for (let i = 0; i < entries.length; i++) {
       const e = entries[i]
@@ -2157,22 +2297,25 @@ export class GameLauncherService {
       }
     }
 
-    // Append bridge extension file
+    // Append bridge extension file (only if not already present and current)
     const bridgeContent = Buffer.from(BRIDGE_LUA, 'utf-8')
     const bridgePath = 'lua/ge/extensions/beammpCMBridge.lua'
     const bridgeNameBytes = Buffer.from(bridgePath, 'utf-8')
     const bridgeCrc = crc32(bridgeContent)
-    const bridgeHdr = Buffer.alloc(30 + bridgeNameBytes.length)
-    bridgeHdr.writeUInt32LE(0x04034b50, 0)
-    bridgeHdr.writeUInt16LE(20, 4)
-    bridgeHdr.writeUInt32LE(bridgeCrc, 14)
-    bridgeHdr.writeUInt32LE(bridgeContent.length, 18)
-    bridgeHdr.writeUInt32LE(bridgeContent.length, 22)
-    bridgeHdr.writeUInt16LE(bridgeNameBytes.length, 26)
-    bridgeNameBytes.copy(bridgeHdr, 30)
-    const bridgeOffset = outOff
-    locals.push(Buffer.concat([bridgeHdr, bridgeContent]))
-    outOff += bridgeHdr.length + bridgeContent.length
+    let bridgeOffset = 0
+    if (!bridgeAlreadyCurrent) {
+      const bridgeHdr = Buffer.alloc(30 + bridgeNameBytes.length)
+      bridgeHdr.writeUInt32LE(0x04034b50, 0)
+      bridgeHdr.writeUInt16LE(20, 4)
+      bridgeHdr.writeUInt32LE(bridgeCrc, 14)
+      bridgeHdr.writeUInt32LE(bridgeContent.length, 18)
+      bridgeHdr.writeUInt32LE(bridgeContent.length, 22)
+      bridgeHdr.writeUInt16LE(bridgeNameBytes.length, 26)
+      bridgeNameBytes.copy(bridgeHdr, 30)
+      bridgeOffset = outOff
+      locals.push(Buffer.concat([bridgeHdr, bridgeContent]))
+      outOff += bridgeHdr.length + bridgeContent.length
+    }
 
     // Rebuild central directory
     const cdStart = outOff
@@ -2202,21 +2345,23 @@ export class GameLauncherService {
       }
     }
 
-    // CD entry for bridge
-    const bridgeCD = Buffer.alloc(46 + bridgeNameBytes.length)
-    bridgeCD.writeUInt32LE(0x02014b50, 0)
-    bridgeCD.writeUInt16LE(20, 4)
-    bridgeCD.writeUInt16LE(20, 6)
-    bridgeCD.writeUInt32LE(bridgeCrc, 16)
-    bridgeCD.writeUInt32LE(bridgeContent.length, 20)
-    bridgeCD.writeUInt32LE(bridgeContent.length, 24)
-    bridgeCD.writeUInt16LE(bridgeNameBytes.length, 28)
-    bridgeCD.writeUInt32LE(bridgeOffset, 42)
-    bridgeNameBytes.copy(bridgeCD, 46)
-    cdParts.push(bridgeCD)
+    // CD entry for bridge (only if newly added)
+    if (!bridgeAlreadyCurrent) {
+      const bridgeCD = Buffer.alloc(46 + bridgeNameBytes.length)
+      bridgeCD.writeUInt32LE(0x02014b50, 0)
+      bridgeCD.writeUInt16LE(20, 4)
+      bridgeCD.writeUInt16LE(20, 6)
+      bridgeCD.writeUInt32LE(bridgeCrc, 16)
+      bridgeCD.writeUInt32LE(bridgeContent.length, 20)
+      bridgeCD.writeUInt32LE(bridgeContent.length, 24)
+      bridgeCD.writeUInt16LE(bridgeNameBytes.length, 28)
+      bridgeCD.writeUInt32LE(bridgeOffset, 42)
+      bridgeNameBytes.copy(bridgeCD, 46)
+      cdParts.push(bridgeCD)
+    }
 
     const cdSize = cdParts.reduce((s, b) => s + b.length, 0)
-    const totalEntries = entries.length + 1
+    const totalEntries = entries.length + (bridgeAlreadyCurrent ? 0 : 1)
 
     // EOCD
     const eocd = Buffer.alloc(22)

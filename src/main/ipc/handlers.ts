@@ -24,6 +24,7 @@ import { DependencyResolver } from '../services/DependencyResolver'
 import { RoadNetwork } from '../services/RoadNetwork'
 import { TailscaleService } from '../services/TailscaleService'
 import { CareerSaveService } from '../services/CareerSaveService'
+import { CareerModService } from '../services/CareerModService'
 import { LoadOrderService } from '../services/LoadOrderService'
 import { ConflictDetectionService } from '../services/ConflictDetectionService'
 import { InputBindingsService } from '../services/InputBindingsService'
@@ -54,6 +55,7 @@ export function initializeServices(): {
   backend: BackendApiService
   modManager: ModManagerService
   serverManager: ServerManagerService
+  modManagerService: ModManagerService
 } {
   discoveryService = new GameDiscoveryService()
   launcherService = new GameLauncherService()
@@ -103,7 +105,8 @@ export function initializeServices(): {
     launcher: launcherService,
     backend: backendService,
     modManager: modManagerService,
-    serverManager: serverManagerService
+    serverManager: serverManagerService,
+    modManagerService
   }
 }
 
@@ -4819,6 +4822,44 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('career:getSavePath', async () => {
     return careerSaveService.getResolvedSavesDir()
+  })
+
+  // ── Career Mod Management ──
+  const careerModService = new CareerModService()
+
+  ipcMain.handle('career:fetchCareerMPReleases', async () => {
+    return careerModService.fetchCareerMPReleases()
+  })
+
+  ipcMain.handle('career:fetchRLSReleases', async () => {
+    return careerModService.fetchRLSReleases()
+  })
+
+  ipcMain.handle('career:installCareerMP', async (_event, downloadUrl: string, version: string, serverDir: string) => {
+    return careerModService.installCareerMP(downloadUrl, version, serverDir)
+  })
+
+  ipcMain.handle('career:installRLS', async (_event, downloadUrl: string, version: string, traffic: boolean, serverDir: string) => {
+    return careerModService.installRLS(downloadUrl, version, traffic, serverDir)
+  })
+
+  ipcMain.handle('career:getInstalledMods', async (_event, serverDir: string) => {
+    return careerModService.getInstalledMods(serverDir)
+  })
+
+  ipcMain.handle('career:browseServerDir', async () => {
+    const win = BrowserWindow.getFocusedWindow()
+    if (!win) return null
+    const result = await dialog.showOpenDialog(win, {
+      title: 'Select BeamMP Server Directory',
+      properties: ['openDirectory']
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0]
+  })
+
+  ipcMain.handle('career:getServerDir', async (_event, serverId: string) => {
+    return serverManagerService.getServerDir(serverId)
   })
 
   // ── Custom Executable Paths ──

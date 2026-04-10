@@ -121,11 +121,19 @@ app.whenReady().then(async () => {
   })
 
   // Initialize services and load config
-  const { config, backend, serverManager } = initializeServices()
+  const { config, backend, serverManager, modManagerService } = initializeServices()
   const appConfig = await config.load()
   backend.setBaseUrl(appConfig.useOfficialBackend ? 'https://backend.beammp.com' : appConfig.backendUrl)
   initVehicleAssetService(config)
   await serverManager.init()
+
+  // Repair db.json entries missing modname (prevents BeamMP MPModManager Lua crash)
+  const userDir = appConfig.gamePaths?.userDir
+  if (userDir) {
+    modManagerService.repairModNames(userDir).catch((err) =>
+      console.error('[ModManager] repairModNames failed:', err)
+    )
+  }
 
   // Register all IPC handlers
   registerIpcHandlers()

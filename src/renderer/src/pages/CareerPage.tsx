@@ -28,7 +28,15 @@ import {
   Zap,
   Truck,
   Swords,
-  Heart
+  Heart,
+  Download,
+  ExternalLink,
+  Server,
+  Package,
+  ToggleLeft,
+  ToggleRight,
+  Check,
+  GitBranch
 } from 'lucide-react'
 
 /* ── types mirrored from backend ── */
@@ -98,6 +106,41 @@ interface CareerSaveMetadata {
   vouchers: number | null
 }
 
+/* ── mod release types ── */
+interface CareerMPRelease {
+  version: string
+  name: string
+  changelog: string
+  prerelease: boolean
+  publishedAt: string
+  downloadUrl: string
+  size: number
+  downloads: number
+}
+
+interface RLSRelease {
+  version: string
+  rlsBaseVersion: string
+  name: string
+  changelog: string
+  prerelease: boolean
+  publishedAt: string
+  trafficUrl: string | null
+  noTrafficUrl: string | null
+  trafficSize: number
+  noTrafficSize: number
+  downloads: number
+}
+
+interface ServerEntry {
+  config: { id: string; name: string }
+}
+
+interface InstalledCareerMods {
+  careerMP: { version: string; installedAt: string } | null
+  rls: { version: string; traffic: boolean; installedAt: string } | null
+}
+
 /* ── helpers ── */
 function formatMoney(v: number): string {
   return v.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
@@ -139,6 +182,10 @@ const SKILL_ICONS: Record<string, React.ComponentType<{ size?: number; className
 export function CareerPage(): React.JSX.Element {
   const { t } = useTranslation()
 
+  // Top-level tab: saves vs mod manager
+  type TopTab = 'saves' | 'mods'
+  const [topTab, setTopTab] = useState<TopTab>('saves')
+
   // Navigation: list → profile → slot
   type ViewMode = 'list' | 'profile' | 'slot'
   const [view, setView] = useState<ViewMode>('list')
@@ -173,6 +220,30 @@ export function CareerPage(): React.JSX.Element {
   // Expanded sections
   const [expandedSkill, setExpandedSkill] = useState<string | null>(null)
 
+  // ── Mod Manager state ──
+  const [cmpReleases, setCmpReleases] = useState<CareerMPRelease[]>([])
+  const [rlsReleases, setRlsReleases] = useState<RLSRelease[]>([])
+  const [modLoading, setModLoading] = useState(false)
+  const [modError, setModError] = useState<string | null>(null)
+
+  // CareerMP install
+  const [cmpSelectedVersion, setCmpSelectedVersion] = useState<string>('')
+  const [cmpInstalling, setCmpInstalling] = useState(false)
+  const [cmpMsg, setCmpMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  // RLS install
+  const [rlsSelectedVersion, setRlsSelectedVersion] = useState<string>('')
+  const [rlsCmpVersion, setRlsCmpVersion] = useState<string>('')
+  const [rlsTraffic, setRlsTraffic] = useState(true)
+  const [rlsInstalling, setRlsInstalling] = useState(false)
+  const [rlsMsg, setRlsMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  // Server target
+  const [servers, setServers] = useState<ServerEntry[]>([])
+  const [selectedServerId, setSelectedServerId] = useState<string>('')
+  const [customServerDir, setCustomServerDir] = useState<string | null>(null)
+  const [installedMods, setInstalledMods] = useState<InstalledCareerMods | null>(null)
+
   const loadSavePath = useCallback(async () => {
     const path = await window.api.careerGetSavePath()
     setSavePath(path)
@@ -194,6 +265,125 @@ export function CareerPage(): React.JSX.Element {
   }, [])
 
   useEffect(() => { loadProfiles() }, [loadProfiles])
+
+  // ── Mod manager data loading ──
+  const loadModReleases = useCallback(async () => {
+    setModLoading(true)
+    setModError(null)
+    try {
+      const [cmp, rls] = await Promise.all([
+        window.api.careerFetchCareerMPReleases(),
+        window.api.careerFetchRLSReleases()
+      ])
+      setCmpReleases(cmp)
+      setRlsReleases(rls)
+      if (cmp.length > 0 && !cmpSelectedVersion) setCmpSelectedVersion(cmp[0].version)
+      if (rls.length > 0 && !rlsSelectedVersion) setRlsSelectedVersion(rls[0].version)
+      if (cmp.length > 0 && !rlsCmpVersion) setRlsCmpVersion(cmp[0].version)
+    } catch (err) {
+      setModError(String(err))
+    } finally {
+      setModLoading(false)
+    }
+  }, [cmpSelectedVersion, rlsSelectedVersion, rlsCmpVersion])
+
+  const loadServers = useCallback(async () => {
+    try {
+      const list = await window.api.hostedServerList()
+      setServers(list.map((s: { config: { id: string; name: string } }) => ({
+        config: { id: s.config.id, name: s.config.name }
+      })))
+    } catch { /* no servers configured */ }
+  }, [])
+
+  useEffect(() => {
+    if (topTab === 'mods') {
+      loadModReleases()
+      loadServers()
+    }
+  }, [topTab]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const getActiveServerDir = useCallback(async (): Promise<string | null> => {
+    if (customServerDir) return customServerDir
+    if (selectedServerId) return window.api.careerGetServerDir(selectedServerId)
+    return null
+  }, [customServerDir, selectedServerId])
+
+  const loadInstalledMods = useCallback(async () => {
+    const dir = await getActiveServerDir()
+    if (!dir) { setInstalledMods(null); return }
+    try {
+      const mods = await window.api.careerGetInstalledMods(dir)
+      setInstalledMods(mods)
+    } catch { setInstalledMods(null) }
+  }, [getActiveServerDir])
+
+  useEffect(() => { loadInstalledMods() }, [loadInstalledMods])
+
+  const handleBrowseServerDir = useCallback(async () => {
+    const dir = await window.api.careerBrowseServerDir()
+    if (dir) {
+      setSelectedServerId('')
+      setCustomServerDir(dir)
+    }
+  }, [])
+
+  const handleInstallCareerMP = useCallback(async () => {
+    const dir = await getActiveServerDir()
+    if (!dir) return
+    const release = cmpReleases.find((r) => r.version === cmpSelectedVersion)
+    if (!release) return
+    setCmpInstalling(true)
+    setCmpMsg(null)
+    try {
+      const result = await window.api.careerInstallCareerMP(release.downloadUrl, release.version, dir)
+      if (result.success) {
+        setCmpMsg({ type: 'success', text: t('career.mod.installSuccess', { name: `CareerMP ${release.version}` }) })
+        await loadInstalledMods()
+      } else {
+        setCmpMsg({ type: 'error', text: result.error || t('career.mod.installFailed') })
+      }
+    } catch (err) {
+      setCmpMsg({ type: 'error', text: String(err) })
+    } finally {
+      setCmpInstalling(false)
+    }
+  }, [getActiveServerDir, cmpReleases, cmpSelectedVersion, loadInstalledMods, t])
+
+  const handleInstallRLS = useCallback(async () => {
+    const dir = await getActiveServerDir()
+    if (!dir) return
+    const rlsRelease = rlsReleases.find((r) => r.version === rlsSelectedVersion)
+    if (!rlsRelease) return
+    const downloadUrl = rlsTraffic ? rlsRelease.trafficUrl : rlsRelease.noTrafficUrl
+    if (!downloadUrl) return
+    setRlsInstalling(true)
+    setRlsMsg(null)
+    try {
+      // Install CareerMP dependency first
+      const cmpRelease = cmpReleases.find((r) => r.version === rlsCmpVersion)
+      if (cmpRelease) {
+        const cmpResult = await window.api.careerInstallCareerMP(cmpRelease.downloadUrl, cmpRelease.version, dir)
+        if (!cmpResult.success) {
+          setRlsMsg({ type: 'error', text: `CareerMP install failed: ${cmpResult.error}` })
+          setRlsInstalling(false)
+          return
+        }
+      }
+      // Install RLS
+      const result = await window.api.careerInstallRLS(downloadUrl, rlsRelease.version, rlsTraffic, dir)
+      if (result.success) {
+        setRlsMsg({ type: 'success', text: t('career.mod.installSuccess', { name: `RLS ${rlsRelease.version}` }) })
+        await loadInstalledMods()
+      } else {
+        setRlsMsg({ type: 'error', text: result.error || t('career.mod.installFailed') })
+      }
+    } catch (err) {
+      setRlsMsg({ type: 'error', text: String(err) })
+    } finally {
+      setRlsInstalling(false)
+    }
+  }, [getActiveServerDir, rlsReleases, rlsSelectedVersion, rlsTraffic, cmpReleases, rlsCmpVersion, loadInstalledMods, t])
 
   const openProfile = useCallback((profile: CareerProfile) => {
     setSelectedProfile(profile)
@@ -787,8 +977,26 @@ export function CareerPage(): React.JSX.Element {
         </div>
       </div>
 
+      {/* Top-level tabs */}
+      <div className="flex gap-1 px-6 pt-4">
+        <button
+          onClick={() => setTopTab('saves')}
+          className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${topTab === 'saves' ? 'bg-white/10 text-white border border-b-0 border-[var(--color-border)]' : 'text-[var(--text-muted)] hover:text-white hover:bg-white/5'}`}
+        >
+          <Briefcase size={14} className="inline mr-1.5 -mt-0.5" />
+          {t('career.mod.saves')}
+        </button>
+        <button
+          onClick={() => setTopTab('mods')}
+          className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${topTab === 'mods' ? 'bg-white/10 text-white border border-b-0 border-[var(--color-border)]' : 'text-[var(--text-muted)] hover:text-white hover:bg-white/5'}`}
+        >
+          <Package size={14} className="inline mr-1.5 -mt-0.5" />
+          {t('career.mod.modManager')}
+        </button>
+      </div>
+
       {/* Save path configuration */}
-      {showPathConfig && (
+      {topTab === 'saves' && showPathConfig && (
         <div className="mx-6 mt-4 p-4 bg-white/5 rounded-xl border border-[var(--color-border)]">
           <h3 className="text-sm font-medium text-white mb-2">{t('career.savePathTitle')}</h3>
           <p className="text-xs text-[var(--text-muted)] mb-3">{t('career.savePathDescription')}</p>
@@ -814,57 +1022,358 @@ export function CareerPage(): React.JSX.Element {
         </div>
       )}
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
-        {loading ? (
-          <div className="flex items-center justify-center h-48">
-            <Loader2 size={32} className="animate-spin text-[var(--color-accent)]" />
-          </div>
-        ) : error ? (
-          <div className="text-center py-12">
-            <AlertTriangle size={40} className="mx-auto mb-3 text-red-400" />
-            <p className="text-red-300">{error}</p>
-          </div>
-        ) : profiles.length === 0 ? (
-          <div className="text-center py-12">
-            <Briefcase size={48} className="mx-auto mb-4 text-[var(--text-muted)]" />
-            <h2 className="text-lg font-semibold text-white mb-2">{t('career.noProfiles')}</h2>
-            <p className="text-sm text-[var(--text-muted)] max-w-md mx-auto">{t('career.noProfilesDescription')}</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {profiles.map((profile) => (
-              <button
-                key={profile.name}
-                onClick={() => openProfile(profile)}
-                className="bg-white/5 rounded-xl border border-[var(--color-border)] overflow-hidden hover:border-[var(--color-accent-25)] transition-colors text-left"
-              >
-                <div className="p-4">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Briefcase size={18} className="text-[var(--color-accent)]" />
-                    <h3 className="text-base font-semibold text-white">{profile.name}</h3>
-                    {profile.isRLS && (
-                      <span className="text-xs bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full">RLS</span>
-                    )}
-                    {profile.deployed ? (
-                      <span className="text-xs bg-green-500/20 text-green-300 px-2 py-0.5 rounded-full">{t('career.deployed')}</span>
-                    ) : (
-                      <span className="text-xs bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded-full">{t('career.undeployed')}</span>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between mt-2">
-                    <p className="text-xs text-[var(--text-muted)]">
-                      {t('career.slotCount', { count: profile.slots.length })}
-                    </p>
-                    <ChevronLeft size={14} className="text-[var(--text-muted)] rotate-180" />
-                  </div>
-                </div>
-              </button>
+      {/* Saves Tab Content */}
+      {topTab === 'saves' && (
+        <div className="flex-1 overflow-y-auto p-6">
+          {loading ? (
+            <div className="flex items-center justify-center h-48">
+              <Loader2 size={32} className="animate-spin text-[var(--color-accent)]" />
+            </div>
+          ) : error ? (
+            <div className="text-center py-12">
+              <AlertTriangle size={40} className="mx-auto mb-3 text-red-400" />
+              <p className="text-red-300">{error}</p>
+            </div>
+          ) : profiles.length === 0 ? (
+            <div className="text-center py-12">
+              <Briefcase size={48} className="mx-auto mb-4 text-[var(--text-muted)]" />
+              <h2 className="text-lg font-semibold text-white mb-2">{t('career.noProfiles')}</h2>
+              <p className="text-sm text-[var(--text-muted)] max-w-md mx-auto">{t('career.noProfilesDescription')}</p>
+            </div>
+          ) : (
+            <ProfileListGrouped profiles={profiles} openProfile={openProfile} t={t} />
+          )}
+        </div>
+      )}
+
+      {/* Mod Manager Tab Content */}
+      {topTab === 'mods' && (
+        <ModManagerPanel
+          modLoading={modLoading}
+          modError={modError}
+          cmpReleases={cmpReleases}
+          rlsReleases={rlsReleases}
+          cmpSelectedVersion={cmpSelectedVersion}
+          setCmpSelectedVersion={setCmpSelectedVersion}
+          rlsSelectedVersion={rlsSelectedVersion}
+          setRlsSelectedVersion={setRlsSelectedVersion}
+          rlsCmpVersion={rlsCmpVersion}
+          setRlsCmpVersion={setRlsCmpVersion}
+          rlsTraffic={rlsTraffic}
+          setRlsTraffic={setRlsTraffic}
+          cmpInstalling={cmpInstalling}
+          rlsInstalling={rlsInstalling}
+          cmpMsg={cmpMsg}
+          rlsMsg={rlsMsg}
+          servers={servers}
+          selectedServerId={selectedServerId}
+          setSelectedServerId={setSelectedServerId}
+          customServerDir={customServerDir}
+          installedMods={installedMods}
+          handleBrowseServerDir={handleBrowseServerDir}
+          handleInstallCareerMP={handleInstallCareerMP}
+          handleInstallRLS={handleInstallRLS}
+          loadModReleases={loadModReleases}
+          t={t}
+        />
+      )}
+    </div>
+  )
+}
+
+/* ── Mod Manager Panel sub-component ── */
+function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSelectedVersion, setCmpSelectedVersion, rlsSelectedVersion, setRlsSelectedVersion, rlsCmpVersion, setRlsCmpVersion, rlsTraffic, setRlsTraffic, cmpInstalling, rlsInstalling, cmpMsg, rlsMsg, servers, selectedServerId, setSelectedServerId, customServerDir, installedMods, handleBrowseServerDir, handleInstallCareerMP, handleInstallRLS, loadModReleases, t }: {
+  modLoading: boolean
+  modError: string | null
+  cmpReleases: CareerMPRelease[]
+  rlsReleases: RLSRelease[]
+  cmpSelectedVersion: string
+  setCmpSelectedVersion: (v: string) => void
+  rlsSelectedVersion: string
+  setRlsSelectedVersion: (v: string) => void
+  rlsCmpVersion: string
+  setRlsCmpVersion: (v: string) => void
+  rlsTraffic: boolean
+  setRlsTraffic: (v: boolean) => void
+  cmpInstalling: boolean
+  rlsInstalling: boolean
+  cmpMsg: { type: 'success' | 'error'; text: string } | null
+  rlsMsg: { type: 'success' | 'error'; text: string } | null
+  servers: ServerEntry[]
+  selectedServerId: string
+  setSelectedServerId: (v: string) => void
+  customServerDir: string | null
+  installedMods: InstalledCareerMods | null
+  handleBrowseServerDir: () => void
+  handleInstallCareerMP: () => void
+  handleInstallRLS: () => void
+  loadModReleases: () => void
+  t: (key: string, opts?: Record<string, unknown>) => string
+}): React.JSX.Element {
+  return (
+    <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      {/* Server target selector */}
+      <div className="bg-white/5 rounded-xl border border-[var(--color-border)] p-4">
+        <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+          <Server size={16} /> {t('career.mod.selectServer')}
+        </h3>
+        <div className="flex items-center gap-2">
+          <select
+            value={selectedServerId}
+            onChange={(e) => setSelectedServerId(e.target.value)}
+            className="flex-1 px-3 py-1.5 text-sm bg-black/20 rounded-lg border border-[var(--color-border)] text-white"
+          >
+            <option value="">{customServerDir || t('career.mod.selectServer')}</option>
+            {servers.map((s) => (
+              <option key={s.config.id} value={s.config.id}>{s.config.name}</option>
             ))}
-          </div>
+          </select>
+          <button
+            onClick={handleBrowseServerDir}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-white/5 hover:bg-white/10 border border-[var(--color-border)] transition-colors"
+          >
+            <FolderOpen size={14} /> {t('career.mod.customDir')}
+          </button>
+        </div>
+        {customServerDir && (
+          <p className="text-xs text-[var(--text-muted)] mt-2 truncate">{customServerDir}</p>
         )}
       </div>
+
+      {modLoading ? (
+        <div className="flex items-center justify-center h-32">
+          <Loader2 size={28} className="animate-spin text-[var(--color-accent)]" />
+        </div>
+      ) : modError ? (
+        <div className="text-center py-8">
+          <AlertTriangle size={32} className="mx-auto mb-2 text-red-400" />
+          <p className="text-red-300 text-sm">{modError}</p>
+          <button onClick={loadModReleases} className="mt-3 text-xs text-[var(--color-accent)] hover:underline">{t('common.retry')}</button>
+        </div>
+      ) : (
+        <>
+          {/* CareerMP section */}
+          <div className="bg-white/5 rounded-xl border border-[var(--color-border)] p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                <Package size={16} className="text-[var(--color-accent)]" /> {t('career.mod.careerMP')}
+              </h3>
+              <a
+                href="https://github.com/StanleyDudek/CareerMP"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-[var(--text-muted)] hover:text-[var(--color-accent)] flex items-center gap-1"
+              >
+                <ExternalLink size={12} /> GitHub
+              </a>
+            </div>
+            <p className="text-xs text-[var(--text-muted)] mb-3">{t('career.mod.careerMPBlurb')}</p>
+
+            {installedMods?.careerMP && (
+              <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-green-500/10 rounded-lg border border-green-500/20">
+                <Check size={14} className="text-green-400" />
+                <span className="text-xs text-green-300">{t('career.mod.installed')}: v{installedMods.careerMP.version}</span>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2">
+              <select
+                value={cmpSelectedVersion}
+                onChange={(e) => setCmpSelectedVersion(e.target.value)}
+                className="flex-1 px-3 py-1.5 text-sm bg-black/20 rounded-lg border border-[var(--color-border)] text-white"
+              >
+                {cmpReleases.map((r) => (
+                  <option key={r.version} value={r.version}>
+                    {r.version} {r.prerelease ? '(pre-release)' : ''} — {(r.size / 1024).toFixed(0)} KB
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={handleInstallCareerMP}
+                disabled={cmpInstalling || !selectedServerId && !customServerDir}
+                className="flex items-center gap-1.5 px-4 py-1.5 text-sm rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white font-medium transition-colors disabled:opacity-50"
+              >
+                {cmpInstalling ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                {t('career.mod.install')}
+              </button>
+            </div>
+            {cmpMsg && (
+              <p className={`text-xs mt-2 ${cmpMsg.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{cmpMsg.text}</p>
+            )}
+          </div>
+
+          {/* RLS section */}
+          <div className="bg-white/5 rounded-xl border border-[var(--color-border)] p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                <Star size={16} className="text-purple-400" /> {t('career.mod.rls')}
+              </h3>
+              <a
+                href="https://github.com/PapiCheesecake/rls_careermp"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-[var(--text-muted)] hover:text-[var(--color-accent)] flex items-center gap-1"
+              >
+                <ExternalLink size={12} /> GitHub
+              </a>
+            </div>
+            <p className="text-xs text-[var(--text-muted)] mb-3">{t('career.mod.rlsBlurb')}</p>
+
+            {installedMods?.rls && (
+              <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-green-500/10 rounded-lg border border-green-500/20">
+                <Check size={14} className="text-green-400" />
+                <span className="text-xs text-green-300">
+                  {t('career.mod.installed')}: v{installedMods.rls.version}
+                  {installedMods.rls.traffic ? ` (${t('career.mod.traffic')})` : ` (${t('career.mod.noTraffic')})`}
+                </span>
+              </div>
+            )}
+
+            {/* RLS version picker */}
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-[var(--text-muted)] mb-1 block">{t('career.mod.version')}</label>
+                <select
+                  value={rlsSelectedVersion}
+                  onChange={(e) => setRlsSelectedVersion(e.target.value)}
+                  className="w-full px-3 py-1.5 text-sm bg-black/20 rounded-lg border border-[var(--color-border)] text-white"
+                >
+                  {rlsReleases.map((r) => (
+                    <option key={r.version} value={r.version}>
+                      {r.version} (RLS base {r.rlsBaseVersion}) — {(r.trafficSize / 1024 / 1024).toFixed(0)} MB
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* CareerMP dependency version for RLS */}
+              <div>
+                <label className="text-xs text-[var(--text-muted)] mb-1 block flex items-center gap-1">
+                  <GitBranch size={12} /> {t('career.mod.cmpDependency')}
+                </label>
+                <select
+                  value={rlsCmpVersion}
+                  onChange={(e) => setRlsCmpVersion(e.target.value)}
+                  className="w-full px-3 py-1.5 text-sm bg-black/20 rounded-lg border border-[var(--color-border)] text-white"
+                >
+                  {cmpReleases.map((r) => (
+                    <option key={r.version} value={r.version}>
+                      CareerMP {r.version} {r.prerelease ? '(pre-release)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Traffic toggle */}
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-[var(--text-muted)]">{t('career.mod.traffic')}</span>
+                <button
+                  onClick={() => setRlsTraffic(!rlsTraffic)}
+                  className="flex items-center gap-2 text-sm"
+                >
+                  {rlsTraffic ? (
+                    <><ToggleRight size={24} className="text-green-400" /><span className="text-xs text-green-400">{t('career.mod.traffic')}</span></>
+                  ) : (
+                    <><ToggleLeft size={24} className="text-[var(--text-muted)]" /><span className="text-xs text-[var(--text-muted)]">{t('career.mod.noTraffic')}</span></>
+                  )}
+                </button>
+              </div>
+
+              <button
+                onClick={handleInstallRLS}
+                disabled={rlsInstalling || !selectedServerId && !customServerDir}
+                className="w-full flex items-center justify-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-medium transition-colors disabled:opacity-50"
+              >
+                {rlsInstalling ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                {t('career.mod.install')} RLS
+              </button>
+            </div>
+            {rlsMsg && (
+              <p className={`text-xs mt-2 ${rlsMsg.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{rlsMsg.text}</p>
+            )}
+          </div>
+        </>
+      )}
     </div>
+  )
+}
+
+/* ── Profile List Grouped sub-component ── */
+function ProfileListGrouped({ profiles, openProfile, t }: {
+  profiles: CareerProfile[]
+  openProfile: (p: CareerProfile) => void
+  t: (key: string, opts?: Record<string, unknown>) => string
+}): React.JSX.Element {
+  const careerMPProfiles = profiles.filter((p) => !p.isRLS)
+  const rlsProfiles = profiles.filter((p) => p.isRLS)
+
+  return (
+    <div className="space-y-6">
+      {/* CareerMP Saves */}
+      {careerMPProfiles.length > 0 && (
+        <div>
+          <h2 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+            <Briefcase size={16} className="text-[var(--color-accent)]" />
+            {t('career.mod.careerMPSaves')}
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {careerMPProfiles.map((profile) => (
+              <ProfileCard key={profile.name} profile={profile} openProfile={openProfile} t={t} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* RLS Saves */}
+      {rlsProfiles.length > 0 && (
+        <div>
+          <h2 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+            <Star size={16} className="text-purple-400" />
+            {t('career.mod.rlsSaves')}
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {rlsProfiles.map((profile) => (
+              <ProfileCard key={profile.name} profile={profile} openProfile={openProfile} t={t} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ── Profile Card sub-component ── */
+function ProfileCard({ profile, openProfile, t }: {
+  profile: CareerProfile
+  openProfile: (p: CareerProfile) => void
+  t: (key: string, opts?: Record<string, unknown>) => string
+}): React.JSX.Element {
+  return (
+    <button
+      onClick={() => openProfile(profile)}
+      className="bg-white/5 rounded-xl border border-[var(--color-border)] overflow-hidden hover:border-[var(--color-accent-25)] transition-colors text-left"
+    >
+      <div className="p-4">
+        <div className="flex items-center gap-2 mb-1">
+          <Briefcase size={18} className="text-[var(--color-accent)]" />
+          <h3 className="text-base font-semibold text-white">{profile.name}</h3>
+          {profile.isRLS && (
+            <span className="text-xs bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full">RLS</span>
+          )}
+          {profile.deployed ? (
+            <span className="text-xs bg-green-500/20 text-green-300 px-2 py-0.5 rounded-full">{t('career.deployed')}</span>
+          ) : (
+            <span className="text-xs bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded-full">{t('career.undeployed')}</span>
+          )}
+        </div>
+        <div className="flex items-center justify-between mt-2">
+          <p className="text-xs text-[var(--text-muted)]">
+            {t('career.slotCount', { count: profile.slots.length })}
+          </p>
+          <ChevronLeft size={14} className="text-[var(--text-muted)] rotate-180" />
+        </div>
+      </div>
+    </button>
   )
 }
 

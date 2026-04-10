@@ -499,6 +499,22 @@ const api = {
   careerGetSavePath: () =>
     ipcRenderer.invoke('career:getSavePath') as Promise<string | null>,
 
+  // Career Mod Management
+  careerFetchCareerMPReleases: () =>
+    ipcRenderer.invoke('career:fetchCareerMPReleases'),
+  careerFetchRLSReleases: () =>
+    ipcRenderer.invoke('career:fetchRLSReleases'),
+  careerInstallCareerMP: (downloadUrl: string, version: string, serverDir: string) =>
+    ipcRenderer.invoke('career:installCareerMP', downloadUrl, version, serverDir) as Promise<{ success: boolean; error?: string }>,
+  careerInstallRLS: (downloadUrl: string, version: string, traffic: boolean, serverDir: string) =>
+    ipcRenderer.invoke('career:installRLS', downloadUrl, version, traffic, serverDir) as Promise<{ success: boolean; error?: string }>,
+  careerGetInstalledMods: (serverDir: string) =>
+    ipcRenderer.invoke('career:getInstalledMods', serverDir),
+  careerBrowseServerDir: () =>
+    ipcRenderer.invoke('career:browseServerDir') as Promise<string | null>,
+  careerGetServerDir: (serverId: string) =>
+    ipcRenderer.invoke('career:getServerDir', serverId) as Promise<string>,
+
   // Controls / Input Bindings
   controlsGetDevices: () =>
     ipcRenderer.invoke('controls:getDevices'),
