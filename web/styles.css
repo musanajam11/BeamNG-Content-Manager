@@ -1,0 +1,5 @@
+/* Web-demo CSS wrapper.
+   Re-exports the renderer's main.css and tells Tailwind v4
+   where to scan for utility classes (source files live outside the Vite root). */
+@source "../src/renderer/src";
+@import '../src/renderer/src/assets/main.css';

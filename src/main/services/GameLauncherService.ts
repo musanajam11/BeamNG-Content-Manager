@@ -1421,6 +1421,11 @@ export class GameLauncherService {
         // to avoid UTF-8 corruption. This case only triggers for non-binary U messages.
         break
       case 'E':
+        // During relay, 'E' is the prefix for TriggerClientEvent — server-side Lua mods
+        // sending event messages to the client (e.g. E:rxFuelTechHandshake:...,
+        // E:rxInputUpdate:...).  These must be forwarded to the game, NOT treated as
+        // errors.  Only 'K' (kick) is a real disconnect during relay.
+        break
       case 'K': {
         const reason = this.parseServerError(data, 'Disconnected by server')
         this.ulStatus = 'UlDisconnected: ' + data.substring(1)

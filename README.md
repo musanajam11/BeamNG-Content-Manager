@@ -27,7 +27,7 @@ Manage mods, vehicles, maps, servers, friends, career saves, and more — from a
 
 <div align="center">
 
-![Screenshot](docs/screenshots/screenshot%20(1).png)
+![Home](Docs/screenshots/Home.jpg)
 
 <details>
 <summary><b>View all screenshots</b></summary>
@@ -35,14 +35,17 @@ Manage mods, vehicles, maps, servers, friends, career saves, and more — from a
 
 | | |
 |:---:|:---:|
-| ![Screenshot 2](docs/screenshots/screenshot%20(2).png) | ![Screenshot 3](docs/screenshots/screenshot%20(3).png) |
-| ![Screenshot 4](docs/screenshots/screenshot%20(4).png) | ![Screenshot 5](docs/screenshots/screenshot%20(5).png) |
-| ![Screenshot 6](docs/screenshots/screenshot%20(6).png) | ![Screenshot 7](docs/screenshots/screenshot%20(7).png) |
-| ![Screenshot 8](docs/screenshots/screenshot%20(8).png) | ![Screenshot 9](docs/screenshots/screenshot%20(9).png) |
-| ![Screenshot 10](docs/screenshots/screenshot%20(10).png) | ![Screenshot 11](docs/screenshots/screenshot%20(11).png) |
-| ![Screenshot 12](docs/screenshots/screenshot%20(12).png) | ![Screenshot 13](docs/screenshots/screenshot%20(13).png) |
-| ![Screenshot 14](docs/screenshots/screenshot%20(14).png) | ![Screenshot 15](docs/screenshots/screenshot%20(15).png) |
-| ![Screenshot 16](docs/screenshots/screenshot%20(16).png) | |
+| ![Server List](Docs/screenshots/server-list.jpg) | ![Servers Overview](Docs/screenshots/Servers-overview.jpg) |
+| ![Server Config](Docs/screenshots/Servers-server.jpg) | ![Server Config Editor](Docs/screenshots/Servers-server-config.jpg) |
+| ![Server Scheduler](Docs/screenshots/Servers-server-scheduler.jpg) | ![Friends](Docs/screenshots/friends.jpg) |
+| ![Cars Overview](Docs/screenshots/cars-overview.jpg) | ![Cars Editor](Docs/screenshots/cars-editor.jpg) |
+| ![Maps](Docs/screenshots/Maps.jpg) | ![Map Selection](Docs/screenshots/map-selection.jpg) |
+| ![Mods Installed](Docs/screenshots/Mods-installed.jpg) | ![Mods Browse](Docs/screenshots/Mods-browse.jpg) |
+| ![Mods Registry](Docs/screenshots/mods-registry.jpg) | ![Live GPS](Docs/screenshots/Live-GPS.png) |
+| ![Controls Live Input](Docs/screenshots/Controls-liveinput.jpg) | ![Career Overview](Docs/screenshots/Career-Overview.jpg) |
+| ![Career Saved](Docs/screenshots/Career-Saved.jpg) | ![Career Easy Install](Docs/screenshots/Career-EasyInstall.jpg) |
+| ![Settings General](Docs/screenshots/Settings-general.jpg) | ![Settings Appearance](Docs/screenshots/Settings-appearance.jpg) |
+| ![Settings Custom CSS](Docs/screenshots/Settings-CustomCSS.jpg) | |
 
 </details>
 
