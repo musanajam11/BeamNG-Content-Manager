@@ -556,7 +556,7 @@ export class RegistryService {
         // XenForo rejects bare resource ID URLs — need to fetch the resource page
         // and extract the real download link (includes slug + version param)
         const resourcePageUrl = downloadUrl.replace(/\/download\/?.*$/, '/')
-        const pageRes = await net.fetch(resourcePageUrl, { session: beamngSession })
+        const pageRes = await net.fetch(resourcePageUrl, { session: beamngSession } as never)
         if (!pageRes.ok) {
           return { success: false, installedFiles: [], error: `Failed to load resource page: ${pageRes.status}` }
         }
@@ -569,7 +569,7 @@ export class RegistryService {
             realDownloadUrl = `https://www.beamng.com/${realDownloadUrl.replace(/^\//, '')}`
           }
         }
-        const dlRes = await net.fetch(realDownloadUrl, { session: beamngSession })
+        const dlRes = await net.fetch(realDownloadUrl, { session: beamngSession } as never)
         if (!dlRes.ok) {
           if (dlRes.status === 403) {
             return { success: false, installedFiles: [], error: 'BeamNG.com login required. Log in via the Browse tab first.' }
