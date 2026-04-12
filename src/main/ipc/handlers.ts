@@ -4303,9 +4303,24 @@ export function registerIpcHandlers(): void {
         req.write(postData)
         req.end()
       })
+      // If the port-check API didn't return our public IP, fetch it separately
+      if (!result.ip) {
+        try {
+          result.ip = await new Promise<string>((resolve, reject) => {
+            httpsGet('https://api.ipify.org', (res) => {
+              const chunks: Buffer[] = []
+              res.on('data', (c: Buffer) => chunks.push(c))
+              res.on('end', () => resolve(Buffer.concat(chunks).toString().trim()))
+              res.on('error', reject)
+            }).on('error', reject)
+          })
+        } catch {
+          // IP lookup failed — continue without it
+        }
+      }
       return result
     } catch {
-      // Fallback: just try to detect public IP via a simple API
+      // Primary API failed entirely — try ipify.org + TCP check as fallback
       try {
         const ipResult = await new Promise<string>((resolve, reject) => {
           httpsGet('https://api.ipify.org', (res) => {

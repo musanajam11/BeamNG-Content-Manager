@@ -401,6 +401,7 @@ export type AppPage =
   | 'controls'
   | 'career'
   | 'live-gps'
+  | 'livery-editor'
 
 /* ── Hosted Server Manager ── */
 

@@ -2060,7 +2060,7 @@ export class GameLauncherService {
           if (this.serverInRelay) { clearInterval(check); resolve() }
           else if (this.terminate) { clearInterval(check); reject(new Error(this.terminateReason || 'Server sync failed')) }
         }, 100)
-        setTimeout(() => { clearInterval(check); reject(new Error('Server connection timed out after 5 minutes')) }, 300000)
+        setTimeout(() => { clearInterval(check); reject(new Error('Server connection timed out after 30 minutes')) }, 1800000)
       })
     } catch (err) {
       const errorMsg = (err as Error).message

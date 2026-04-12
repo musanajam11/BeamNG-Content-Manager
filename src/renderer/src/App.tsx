@@ -15,6 +15,7 @@ import { ControlsPage } from './pages/ControlsPage'
 import { ServerManagerPage } from './pages/ServerManagerPage'
 import { CareerPage } from './pages/CareerPage'
 import { LiveGPSPage } from './pages/LiveGPSPage'
+import { LiveryEditorPage } from './pages/LiveryEditorPage'
 import { SetupWizard } from './pages/SetupWizard'
 import { useAppStore } from './stores/useAppStore'
 import { useThemeStore } from './stores/useThemeStore'
@@ -46,6 +47,8 @@ function PageRouter(): React.JSX.Element {
       return <CareerPage />
     case 'live-gps':
       return <LiveGPSPage />
+    case 'livery-editor':
+      return <LiveryEditorPage />
     case 'settings':
       return <SettingsPage />
     default:
