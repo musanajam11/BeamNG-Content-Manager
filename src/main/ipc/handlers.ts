@@ -732,14 +732,105 @@ export function registerIpcHandlers(): void {
   // ── Game Launcher ──
   ipcMain.handle('game:launch', async (): Promise<{ success: boolean; error?: string }> => {
     const config = configService.get()
-    const rendererArgs = config.renderer === 'vulkan' ? ['-vulkan'] : config.renderer === 'dx11' ? ['-dx11'] : []
+    const rendererArgs = config.renderer === 'vulkan' ? ['-gfx', 'vk'] : config.renderer === 'dx11' ? ['-gfx', 'dx11'] : []
     return launcherService.launchGame(config.gamePaths, { args: rendererArgs })
   })
 
   ipcMain.handle('game:launchVanilla', async (_event, config?: { mode?: string; level?: string; vehicle?: string }): Promise<{ success: boolean; error?: string }> => {
     const appConfig = configService.get()
-    const rendererArgs = appConfig.renderer === 'vulkan' ? ['-vulkan'] : appConfig.renderer === 'dx11' ? ['-dx11'] : []
+    const rendererArgs = appConfig.renderer === 'vulkan' ? ['-gfx', 'vk'] : appConfig.renderer === 'dx11' ? ['-gfx', 'dx11'] : []
     return launcherService.launchVanilla(appConfig.gamePaths, config, { args: rendererArgs })
+  })
+
+  // ── Support Tools ──
+
+  ipcMain.handle('game:openUserFolder', async () => {
+    const userDir = configService.get().gamePaths?.userDir
+    if (!userDir) return { success: false, error: 'User data folder not configured' }
+    shell.openPath(userDir)
+    return { success: true }
+  })
+
+  ipcMain.handle('game:clearCache', async (): Promise<{ success: boolean; error?: string; freedBytes?: number }> => {
+    const userDir = configService.get().gamePaths?.userDir
+    if (!userDir) return { success: false, error: 'User data folder not configured' }
+
+    const cacheDirs = ['cache', 'temp']
+    let freedBytes = 0
+    const backupRoot = join(userDir, 'cache_backup_' + Date.now())
+
+    try {
+      await mkdir(backupRoot, { recursive: true })
+      for (const dirName of cacheDirs) {
+        const dirPath = join(userDir, dirName)
+        if (!existsSync(dirPath)) continue
+
+        const backupDest = join(backupRoot, dirName)
+        try {
+          await fsRename(dirPath, backupDest)
+          // Estimate freed bytes by walking backup
+          const entries = await readdir(backupDest, { recursive: true, withFileTypes: true }).catch(() => [])
+          for (const entry of entries) {
+            if (entry.isFile()) {
+              try {
+                const s = await stat(join(entry.parentPath ?? entry.path, entry.name))
+                freedBytes += s.size
+              } catch { /* skip */ }
+            }
+          }
+        } catch (err) {
+          console.warn(`Failed to move ${dirName}: ${err}`)
+        }
+      }
+      return { success: true, freedBytes }
+    } catch (err) {
+      return { success: false, error: `Failed to clear cache: ${err}` }
+    }
+  })
+
+  ipcMain.handle('game:launchSafeMode', async (): Promise<{ success: boolean; error?: string }> => {
+    const paths = configService.get().gamePaths
+    if (!paths?.executable || !existsSync(paths.executable)) {
+      return { success: false, error: 'BeamNG.drive executable not found' }
+    }
+    // Safe mode: launch with -userpath pointing to a temp empty folder
+    const { spawn } = await import('node:child_process')
+    const tmpDir = join(app.getPath('temp'), 'BeamNG-SafeMode-' + Date.now())
+    await mkdir(tmpDir, { recursive: true })
+    const args = ['-userpath', tmpDir]
+    spawn(paths.executable, args, {
+      cwd: paths.installDir ?? undefined,
+      detached: true,
+      stdio: 'ignore'
+    }).unref()
+    return { success: true }
+  })
+
+  ipcMain.handle('game:launchSafeVulkan', async (): Promise<{ success: boolean; error?: string }> => {
+    const paths = configService.get().gamePaths
+    if (!paths?.executable || !existsSync(paths.executable)) {
+      return { success: false, error: 'BeamNG.drive executable not found' }
+    }
+    const { spawn } = await import('node:child_process')
+    const tmpDir = join(app.getPath('temp'), 'BeamNG-SafeVulkan-' + Date.now())
+    await mkdir(tmpDir, { recursive: true })
+    const args = ['-userpath', tmpDir, '-gfx', 'vk']
+    spawn(paths.executable, args, {
+      cwd: paths.installDir ?? undefined,
+      detached: true,
+      stdio: 'ignore'
+    }).unref()
+    return { success: true }
+  })
+
+  ipcMain.handle('game:verifyIntegrity', async (): Promise<{ success: boolean; error?: string }> => {
+    // Trigger Steam's verify integrity via the steam:// protocol
+    try {
+      shell.openExternal('steam://validate/284160')
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: `Failed to trigger integrity check: ${err}` }
+    }
   })
 
   // ── GPS Tracker ──
@@ -2477,7 +2568,7 @@ export function registerIpcHandlers(): void {
     const config = configService.get()
     const ident = `${ip}:${port}`
     configService.addRecentServer(ident).catch(() => {})
-    const rendererArgs = config.renderer === 'vulkan' ? ['-vulkan'] : config.renderer === 'dx11' ? ['-dx11'] : []
+    const rendererArgs = config.renderer === 'vulkan' ? ['-gfx', 'vk'] : config.renderer === 'dx11' ? ['-gfx', 'dx11'] : []
     return launcherService.joinServer(ip, port, config.gamePaths, { args: rendererArgs })
   })
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react'
-import { FolderOpen, Globe, Check, AlertCircle, Package, Download, Upload, Palette, RotateCcw, Monitor, Type, Layers, Maximize2, PanelLeft, Eye, EyeOff, Image, X, Plus, Shuffle, Network, Languages, Terminal, Server, GripVertical, Code, AlertTriangle, ToggleLeft, ToggleRight, ChevronDown, ChevronRight } from 'lucide-react'
+import { FolderOpen, Globe, Check, AlertCircle, Package, Download, Upload, Palette, RotateCcw, Monitor, Type, Layers, Maximize2, PanelLeft, Eye, EyeOff, Image, X, Plus, Shuffle, Network, Languages, Terminal, Server, GripVertical, Code, AlertTriangle, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Wrench, Trash2, Shield, HardDriveDownload, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/useAppStore'
 import { useThemeStore, ACCENT_PRESETS, BG_STYLES, DEFAULT_SIDEBAR_ORDER } from '../stores/useThemeStore'
@@ -338,6 +338,9 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
             </div>
           </section>
 
+          {/* Support Tools */}
+          <SupportToolsSection />
+
           {/* Custom Executables */}
           <section>
             <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
@@ -522,6 +525,113 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
           </section>
         </div>
       </div>
+  )
+}
+
+// ── Support Tools Section ──
+
+function SupportToolsSection(): React.JSX.Element {
+  const { t } = useTranslation()
+  const [status, setStatus] = useState<string | null>(null)
+  const [clearing, setClearing] = useState(false)
+
+  const showStatus = (msg: string, durationMs = 4000): void => {
+    setStatus(msg)
+    setTimeout(() => setStatus(null), durationMs)
+  }
+
+  const handleOpenUserFolder = async (): Promise<void> => {
+    const result = await window.api.openUserFolder()
+    if (!result.success) showStatus(result.error ?? 'Failed')
+  }
+
+  const handleClearCache = async (): Promise<void> => {
+    setClearing(true)
+    try {
+      const result = await window.api.clearCache()
+      if (result.success) {
+        const mb = result.freedBytes ? (result.freedBytes / 1024 / 1024).toFixed(1) : '0'
+        showStatus(t('settings.cacheClearedMB', { mb }))
+      } else {
+        showStatus(result.error ?? 'Failed')
+      }
+    } finally {
+      setClearing(false)
+    }
+  }
+
+  const handleSafeMode = async (): Promise<void> => {
+    const result = await window.api.launchSafeMode()
+    if (result.success) showStatus(t('settings.safeModeStarted'))
+    else showStatus(result.error ?? 'Failed')
+  }
+
+  const handleSafeVulkan = async (): Promise<void> => {
+    const result = await window.api.launchSafeVulkan()
+    if (result.success) showStatus(t('settings.safeVulkanStarted'))
+    else showStatus(result.error ?? 'Failed')
+  }
+
+  const handleVerifyIntegrity = async (): Promise<void> => {
+    const result = await window.api.verifyIntegrity()
+    if (result.success) showStatus(t('settings.verifyTriggered'))
+    else showStatus(result.error ?? 'Failed')
+  }
+
+  const btnClass = 'flex items-center gap-2.5 px-4 py-2.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] transition-colors text-left'
+
+  return (
+    <section>
+      <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
+        <Wrench size={16} />
+        {t('settings.supportTools')}
+      </h2>
+      <p className="text-xs text-[var(--color-text-muted)] mb-4">
+        {t('settings.supportToolsDescription')}
+      </p>
+      <div className="flex flex-col gap-2">
+        <button onClick={handleOpenUserFolder} className={btnClass}>
+          <FolderOpen size={15} className="shrink-0 text-[var(--color-accent)]" />
+          <div>
+            <div className="font-medium text-[var(--color-text-primary)]">{t('settings.openUserFolder')}</div>
+            <div className="text-xs text-[var(--color-text-muted)]">{t('settings.openUserFolderDesc')}</div>
+          </div>
+        </button>
+        <button onClick={handleClearCache} disabled={clearing} className={btnClass}>
+          {clearing ? <Loader2 size={15} className="shrink-0 text-[var(--color-accent)] animate-spin" /> : <Trash2 size={15} className="shrink-0 text-[var(--color-accent)]" />}
+          <div>
+            <div className="font-medium text-[var(--color-text-primary)]">{t('settings.clearCache')}</div>
+            <div className="text-xs text-[var(--color-text-muted)]">{t('settings.clearCacheDesc')}</div>
+          </div>
+        </button>
+        <button onClick={handleSafeMode} className={btnClass}>
+          <Shield size={15} className="shrink-0 text-[var(--color-accent)]" />
+          <div>
+            <div className="font-medium text-[var(--color-text-primary)]">{t('settings.launchSafeMode')}</div>
+            <div className="text-xs text-[var(--color-text-muted)]">{t('settings.launchSafeModeDesc')}</div>
+          </div>
+        </button>
+        <button onClick={handleSafeVulkan} className={btnClass}>
+          <Shield size={15} className="shrink-0 text-[var(--color-accent)]" />
+          <div>
+            <div className="font-medium text-[var(--color-text-primary)]">{t('settings.launchSafeVulkan')}</div>
+            <div className="text-xs text-[var(--color-text-muted)]">{t('settings.launchSafeVulkanDesc')}</div>
+          </div>
+        </button>
+        <button onClick={handleVerifyIntegrity} className={btnClass}>
+          <HardDriveDownload size={15} className="shrink-0 text-[var(--color-accent)]" />
+          <div>
+            <div className="font-medium text-[var(--color-text-primary)]">{t('settings.verifyIntegrity')}</div>
+            <div className="text-xs text-[var(--color-text-muted)]">{t('settings.verifyIntegrityDesc')}</div>
+          </div>
+        </button>
+      </div>
+      {status && (
+        <p className="mt-3 text-xs text-[var(--color-accent)] flex items-center gap-1">
+          <Check size={12} /> {status}
+        </p>
+      )}
+    </section>
   )
 }
 

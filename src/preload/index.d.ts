@@ -63,6 +63,13 @@ interface AppAPI {
   getAuthInfo(): Promise<{ authenticated: boolean; username: string; guest: boolean }>
   getLauncherLogs(): Promise<string[]>
 
+  // Support Tools
+  openUserFolder(): Promise<{ success: boolean; error?: string }>
+  clearCache(): Promise<{ success: boolean; error?: string; freedBytes?: number }>
+  launchSafeMode(): Promise<{ success: boolean; error?: string }>
+  launchSafeVulkan(): Promise<{ success: boolean; error?: string }>
+  verifyIntegrity(): Promise<{ success: boolean; error?: string }>
+
   // Backend
   getServers(): Promise<{ success: boolean; data?: ServerInfo[]; error?: string }>
   login(username: string, password: string): Promise<AuthResult>

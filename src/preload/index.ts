@@ -93,6 +93,13 @@ const api = {
   getAuthInfo: () => ipcRenderer.invoke('game:getAuthInfo'),
   getLauncherLogs: () => ipcRenderer.invoke('game:getLauncherLogs'),
 
+  // Support Tools
+  openUserFolder: () => ipcRenderer.invoke('game:openUserFolder') as Promise<{ success: boolean; error?: string }>,
+  clearCache: () => ipcRenderer.invoke('game:clearCache') as Promise<{ success: boolean; error?: string; freedBytes?: number }>,
+  launchSafeMode: () => ipcRenderer.invoke('game:launchSafeMode') as Promise<{ success: boolean; error?: string }>,
+  launchSafeVulkan: () => ipcRenderer.invoke('game:launchSafeVulkan') as Promise<{ success: boolean; error?: string }>,
+  verifyIntegrity: () => ipcRenderer.invoke('game:verifyIntegrity') as Promise<{ success: boolean; error?: string }>,
+
   // Backend
   getServers: () => ipcRenderer.invoke('backend:getServers'),
   login: (username: string, password: string) =>

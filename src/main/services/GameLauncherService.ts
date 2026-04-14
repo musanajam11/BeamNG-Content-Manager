@@ -367,6 +367,7 @@ export class GameLauncherService {
   private ping: number = -1
   private terminate: boolean = false
   private terminateReason: string = ''
+  private kickPending: boolean = false
   private confList: Set<string> = new Set()
   private clientId: number = -1
   private magic: Buffer | null = null
@@ -806,6 +807,14 @@ export class GameLauncherService {
             this.netReset()
             this.terminate = true
             this.ping = -1
+            // If a kick/disconnect was initiated by the server (K message or
+            // broken relay), the game detects the dead proxy and sends QS.
+            // Kill the game now so the user doesn't get stranded at the menu.
+            if (this.kickPending) {
+              this.log('QS after server kick — killing game')
+              this.kickPending = false
+              this.killGame()
+            }
           }
         } else if (subCode === 'G') {
           // Game wants launcher to close — we stay open
@@ -1073,6 +1082,7 @@ export class GameLauncherService {
       // so the user doesn't get stranded at the main menu
       if (wasInRelay) {
         this.log('Connection lost while in relay — killing game')
+        this.kickPending = true
         this.killGame()
       }
     })
@@ -1431,6 +1441,7 @@ export class GameLauncherService {
         this.ulStatus = 'UlDisconnected: ' + data.substring(1)
         this.log(`Server sent ${code} — killing game: ${reason}`)
         this.terminateWith(reason)
+        this.kickPending = true
         this.netReset()
         this.killGame()
         return // don't forward to game — it's being killed
@@ -1991,8 +2002,23 @@ export class GameLauncherService {
 
   killGame(): void {
     if (this.gameProcess && !this.gameProcess.killed) {
-      this.gameProcess.kill()
+      const pid = this.gameProcess.pid
+      // On Windows, use taskkill to kill the entire process tree.
+      // process.kill() only kills the spawned process — if BeamNG.drive
+      // spawns child processes they would survive and leave the game running.
+      if (pid && process.platform === 'win32') {
+        try {
+          execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' })
+          this.log(`Killed process tree for PID ${pid}`)
+        } catch {
+          // Fallback to normal kill if taskkill fails
+          this.gameProcess.kill()
+        }
+      } else {
+        this.gameProcess.kill()
+      }
       this.gameProcess = null
+      this.kickPending = false
       this.shutdown()
       this.notifyStatusChange()
     }
