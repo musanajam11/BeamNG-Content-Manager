@@ -9,6 +9,7 @@ const target = JSON.parse(fs.readFileSync(targetFile, 'utf8'));
 const patch = JSON.parse(fs.readFileSync(patchFile, 'utf8'));
 function deepMerge(t, s) {
   for (const k of Object.keys(s)) {
+    if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
     if (typeof s[k] === 'object' && s[k] !== null && !Array.isArray(s[k])) {
       if (!t[k]) t[k] = {};
       deepMerge(t[k], s[k]);

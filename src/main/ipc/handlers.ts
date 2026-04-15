@@ -2940,7 +2940,7 @@ export function registerIpcHandlers(): void {
       } catch { /* not in user dir */ }
     }
     if (!infoJson && zipPath) {
-      const raw = await readRawFromZip(zipPath, new RegExp(`^levels/${internalName}/info\.json$`, 'i'))
+      const raw = await readRawFromZip(zipPath, new RegExp(`^levels/${internalName}/info\\.json$`, 'i'))
       if (raw) {
         try { infoJson = parseBeamNGJson<Record<string, unknown>>(raw.toString('utf-8')) } catch { /* ignore */ }
       }
@@ -4769,12 +4769,13 @@ export function registerIpcHandlers(): void {
             ?? block.match(/<link>(.*?)<\/link>/)?.[1] ?? ''
           const pubDate = block.match(/<pubDate>(.*?)<\/pubDate>/)?.[1] ?? ''
           const desc = block.match(/<description>(.*?)<\/description>/s)?.[1] ?? ''
-          // Strip HTML tags and CDATA for summary
-          const summary = desc
-            .replace(/<!\[CDATA\[|\]\]>/g, '')
-            .replace(/<[^>]+>/g, '')
-            .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"')
-            .replace(/<[^>]+>/g, '')
+          // Strip HTML tags and CDATA for summary (loop to handle nested/broken tags)
+          let cleaned = desc.replace(/<!\[CDATA\[|\]\]>/g, '')
+          let prev = cleaned
+          do { prev = cleaned; cleaned = cleaned.replace(/<[^>]+>/g, '') } while (cleaned !== prev)
+          // Decode entities after tag stripping; &amp; must be last to avoid double-decoding
+          const summary = cleaned
+            .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&amp;/g, '&')
             .trim()
             .slice(0, 200)
           if (title) {

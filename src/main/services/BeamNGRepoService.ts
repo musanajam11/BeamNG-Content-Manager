@@ -169,7 +169,7 @@ export class BeamNGRepoService {
           slug = decodeURIComponent(linkMatch[1])
           resourceId = parseInt(linkMatch[2], 10)
           // Strip any HTML tags from the title text (e.g. prefix span inside link)
-          title = linkMatch[3].replace(/<[^>]+>/g, '').trim()
+          title = this.stripTags(linkMatch[3]).trim()
           // Remove prefix from title text to avoid duplication
           if (prefix) {
             title = title.replace(new RegExp('^' + prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*'), '').trim()
@@ -200,7 +200,7 @@ export class BeamNGRepoService {
         /<blockquote\s+class="snippet">([\s\S]*?)<\/blockquote>/
       )
       if (snippetMatch) {
-        tagLine = snippetMatch[1].replace(/<[^>]+>/g, '').trim()
+        tagLine = this.stripTags(snippetMatch[1]).trim()
       }
 
       // Construct thumbnail URL from resource ID: data/resource_icons/{floor(id/1000)}/{id}.jpg
@@ -241,12 +241,20 @@ export class BeamNGRepoService {
   }
 
   private decodeEntities(text: string): string {
+    // &amp; must be decoded last to avoid double-decoding (e.g. &amp;lt; → &lt; → <)
     return text
       .replace(/&#039;/g, "'")
-      .replace(/&amp;/g, '&')
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, '&')
+  }
+
+  private stripTags(text: string): string {
+    let result = text
+    let prev: string
+    do { prev = result; result = result.replace(/<[^>]+>/g, '') } while (result !== prev)
+    return result
   }
 
   private extractResourceItems(html: string): RepoMod[] {
@@ -314,7 +322,7 @@ export class BeamNGRepoService {
         prefix = prefixMatch[1].trim()
       } else {
         // Some prefixes appear as plain text before the link
-        const textBefore = titleMatch[1].replace(/<[^>]+>/g, '').split(title)[0]?.trim()
+        const textBefore = this.stripTags(titleMatch[1]).split(title)[0]?.trim()
         if (textBefore && /^(Alpha|Beta|Experimental)$/i.test(textBefore)) {
           prefix = textBefore
         }
@@ -342,7 +350,7 @@ export class BeamNGRepoService {
     // TagLine: <div class="tagLine">TEXT</div>
     let tagLine = ''
     const tagMatch = block.match(/<div\s+class="tagLine">([\s\S]*?)<\/div>/)
-    if (tagMatch) tagLine = tagMatch[1].replace(/<[^>]+>/g, '').trim()
+    if (tagMatch) tagLine = this.stripTags(tagMatch[1]).trim()
 
     // Rating: <span class="ratings" title="5.00">
     let rating = 0

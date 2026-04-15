@@ -5,6 +5,7 @@ import { autoUpdater } from 'electron-updater'
 import icon from '../../resources/icon.png?asset'
 import { initializeServices, registerIpcHandlers } from './ipc/handlers'
 import { extractVehicleAsset, resolveGameAsset, initVehicleAssetService } from './services/VehicleAssetService'
+import { initDiscordRPC, destroyDiscordRPC } from './services/DiscordRPCService'
 
 // Must be called before app.whenReady() so fetch() works with the custom protocol
 protocol.registerSchemesAsPrivileged([
@@ -138,9 +139,13 @@ app.whenReady().then(async () => {
   // Register all IPC handlers
   registerIpcHandlers()
 
+  // Discord Rich Presence
+  initDiscordRPC()
+
   // Kill all hosted servers on quit
   app.on('will-quit', () => {
     serverManager.shutdownAll()
+    destroyDiscordRPC()
   })
 
   // Set isQuitting so close-to-tray doesn't block actual quit

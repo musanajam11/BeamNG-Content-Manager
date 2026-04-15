@@ -541,7 +541,11 @@ export class RegistryService {
 
       // For BeamNG.com URLs, use Electron's net module via session which handles cookies/redirects natively
       // (Node's fetch() with manual Cookie headers gets 403 from XenForo)
-      const isBeamNG = downloadUrl.includes('beamng.com')
+      let isBeamNG = false
+      try {
+        const parsedUrl = new URL(downloadUrl)
+        isBeamNG = parsedUrl.hostname === 'beamng.com' || parsedUrl.hostname.endsWith('.beamng.com')
+      } catch { /* invalid URL */ }
       let buffer: Buffer
 
       if (isBeamNG) {
