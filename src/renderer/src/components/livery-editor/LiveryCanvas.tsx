@@ -44,7 +44,7 @@ export function LiveryCanvas({ canvasRef, onStateChange }: LiveryCanvasProps): R
     const canvas = new fabric.Canvas(canvasElRef.current, {
       width: templateWidth,
       height: templateHeight,
-      backgroundColor: '#1a1a2e',
+      backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--color-base').trim() || '#1a1a2e',
       selection: true,
       preserveObjectStacking: true,
     })
@@ -370,7 +370,7 @@ export function LiveryCanvas({ canvasRef, onStateChange }: LiveryCanvasProps): R
   return (
     <div
       ref={containerRef}
-      className="flex-1 overflow-auto bg-[#0d0d1a] relative"
+      className="flex-1 overflow-auto bg-[var(--color-base)] relative"
       style={{ cursor: getCursorForTool(activeTool) }}
     >
       <div

@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import type { AppearanceSettings, AppPage } from '../../../shared/types'
-import { DEFAULT_CUSTOM_CSS } from '../../../shared/types'
 
 export const DEFAULT_SIDEBAR_ORDER: AppPage[] = [
   'home', 'servers', 'friends', 'vehicles', 'maps', 'mods',
@@ -8,6 +7,7 @@ export const DEFAULT_SIDEBAR_ORDER: AppPage[] = [
 ]
 
 const DEFAULT_APPEARANCE: AppearanceSettings = {
+  colorMode: 'dark',
   accentColor: '#f97316',
   uiScale: 1.1,
   fontSize: 16,
@@ -25,8 +25,23 @@ const DEFAULT_APPEARANCE: AppearanceSettings = {
   bgCycleOnLaunch: false,
   sidebarOrder: [...DEFAULT_SIDEBAR_ORDER],
   sidebarHidden: [],
-  customCSS: DEFAULT_CUSTOM_CSS,
-  customCSSEnabled: true
+  customCSS: '',
+  customCSSEnabled: false,
+  cornerRadius: 0,
+  buttonSize: 'default',
+  fontFamily: 'system',
+  scrollbarStyle: 'rounded',
+  animationSpeed: 'normal',
+  overlayEffect: 'none',
+  borderStyle: 'normal',
+  effectPageFade: true,
+  effectFrostedGlass: false,
+  effectAccentSelection: true,
+  effectHoverGlow: false,
+  effectHoverLift: false,
+  filterBrightness: 1.0,
+  filterContrast: 1.0,
+  filterSaturation: 1.0
 }
 
 /** Preset accent color palettes */
@@ -80,14 +95,84 @@ export const BG_STYLES = {
 interface ThemeStore {
   appearance: AppearanceSettings
   loaded: boolean
+  /** The effective color mode after resolving 'system' */
+  resolvedMode: 'dark' | 'light'
   load: (settings: AppearanceSettings) => void
   update: (partial: Partial<AppearanceSettings>) => Promise<void>
   reset: () => Promise<void>
 }
 
+// ── Palette definitions ──
+
+interface Palette {
+  base: string
+  surfaceChannel: string   // r,g,b for rgba() surface overlays
+  overlayChannel: string   // r,g,b for rgba() scrim overlays
+  textPrimary: string
+  textSecondary: string
+  textMuted: string
+  textDim: string
+  success: string
+  warning: string
+  error: string
+  info: string
+  scrollThumb: string
+  scrollThumbHover: string
+  colorScheme: 'dark' | 'light'
+}
+
+const PALETTES: Record<'dark' | 'light', Palette> = {
+  dark: {
+    base: '#111113',
+    surfaceChannel: '255,255,255',
+    overlayChannel: '0,0,0',
+    textPrimary: '#ffffff',
+    textSecondary: '#cbd5e1',
+    textMuted: '#64748b',
+    textDim: '#475569',
+    success: '#4ade80',
+    warning: '#fbbf24',
+    error: '#f87171',
+    info: '#60a5fa',
+    scrollThumb: 'rgba(255,255,255,0.12)',
+    scrollThumbHover: 'rgba(255,255,255,0.20)',
+    colorScheme: 'dark'
+  },
+  light: {
+    base: '#f5f5f7',
+    surfaceChannel: '0,0,0',
+    overlayChannel: '255,255,255',
+    textPrimary: '#111113',
+    textSecondary: '#475569',
+    textMuted: '#64748b',
+    textDim: '#94a3b8',
+    success: '#16a34a',
+    warning: '#d97706',
+    error: '#dc2626',
+    info: '#2563eb',
+    scrollThumb: 'rgba(0,0,0,0.15)',
+    scrollThumbHover: 'rgba(0,0,0,0.25)',
+    colorScheme: 'light'
+  }
+}
+
+/** Resolve 'system' to 'dark' or 'light' based on OS preference */
+export function resolveColorMode(mode: 'dark' | 'light' | 'system'): 'dark' | 'light' {
+  if (mode === 'system') {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  }
+  return mode
+}
+
+/** Get the current resolved color mode from the store */
+export function getResolvedColorMode(): 'dark' | 'light' {
+  return useThemeStore.getState().resolvedMode
+}
+
 export const useThemeStore = create<ThemeStore>((set, get) => ({
   appearance: { ...DEFAULT_APPEARANCE },
   loaded: false,
+  resolvedMode: 'dark',
 
   load: (settings: AppearanceSettings) => {
     const merged = { ...DEFAULT_APPEARANCE, ...settings }
@@ -98,22 +183,25 @@ export const useThemeStore = create<ThemeStore>((set, get) => ({
       // Persist the randomly selected background
       window.api.updateConfig({ appearance: merged })
     }
-    set({ appearance: merged, loaded: true })
-    applyTheme(merged)
+    const resolved = resolveColorMode(merged.colorMode)
+    set({ appearance: merged, loaded: true, resolvedMode: resolved })
+    applyTheme(merged, resolved)
   },
 
   update: async (partial: Partial<AppearanceSettings>) => {
     const next = { ...get().appearance, ...partial }
-    set({ appearance: next })
-    applyTheme(next)
+    const resolved = resolveColorMode(next.colorMode)
+    set({ appearance: next, resolvedMode: resolved })
+    applyTheme(next, resolved)
     // Persist to config
     await window.api.updateConfig({ appearance: next })
   },
 
   reset: async () => {
     const defaults = { ...DEFAULT_APPEARANCE }
-    set({ appearance: defaults })
-    applyTheme(defaults)
+    const resolved = resolveColorMode(defaults.colorMode)
+    set({ appearance: defaults, resolvedMode: resolved })
+    applyTheme(defaults, resolved)
     await window.api.updateConfig({ appearance: defaults })
   }
 }))
@@ -142,12 +230,39 @@ function lightenHex(hex: string, amount: number): string {
 }
 
 /** Apply all appearance settings to CSS custom properties + zoom */
-function applyTheme(s: AppearanceSettings): void {
+function applyTheme(s: AppearanceSettings, mode: 'dark' | 'light'): void {
   const root = document.documentElement
+  const p = PALETTES[mode]
   const accent = s.accentColor
-  const accentHover = darkenHex(accent, 20)
 
-  // Accent colors
+  // Set data-theme for CSS-only selectors and color-scheme
+  root.dataset.theme = mode
+
+  // Core palette
+  root.style.setProperty('--color-base', p.base)
+  root.style.setProperty('--color-text-primary', p.textPrimary)
+  root.style.setProperty('--color-text-secondary', p.textSecondary)
+  root.style.setProperty('--color-text-muted', p.textMuted)
+  root.style.setProperty('--color-text-dim', p.textDim)
+  root.style.setProperty('--color-overlay', `rgba(${p.overlayChannel},0.20)`)
+  root.style.setProperty('--color-success', p.success)
+  root.style.setProperty('--color-warning', p.warning)
+  root.style.setProperty('--color-error', p.error)
+  root.style.setProperty('--color-info', p.info)
+
+  // Scrim overlays — dark uses black, light uses white-ish
+  root.style.setProperty('--color-scrim-20', `rgba(${p.overlayChannel},0.20)`)
+  root.style.setProperty('--color-scrim-30', `rgba(${p.overlayChannel},0.30)`)
+  root.style.setProperty('--color-scrim-40', `rgba(${p.overlayChannel},0.40)`)
+  root.style.setProperty('--color-scrim-60', `rgba(${p.overlayChannel},0.60)`)
+  root.style.setProperty('--color-scrim-80', `rgba(${p.overlayChannel},0.80)`)
+
+  // Scrollbar
+  root.style.setProperty('--color-scroll-thumb', p.scrollThumb)
+  root.style.setProperty('--color-scroll-thumb-hover', p.scrollThumbHover)
+
+  // Accent colors (same regardless of mode — accent is user-chosen)
+  const accentHover = mode === 'light' ? darkenHex(accent, 30) : darkenHex(accent, 20)
   root.style.setProperty('--color-accent', accent)
   root.style.setProperty('--color-accent-hover', accentHover)
   root.style.setProperty('--color-accent-subtle', hexToRgba(accent, 0.12))
@@ -162,23 +277,31 @@ function applyTheme(s: AppearanceSettings): void {
   root.style.setProperty('--color-accent-25', hexToRgba(accent, 0.25))
   root.style.setProperty('--color-accent-40', hexToRgba(accent, 0.40))
   root.style.setProperty('--color-accent-50', hexToRgba(accent, 0.50))
-  root.style.setProperty('--color-accent-text', lightenHex(accent, 40))
-  root.style.setProperty('--color-accent-text-muted', lightenHex(accent, 60))
+  root.style.setProperty('--color-accent-text', mode === 'light' ? darkenHex(accent, 40) : lightenHex(accent, 40))
+  root.style.setProperty('--color-accent-text-muted', mode === 'light' ? darkenHex(accent, 20) : lightenHex(accent, 60))
 
-  // Surface opacity
+  // Surface opacity (channel flips: dark = white overlays, light = black overlays)
   const so = s.surfaceOpacity
-  root.style.setProperty('--color-surface', `rgba(255,255,255,${(0.04 * so).toFixed(3)})`)
-  root.style.setProperty('--color-surface-hover', `rgba(255,255,255,${(0.07 * so).toFixed(3)})`)
-  root.style.setProperty('--color-surface-active', `rgba(255,255,255,${(0.10 * so).toFixed(3)})`)
-  root.style.setProperty('--color-surface-raised', `rgba(255,255,255,${(0.05 * so).toFixed(3)})`)
+  const sc = p.surfaceChannel
+  root.style.setProperty('--color-surface', `rgba(${sc},${(0.04 * so).toFixed(3)})`)
+  root.style.setProperty('--color-surface-hover', `rgba(${sc},${(0.07 * so).toFixed(3)})`)
+  root.style.setProperty('--color-surface-active', `rgba(${sc},${(0.10 * so).toFixed(3)})`)
+  root.style.setProperty('--color-surface-raised', `rgba(${sc},${(0.05 * so).toFixed(3)})`)
 
   // Border opacity
   const bo = s.borderOpacity
-  root.style.setProperty('--color-border', `rgba(255,255,255,${(0.08 * bo).toFixed(3)})`)
-  root.style.setProperty('--color-border-hover', `rgba(255,255,255,${(0.14 * bo).toFixed(3)})`)
+  root.style.setProperty('--color-border', `rgba(${sc},${(0.08 * bo).toFixed(3)})`)
+  root.style.setProperty('--color-border-hover', `rgba(${sc},${(0.14 * bo).toFixed(3)})`)
 
   // Font size
   root.style.setProperty('font-size', `${s.fontSize}px`)
+
+  // Corner radius
+  const cr = s.cornerRadius ?? 0
+  root.style.setProperty('--radius-sm', `${Math.max(0, cr - 4)}px`)
+  root.style.setProperty('--radius-md', `${cr}px`)
+  root.style.setProperty('--radius-lg', `${cr + 4}px`)
+  root.style.setProperty('--radius-xl', `${cr + 8}px`)
 
   // Sidebar width
   root.style.setProperty('--sidebar-width', `${s.sidebarWidth}px`)
@@ -222,7 +345,96 @@ function applyTheme(s: AppearanceSettings): void {
   root.style.setProperty('--accent-shadow', `0 10px 40px ${hexToRgba(accent, 0.22)}`)
   root.style.setProperty('--accent-shadow-sm', `0 4px 20px ${hexToRgba(accent, 0.15)}`)
 
-  // Custom CSS injection
+  // ── Visual Tweaks CSS (generated from UI settings) ──
+  const tweaks: string[] = []
+
+  // Button size
+  if (s.buttonSize === 'comfortable') {
+    tweaks.push(`button, [role="button"], a[class*="btn"], input[type="button"], input[type="submit"] { padding-top: 0.375rem; padding-bottom: 0.375rem; padding-left: 0.875rem; padding-right: 0.875rem; }`)
+  } else if (s.buttonSize === 'large') {
+    tweaks.push(`button, [role="button"], a[class*="btn"], input[type="button"], input[type="submit"] { padding-top: 0.5rem; padding-bottom: 0.5rem; padding-left: 1rem; padding-right: 1rem; font-size: 0.9375rem; }`)
+  }
+
+  // Font family
+  if (s.fontFamily === 'monospace') {
+    tweaks.push(`* { font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace !important; }`)
+  } else if (s.fontFamily === 'serif') {
+    tweaks.push(`* { font-family: Georgia, 'Times New Roman', serif !important; }`)
+  }
+
+  // Scrollbar style
+  if (s.scrollbarStyle === 'thin-accent') {
+    tweaks.push(`::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--color-accent); border-radius: 3px; } ::-webkit-scrollbar-thumb:hover { background: var(--color-accent-hover); }`)
+  } else if (s.scrollbarStyle === 'hidden') {
+    tweaks.push(`::-webkit-scrollbar { display: none; }`)
+  } else if (s.scrollbarStyle === 'rounded') {
+    tweaks.push(`::-webkit-scrollbar { width: 12px; } ::-webkit-scrollbar-track { background: var(--color-surface); border-radius: 6px; } ::-webkit-scrollbar-thumb { background: var(--color-accent-25); border-radius: 6px; border: 2px solid var(--color-surface); } ::-webkit-scrollbar-thumb:hover { background: var(--color-accent); }`)
+  }
+
+  // Animation speed
+  if (s.animationSpeed === 'none') {
+    tweaks.push(`*, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; }`)
+  } else if (s.animationSpeed === 'slow') {
+    tweaks.push(`*, *::before, *::after { transition-duration: 0.4s !important; }`)
+  }
+
+  // Border style
+  if (s.borderStyle === 'none') {
+    tweaks.push(`* { border-color: transparent !important; }`)
+  } else if (s.borderStyle === 'thick') {
+    tweaks.push(`.border, [class*="border-"] { border-width: 2px !important; }`)
+  } else if (s.borderStyle === 'accent') {
+    tweaks.push(`.border, [class*="border-"] { border-color: var(--color-accent-25) !important; }`)
+  }
+
+  // Overlay effect
+  if (s.overlayEffect === 'scanlines') {
+    tweaks.push(`#root::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 9999; background: repeating-linear-gradient(transparent 0px, rgba(0,0,0,0.03) 1px, transparent 2px); }`)
+  } else if (s.overlayEffect === 'vignette') {
+    tweaks.push(`#root::before { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 9998; background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.4) 100%); }`)
+  } else if (s.overlayEffect === 'noise') {
+    tweaks.push(`#root::after { content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 9999; opacity: 0.03; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }`)
+  }
+
+  // Effect toggles
+  if (s.effectPageFade) {
+    tweaks.push(`main > div { animation: _vt_fadeIn 0.2s ease-in; } @keyframes _vt_fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }`)
+  }
+  if (s.effectFrostedGlass) {
+    tweaks.push(`[class*="bg-[var(--color-scrim"] { backdrop-filter: blur(20px) saturate(1.5); }`)
+  }
+  if (s.effectAccentSelection) {
+    tweaks.push(`::selection { background: var(--color-accent) !important; color: white !important; }`)
+  }
+  if (s.effectHoverGlow) {
+    tweaks.push(`[class*="border"][class*="hover"]:hover { box-shadow: 0 0 20px var(--color-accent-25); }`)
+  }
+  if (s.effectHoverLift) {
+    tweaks.push(`[class*="border"][class*="hover"]:hover { transform: translateY(-2px); transition: transform 0.15s ease; }`)
+  }
+
+  // Color filters
+  const fb = s.filterBrightness ?? 1.0
+  const fc = s.filterContrast ?? 1.0
+  const fs = s.filterSaturation ?? 1.0
+  if (fb !== 1.0 || fc !== 1.0 || fs !== 1.0) {
+    tweaks.push(`#root { filter: brightness(${fb}) contrast(${fc}) saturate(${fs}); }`)
+  }
+
+  // Inject visual tweaks CSS
+  let tweakEl = document.getElementById('visual-tweaks-css') as HTMLStyleElement | null
+  if (tweaks.length > 0) {
+    if (!tweakEl) {
+      tweakEl = document.createElement('style')
+      tweakEl.id = 'visual-tweaks-css'
+      document.head.appendChild(tweakEl)
+    }
+    tweakEl.textContent = tweaks.join('\n')
+  } else if (tweakEl) {
+    tweakEl.remove()
+  }
+
+  // Legacy custom CSS injection (backward compat — not exposed in UI)
   let styleEl = document.getElementById('user-custom-css') as HTMLStyleElement | null
   if (s.customCSS && s.customCSSEnabled !== false) {
     if (!styleEl) {

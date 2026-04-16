@@ -179,7 +179,7 @@ function GamepadVisualization({ state }: { state: GamepadState }): React.JSX.Ele
                   <span className="text-[10px] font-mono text-[var(--color-text-muted)] w-16 shrink-0">
                     Axis {axis.index}
                   </span>
-                  <div className="flex-1 h-3 bg-black/20 rounded-full overflow-hidden relative">
+                  <div className="flex-1 h-3 bg-[var(--color-scrim-20)] rounded-full overflow-hidden relative">
                     <div className="absolute left-1/2 top-0 bottom-0 w-px bg-[var(--color-border)]" />
                     <div
                       className="absolute top-0 bottom-0 bg-[var(--color-accent)] transition-all duration-[16ms]"
@@ -210,14 +210,14 @@ function GamepadVisualization({ state }: { state: GamepadState }): React.JSX.Ele
                   key={btn.index}
                   className={`flex flex-col items-center justify-center py-2 rounded-md border transition-colors ${
                     btn.pressed
-                      ? 'bg-[var(--color-accent)] border-[var(--color-accent)] text-white'
-                      : 'bg-black/10 border-[var(--color-border)] text-[var(--color-text-muted)]'
+                      ? 'bg-[var(--color-accent)] border-[var(--color-accent)] text-[var(--color-text-primary)]'
+                      : 'bg-[var(--color-scrim-20)] border-[var(--color-border)] text-[var(--color-text-muted)]'
                   }`}
                 >
                   <span className="text-[10px] font-mono">{btn.index}</span>
                   {btn.value > 0 && !btn.pressed && (
                     <div className="w-full mt-1 px-1">
-                      <div className="h-0.5 bg-black/20 rounded-full overflow-hidden">
+                      <div className="h-0.5 bg-[var(--color-scrim-20)] rounded-full overflow-hidden">
                         <div
                           className="h-full bg-[var(--color-accent)] transition-all duration-[16ms]"
                           style={{ width: `${btn.value * 100}%` }}
@@ -287,8 +287,8 @@ function KeyboardVisualization({ state }: { state: KeyboardState }): React.JSX.E
                     isWide ? 'w-32' : isMedium ? 'w-14' : 'w-8'
                   } h-7 ${
                     pressed
-                      ? 'bg-[var(--color-accent)] border-[var(--color-accent)] text-white'
-                      : 'bg-black/10 border-[var(--color-border)] text-[var(--color-text-muted)]'
+                      ? 'bg-[var(--color-accent)] border-[var(--color-accent)] text-[var(--color-text-primary)]'
+                      : 'bg-[var(--color-scrim-20)] border-[var(--color-border)] text-[var(--color-text-muted)]'
                   }`}
                 >
                   {KEY_DISPLAY[code] ?? code}

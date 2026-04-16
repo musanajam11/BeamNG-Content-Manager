@@ -21,7 +21,7 @@ import { SetupWizard } from './pages/SetupWizard'
 import { VoiceChatPanel } from './components/VoiceChatPanel'
 import { useAppStore } from './stores/useAppStore'
 import { useServerStore } from './stores/useServerStore'
-import { useThemeStore } from './stores/useThemeStore'
+import { useThemeStore, resolveColorMode } from './stores/useThemeStore'
 import i18n from './i18n'
 
 function PageRouter(): React.JSX.Element {
@@ -174,6 +174,20 @@ function App(): React.JSX.Element {
       i18n.changeLanguage(config.language)
     }
   }, [configLoaded])
+
+  // Re-apply theme when OS color scheme changes (only matters when colorMode === 'system')
+  useEffect(() => {
+    const mql = window.matchMedia('(prefers-color-scheme: dark)')
+    const onChange = (): void => {
+      const appearance = useAppStore.getState().config?.appearance
+      if (appearance?.colorMode === 'system') {
+        const mode = resolveColorMode('system')
+        useThemeStore.getState().applyTheme(appearance, mode)
+      }
+    }
+    mql.addEventListener('change', onChange)
+    return () => mql.removeEventListener('change', onChange)
+  }, [])
 
   if (!configLoaded) {
     return (

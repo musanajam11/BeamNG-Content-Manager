@@ -161,8 +161,8 @@ export function HomePage(): React.JSX.Element {
       <div className="px-4 pt-4 pb-4 space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-2xl font-bold text-white">{t('home.title')}</h1>
-          <p className="text-sm text-slate-400 mt-0.5">{t('home.subtitle')}</p>
+          <h1 className="text-2xl font-bold text-[var(--color-text-primary)]">{t('home.title')}</h1>
+          <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">{t('home.subtitle')}</p>
         </div>
 
         {/* Game not found warning */}
@@ -194,10 +194,10 @@ export function HomePage(): React.JSX.Element {
             disabled={vanillaLaunching}
             className={`w-full flex items-center justify-center gap-3 px-6 py-4 text-sm font-semibold transition-all ${
               isRunning
-                ? 'bg-red-600 hover:bg-red-700 text-white'
+                ? 'bg-red-600 hover:bg-red-700 text-[var(--color-text-primary)]'
                 : vanillaLaunching
-                  ? 'bg-[var(--accent-primary)]/60 text-white/60 cursor-wait'
-                  : 'border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] text-white'
+                  ? 'bg-[var(--accent-primary)]/60 text-[var(--color-text-secondary)] cursor-wait'
+                  : 'border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text-primary)]'
             }`}
           >
             {vanillaLaunching ? (
@@ -222,9 +222,9 @@ export function HomePage(): React.JSX.Element {
               <p className="text-sm font-medium text-[var(--color-accent-text)]">
                 {t('home.modUpdatesAvailable', { count: registryUpdates })}
               </p>
-              <p className="text-[11px] text-slate-500">{t('home.goToRegistry')}</p>
+              <p className="text-[11px] text-[var(--color-text-muted)]">{t('home.goToRegistry')}</p>
             </div>
-            <ChevronRight size={14} className="text-slate-500" />
+            <ChevronRight size={14} className="text-[var(--color-text-muted)]" />
           </button>
         )}
 
@@ -240,18 +240,18 @@ export function HomePage(): React.JSX.Element {
                 }
               </p>
               {updateProgress !== null && (
-                <div className="mt-1.5 h-1 w-full bg-white/10 rounded-full overflow-hidden">
+                <div className="mt-1.5 h-1 w-full bg-[var(--color-surface-active)] rounded-full overflow-hidden">
                   <div className="h-full bg-green-400 transition-all duration-300" style={{ width: `${updateProgress}%` }} />
                 </div>
               )}
               {!updateReady && updateProgress === null && (
-                <p className="text-[11px] text-slate-500">{t('home.downloadingBackground')}</p>
+                <p className="text-[11px] text-[var(--color-text-muted)]">{t('home.downloadingBackground')}</p>
               )}
             </div>
             {updateReady && (
               <button
                 onClick={() => window.api.installUpdate()}
-                className="px-3 py-1.5 text-xs font-semibold bg-green-500 hover:bg-green-600 text-white rounded transition"
+                className="px-3 py-1.5 text-xs font-semibold bg-green-500 hover:bg-green-600 text-[var(--color-text-primary)] rounded transition"
               >
                 {t('home.restartUpdate')}
               </button>
@@ -264,20 +264,20 @@ export function HomePage(): React.JSX.Element {
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Star size={14} className="text-[var(--color-accent)]" />
-              <h2 className="text-sm font-semibold text-white">{t('home.favoriteServers')}</h2>
+              <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">{t('home.favoriteServers')}</h2>
             </div>
             <button
               onClick={() => setPage('servers')}
-              className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-white transition"
+              className="flex items-center gap-1 text-[11px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition"
             >
               {t('home.viewAll')} <ChevronRight size={12} />
             </button>
           </div>
 
           {favoriteServers.length === 0 ? (
-            <div className="border border-white/6 bg-white/[0.02] px-4 py-6 text-center">
-              <Star size={20} className="mx-auto text-slate-600 mb-2" />
-              <p className="text-xs text-slate-500">{t('home.noFavorites')}</p>
+            <div className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-6 text-center">
+              <Star size={20} className="mx-auto text-[var(--color-text-dim)] mb-2" />
+              <p className="text-xs text-[var(--color-text-muted)]">{t('home.noFavorites')}</p>
               <button
                 onClick={() => setPage('servers')}
                 className="text-xs text-[var(--accent-primary)] hover:underline mt-1"
@@ -297,7 +297,7 @@ export function HomePage(): React.JSX.Element {
                   <button
                     key={`${server.ip}:${server.port}`}
                     onClick={() => handleJoinServer(server)}
-                    className="group relative border border-white/8 bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/15 transition-all text-left overflow-hidden"
+                    className="group relative border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] hover:border-[var(--color-border-hover)] transition-all text-left overflow-hidden"
                   >
                     {/* Map preview background */}
                     {preview && (
@@ -307,10 +307,10 @@ export function HomePage(): React.JSX.Element {
                     )}
                     <div className="relative p-3 space-y-2">
                       <div className="flex items-center gap-1.5">
-                        <BeamMPText text={server.sname} className="text-xs font-semibold text-white truncate flex-1" />
-                        {server.password && <Lock size={10} className="text-slate-500 shrink-0" />}
+                        <BeamMPText text={server.sname} className="text-xs font-semibold text-[var(--color-text-primary)] truncate flex-1" />
+                        {server.password && <Lock size={10} className="text-[var(--color-text-muted)] shrink-0" />}
                       </div>
-                      <div className="flex items-center gap-3 text-[10px] text-slate-400">
+                      <div className="flex items-center gap-3 text-[10px] text-[var(--color-text-secondary)]">
                         <span className="flex items-center gap-1">
                           <MapPin size={9} />
                           {formatMapName(server.map)}
@@ -333,20 +333,20 @@ export function HomePage(): React.JSX.Element {
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Clock size={14} className="text-[var(--color-accent)]" />
-              <h2 className="text-sm font-semibold text-white">{t('home.recentServers')}</h2>
+              <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">{t('home.recentServers')}</h2>
             </div>
             <button
               onClick={() => setPage('servers')}
-              className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-white transition"
+              className="flex items-center gap-1 text-[11px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition"
             >
               {t('home.viewAll')} <ChevronRight size={12} />
             </button>
           </div>
 
           {recentServers.length === 0 ? (
-            <div className="border border-white/6 bg-white/[0.02] px-4 py-6 text-center">
-              <Clock size={20} className="mx-auto text-slate-600 mb-2" />
-              <p className="text-xs text-slate-500">{t('home.noRecent')}</p>
+            <div className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-6 text-center">
+              <Clock size={20} className="mx-auto text-[var(--color-text-dim)] mb-2" />
+              <p className="text-xs text-[var(--color-text-muted)]">{t('home.noRecent')}</p>
               <button
                 onClick={() => setPage('servers')}
                 className="text-xs text-[var(--accent-primary)] hover:underline mt-1"
@@ -366,7 +366,7 @@ export function HomePage(): React.JSX.Element {
                   <button
                     key={`recent-${server.ip}:${server.port}`}
                     onClick={() => handleJoinServer(server)}
-                    className="group relative border border-white/8 bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/15 transition-all text-left overflow-hidden"
+                    className="group relative border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] hover:border-[var(--color-border-hover)] transition-all text-left overflow-hidden"
                   >
                     {preview && (
                       <div className="absolute inset-0 opacity-15 group-hover:opacity-25 transition-opacity">
@@ -375,10 +375,10 @@ export function HomePage(): React.JSX.Element {
                     )}
                     <div className="relative p-3 space-y-2">
                       <div className="flex items-center gap-1.5">
-                        <BeamMPText text={server.sname} className="text-xs font-semibold text-white truncate flex-1" />
-                        {server.password && <Lock size={10} className="text-slate-500 shrink-0" />}
+                        <BeamMPText text={server.sname} className="text-xs font-semibold text-[var(--color-text-primary)] truncate flex-1" />
+                        {server.password && <Lock size={10} className="text-[var(--color-text-muted)] shrink-0" />}
                       </div>
-                      <div className="flex items-center gap-3 text-[10px] text-slate-400">
+                      <div className="flex items-center gap-3 text-[10px] text-[var(--color-text-secondary)]">
                         <span className="flex items-center gap-1">
                           <MapPin size={9} />
                           {formatMapName(server.map)}
@@ -401,20 +401,20 @@ export function HomePage(): React.JSX.Element {
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Package size={14} className="text-[var(--color-accent)]" />
-              <h2 className="text-sm font-semibold text-white">{t('home.recentMods')}</h2>
+              <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">{t('home.recentMods')}</h2>
             </div>
             <button
               onClick={() => setPage('mods')}
-              className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-white transition"
+              className="flex items-center gap-1 text-[11px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition"
             >
               {t('home.viewAll')} <ChevronRight size={12} />
             </button>
           </div>
 
           {recentMods.length === 0 ? (
-            <div className="border border-white/6 bg-white/[0.02] px-4 py-6 text-center">
-              <Package size={20} className="mx-auto text-slate-600 mb-2" />
-              <p className="text-xs text-slate-500">{t('home.noModsInstalled')}</p>
+            <div className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-6 text-center">
+              <Package size={20} className="mx-auto text-[var(--color-text-dim)] mb-2" />
+              <p className="text-xs text-[var(--color-text-muted)]">{t('home.noModsInstalled')}</p>
               <button
                 onClick={() => setPage('mods')}
                 className="text-xs text-[var(--accent-primary)] hover:underline mt-1"
@@ -427,24 +427,24 @@ export function HomePage(): React.JSX.Element {
               {recentMods.map((mod) => (
                 <div
                   key={mod.key}
-                  className="border border-white/8 bg-white/[0.03] p-3 flex gap-3 items-start"
+                  className="border border-[var(--color-border)] bg-[var(--color-surface)] p-3 flex gap-3 items-start"
                 >
                   {/* Mod thumbnail */}
-                  <div className="w-10 h-10 shrink-0 bg-white/5 border border-white/8 flex items-center justify-center overflow-hidden">
+                  <div className="w-10 h-10 shrink-0 bg-[var(--color-surface)] border border-[var(--color-border)] flex items-center justify-center overflow-hidden">
                     {modPreviews[mod.key] ? (
                       <img src={modPreviews[mod.key]} alt="" className="w-full h-full object-cover" />
                     ) : (
-                      <Package size={14} className="text-slate-600" />
+                      <Package size={14} className="text-[var(--color-text-dim)]" />
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs font-semibold text-white truncate">
+                    <p className="text-xs font-semibold text-[var(--color-text-primary)] truncate">
                       {mod.title || mod.fileName}
                     </p>
                     {mod.author && (
-                      <p className="text-[10px] text-slate-500 truncate">by {mod.author}</p>
+                      <p className="text-[10px] text-[var(--color-text-muted)] truncate">by {mod.author}</p>
                     )}
-                    <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-500">
+                    <div className="flex items-center gap-2 mt-1 text-[10px] text-[var(--color-text-muted)]">
                       <span>{formatBytes(mod.sizeBytes)}</span>
                       <span>{timeAgo(mod.modifiedDate, t)}</span>
                     </div>
@@ -459,18 +459,18 @@ export function HomePage(): React.JSX.Element {
         <div>
           <div className="flex items-center gap-2 mb-3">
             <Newspaper size={14} className="text-[var(--color-accent)]" />
-            <h2 className="text-sm font-semibold text-white">{t('home.recentNews')}</h2>
+            <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">{t('home.recentNews')}</h2>
           </div>
 
           {newsLoading ? (
-            <div className="border border-white/6 bg-white/[0.02] px-4 py-6 text-center">
-              <Loader2 size={20} className="mx-auto text-slate-600 mb-2 animate-spin" />
-              <p className="text-xs text-slate-500">{t('home.loadingNews')}</p>
+            <div className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-6 text-center">
+              <Loader2 size={20} className="mx-auto text-[var(--color-text-dim)] mb-2 animate-spin" />
+              <p className="text-xs text-[var(--color-text-muted)]">{t('home.loadingNews')}</p>
             </div>
           ) : newsItems.length === 0 ? (
-            <div className="border border-white/6 bg-white/[0.02] px-4 py-6 text-center">
-              <Newspaper size={20} className="mx-auto text-slate-600 mb-2" />
-              <p className="text-xs text-slate-500">{t('home.noNews')}</p>
+            <div className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-6 text-center">
+              <Newspaper size={20} className="mx-auto text-[var(--color-text-dim)] mb-2" />
+              <p className="text-xs text-[var(--color-text-muted)]">{t('home.noNews')}</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -478,7 +478,7 @@ export function HomePage(): React.JSX.Element {
                 <button
                   key={item.id}
                   onClick={() => window.open(item.url, '_blank')}
-                  className="w-full flex items-start gap-3 border border-white/8 bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/15 px-4 py-3 text-left transition-all group"
+                  className="w-full flex items-start gap-3 border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] hover:border-[var(--color-border-hover)] px-4 py-3 text-left transition-all group"
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
@@ -491,18 +491,18 @@ export function HomePage(): React.JSX.Element {
                       >
                         {item.source === 'beammp' ? 'BeamMP' : 'BeamNG'}
                       </span>
-                      <span className="text-[10px] text-slate-500">
+                      <span className="text-[10px] text-[var(--color-text-muted)]">
                         {timeAgo(new Date(item.date * 1000).toISOString(), t)}
                       </span>
                     </div>
-                    <p className="text-xs font-semibold text-white truncate">{item.title}</p>
+                    <p className="text-xs font-semibold text-[var(--color-text-primary)] truncate">{item.title}</p>
                     {item.summary && (
-                      <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-2">{item.summary}</p>
+                      <p className="text-[11px] text-[var(--color-text-secondary)] mt-0.5 line-clamp-2">{item.summary}</p>
                     )}
                   </div>
                   <ExternalLink
                     size={12}
-                    className="text-slate-600 group-hover:text-slate-400 shrink-0 mt-1 transition"
+                    className="text-[var(--color-text-dim)] group-hover:text-[var(--color-text-secondary)] shrink-0 mt-1 transition"
                   />
                 </button>
               ))}

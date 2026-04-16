@@ -740,7 +740,8 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
     setStatus('loading')
 
     const scene = new THREE.Scene()
-    const fog = new THREE.Fog(0x111113, 25, 50)
+    const fogColor = getComputedStyle(document.documentElement).getPropertyValue('--color-base').trim() || '#111113'
+    const fog = new THREE.Fog(new THREE.Color(fogColor), 25, 50)
     scene.fog = fog
     sceneRef.current = scene
     fogRef.current = fog
@@ -1410,13 +1411,13 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
   return (
     <div className={`relative ${className || ''}`} ref={containerRef}>
       {status === 'loading' && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 z-10">
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-[var(--color-scrim-60)] z-10">
           <Loader2 size={24} className="text-[var(--color-accent)] animate-spin" />
           <span className="text-xs text-[var(--color-text-muted)] mt-2">{t('vehicles.loading3DModel')}</span>
         </div>
       )}
       {status === 'error' && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-10">
+        <div className="absolute inset-0 flex items-center justify-center bg-[var(--color-scrim-60)] z-10">
           <span className="text-xs text-[var(--color-text-muted)]">{t('vehicles.modelUnavailable')}</span>
         </div>
       )}
@@ -1425,7 +1426,7 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
       {status === 'ready' && (
         <button
           onClick={() => setShowRenderOpts(v => !v)}
-          className="absolute top-2 right-10 z-20 p-1.5 bg-[#222226]/90 hover:bg-[#333] border border-[#444] shadow-lg transition-colors"
+          className="absolute top-2 right-10 z-20 p-1.5 bg-[var(--color-surface-raised)] hover:bg-[var(--color-surface-hover)] border border-[var(--color-border)] shadow-lg transition-colors"
           title={t('vehicles.renderOptions')}
         >
           <Settings size={14} className={showRenderOpts ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)]'} />
@@ -1435,7 +1436,7 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
       {/* Render options panel */}
       {status === 'ready' && showRenderOpts && (
         <div
-          className="absolute top-10 right-10 z-20 w-52 bg-[#1a1a1e]/95 border border-[#333] p-3 space-y-3 text-xs select-none"
+          className="absolute top-10 right-10 z-20 w-52 bg-[var(--color-base)] border border-[var(--color-border)] p-3 space-y-3 text-xs select-none"
           onPointerDown={e => e.stopPropagation()}
         >
           {/* Sun Angle */}
@@ -1489,14 +1490,14 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
                 type="color"
                 value={bgColor}
                 onChange={e => setBgColor(e.target.value)}
-                className="w-6 h-6 border border-[#444] cursor-pointer bg-transparent p-0"
+                className="w-6 h-6 border border-[var(--color-border)] cursor-pointer bg-transparent p-0"
               />
               <div className="flex gap-1">
                 {['#111113', '#1a1a22', '#0a0a0c', '#1e1e2e', '#0d1117', '#2d1b00'].map(c => (
                   <button
                     key={c}
                     onClick={() => setBgColor(c)}
-                    className={`w-4 h-4 border ${bgColor === c ? 'border-[var(--color-accent)]' : 'border-[#444]'}`}
+                    className={`w-4 h-4 border ${bgColor === c ? 'border-[var(--color-accent)]' : 'border-[var(--color-border)]'}`}
                     style={{ backgroundColor: c }}
                     title={c}
                   />
@@ -1516,14 +1517,14 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
                 type="color"
                 value={floorColor}
                 onChange={e => setFloorColor(e.target.value)}
-                className="w-6 h-6 border border-[#444] cursor-pointer bg-transparent p-0"
+                className="w-6 h-6 border border-[var(--color-border)] cursor-pointer bg-transparent p-0"
               />
               <div className="flex gap-1">
                 {['#222228', '#1a1a1e', '#333340', '#2a2520', '#181820', '#3a3a3a'].map(c => (
                   <button
                     key={c}
                     onClick={() => setFloorColor(c)}
-                    className={`w-4 h-4 border ${floorColor === c ? 'border-[var(--color-accent)]' : 'border-[#444]'}`}
+                    className={`w-4 h-4 border ${floorColor === c ? 'border-[var(--color-accent)]' : 'border-[var(--color-border)]'}`}
                     style={{ backgroundColor: c }}
                     title={c}
                   />
@@ -1537,7 +1538,7 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
             <span className="text-[var(--color-text-muted)]">Floor Grid</span>
             <button
               onClick={() => { if (gridRef.current) gridRef.current.visible = !gridRef.current.visible }}
-              className="px-2 py-0.5 bg-[#2a2a2e] hover:bg-[#333] border border-[#444] text-[var(--color-text-muted)] transition-colors"
+              className="px-2 py-0.5 bg-[var(--color-surface-hover)] hover:bg-[var(--color-surface-hover)] border border-[var(--color-border)] text-[var(--color-text-muted)] transition-colors"
             >
               Toggle
             </button>

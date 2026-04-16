@@ -3,7 +3,6 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
 import type { AppConfig } from '../../shared/types'
-import { DEFAULT_CUSTOM_CSS } from '../../shared/types'
 
 const DEFAULT_CONFIG: AppConfig = {
   gamePaths: {
@@ -20,6 +19,7 @@ const DEFAULT_CONFIG: AppConfig = {
   theme: 'dark',
   language: 'en',
   appearance: {
+    colorMode: 'dark',
     accentColor: '#f97316',
     uiScale: 1.1,
     fontSize: 16,
@@ -37,8 +37,23 @@ const DEFAULT_CONFIG: AppConfig = {
     bgCycleOnLaunch: false,
     sidebarOrder: ['home', 'servers', 'friends', 'vehicles', 'maps', 'mods', 'career', 'server-admin', 'launcher', 'controls'],
     sidebarHidden: [],
-    customCSS: DEFAULT_CUSTOM_CSS,
-    customCSSEnabled: true
+    customCSS: '',
+    customCSSEnabled: false,
+    cornerRadius: 0,
+    buttonSize: 'default',
+    fontFamily: 'system',
+    scrollbarStyle: 'rounded',
+    animationSpeed: 'normal',
+    overlayEffect: 'none',
+    borderStyle: 'normal',
+    effectPageFade: true,
+    effectFrostedGlass: false,
+    effectAccentSelection: true,
+    effectHoverGlow: false,
+    effectHoverLift: false,
+    filterBrightness: 1.0,
+    filterContrast: 1.0,
+    filterSaturation: 1.0
   },
   setupComplete: false,
   loadOrderEnforcement: false,

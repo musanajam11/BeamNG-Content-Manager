@@ -59,11 +59,11 @@ export function LayerPanel({ onLayerSelect, onLayerAdd, onLayerRemove }: LayerPa
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 shrink-0">
-        <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Layers</span>
+      <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border)] shrink-0">
+        <span className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">Layers</span>
         <button
           onClick={onLayerAdd}
-          className="p-1 rounded hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+          className="p-1 rounded hover:bg-[var(--color-surface-active)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors"
           title="Add Layer"
         >
           <Plus size={14} />
@@ -73,7 +73,7 @@ export function LayerPanel({ onLayerSelect, onLayerAdd, onLayerRemove }: LayerPa
       {/* Layer list */}
       <div className="flex-1 overflow-y-auto">
         {displayLayers.length === 0 && (
-          <div className="flex items-center justify-center py-8 text-slate-600 text-xs">
+          <div className="flex items-center justify-center py-8 text-[var(--color-text-dim)] text-xs">
             No layers — click + to add
           </div>
         )}
@@ -95,27 +95,27 @@ export function LayerPanel({ onLayerSelect, onLayerAdd, onLayerRemove }: LayerPa
                 flex items-center gap-1 px-2 py-1.5 cursor-pointer transition-colors border-l-2
                 ${isActive
                   ? 'bg-[var(--color-accent)]/10 border-l-[var(--color-accent)]'
-                  : 'border-l-transparent hover:bg-white/5'
+                  : 'border-l-transparent hover:bg-[var(--color-surface)]'
                 }
                 ${isDragOver ? 'bg-blue-500/20' : ''}
               `}
             >
               {/* Drag handle */}
-              <GripVertical size={12} className="text-slate-600 shrink-0 cursor-grab" />
+              <GripVertical size={12} className="text-[var(--color-text-dim)] shrink-0 cursor-grab" />
 
               {/* Visibility */}
               <button
                 onClick={(e) => { e.stopPropagation(); setLayerVisibility(layer.id, !layer.visible) }}
-                className="p-0.5 rounded hover:bg-white/10 text-slate-400 transition-colors"
+                className="p-0.5 rounded hover:bg-[var(--color-surface-active)] text-[var(--color-text-secondary)] transition-colors"
                 title={layer.visible ? 'Hide' : 'Show'}
               >
-                {layer.visible ? <Eye size={12} /> : <EyeOff size={12} className="text-slate-600" />}
+                {layer.visible ? <Eye size={12} /> : <EyeOff size={12} className="text-[var(--color-text-dim)]" />}
               </button>
 
               {/* Lock */}
               <button
                 onClick={(e) => { e.stopPropagation(); setLayerLocked(layer.id, !layer.locked) }}
-                className="p-0.5 rounded hover:bg-white/10 text-slate-400 transition-colors"
+                className="p-0.5 rounded hover:bg-[var(--color-surface-active)] text-[var(--color-text-secondary)] transition-colors"
                 title={layer.locked ? 'Unlock' : 'Lock'}
               >
                 {layer.locked ? <Lock size={12} className="text-amber-400" /> : <Unlock size={12} />}
@@ -130,7 +130,7 @@ export function LayerPanel({ onLayerSelect, onLayerAdd, onLayerRemove }: LayerPa
                       value={editValue}
                       onChange={(e) => setEditValue(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') handleRenameConfirm(); if (e.key === 'Escape') setEditingId(null) }}
-                      className="flex-1 px-1 py-0.5 text-xs bg-black/40 border border-white/20 rounded text-white focus:outline-none focus:border-[var(--color-accent)]"
+                      className="flex-1 px-1 py-0.5 text-xs bg-[var(--color-scrim-40)] border border-[var(--color-border-hover)] rounded text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-accent)]"
                       onClick={(e) => e.stopPropagation()}
                     />
                     <button onClick={(e) => { e.stopPropagation(); handleRenameConfirm() }} className="text-green-400 hover:text-green-300">
@@ -139,7 +139,7 @@ export function LayerPanel({ onLayerSelect, onLayerAdd, onLayerRemove }: LayerPa
                   </div>
                 ) : (
                   <span
-                    className={`text-xs truncate block ${layer.visible ? 'text-white' : 'text-slate-500'}`}
+                    className={`text-xs truncate block ${layer.visible ? 'text-[var(--color-text-primary)]' : 'text-[var(--color-text-muted)]'}`}
                     onDoubleClick={(e) => { e.stopPropagation(); handleRenameStart(layer) }}
                   >
                     {layer.name}
@@ -152,7 +152,7 @@ export function LayerPanel({ onLayerSelect, onLayerAdd, onLayerRemove }: LayerPa
                 type="range" min={0} max={100}
                 value={Math.round(layer.opacity * 100)}
                 onChange={(e) => { e.stopPropagation(); setLayerOpacity(layer.id, Number(e.target.value) / 100) }}
-                className="w-12 h-1 rounded appearance-none cursor-pointer bg-white/10"
+                className="w-12 h-1 rounded appearance-none cursor-pointer bg-[var(--color-surface-active)]"
                 title={`Opacity: ${Math.round(layer.opacity * 100)}%`}
                 onClick={(e) => e.stopPropagation()}
               />
@@ -160,14 +160,14 @@ export function LayerPanel({ onLayerSelect, onLayerAdd, onLayerRemove }: LayerPa
               {/* Actions */}
               <button
                 onClick={(e) => { e.stopPropagation(); handleRenameStart(layer) }}
-                className="p-0.5 rounded hover:bg-white/10 text-slate-500 hover:text-white transition-colors"
+                className="p-0.5 rounded hover:bg-[var(--color-surface-active)] text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] transition-colors"
                 title="Rename"
               >
                 <Edit3 size={11} />
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); onLayerRemove(layer.id) }}
-                className="p-0.5 rounded hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition-colors"
+                className="p-0.5 rounded hover:bg-red-500/20 text-[var(--color-text-muted)] hover:text-red-400 transition-colors"
                 title="Delete Layer"
               >
                 <Trash2 size={11} />
@@ -178,9 +178,9 @@ export function LayerPanel({ onLayerSelect, onLayerAdd, onLayerRemove }: LayerPa
       </div>
 
       {/* UV Template indicator */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-t border-white/10 bg-white/[2%]">
-        <Eye size={12} className="text-slate-600" />
-        <span className="text-[10px] text-slate-500">UV Template (Background)</span>
+      <div className="flex items-center gap-2 px-3 py-1.5 border-t border-[var(--color-border)] bg-[var(--color-surface)]">
+        <Eye size={12} className="text-[var(--color-text-dim)]" />
+        <span className="text-[10px] text-[var(--color-text-muted)]">UV Template (Background)</span>
       </div>
     </div>
   )

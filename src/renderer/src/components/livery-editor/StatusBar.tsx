@@ -10,21 +10,21 @@ export function LiveryStatusBar(): React.JSX.Element {
   const projectDirty = useLiveryStore((s) => s.projectDirty)
 
   return (
-    <div className="flex items-center justify-between px-3 py-1 border-t border-white/10 bg-[var(--color-surface)]/60 text-[10px] text-slate-500 shrink-0">
+    <div className="flex items-center justify-between px-3 py-1 border-t border-[var(--color-border)] bg-[var(--color-surface)]/60 text-[10px] text-[var(--color-text-muted)] shrink-0">
       <div className="flex items-center gap-3">
         {vehicleDisplayName && (
           <span>
-            Vehicle: <span className="text-slate-300">{vehicleDisplayName}</span>
+            Vehicle: <span className="text-[var(--color-text-secondary)]">{vehicleDisplayName}</span>
           </span>
         )}
         <span>
-          Canvas: <span className="text-slate-300">{templateWidth} × {templateHeight}</span>
+          Canvas: <span className="text-[var(--color-text-secondary)]">{templateWidth} × {templateHeight}</span>
         </span>
         <span>
-          Tool: <span className="text-slate-300 capitalize">{activeTool}</span>
+          Tool: <span className="text-[var(--color-text-secondary)] capitalize">{activeTool}</span>
         </span>
         <span>
-          Layers: <span className="text-slate-300">{layers.length}</span>
+          Layers: <span className="text-[var(--color-text-secondary)]">{layers.length}</span>
         </span>
       </div>
       <div className="flex items-center gap-3">
@@ -32,7 +32,7 @@ export function LiveryStatusBar(): React.JSX.Element {
           <span className="text-amber-400">● Unsaved changes</span>
         )}
         <span>
-          Zoom: <span className="text-slate-300">{Math.round(zoom * 100)}%</span>
+          Zoom: <span className="text-[var(--color-text-secondary)]">{Math.round(zoom * 100)}%</span>
         </span>
       </div>
     </div>

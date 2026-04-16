@@ -832,11 +832,21 @@ export function registerIpcHandlers(): void {
     const tmpDir = join(app.getPath('temp'), 'BeamNG-SafeMode-' + Date.now())
     await mkdir(tmpDir, { recursive: true })
     const args = ['-userpath', tmpDir]
-    spawn(paths.executable, args, {
-      cwd: paths.installDir ?? undefined,
-      detached: true,
-      stdio: 'ignore'
-    }).unref()
+    if (paths.isProton) {
+      // Proton: must launch through Steam — direct exe won't work on Linux
+      const steamBin = launcherService.findSteamBinaryPublic()
+      if (!steamBin) return { success: false, error: 'Steam not found — required to launch via Proton' }
+      spawn(steamBin, ['-applaunch', '284160', ...args], {
+        detached: true,
+        stdio: 'ignore'
+      }).unref()
+    } else {
+      spawn(paths.executable, args, {
+        cwd: paths.installDir ?? undefined,
+        detached: true,
+        stdio: 'ignore'
+      }).unref()
+    }
     return { success: true }
   })
 
@@ -849,11 +859,20 @@ export function registerIpcHandlers(): void {
     const tmpDir = join(app.getPath('temp'), 'BeamNG-SafeVulkan-' + Date.now())
     await mkdir(tmpDir, { recursive: true })
     const args = ['-userpath', tmpDir, '-gfx', 'vk']
-    spawn(paths.executable, args, {
-      cwd: paths.installDir ?? undefined,
-      detached: true,
-      stdio: 'ignore'
-    }).unref()
+    if (paths.isProton) {
+      const steamBin = launcherService.findSteamBinaryPublic()
+      if (!steamBin) return { success: false, error: 'Steam not found — required to launch via Proton' }
+      spawn(steamBin, ['-applaunch', '284160', ...args], {
+        detached: true,
+        stdio: 'ignore'
+      }).unref()
+    } else {
+      spawn(paths.executable, args, {
+        cwd: paths.installDir ?? undefined,
+        detached: true,
+        stdio: 'ignore'
+      }).unref()
+    }
     return { success: true }
   })
 

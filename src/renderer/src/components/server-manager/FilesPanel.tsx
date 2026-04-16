@@ -168,7 +168,7 @@ export function FilesPanel({
           </button>
           <button
             onClick={handleAddFiles}
-            className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-[var(--color-accent)] text-white hover:opacity-90 transition-colors"
+            className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-[var(--color-accent)] text-[var(--color-text-primary)] hover:opacity-90 transition-colors"
           >
             <Upload size={12} /> {t('serverManager.addFiles')}
           </button>
@@ -302,7 +302,7 @@ export function FilesPanel({
                 <div className="flex items-center gap-0.5">
                   <button
                     onClick={() => handleDelete(f)}
-                    className="px-1.5 py-0.5 text-[10px] bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+                    className="px-1.5 py-0.5 text-[10px] bg-red-500 text-[var(--color-text-primary)] rounded hover:bg-red-600 transition-colors"
                   >
                     {t('serverManager.deleteConfirmYes')}
                   </button>

@@ -227,7 +227,7 @@ export function LiveryEditorPage(): React.JSX.Element {
 
     // Restore background
     canvas.set('backgroundImage', bgImage)
-    canvas.backgroundColor = '#1a1a2e'
+    canvas.backgroundColor = getComputedStyle(document.documentElement).getPropertyValue('--color-base').trim() || '#1a1a2e'
     canvas.renderAll()
 
     const result = await window.api.liveryExportSkinMod({
@@ -365,7 +365,7 @@ export function LiveryEditorPage(): React.JSX.Element {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-400">
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-[var(--color-text-secondary)]">
         <Paintbrush size={32} className="animate-pulse text-[var(--color-accent)]" />
         <p className="text-sm">Loading UV template…</p>
       </div>
@@ -389,11 +389,11 @@ export function LiveryEditorPage(): React.JSX.Element {
       {/* Main content area */}
       <div className="flex flex-1 min-h-0">
         {/* Left sidebar — Layers */}
-        <div className="w-56 border-r border-white/10 flex flex-col shrink-0">
+        <div className="w-56 border-r border-[var(--color-border)] flex flex-col shrink-0">
           {/* Back button */}
           <button
             onClick={handleBackToSelector}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs text-slate-400 hover:text-white hover:bg-white/5 transition-colors border-b border-white/10"
+            className="flex items-center gap-1.5 px-3 py-2 text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface)] transition-colors border-b border-[var(--color-border)]"
           >
             <ChevronLeft size={14} />
             Change Vehicle
@@ -411,8 +411,8 @@ export function LiveryEditorPage(): React.JSX.Element {
         <LiveryCanvas canvasRef={canvasRef} onStateChange={saveState} />
 
         {/* Right sidebar — Properties + Decals */}
-        <div className="w-60 border-l border-white/10 flex flex-col shrink-0">
-          <div className="flex-1 min-h-0 border-b border-white/10 overflow-hidden">
+        <div className="w-60 border-l border-[var(--color-border)] flex flex-col shrink-0">
+          <div className="flex-1 min-h-0 border-b border-[var(--color-border)] overflow-hidden">
             <PropertiesPanel canvasRef={canvasRef} />
           </div>
           <div className="flex-1 min-h-0 overflow-hidden">

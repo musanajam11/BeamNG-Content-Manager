@@ -657,11 +657,11 @@ export function CareerPage(): React.JSX.Element {
       <div className="flex flex-col h-full overflow-y-auto">
         {/* Header */}
         <div className="flex items-center gap-3 p-6 pb-4 border-b border-[var(--color-border)]">
-          <button onClick={goBack} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors">
+          <button onClick={goBack} className="p-1.5 rounded-lg hover:bg-[var(--color-surface-active)] transition-colors">
             <ChevronLeft size={20} />
           </button>
           <div className="flex-1">
-            <h1 className="text-xl font-bold text-white flex items-center gap-2">
+            <h1 className="text-xl font-bold text-[var(--color-text-primary)] flex items-center gap-2">
               {selectedProfile.name}
               <span className="text-sm font-normal text-[var(--text-muted)]">/ {selectedSlot.name}</span>
               {selectedProfile.isRLS && (
@@ -684,7 +684,7 @@ export function CareerPage(): React.JSX.Element {
             <button
               onClick={handleBackupSlot}
               disabled={backingUp}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-white/5 hover:bg-white/10 border border-[var(--color-border)] transition-colors disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-[var(--color-surface)] hover:bg-[var(--color-surface-active)] border border-[var(--color-border)] transition-colors disabled:opacity-50"
             >
               {backingUp ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
               {t('career.backupSlot')}
@@ -716,7 +716,7 @@ export function CareerPage(): React.JSX.Element {
                 <StatCard icon={DollarSign} label={t('career.money')} value={formatMoney(metadata.money)} accent />
               )}
               {metadata.beamXP && (
-                <div className="bg-white/5 rounded-xl border border-[var(--color-border)] p-4">
+                <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
                   <div className="flex items-center gap-2 mb-2">
                     <Star size={16} className="text-yellow-400" />
                     <span className="text-xs text-[var(--text-muted)]">{t('career.beamXP')}</span>
@@ -725,7 +725,7 @@ export function CareerPage(): React.JSX.Element {
                   <p className="text-xs text-[var(--text-muted)] mt-0.5">{metadata.beamXP.value.toLocaleString()} XP</p>
                   {metadata.beamXP.neededForNext > 0 && (
                     <div className="mt-2">
-                      <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                      <div className="h-1.5 bg-[var(--color-surface-active)] rounded-full overflow-hidden">
                         <div
                           className="h-full bg-yellow-400/60 rounded-full transition-all"
                           style={{ width: `${Math.min(100, (metadata.beamXP.curLvlProgress / metadata.beamXP.neededForNext) * 100)}%` }}
@@ -781,7 +781,7 @@ export function CareerPage(): React.JSX.Element {
             {/* Skills */}
             {metadata.skills.length > 0 && (
               <div>
-                <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <h2 className="text-lg font-semibold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
                   <Zap size={18} /> {t('career.skills')}
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -789,14 +789,14 @@ export function CareerPage(): React.JSX.Element {
                     const Icon = SKILL_ICONS[skill.key] || Star
                     const isExpanded = expandedSkill === skill.key
                     return (
-                      <div key={skill.key} className="bg-white/5 rounded-xl border border-[var(--color-border)] overflow-hidden">
+                      <div key={skill.key} className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] overflow-hidden">
                         <button
                           onClick={() => setExpandedSkill(isExpanded ? null : skill.key)}
-                          className="w-full flex items-center justify-between p-3 hover:bg-white/5 transition-colors"
+                          className="w-full flex items-center justify-between p-3 hover:bg-[var(--color-surface)] transition-colors"
                         >
                           <div className="flex items-center gap-2">
                             <Icon size={16} className="text-[var(--color-accent)]" />
-                            <span className="text-sm font-medium text-white">{formatSkillKey(skill.key)}</span>
+                            <span className="text-sm font-medium text-[var(--color-text-primary)]">{formatSkillKey(skill.key)}</span>
                             <span className="text-xs text-[var(--text-muted)]">{skill.value.toLocaleString()}</span>
                           </div>
                           {skill.subcategories.length > 0 && (
@@ -808,7 +808,7 @@ export function CareerPage(): React.JSX.Element {
                             {skill.subcategories.map((sub) => (
                               <div key={sub.key} className="flex items-center justify-between">
                                 <span className="text-xs text-[var(--text-muted)]">{formatSkillKey(sub.key)}</span>
-                                <span className="text-xs font-medium text-white">{sub.value.toLocaleString()}</span>
+                                <span className="text-xs font-medium text-[var(--color-text-primary)]">{sub.value.toLocaleString()}</span>
                               </div>
                             ))}
                           </div>
@@ -823,17 +823,17 @@ export function CareerPage(): React.JSX.Element {
             {/* Reputations */}
             {metadata.reputations.length > 0 && (
               <div>
-                <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <h2 className="text-lg font-semibold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
                   <Building2 size={18} /> {t('career.reputations')}
                 </h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                   {metadata.reputations.map((rep) => (
-                    <div key={rep.name} className="bg-white/5 rounded-xl border border-[var(--color-border)] p-3">
+                    <div key={rep.name} className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-3">
                       <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-xs font-medium text-white truncate">{formatReputationName(rep.name)}</span>
+                        <span className="text-xs font-medium text-[var(--color-text-primary)] truncate">{formatReputationName(rep.name)}</span>
                         <span className="text-xs text-[var(--text-muted)]">{rep.value} / {rep.max}</span>
                       </div>
-                      <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                      <div className="h-1.5 bg-[var(--color-surface-active)] rounded-full overflow-hidden">
                         <div
                           className="h-full bg-[var(--color-accent)] rounded-full transition-all"
                           style={{ width: `${Math.max(0, Math.min(100, (rep.value / rep.max) * 100))}%` }}
@@ -848,25 +848,25 @@ export function CareerPage(): React.JSX.Element {
             {/* Vehicles */}
             {metadata.vehicles.length > 0 && (
               <div>
-                <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+                <h2 className="text-lg font-semibold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
                   <Car size={18} /> {t('career.ownedVehicles')}
                 </h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                   {metadata.vehicles.map((v) => {
                     const isFavorite = metadata.favoriteVehicleId === v.id
                     return (
-                      <div key={v.id} className={`bg-white/5 rounded-xl border overflow-hidden ${isFavorite ? 'border-yellow-500/40' : 'border-[var(--color-border)]'}`}>
+                      <div key={v.id} className={`bg-[var(--color-surface)] rounded-xl border overflow-hidden ${isFavorite ? 'border-yellow-500/40' : 'border-[var(--color-border)]'}`}>
                         {v.thumbnailDataUrl ? (
-                          <img src={v.thumbnailDataUrl} alt={v.name || v.id} className="w-full h-28 object-cover bg-black/30" />
+                          <img src={v.thumbnailDataUrl} alt={v.name || v.id} className="w-full h-28 object-cover bg-[var(--color-scrim-30)]" />
                         ) : (
-                          <div className="w-full h-28 bg-black/20 flex items-center justify-center">
+                          <div className="w-full h-28 bg-[var(--color-scrim-20)] flex items-center justify-center">
                             <Car size={32} className="text-[var(--text-muted)]" />
                           </div>
                         )}
                         <div className="p-3 space-y-1.5">
                           <div className="flex items-center gap-1.5">
                             {isFavorite && <Star size={12} className="text-yellow-400 shrink-0" />}
-                            <p className="text-sm font-medium text-white truncate">{v.name || formatModelName(v.model)}</p>
+                            <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">{v.name || formatModelName(v.model)}</p>
                           </div>
                           {v.model && v.name && (
                             <p className="text-[10px] text-[var(--text-muted)] truncate">{formatModelName(v.model)}</p>
@@ -891,7 +891,7 @@ export function CareerPage(): React.JSX.Element {
                                 <span className="flex items-center gap-0.5"><Shield size={9} /> {v.insuranceClass}</span>
                               )}
                               {v.licensePlate && (
-                                <span className="bg-white/10 px-1.5 py-0.5 rounded font-mono">{v.licensePlate}</span>
+                                <span className="bg-[var(--color-surface-active)] px-1.5 py-0.5 rounded font-mono">{v.licensePlate}</span>
                               )}
                             </div>
                           )}
@@ -919,11 +919,11 @@ export function CareerPage(): React.JSX.Element {
       <div className="flex flex-col h-full overflow-y-auto">
         {/* Header */}
         <div className="flex items-center gap-3 p-6 pb-4 border-b border-[var(--color-border)]">
-          <button onClick={goBack} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors">
+          <button onClick={goBack} className="p-1.5 rounded-lg hover:bg-[var(--color-surface-active)] transition-colors">
             <ChevronLeft size={20} />
           </button>
           <div className="flex-1">
-            <h1 className="text-xl font-bold text-white flex items-center gap-2">
+            <h1 className="text-xl font-bold text-[var(--color-text-primary)] flex items-center gap-2">
               <Briefcase size={20} /> {selectedProfile.name}
               {selectedProfile.isRLS && (
                 <span className="text-xs bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full">RLS</span>
@@ -968,13 +968,13 @@ export function CareerPage(): React.JSX.Element {
             </button>
             <button
               onClick={() => { setShowBackups(!showBackups); if (!showBackups) loadProfileBackups() }}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-white/5 hover:bg-white/10 border border-[var(--color-border)] transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-[var(--color-surface)] hover:bg-[var(--color-surface-active)] border border-[var(--color-border)] transition-colors"
             >
               <RotateCcw size={14} /> {t('career.manageBackups')}
             </button>
             <button
               onClick={loadLog}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-white/5 hover:bg-white/10 border border-[var(--color-border)] transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-[var(--color-surface)] hover:bg-[var(--color-surface-active)] border border-[var(--color-border)] transition-colors"
             >
               <FileText size={14} /> {t('career.viewLog')}
             </button>
@@ -993,8 +993,8 @@ export function CareerPage(): React.JSX.Element {
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* Backups Panel */}
           {showBackups && (
-            <div className="bg-white/5 rounded-xl border border-[var(--color-border)] p-4">
-              <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+            <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
+              <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
                 <Archive size={16} /> {t('career.profileBackups')}
               </h3>
               {profileBackups.length === 0 ? (
@@ -1002,9 +1002,9 @@ export function CareerPage(): React.JSX.Element {
               ) : (
                 <div className="space-y-2">
                   {profileBackups.map((backup) => (
-                    <div key={backup.name} className="flex items-center justify-between bg-black/20 rounded-lg px-3 py-2">
+                    <div key={backup.name} className="flex items-center justify-between bg-[var(--color-scrim-20)] rounded-lg px-3 py-2">
                       <div>
-                        <p className="text-sm text-white">
+                        <p className="text-sm text-[var(--color-text-primary)]">
                           {backup.slotName ? `${t('career.backupSlot')}: ${backup.slotName}` : t('career.backupProfile')}
                         </p>
                         <p className="text-xs text-[var(--text-muted)]">{formatDate(backup.timestamp)}</p>
@@ -1034,7 +1034,7 @@ export function CareerPage(): React.JSX.Element {
 
           {/* Save Slots */}
           <div>
-            <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
               <Save size={18} /> {t('career.saveSlots')}
               {slotPreviewsLoading && <Loader2 size={14} className="animate-spin text-[var(--text-muted)]" />}
             </h2>
@@ -1045,7 +1045,7 @@ export function CareerPage(): React.JSX.Element {
                   <button
                     key={slot.name}
                     onClick={() => openSlot(selectedProfile, slot)}
-                    className="w-full bg-white/5 rounded-xl border border-[var(--color-border)] hover:border-[var(--color-accent-25)] transition-colors text-left overflow-hidden"
+                    className="w-full bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] hover:border-[var(--color-accent-25)] transition-colors text-left overflow-hidden"
                   >
                     <div className="p-4">
                       {/* Slot header */}
@@ -1053,7 +1053,7 @@ export function CareerPage(): React.JSX.Element {
                         <div className="flex items-center gap-3">
                           <Save size={16} className="text-[var(--color-accent)]" />
                           <div>
-                            <p className="text-sm font-medium text-white flex items-center gap-2">
+                            <p className="text-sm font-medium text-[var(--color-text-primary)] flex items-center gap-2">
                               {slot.name}
                               {slot.corrupted && (
                                 <span className="text-xs bg-red-500/20 text-red-300 px-1.5 py-0.5 rounded-full flex items-center gap-1">
@@ -1128,14 +1128,14 @@ export function CareerPage(): React.JSX.Element {
                               {v.thumbnailDataUrl ? (
                                 <img src={v.thumbnailDataUrl} alt={v.name || v.id} className="w-full h-full object-cover" />
                               ) : (
-                                <div className="w-full h-full bg-black/20 flex items-center justify-center">
+                                <div className="w-full h-full bg-[var(--color-scrim-20)] flex items-center justify-center">
                                   <Car size={12} className="text-[var(--text-muted)]" />
                                 </div>
                               )}
                             </div>
                           ))}
                           {preview.vehicles.length > 6 && (
-                            <div className="shrink-0 w-16 h-10 rounded-lg bg-black/20 flex items-center justify-center text-[10px] text-[var(--text-muted)] border border-[var(--color-border)]">
+                            <div className="shrink-0 w-16 h-10 rounded-lg bg-[var(--color-scrim-20)] flex items-center justify-center text-[10px] text-[var(--text-muted)] border border-[var(--color-border)]">
                               +{preview.vehicles.length - 6}
                             </div>
                           )}
@@ -1151,12 +1151,12 @@ export function CareerPage(): React.JSX.Element {
           {/* Career Log */}
           {showLog && logLines.length > 0 && (
             <div>
-              <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+              <h2 className="text-lg font-semibold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
                 <FileText size={18} /> {t('career.activityLog')}
               </h2>
-              <div className="bg-black/30 rounded-xl border border-[var(--color-border)] p-4 max-h-64 overflow-y-auto font-mono text-xs space-y-0.5">
+              <div className="bg-[var(--color-scrim-30)] rounded-xl border border-[var(--color-border)] p-4 max-h-64 overflow-y-auto font-mono text-xs space-y-0.5">
                 {logLines.slice(-100).reverse().map((line, i) => (
-                  <div key={i} className="text-[var(--text-muted)] hover:text-white transition-colors">
+                  <div key={i} className="text-[var(--text-muted)] hover:text-[var(--color-text-primary)] transition-colors">
                     {line}
                   </div>
                 ))}
@@ -1174,7 +1174,7 @@ export function CareerPage(): React.JSX.Element {
       {/* Header */}
       <div className="flex items-center justify-between p-6 pb-4 border-b border-[var(--color-border)]">
         <div>
-          <h1 className="text-xl font-bold text-white flex items-center gap-2">
+          <h1 className="text-xl font-bold text-[var(--color-text-primary)] flex items-center gap-2">
             <Briefcase size={22} /> {t('career.title')}
           </h1>
           <p className="text-sm text-[var(--text-muted)] mt-1">{t('career.subtitle')}</p>
@@ -1182,14 +1182,14 @@ export function CareerPage(): React.JSX.Element {
         <div className="flex gap-2">
           <button
             onClick={() => setShowPathConfig(!showPathConfig)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-white/5 hover:bg-white/10 border border-[var(--color-border)] transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-[var(--color-surface)] hover:bg-[var(--color-surface-active)] border border-[var(--color-border)] transition-colors"
           >
             <FolderOpen size={14} /> {t('career.savePath')}
           </button>
           <button
             onClick={loadProfiles}
             disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-white/5 hover:bg-white/10 border border-[var(--color-border)] transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-[var(--color-surface)] hover:bg-[var(--color-surface-active)] border border-[var(--color-border)] transition-colors"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> {t('common.refresh')}
           </button>
@@ -1200,14 +1200,14 @@ export function CareerPage(): React.JSX.Element {
       <div className="flex gap-1 px-6 pt-4">
         <button
           onClick={() => setTopTab('saves')}
-          className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${topTab === 'saves' ? 'bg-white/10 text-white border border-b-0 border-[var(--color-border)]' : 'text-[var(--text-muted)] hover:text-white hover:bg-white/5'}`}
+          className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${topTab === 'saves' ? 'bg-[var(--color-surface-active)] text-[var(--color-text-primary)] border border-b-0 border-[var(--color-border)]' : 'text-[var(--text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface)]'}`}
         >
           <Briefcase size={14} className="inline mr-1.5 -mt-0.5" />
           {t('career.mod.saves')}
         </button>
         <button
           onClick={() => setTopTab('mods')}
-          className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${topTab === 'mods' ? 'bg-white/10 text-white border border-b-0 border-[var(--color-border)]' : 'text-[var(--text-muted)] hover:text-white hover:bg-white/5'}`}
+          className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${topTab === 'mods' ? 'bg-[var(--color-surface-active)] text-[var(--color-text-primary)] border border-b-0 border-[var(--color-border)]' : 'text-[var(--text-muted)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface)]'}`}
         >
           <Package size={14} className="inline mr-1.5 -mt-0.5" />
           {t('career.mod.modManager')}
@@ -1216,11 +1216,11 @@ export function CareerPage(): React.JSX.Element {
 
       {/* Save path configuration */}
       {topTab === 'saves' && showPathConfig && (
-        <div className="mx-6 mt-4 p-4 bg-white/5 rounded-xl border border-[var(--color-border)]">
-          <h3 className="text-sm font-medium text-white mb-2">{t('career.savePathTitle')}</h3>
+        <div className="mx-6 mt-4 p-4 bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)]">
+          <h3 className="text-sm font-medium text-[var(--color-text-primary)] mb-2">{t('career.savePathTitle')}</h3>
           <p className="text-xs text-[var(--text-muted)] mb-3">{t('career.savePathDescription')}</p>
           <div className="flex items-center gap-2">
-            <div className="flex-1 px-3 py-1.5 text-xs bg-black/20 rounded-lg border border-[var(--color-border)] text-[var(--text-muted)] truncate">
+            <div className="flex-1 px-3 py-1.5 text-xs bg-[var(--color-scrim-20)] rounded-lg border border-[var(--color-border)] text-[var(--text-muted)] truncate">
               {savePath || t('career.autoDetected')}
             </div>
             <button
@@ -1232,7 +1232,7 @@ export function CareerPage(): React.JSX.Element {
             {savePath && (
               <button
                 onClick={handleClearSavePath}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-white/5 hover:bg-white/10 border border-[var(--color-border)] transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-[var(--color-surface)] hover:bg-[var(--color-surface-active)] border border-[var(--color-border)] transition-colors"
               >
                 <X size={12} /> {t('career.resetToAuto')}
               </button>
@@ -1256,7 +1256,7 @@ export function CareerPage(): React.JSX.Element {
           ) : profiles.length === 0 ? (
             <div className="text-center py-12">
               <Briefcase size={48} className="mx-auto mb-4 text-[var(--text-muted)]" />
-              <h2 className="text-lg font-semibold text-white mb-2">{t('career.noProfiles')}</h2>
+              <h2 className="text-lg font-semibold text-[var(--color-text-primary)] mb-2">{t('career.noProfiles')}</h2>
               <p className="text-sm text-[var(--text-muted)] max-w-md mx-auto">{t('career.noProfilesDescription')}</p>
             </div>
           ) : (
@@ -1332,15 +1332,15 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-6">
       {/* Server target selector */}
-      <div className="bg-white/5 rounded-xl border border-[var(--color-border)] p-4">
-        <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+      <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
+        <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
           <Server size={16} /> {t('career.mod.selectServer')}
         </h3>
         <div className="flex items-center gap-2">
           <select
             value={selectedServerId}
             onChange={(e) => setSelectedServerId(e.target.value)}
-            className="flex-1 px-3 py-1.5 text-sm bg-black/20 rounded-lg border border-[var(--color-border)] text-white"
+            className="flex-1 px-3 py-1.5 text-sm bg-[var(--color-scrim-20)] rounded-lg border border-[var(--color-border)] text-[var(--color-text-primary)]"
           >
             <option value="">{customServerDir || t('career.mod.selectServer')}</option>
             {servers.map((s) => (
@@ -1349,7 +1349,7 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
           </select>
           <button
             onClick={handleBrowseServerDir}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-white/5 hover:bg-white/10 border border-[var(--color-border)] transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-[var(--color-surface)] hover:bg-[var(--color-surface-active)] border border-[var(--color-border)] transition-colors"
           >
             <FolderOpen size={14} /> {t('career.mod.customDir')}
           </button>
@@ -1372,9 +1372,9 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
       ) : (
         <>
           {/* CareerMP section */}
-          <div className="bg-white/5 rounded-xl border border-[var(--color-border)] p-4">
+          <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
                 <Package size={16} className="text-[var(--color-accent)]" /> {t('career.mod.careerMP')}
               </h3>
               <a
@@ -1399,7 +1399,7 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
               <select
                 value={cmpSelectedVersion}
                 onChange={(e) => setCmpSelectedVersion(e.target.value)}
-                className="w-full px-3 py-1.5 text-sm bg-black/20 rounded-lg border border-[var(--color-border)] text-white"
+                className="w-full px-3 py-1.5 text-sm bg-[var(--color-scrim-20)] rounded-lg border border-[var(--color-border)] text-[var(--color-text-primary)]"
               >
                 {cmpReleases.map((r) => (
                   <option key={r.version} value={r.version}>
@@ -1410,7 +1410,7 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
               <button
                 onClick={handleInstallCareerMP}
                 disabled={cmpInstalling || !selectedServerId && !customServerDir}
-                className="w-full flex items-center justify-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white font-medium transition-colors disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-[var(--color-text-primary)] font-medium transition-colors disabled:opacity-50"
               >
                 {cmpInstalling ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
                 Install CareerMP Only
@@ -1422,9 +1422,9 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
           </div>
 
           {/* RLS section */}
-          <div className="bg-white/5 rounded-xl border border-[var(--color-border)] p-4">
+          <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
                 <Star size={16} className="text-purple-400" /> {t('career.mod.rls')}
               </h3>
               <a
@@ -1455,7 +1455,7 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
                 <select
                   value={rlsSelectedVersion}
                   onChange={(e) => setRlsSelectedVersion(e.target.value)}
-                  className="w-full px-3 py-1.5 text-sm bg-black/20 rounded-lg border border-[var(--color-border)] text-white"
+                  className="w-full px-3 py-1.5 text-sm bg-[var(--color-scrim-20)] rounded-lg border border-[var(--color-border)] text-[var(--color-text-primary)]"
                 >
                   {rlsReleases.map((r) => (
                     <option key={r.version} value={r.version}>
@@ -1473,7 +1473,7 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
                 <select
                   value={rlsCmpVersion}
                   onChange={(e) => setRlsCmpVersion(e.target.value)}
-                  className="w-full px-3 py-1.5 text-sm bg-black/20 rounded-lg border border-[var(--color-border)] text-white"
+                  className="w-full px-3 py-1.5 text-sm bg-[var(--color-scrim-20)] rounded-lg border border-[var(--color-border)] text-[var(--color-text-primary)]"
                 >
                   {cmpReleases.map((r) => (
                     <option key={r.version} value={r.version}>
@@ -1501,7 +1501,7 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
               <button
                 onClick={handleInstallRLS}
                 disabled={rlsInstalling || !selectedServerId && !customServerDir}
-                className="w-full flex items-center justify-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-medium transition-colors disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-purple-600 hover:bg-purple-500 text-[var(--color-text-primary)] font-medium transition-colors disabled:opacity-50"
               >
                 {rlsInstalling ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
                 Install CareerMP+RLS
@@ -1532,7 +1532,7 @@ function ProfileListGrouped({ profiles, openProfile, summaries, t }: {
       {/* CareerMP Saves */}
       {careerMPProfiles.length > 0 && (
         <div>
-          <h2 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
             <Briefcase size={16} className="text-[var(--color-accent)]" />
             {t('career.mod.careerMPSaves')}
           </h2>
@@ -1547,7 +1547,7 @@ function ProfileListGrouped({ profiles, openProfile, summaries, t }: {
       {/* RLS Saves */}
       {rlsProfiles.length > 0 && (
         <div>
-          <h2 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
             <Star size={16} className="text-purple-400" />
             {t('career.mod.rlsSaves')}
           </h2>
@@ -1572,13 +1572,13 @@ function ProfileCard({ profile, summary, openProfile, t }: {
   return (
     <button
       onClick={() => openProfile(profile)}
-      className="bg-white/5 rounded-xl border border-[var(--color-border)] overflow-hidden hover:border-[var(--color-accent-25)] transition-colors text-left"
+      className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] overflow-hidden hover:border-[var(--color-accent-25)] transition-colors text-left"
     >
       <div className="p-4">
         {/* Header row */}
         <div className="flex items-center gap-2 mb-2">
           <Briefcase size={18} className="text-[var(--color-accent)]" />
-          <h3 className="text-base font-semibold text-white">{profile.name}</h3>
+          <h3 className="text-base font-semibold text-[var(--color-text-primary)]">{profile.name}</h3>
           {profile.isRLS && (
             <span className="text-xs bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full">RLS</span>
           )}
@@ -1691,12 +1691,12 @@ function StatCard({ icon: Icon, label, value, sub, accent }: {
   accent?: boolean
 }): React.JSX.Element {
   return (
-    <div className="bg-white/5 rounded-xl border border-[var(--color-border)] p-4">
+    <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
       <div className="flex items-center gap-2 mb-2">
         <Icon size={16} className={accent ? 'text-green-400' : 'text-[var(--text-muted)]'} />
         <span className="text-xs text-[var(--text-muted)]">{label}</span>
       </div>
-      <p className={`text-lg font-bold ${accent ? 'text-green-400' : 'text-white'}`}>{value}</p>
+      <p className={`text-lg font-bold ${accent ? 'text-green-400' : 'text-[var(--color-text-primary)]'}`}>{value}</p>
       {sub && <p className="text-xs text-[var(--text-muted)] mt-0.5">{sub}</p>}
     </div>
   )

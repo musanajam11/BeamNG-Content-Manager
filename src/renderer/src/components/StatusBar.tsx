@@ -17,7 +17,7 @@ export function StatusBar(): React.JSX.Element {
   }, [])
 
   return (
-    <div className="flex items-center justify-between h-[22px] shrink-0 border-t border-[var(--color-border)] bg-black/30 text-[10px] text-[var(--color-text-muted)] select-none" style={{ paddingLeft: '12px', paddingRight: '12px' }}>
+    <div className="flex items-center justify-between h-[22px] shrink-0 border-t border-[var(--color-border)] bg-[var(--color-scrim-30)] text-[10px] text-[var(--color-text-muted)] select-none" style={{ paddingLeft: '12px', paddingRight: '12px' }}>
       <div className="flex items-center gap-3">
         {versions?.gameVersion && (
           <span>{t('statusBar.beamng', { version: versions.gameVersion })}</span>

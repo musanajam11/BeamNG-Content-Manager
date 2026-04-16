@@ -39,11 +39,11 @@ export function FriendCard({ friend, status, onRemove, onJoinServer }: FriendCar
     <div className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
       online
         ? 'bg-emerald-500/5 border-emerald-500/20'
-        : 'bg-white/5 border-[var(--color-border)]'
+        : 'bg-[var(--color-surface)] border-[var(--color-border)]'
     }`}>
       {/* Online indicator */}
       <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-        online ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]' : 'bg-slate-600'
+        online ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.5)]' : 'bg-[var(--color-text-dim)]'
       }`} />
 
       {/* Info */}
@@ -105,7 +105,7 @@ export function FriendCard({ friend, status, onRemove, onJoinServer }: FriendCar
             )}
             <button
               onClick={() => navigator.clipboard.writeText(status.serverIdent!)}
-              className="p-1.5 rounded-md text-slate-400 hover:bg-white/10 hover:text-white transition-colors"
+              className="p-1.5 rounded-md text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-active)] hover:text-[var(--color-text-primary)] transition-colors"
               title={t('friends.copyServerAddress')}
             >
               <Copy size={14} />
@@ -114,7 +114,7 @@ export function FriendCard({ friend, status, onRemove, onJoinServer }: FriendCar
         )}
         <button
           onClick={() => onRemove(friend.id)}
-          className="p-1.5 rounded-md text-slate-500 hover:bg-red-500/20 hover:text-red-400 transition-colors"
+          className="p-1.5 rounded-md text-[var(--color-text-muted)] hover:bg-red-500/20 hover:text-red-400 transition-colors"
           title={t('friends.removeFriend')}
         >
           <UserMinus size={14} />

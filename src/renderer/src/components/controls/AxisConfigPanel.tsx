@@ -86,7 +86,7 @@ function AxisRow({ binding, actions, onUpdate }: AxisRowProps): React.JSX.Elemen
           <span className="text-xs font-medium text-[var(--color-text-primary)]">
             {actionName}
           </span>
-          <span className="text-[10px] font-mono text-[var(--color-text-muted)] px-1.5 py-0.5 bg-black/20 rounded">
+          <span className="text-[10px] font-mono text-[var(--color-text-muted)] px-1.5 py-0.5 bg-[var(--color-scrim-20)] rounded">
             {getControlDisplayName(binding.control)}
           </span>
         </div>

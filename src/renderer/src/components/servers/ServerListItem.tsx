@@ -48,7 +48,7 @@ const BADGE_TONES: Record<string, string> = {
   gold: 'border-yellow-400/25 bg-yellow-400/12 text-yellow-200',
   warn: 'border-[var(--color-accent-25)] bg-[var(--color-accent-subtle)] text-[var(--color-accent-text-muted)]',
   offline: 'border-red-400/25 bg-red-400/12 text-red-300',
-  default: 'border-white/8 bg-white/5 text-slate-300',
+  default: 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)]',
 }
 
 export function ServerListItem({ server, selected, favorite, onSelect, onToggleFavorite }: Props): React.JSX.Element {
@@ -92,7 +92,7 @@ export function ServerListItem({ server, selected, favorite, onSelect, onToggleF
       className={`group w-full border-b px-5 py-2 text-left transition ${
         selected
           ? 'border-[var(--color-border-accent)] bg-[var(--color-accent-8)]'
-          : 'border-white/6 bg-transparent hover:bg-white/[0.04]'
+          : 'border-[var(--color-border)] bg-transparent hover:bg-[var(--color-surface)]'
       }`}
     >
       <div className="flex items-center gap-2.5">
@@ -101,7 +101,7 @@ export function ServerListItem({ server, selected, favorite, onSelect, onToggleF
           <button
             onClick={(e) => { e.stopPropagation(); onToggleFavorite() }}
             className={`p-0.5 transition ${
-              favorite ? 'text-yellow-300' : 'text-slate-600 hover:text-yellow-300'
+              favorite ? 'text-yellow-300' : 'text-[var(--color-text-dim)] hover:text-yellow-300'
             }`}
           >
             <Star size={12} fill={favorite ? 'currentColor' : 'none'} />
@@ -120,10 +120,10 @@ export function ServerListItem({ server, selected, favorite, onSelect, onToggleF
         {/* Name + icons */}
         <div ref={nameContainerRef} className="min-w-0 flex-1 flex items-center gap-1 overflow-hidden">
           <span ref={nameTextRef} className={`marquee-scroll${nameOverflows ? ' is-overflowing' : ''}`}>
-            <BeamMPText text={server.sname} className="text-xs font-semibold text-white whitespace-nowrap" />
+            <BeamMPText text={server.sname} className="text-xs font-semibold text-[var(--color-text-primary)] whitespace-nowrap" />
           </span>
           {server.official && <Shield size={10} className="shrink-0 text-[var(--color-accent)]" />}
-          {server.password && <Lock size={10} className="shrink-0 text-slate-500" />}
+          {server.password && <Lock size={10} className="shrink-0 text-[var(--color-text-muted)]" />}
         </div>
 
         {/* Tags (inline) */}
@@ -137,17 +137,17 @@ export function ServerListItem({ server, selected, favorite, onSelect, onToggleF
             <ServerTagBadge key={ct.id} tag={ct} compact />
           ))}
           {contentTags.length > 2 && (
-            <span className="text-[9px] text-slate-500 font-medium">+{contentTags.length - 2}</span>
+            <span className="text-[9px] text-[var(--color-text-muted)] font-medium">+{contentTags.length - 2}</span>
           )}
         </div>
 
         {/* Map */}
-        <span className="shrink-0 text-[11px] text-slate-400 inline-flex items-center gap-1 w-28 truncate">
+        <span className="shrink-0 text-[11px] text-[var(--color-text-secondary)] inline-flex items-center gap-1 w-28 truncate">
           <MapPin size={9} />{cleanMapName(server.map)}
         </span>
 
         {/* Players */}
-        <span className="shrink-0 text-[11px] text-slate-300 w-14 text-right font-medium">
+        <span className="shrink-0 text-[11px] text-[var(--color-text-secondary)] w-14 text-right font-medium">
           {playerCount}/{maxPlayers}
         </span>
 

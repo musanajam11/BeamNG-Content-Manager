@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react'
-import { FolderOpen, Globe, Check, AlertCircle, Package, Download, Upload, Palette, RotateCcw, Monitor, Type, Layers, Maximize2, PanelLeft, Eye, EyeOff, Image, X, Plus, Shuffle, Network, Languages, Terminal, Server, GripVertical, Code, AlertTriangle, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Wrench, Trash2, Shield, HardDriveDownload, Loader2 } from 'lucide-react'
+﻿import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { FolderOpen, Globe, Check, AlertCircle, Package, Download, Upload, Palette, RotateCcw, Monitor, Type, Layers, Maximize2, PanelLeft, Eye, EyeOff, Image, X, Plus, Shuffle, Network, Languages, Terminal, Server, GripVertical, AlertTriangle, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Wrench, Trash2, Shield, HardDriveDownload, Loader2, Sun, Moon, SlidersHorizontal, Sparkles, Square, Circle, MousePointer, Zap } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/useAppStore'
 import { useThemeStore, ACCENT_PRESETS, BG_STYLES, DEFAULT_SIDEBAR_ORDER } from '../stores/useThemeStore'
@@ -8,9 +8,7 @@ import { LANGUAGES } from '../i18n'
 import * as Flags from 'country-flag-icons/react/3x2'
 import type { AppearanceSettings, AppPage } from '../../../shared/types'
 
-const MonacoEditor = lazy(() => import('@monaco-editor/react').then(m => ({ default: m.default })))
-
-type SettingsTab = 'general' | 'appearance' | 'customcss'
+type SettingsTab = 'general' | 'appearance'
 
 export function SettingsPage(): React.JSX.Element {
   const config = useAppStore((s) => s.config)
@@ -22,7 +20,7 @@ export function SettingsPage(): React.JSX.Element {
       <div className="flex items-center gap-3 px-5 py-4 border-b border-[var(--color-border)]">
         <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">{t('settings.title')}</h1>
         <div className="flex gap-2 ml-4">
-          {(['general', 'appearance', 'customcss'] as const).map((tabKey) => (
+          {(['general', 'appearance'] as const).map((tabKey) => (
             <button
               key={tabKey}
               onClick={() => setTab(tabKey)}
@@ -32,14 +30,14 @@ export function SettingsPage(): React.JSX.Element {
                   : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] border border-transparent'
               }`}
             >
-              {tabKey === 'general' ? t('settings.general') : tabKey === 'appearance' ? t('settings.appearance') : t('settings.customCSSTab')}
+              {tabKey === 'general' ? t('settings.general') : t('settings.appearance')}
             </button>
           ))}
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
-        {tab === 'general' ? <GeneralSettings config={config} /> : tab === 'appearance' ? <AppearanceSettingsPanel /> : <CustomCSSPanel />}
+        {tab === 'general' ? <GeneralSettings config={config} /> : <AppearanceSettingsPanel />}
       </div>
     </div>
   )
@@ -224,7 +222,7 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
                 className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${useOfficialBackend ? 'bg-[var(--color-text-muted)]' : 'bg-[var(--color-accent)]'}`}
               >
                 <span
-                  className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${useOfficialBackend ? 'translate-x-0.5' : 'translate-x-[18px]'}`}
+                  className={`inline-block h-3.5 w-3.5 rounded-full bg-[var(--color-text-primary)] transition-transform ${useOfficialBackend ? 'translate-x-0.5' : 'translate-x-[18px]'}`}
                 />
               </button>
               <span className="text-sm text-[var(--color-text-secondary)]">
@@ -391,7 +389,7 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
           {/* Save */}
           <button
             onClick={handleSave}
-            className="self-start px-6 py-2 rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-white text-sm font-medium transition-colors"
+            className="self-start px-6 py-2 rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-[var(--color-text-primary)] text-sm font-medium transition-colors"
           >
             {saved ? t('settings.saved') : t('settings.saveSettings')}
           </button>
@@ -648,6 +646,34 @@ function AppearanceSettingsPanel(): React.JSX.Element {
   return (
     <div className="max-w-2xl">
       <div className="flex flex-col gap-8">
+        {/* Color Mode */}
+        <section>
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
+            <Sun size={16} />
+            {t('settings.colorMode', 'Color Mode')}
+          </h2>
+          <div className="inline-flex rounded-lg border border-[var(--color-border)] overflow-hidden">
+            {([
+              { value: 'dark' as const, label: t('settings.dark', 'Dark'), icon: Moon },
+              { value: 'light' as const, label: t('settings.light', 'Light'), icon: Sun },
+              { value: 'system' as const, label: t('settings.system', 'System'), icon: Monitor }
+            ]).map(({ value, label, icon: Icon }) => (
+              <button
+                key={value}
+                onClick={() => update({ colorMode: value })}
+                className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors ${
+                  appearance.colorMode === value
+                    ? 'bg-[var(--color-accent)] text-[var(--color-text-primary)]'
+                    : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'
+                }`}
+              >
+                <Icon size={14} />
+                {label}
+              </button>
+            ))}
+          </div>
+        </section>
+
         {/* Accent Color */}
         <section>
           <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
@@ -664,14 +690,14 @@ function AppearanceSettingsPanel(): React.JSX.Element {
                 }}
                 className={`group relative w-full aspect-square rounded-lg border-2 transition-all ${
                   appearance.accentColor === preset.color
-                    ? 'border-white scale-110 shadow-lg'
-                    : 'border-transparent hover:border-white/30 hover:scale-105'
+                    ? 'border-[var(--color-text-primary)] scale-110 shadow-lg'
+                    : 'border-transparent hover:border-[var(--color-border-hover)] hover:scale-105'
                 }`}
                 style={{ backgroundColor: preset.color }}
                 title={preset.name}
               >
                 {appearance.accentColor === preset.color && (
-                  <Check size={14} className="absolute inset-0 m-auto text-white drop-shadow" />
+                  <Check size={14} className="absolute inset-0 m-auto text-[var(--color-text-primary)] drop-shadow" />
                 )}
               </button>
             ))}
@@ -883,7 +909,7 @@ function AppearanceSettingsPanel(): React.JSX.Element {
               }`}
             >
               <span
-                className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                className={`absolute top-0.5 w-4 h-4 rounded-full bg-[var(--color-text-primary)] transition-transform ${
                   appearance.enableBlur ? 'left-[22px]' : 'left-0.5'
                 }`}
               />
@@ -919,6 +945,302 @@ function AppearanceSettingsPanel(): React.JSX.Element {
 
         {/* Sidebar Layout */}
         <SidebarLayoutSection appearance={appearance} update={update} />
+
+        {/* ═══ Visual Customization ═══ */}
+
+        {/* Corner Radius */}
+        <section>
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
+            <Square size={16} />
+            {t('settings.cornerRadius', 'Corner Radius')}
+          </h2>
+          <div className="flex items-center gap-3">
+            <input
+              type="range"
+              min={0}
+              max={24}
+              step={4}
+              value={appearance.cornerRadius ?? 0}
+              onChange={(e) => update({ cornerRadius: parseInt(e.target.value) })}
+              className="flex-1 accent-[var(--color-accent)]"
+            />
+            <span className="text-sm text-[var(--color-text-secondary)] w-12 text-right font-mono">
+              {appearance.cornerRadius ?? 0}px
+            </span>
+          </div>
+          <p className="text-xs text-[var(--color-text-muted)] mt-1">
+            {t('settings.cornerRadiusDesc', '0 = sharp edges, 24 = very round')}
+          </p>
+        </section>
+
+        {/* Button Size */}
+        <section>
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
+            <MousePointer size={16} />
+            {t('settings.buttonSize', 'Button Size')}
+          </h2>
+          <div className="inline-flex rounded-lg border border-[var(--color-border)] overflow-hidden">
+            {([
+              { value: 'default' as const, label: t('settings.btnDefault', 'Default') },
+              { value: 'comfortable' as const, label: t('settings.btnComfortable', 'Comfortable') },
+              { value: 'large' as const, label: t('settings.btnLarge', 'Large') }
+            ]).map(({ value, label }) => (
+              <button
+                key={value}
+                onClick={() => update({ buttonSize: value })}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  (appearance.buttonSize ?? 'default') === value
+                    ? 'bg-[var(--color-accent)] text-white'
+                    : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-[var(--color-text-muted)] mt-1">
+            {t('settings.buttonSizeDesc', 'Increases button height and text size for easier clicking')}
+          </p>
+        </section>
+
+        {/* Font Family */}
+        <section>
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
+            <Type size={16} />
+            {t('settings.fontFamily', 'Font Family')}
+          </h2>
+          <div className="inline-flex rounded-lg border border-[var(--color-border)] overflow-hidden">
+            {([
+              { value: 'system' as const, label: t('settings.fontSystem', 'System'), sample: 'Segoe UI' },
+              { value: 'monospace' as const, label: t('settings.fontMono', 'Monospace'), sample: 'JetBrains Mono' },
+              { value: 'serif' as const, label: t('settings.fontSerif', 'Serif'), sample: 'Georgia' }
+            ]).map(({ value, label }) => (
+              <button
+                key={value}
+                onClick={() => update({ fontFamily: value })}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  (appearance.fontFamily ?? 'system') === value
+                    ? 'bg-[var(--color-accent)] text-white'
+                    : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* Scrollbar Style */}
+        <section>
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
+            <SlidersHorizontal size={16} />
+            {t('settings.scrollbarStyle', 'Scrollbar Style')}
+          </h2>
+          <div className="grid grid-cols-2 gap-2">
+            {([
+              { value: 'default' as const, label: t('settings.scrollDefault', 'Default'), desc: t('settings.scrollDefaultDesc', 'Thin subtle scrollbar') },
+              { value: 'thin-accent' as const, label: t('settings.scrollThinAccent', 'Accent'), desc: t('settings.scrollThinAccentDesc', 'Thin accent-colored') },
+              { value: 'rounded' as const, label: t('settings.scrollRounded', 'Rounded'), desc: t('settings.scrollRoundedDesc', 'Chunky rounded scrollbar') },
+              { value: 'hidden' as const, label: t('settings.scrollHidden', 'Hidden'), desc: t('settings.scrollHiddenDesc', 'No visible scrollbar') }
+            ]).map(({ value, label, desc }) => (
+              <button
+                key={value}
+                onClick={() => update({ scrollbarStyle: value })}
+                className={`p-3 rounded-lg border text-left transition-all ${
+                  (appearance.scrollbarStyle ?? 'rounded') === value
+                    ? 'border-[var(--color-accent)] bg-[var(--color-accent-subtle)]'
+                    : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:border-[var(--color-border-hover)]'
+                }`}
+              >
+                <span className="text-sm font-medium text-[var(--color-text-primary)]">{label}</span>
+                <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{desc}</p>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* Animation Speed */}
+        <section>
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
+            <Zap size={16} />
+            {t('settings.animationSpeed', 'Animation Speed')}
+          </h2>
+          <div className="inline-flex rounded-lg border border-[var(--color-border)] overflow-hidden">
+            {([
+              { value: 'none' as const, label: t('settings.animNone', 'Instant') },
+              { value: 'normal' as const, label: t('settings.animNormal', 'Normal') },
+              { value: 'slow' as const, label: t('settings.animSlow', 'Relaxed') }
+            ]).map(({ value, label }) => (
+              <button
+                key={value}
+                onClick={() => update({ animationSpeed: value })}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  (appearance.animationSpeed ?? 'normal') === value
+                    ? 'bg-[var(--color-accent)] text-white'
+                    : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* Border Style */}
+        <section>
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
+            <Layers size={16} />
+            {t('settings.borderStyleLabel', 'Border Style')}
+          </h2>
+          <div className="grid grid-cols-2 gap-2">
+            {([
+              { value: 'normal' as const, label: t('settings.borderNormal', 'Normal'), desc: t('settings.borderNormalDesc', 'Default subtle borders') },
+              { value: 'none' as const, label: t('settings.borderNone', 'Borderless'), desc: t('settings.borderNoneDesc', 'Clean, no borders') },
+              { value: 'thick' as const, label: t('settings.borderThick', 'Bold'), desc: t('settings.borderThickDesc', 'Heavier 2px borders') },
+              { value: 'accent' as const, label: t('settings.borderAccent', 'Accent'), desc: t('settings.borderAccentDesc', 'Accent-tinted borders') }
+            ]).map(({ value, label, desc }) => (
+              <button
+                key={value}
+                onClick={() => update({ borderStyle: value })}
+                className={`p-3 rounded-lg border text-left transition-all ${
+                  (appearance.borderStyle ?? 'normal') === value
+                    ? 'border-[var(--color-accent)] bg-[var(--color-accent-subtle)]'
+                    : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:border-[var(--color-border-hover)]'
+                }`}
+              >
+                <span className="text-sm font-medium text-[var(--color-text-primary)]">{label}</span>
+                <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{desc}</p>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* Overlay Effect */}
+        <section>
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
+            <Sparkles size={16} />
+            {t('settings.overlayEffect', 'Overlay Effect')}
+          </h2>
+          <div className="grid grid-cols-2 gap-2">
+            {([
+              { value: 'none' as const, label: t('settings.overlayNone', 'None') },
+              { value: 'scanlines' as const, label: t('settings.overlayScanlines', 'Scanlines') },
+              { value: 'vignette' as const, label: t('settings.overlayVignette', 'Vignette') },
+              { value: 'noise' as const, label: t('settings.overlayNoise', 'Film Grain') }
+            ]).map(({ value, label }) => (
+              <button
+                key={value}
+                onClick={() => update({ overlayEffect: value })}
+                className={`px-4 py-2.5 rounded-lg border text-center text-sm font-medium transition-all ${
+                  (appearance.overlayEffect ?? 'none') === value
+                    ? 'border-[var(--color-accent)] bg-[var(--color-accent-subtle)] text-[var(--color-accent)]'
+                    : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:border-[var(--color-border-hover)]'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* Visual Effects Toggles */}
+        <section>
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
+            <MousePointer size={16} />
+            {t('settings.visualEffects', 'Visual Effects')}
+          </h2>
+          <div className="flex flex-col gap-3">
+            {([
+              { key: 'effectPageFade' as const, label: t('settings.effectPageFade', 'Page fade-in'), desc: t('settings.effectPageFadeDesc', 'Smooth fade animation when switching pages') },
+              { key: 'effectAccentSelection' as const, label: t('settings.effectAccentSelection', 'Accent text selection'), desc: t('settings.effectAccentSelectionDesc', 'Highlight selected text with your accent color') },
+              { key: 'effectFrostedGlass' as const, label: t('settings.effectFrostedGlass', 'Frosted glass panels'), desc: t('settings.effectFrostedGlassDesc', 'Extra blur + saturation on overlay panels') },
+              { key: 'effectHoverGlow' as const, label: t('settings.effectHoverGlow', 'Hover glow'), desc: t('settings.effectHoverGlowDesc', 'Accent glow effect when hovering cards') },
+              { key: 'effectHoverLift' as const, label: t('settings.effectHoverLift', 'Hover lift'), desc: t('settings.effectHoverLiftDesc', 'Cards lift slightly when hovered') }
+            ] as const).map(({ key, label, desc }) => (
+              <label key={key} className="flex items-center gap-3 cursor-pointer">
+                <button
+                  onClick={() => update({ [key]: !(appearance[key] ?? false) })}
+                  className={`w-10 h-5 rounded-full transition-colors relative shrink-0 ${
+                    (appearance[key] ?? false)
+                      ? 'bg-[var(--color-accent)]'
+                      : 'bg-[var(--color-surface-active)]'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 w-4 h-4 rounded-full bg-[var(--color-text-primary)] transition-transform ${
+                      (appearance[key] ?? false) ? 'left-[22px]' : 'left-0.5'
+                    }`}
+                  />
+                </button>
+                <div>
+                  <span className="text-sm text-[var(--color-text-primary)]">{label}</span>
+                  <p className="text-xs text-[var(--color-text-muted)]">{desc}</p>
+                </div>
+              </label>
+            ))}
+          </div>
+        </section>
+
+        {/* Color Filters */}
+        <section>
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
+            <Circle size={16} />
+            {t('settings.colorFilters', 'Color Filters')}
+          </h2>
+          <div className="flex flex-col gap-4">
+            <div>
+              <label className="text-xs text-[var(--color-text-muted)] mb-1 block">{t('settings.brightness', 'Brightness')}</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range" min={0.7} max={1.3} step={0.05}
+                  value={appearance.filterBrightness ?? 1.0}
+                  onChange={(e) => update({ filterBrightness: parseFloat(e.target.value) })}
+                  className="flex-1 accent-[var(--color-accent)]"
+                />
+                <span className="text-sm text-[var(--color-text-secondary)] w-12 text-right font-mono">
+                  {((appearance.filterBrightness ?? 1.0) * 100).toFixed(0)}%
+                </span>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-[var(--color-text-muted)] mb-1 block">{t('settings.contrast', 'Contrast')}</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range" min={0.7} max={1.5} step={0.05}
+                  value={appearance.filterContrast ?? 1.0}
+                  onChange={(e) => update({ filterContrast: parseFloat(e.target.value) })}
+                  className="flex-1 accent-[var(--color-accent)]"
+                />
+                <span className="text-sm text-[var(--color-text-secondary)] w-12 text-right font-mono">
+                  {((appearance.filterContrast ?? 1.0) * 100).toFixed(0)}%
+                </span>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-[var(--color-text-muted)] mb-1 block">{t('settings.saturation', 'Saturation')}</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range" min={0} max={2.0} step={0.05}
+                  value={appearance.filterSaturation ?? 1.0}
+                  onChange={(e) => update({ filterSaturation: parseFloat(e.target.value) })}
+                  className="flex-1 accent-[var(--color-accent)]"
+                />
+                <span className="text-sm text-[var(--color-text-secondary)] w-12 text-right font-mono">
+                  {((appearance.filterSaturation ?? 1.0) * 100).toFixed(0)}%
+                </span>
+              </div>
+            </div>
+            {((appearance.filterBrightness ?? 1.0) !== 1.0 || (appearance.filterContrast ?? 1.0) !== 1.0 || (appearance.filterSaturation ?? 1.0) !== 1.0) && (
+              <button
+                onClick={() => update({ filterBrightness: 1.0, filterContrast: 1.0, filterSaturation: 1.0 })}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-[var(--color-border)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] transition-colors w-fit"
+              >
+                <RotateCcw size={12} />
+                {t('settings.resetFilters', 'Reset filters')}
+              </button>
+            )}
+          </div>
+        </section>
 
         {/* Reset */}
         <section>
@@ -1017,7 +1339,7 @@ function BackgroundImageSection({ appearance, update }: {
         if (dataUrl) setThumbs((prev) => ({ ...prev, [p]: dataUrl }))
       })
     }
-  }, [allImages.length])
+  }, [allImages])
 
   const addImage = useCallback(async () => {
     const path = await window.api.pickBackgroundImage()
@@ -1087,16 +1409,16 @@ function BackgroundImageSection({ appearance, update }: {
                 {/* Active indicator */}
                 {isActive && (
                   <div className="absolute bottom-1 left-1 bg-[var(--color-accent)] rounded-full p-0.5">
-                    <Check size={10} className="text-white" />
+                    <Check size={10} className="text-[var(--color-text-primary)]" />
                   </div>
                 )}
                 {/* Delete button (red X) — top-right */}
                 <button
                   onClick={(e) => { e.stopPropagation(); removeFromList(path) }}
-                  className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 hover:bg-red-600 rounded-full p-0.5"
+                  className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity bg-[var(--color-scrim-60)] hover:bg-red-600 rounded-full p-0.5"
                   title={t('settings.removeFromList')}
                 >
-                  <X size={10} className="text-red-400 hover:text-white" />
+                  <X size={10} className="text-red-400 hover:text-[var(--color-text-primary)]" />
                 </button>
               </div>
             )
@@ -1124,7 +1446,7 @@ function BackgroundImageSection({ appearance, update }: {
               appearance.bgCycleOnLaunch ? 'bg-[var(--color-accent)]' : 'bg-[var(--color-border)]'
             }`}
           >
-            <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+            <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-[var(--color-text-primary)] transition-transform ${
               appearance.bgCycleOnLaunch ? 'left-[18px]' : 'left-0.5'
             }`} />
           </button>
@@ -1322,10 +1644,6 @@ function SidebarLayoutSection({ appearance, update }: {
     </section>
   )
 }
-
-// ── Custom CSS Panel (own tab) ──
-
-// ── CSS Snippet Templates (toggleable) ──
 // Each snippet has a unique `id` used as a marker comment in the CSS so we can detect & toggle it.
 
 interface CSSSnippet { id: string; name: string; nameKey: string; css: string }
@@ -2023,7 +2341,7 @@ function CustomCSSPanel(): React.JSX.Element {
               <MonacoEditor
                 height="100%"
                 language="css"
-                theme="vs-dark"
+                theme={useThemeStore.getState().resolvedMode === 'light' ? 'vs' : 'vs-dark'}
                 value={localCSS}
                 onChange={handleChange}
                 options={{
@@ -2054,7 +2372,7 @@ function CustomCSSPanel(): React.JSX.Element {
         {/* Right — Snippet Templates */}
         <div className="w-[280px] shrink-0 flex flex-col min-h-0">
           <p className="text-xs font-semibold text-[var(--color-text-secondary)] mb-2">{t('settings.cssSnippets')}</p>
-          <div className="flex-1 overflow-y-auto border border-[var(--color-border)] bg-black/20">
+          <div className="flex-1 overflow-y-auto border border-[var(--color-border)] bg-[var(--color-scrim-20)]">
             {CSS_SNIPPETS.map((cat) => (
               <div key={cat.category}>
                 <button

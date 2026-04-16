@@ -15,7 +15,7 @@ function classifyLine(line: string): string {
   if (line.includes('[WARN]')) return 'text-yellow-400'
   if (line.includes('[LUA]')) return 'text-cyan-400'
   if (line.includes('[INFO]')) return 'text-blue-400'
-  if (line.includes('[DEBUG]')) return 'text-zinc-500'
+  if (line.includes('[DEBUG]')) return 'text-[var(--color-text-muted)]'
   return 'text-[var(--color-text-secondary)]'
 }
 
@@ -144,7 +144,7 @@ export function ConsolePanel({
       )}
 
       {/* Console output */}
-      <div ref={containerRef} className="flex-1 overflow-auto font-mono text-xs leading-5 p-3 bg-black/40" onScroll={handleScroll}>
+      <div ref={containerRef} className="flex-1 overflow-auto font-mono text-xs leading-5 p-3 bg-[var(--color-scrim-40)]" onScroll={handleScroll}>
         {filtered.length === 0 ? (
           <div className="text-[var(--color-text-muted)] text-center py-8">
             {filter ? t('serverManager.noMatchingLines') : t('serverManager.consoleEmpty')}
@@ -162,7 +162,7 @@ export function ConsolePanel({
       {!autoScroll && lines.length > 0 && (
         <button
           onClick={() => { setAutoScroll(true); if (containerRef.current) containerRef.current.scrollTop = containerRef.current.scrollHeight }}
-          className="mx-auto -mt-8 mb-1 relative z-10 px-3 py-1 rounded-full text-xs bg-[var(--color-accent)] text-white shadow-lg hover:opacity-90 transition-opacity"
+          className="mx-auto -mt-8 mb-1 relative z-10 px-3 py-1 rounded-full text-xs bg-[var(--color-accent)] text-[var(--color-text-primary)] shadow-lg hover:opacity-90 transition-opacity"
         >
           {t('serverManager.scrollToBottom')}
         </button>

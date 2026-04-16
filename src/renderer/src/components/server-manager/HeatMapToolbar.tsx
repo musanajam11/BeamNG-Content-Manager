@@ -36,14 +36,14 @@ export default function HeatMapToolbar({
   const { t } = useTranslation()
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-white/10 bg-white/[0.02]">
+    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
       {/* ── Heatmap toggle ──────────────────────────── */}
       <button
         onClick={onToggleHeatmap}
         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
           showHeatmap
             ? 'bg-[var(--color-accent-20)] text-[var(--color-accent-text)] border-[var(--color-border-accent)]'
-            : 'text-white/50 hover:text-white/70 hover:bg-white/5 border-white/10'
+            : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface)] border-[var(--color-border)]'
         }`}
         title={t('serverManager.toggleHeatmap')}
       >
@@ -53,7 +53,7 @@ export default function HeatMapToolbar({
       {showHeatmap && (
         <button
           onClick={onClearHeatmap}
-          className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs text-white/40 hover:text-white/70 hover:bg-white/5 border border-white/10 transition-colors"
+          className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs text-[var(--color-text-dim)] hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface)] border border-[var(--color-border)] transition-colors"
           title={t('serverManager.clearHeatmapData')}
         >
           <RotateCcw size={12} />
@@ -64,7 +64,7 @@ export default function HeatMapToolbar({
       <div className="flex-1" />
 
       {/* ── Player count ────────────────────────────── */}
-      <div className="flex items-center gap-1.5 text-xs text-white/50">
+      <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)]">
         <Users size={13} />
         <span>
           {t('serverManager.playerCount_other', { count: playerCount })}

@@ -11,9 +11,12 @@ const CLIENT_ID = '1493802117809311765'
 let rpcClient: RPC.Client | null = null
 let connected = false
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 let appStartTimestamp = new Date()
+let lastPresence: PresenceOptions = { details: 'Browsing content', state: 'Home' }
 
 const RECONNECT_INTERVAL = 15_000
+const HEARTBEAT_INTERVAL = 30_000
 
 // ── Page ID → friendly label mapping ──
 const PAGE_LABELS: Record<string, string> = {
@@ -139,25 +142,38 @@ function cleanMapName(raw: string): string {
 }
 
 export function initDiscordRPC(): void {
-  connect()
-  registerIpcHandlers()
+  try {
+    connect()
+    registerIpcHandlers()
+  } catch (err) {
+    // On Linux (especially Steam Deck) Discord IPC socket may not exist.
+    // Swallow and skip — DiscordRPC is non-essential.
+    console.warn('[DiscordRPC] Init failed (Discord may not be installed):', err)
+  }
 }
 
 function connect(): void {
   if (connected) return
 
-  rpcClient = new RPC.Client({ transport: 'ipc' })
+  try {
+    rpcClient = new RPC.Client({ transport: 'ipc' })
+  } catch (err) {
+    console.warn('[DiscordRPC] Could not create RPC client:', err)
+    return
+  }
 
   rpcClient.on('ready', () => {
     connected = true
     appStartTimestamp = new Date()
     console.log('[DiscordRPC] Connected to Discord')
     setPresence({ state: 'Home', details: 'Browsing content' })
+    startHeartbeat()
   })
 
   rpcClient.on('disconnected', () => {
     connected = false
     console.log('[DiscordRPC] Disconnected from Discord')
+    stopHeartbeat()
     scheduleReconnect()
   })
 
@@ -174,6 +190,39 @@ function scheduleReconnect(): void {
     reconnectTimer = null
     connect()
   }, RECONNECT_INTERVAL)
+}
+
+function startHeartbeat(): void {
+  stopHeartbeat()
+  heartbeatTimer = setInterval(() => {
+    if (!rpcClient || !connected) {
+      stopHeartbeat()
+      return
+    }
+    // Re-set the last known presence — if the pipe is dead this will fail
+    // and we can reconnect
+    rpcClient.setActivity({
+      details: lastPresence.details,
+      state: lastPresence.state,
+      startTimestamp: lastPresence.startTimestamp ?? appStartTimestamp,
+      largeImageKey: lastPresence.largeImageKey,
+      largeImageText: lastPresence.largeImageText,
+      smallImageKey: lastPresence.smallImageKey,
+      smallImageText: lastPresence.smallImageText,
+      instance: false
+    }).catch(() => {
+      console.warn('[DiscordRPC] Heartbeat failed — reconnecting')
+      connected = false
+      stopHeartbeat()
+      try { rpcClient?.destroy().catch(() => {}) } catch { /* ignore */ }
+      rpcClient = null
+      scheduleReconnect()
+    })
+  }, HEARTBEAT_INTERVAL)
+}
+
+function stopHeartbeat(): void {
+  if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null }
 }
 
 function registerIpcHandlers(): void {
@@ -231,6 +280,7 @@ export interface PresenceOptions {
 }
 
 export function setPresence(opts: PresenceOptions): void {
+  lastPresence = opts
   if (!rpcClient || !connected) return
 
   rpcClient.setActivity({
@@ -244,6 +294,12 @@ export function setPresence(opts: PresenceOptions): void {
     instance: false
   }).catch((err) => {
     console.warn('[DiscordRPC] Failed to set activity:', err.message)
+    // Connection may be dead — tear down and reconnect
+    connected = false
+    stopHeartbeat()
+    try { rpcClient?.destroy().catch(() => {}) } catch { /* ignore */ }
+    rpcClient = null
+    scheduleReconnect()
   })
 }
 
@@ -253,12 +309,15 @@ export function clearPresence(): void {
 }
 
 export function destroyDiscordRPC(): void {
+  stopHeartbeat()
   if (reconnectTimer) {
     clearTimeout(reconnectTimer)
     reconnectTimer = null
   }
   if (rpcClient) {
-    rpcClient.destroy().catch(() => {})
+    // Clear activity first so Discord doesn't show stale presence
+    try { rpcClient.clearActivity().catch(() => {}) } catch { /* ignore */ }
+    try { rpcClient.destroy().catch(() => {}) } catch { /* ignore */ }
     rpcClient = null
     connected = false
   }

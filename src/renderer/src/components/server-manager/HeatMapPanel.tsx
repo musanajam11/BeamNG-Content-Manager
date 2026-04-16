@@ -134,9 +134,9 @@ export default function HeatMapPanel({ server }: HeatMapPanelProps): React.JSX.E
 
         {/* Player sidebar */}
         {players.length > 0 && (
-          <div className="w-56 border-l border-white/10 bg-white/[0.015] overflow-y-auto">
-            <div className="px-4 py-2.5 border-b border-white/10">
-              <h3 className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">
+          <div className="w-56 border-l border-[var(--color-border)] bg-[var(--color-surface)] overflow-y-auto">
+            <div className="px-4 py-2.5 border-b border-[var(--color-border)]">
+              <h3 className="text-[10px] font-semibold text-[var(--color-text-dim)] uppercase tracking-wider">
                 Live Players
               </h3>
             </div>
@@ -147,16 +147,16 @@ export default function HeatMapPanel({ server }: HeatMapPanelProps): React.JSX.E
                 return (
                   <div
                     key={`${p.playerId}-${p.vehicleId}`}
-                    className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-white/[0.03] hover:bg-white/[0.06] transition-colors"
+                    className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] transition-colors"
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <span
                         className="w-2 h-2 rounded-full shrink-0"
                         style={{ backgroundColor: dotColor }}
                       />
-                      <span className="text-xs text-white/70 truncate">{p.playerName}</span>
+                      <span className="text-xs text-[var(--color-text-secondary)] truncate">{p.playerName}</span>
                     </div>
-                    <span className="text-[10px] text-white/40 tabular-nums ml-2 shrink-0">
+                    <span className="text-[10px] text-[var(--color-text-dim)] tabular-nums ml-2 shrink-0">
                       {Math.round(p.speed)} km/h
                     </span>
                   </div>

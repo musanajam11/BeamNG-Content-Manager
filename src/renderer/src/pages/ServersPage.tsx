@@ -297,9 +297,9 @@ export function ServersPage(): React.JSX.Element {
   }
 
   return (
-    <div className="relative flex flex-col h-full rounded-lg border border-white/6 overflow-hidden">
+    <div className="relative flex flex-col h-full rounded-lg border border-[var(--color-border)] overflow-hidden">
       {/* Top toolbar area — no card wrapper, sits on background */}
-      <div className="shrink-0 border-b border-white/6 px-5 pt-4 pb-4 space-y-4">
+      <div className="shrink-0 border-b border-[var(--color-border)] px-5 pt-4 pb-4 space-y-4">
         <ServersToolbar
           serverCount={filteredServers.length}
           searchQuery={searchQuery}
@@ -313,29 +313,29 @@ export function ServersPage(): React.JSX.Element {
 
         {/* Stats row — 4 equal columns */}
         <div className="grid grid-cols-4 gap-3">
-          <div className="rounded-lg border border-white/8 bg-white/5 px-4 py-3">
-            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-400 mb-1">
+          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
+            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-[var(--color-text-secondary)] mb-1">
               <Globe size={11} /> {t('servers.visibleServers')}
             </div>
-            <div className="text-lg font-bold text-white">{summary.total}</div>
+            <div className="text-lg font-bold text-[var(--color-text-primary)]">{summary.total}</div>
           </div>
-          <div className="rounded-lg border border-white/8 bg-white/5 px-4 py-3">
-            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-400 mb-1">
+          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
+            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-[var(--color-text-secondary)] mb-1">
               <Users size={11} /> {t('servers.playersOnline')}
             </div>
-            <div className="text-lg font-bold text-white">{summary.totalPlayers}</div>
+            <div className="text-lg font-bold text-[var(--color-text-primary)]">{summary.totalPlayers}</div>
           </div>
-          <div className="rounded-lg border border-white/8 bg-white/5 px-4 py-3">
-            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-400 mb-1">
+          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
+            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-[var(--color-text-secondary)] mb-1">
               <Shield size={11} /> {t('servers.official')}
             </div>
-            <div className="text-lg font-bold text-white">{summary.official}</div>
+            <div className="text-lg font-bold text-[var(--color-text-primary)]">{summary.official}</div>
           </div>
-          <div className="rounded-lg border border-white/8 bg-white/5 px-4 py-3">
-            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-slate-400 mb-1">
+          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
+            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.12em] text-[var(--color-text-secondary)] mb-1">
               <Package size={11} /> {t('servers.modded')}
             </div>
-            <div className="text-lg font-bold text-white">{summary.modded}</div>
+            <div className="text-lg font-bold text-[var(--color-text-primary)]">{summary.modded}</div>
           </div>
         </div>
 
@@ -361,12 +361,12 @@ export function ServersPage(): React.JSX.Element {
       {/* Content: list + detail side-by-side */}
       <div className="flex-1 flex min-h-0">
         {loading && filteredServers.length === 0 ? (
-          <div className="flex-1 flex items-center justify-center text-slate-400 text-sm">
+          <div className="flex-1 flex items-center justify-center text-[var(--color-text-secondary)] text-sm">
             {t('servers.loadingServers')}
           </div>
         ) : (
           <>
-            <div className="flex-1 min-w-0 border-r border-white/6 relative">
+            <div className="flex-1 min-w-0 border-r border-[var(--color-border)] relative">
               <ServerList
                 servers={filteredServers}
                 selectedServer={selectedServer}
@@ -377,11 +377,11 @@ export function ServersPage(): React.JSX.Element {
 
               {/* Queue overlay — covers the server list while waiting */}
               {queueActive && queueTarget && (
-                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#111113]/85 backdrop-blur-sm">
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[var(--color-scrim-80)] backdrop-blur-sm">
                   <Clock size={28} className="text-[var(--color-accent-text)] animate-pulse mb-3" />
-                  <div className="text-sm font-semibold text-white mb-1">{t('servers.waitingToJoin')}</div>
+                  <div className="text-sm font-semibold text-[var(--color-text-primary)] mb-1">{t('servers.waitingToJoin')}</div>
                   <div className="text-xs text-[var(--color-accent-text-muted)] mb-1 max-w-[280px] text-center truncate"><BeamMPText text={queueTarget.sname} /></div>
-                  <div className="text-xs text-slate-400 mb-4">{queueMessage} — {formatElapsed(queueElapsed)}</div>
+                  <div className="text-xs text-[var(--color-text-secondary)] mb-4">{queueMessage} — {formatElapsed(queueElapsed)}</div>
                   <button
                     onClick={handleQueueStop}
                     className="inline-flex items-center gap-1.5 border border-[var(--color-border-accent)] bg-[var(--color-accent-10)] px-4 py-2 text-xs font-medium text-[var(--color-accent-text-muted)] transition hover:bg-[var(--color-accent-20)]"
@@ -422,13 +422,13 @@ export function ServersPage(): React.JSX.Element {
 
       {/* Connecting overlay — only after mod sync is done */}
       {joining && !modSyncActive && (
-        <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-[#111113]/90 backdrop-blur-sm">
+        <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-[var(--color-scrim-80)] backdrop-blur-sm">
           <div className="relative mb-4">
             <div className="h-10 w-10 rounded-full border-2 border-[var(--color-accent-20)]" />
             <div className="absolute inset-0 h-10 w-10 rounded-full border-2 border-transparent border-t-[var(--color-accent)] animate-spin" />
           </div>
-          <div className="text-sm font-semibold text-white mb-1">{t('servers.connectingToServer')}</div>
-          <div className="text-xs text-slate-400">{t('servers.syncingMods')}</div>
+          <div className="text-sm font-semibold text-[var(--color-text-primary)] mb-1">{t('servers.connectingToServer')}</div>
+          <div className="text-xs text-[var(--color-text-secondary)]">{t('servers.syncingMods')}</div>
         </div>
       )}
     </div>

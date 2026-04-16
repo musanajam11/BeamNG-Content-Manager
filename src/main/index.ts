@@ -1,11 +1,35 @@
-import { app, shell, BrowserWindow, protocol, Tray, Menu, nativeImage, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, protocol, Tray, Menu, nativeImage, ipcMain, nativeTheme } from 'electron'
 import { join } from 'path'
+import { existsSync, readFileSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import icon from '../../resources/icon.png?asset'
 import { initializeServices, registerIpcHandlers } from './ipc/handlers'
 import { extractVehicleAsset, resolveGameAsset, initVehicleAssetService } from './services/VehicleAssetService'
 import { initDiscordRPC, destroyDiscordRPC } from './services/DiscordRPCService'
+
+// ── Read stored colorMode before window creation for correct initial background ──
+function getInitialBackground(): string {
+  try {
+    const cfgPath = join(app.getPath('appData'), 'BeamMP-ContentManager', 'config.json')
+    if (existsSync(cfgPath)) {
+      const parsed = JSON.parse(readFileSync(cfgPath, 'utf-8'))
+      const mode: string = parsed?.appearance?.colorMode ?? 'dark'
+      if (mode === 'light' || (mode === 'system' && nativeTheme.shouldUseDarkColors === false)) {
+        return '#f5f5f7'
+      }
+    }
+  } catch { /* ignore – fall through to dark */ }
+  return '#111113'
+}
+
+// ── Linux/Steam Deck: enable Wayland support via Ozone platform ──
+if (process.platform === 'linux') {
+  // Ozone auto-detection picks Wayland (Gamescope on Steam Deck) or X11
+  app.commandLine.appendSwitch('ozone-platform-auto')
+  // GPU acceleration can fail under Gamescope; allow software fallback
+  app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder,UseOzonePlatform')
+}
 
 // Must be called before app.whenReady() so fetch() works with the custom protocol
 protocol.registerSchemesAsPrivileged([
@@ -38,7 +62,7 @@ function createWindow(): void {
     show: false,
     frame: false,
     autoHideMenuBar: true,
-    backgroundColor: '#111113',
+    backgroundColor: getInitialBackground(),
     icon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -50,9 +74,11 @@ function createWindow(): void {
     mainWindow?.show()
   })
 
-  // Close-to-tray: hide window instead of quitting (like Discord)
+  // Close-to-tray: hide window instead of quitting (like Discord).
+  // If no system tray is available (e.g. Steam Deck gaming mode), close
+  // actually quits — otherwise the user would have no way to exit.
   mainWindow.on('close', (e) => {
-    if (!isQuitting) {
+    if (!isQuitting && tray) {
       e.preventDefault()
       mainWindow?.hide()
     }
@@ -151,6 +177,7 @@ app.whenReady().then(async () => {
   // Set isQuitting so close-to-tray doesn't block actual quit
   app.on('before-quit', () => {
     isQuitting = true
+    destroyDiscordRPC()
   })
 
   createWindow()
@@ -193,32 +220,39 @@ app.whenReady().then(async () => {
     autoUpdater.quitAndInstall()
   })
 
-  // System tray
-  const trayIcon = nativeImage.createFromPath(icon).resize({ width: 16, height: 16 })
-  tray = new Tray(trayIcon)
-  tray.setToolTip('BeamNG Content Manager')
-  const contextMenu = Menu.buildFromTemplate([
-    {
-      label: 'Show',
-      click: (): void => {
-        mainWindow?.show()
-        mainWindow?.focus()
+  // System tray — wrapped in try-catch because Linux desktops (especially
+  // Steam Deck gaming mode) may lack a system tray / StatusNotifier service,
+  // which would otherwise crash the app on startup.
+  try {
+    const trayIcon = nativeImage.createFromPath(icon).resize({ width: 16, height: 16 })
+    tray = new Tray(trayIcon)
+    tray.setToolTip('BeamNG Content Manager')
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: 'Show',
+        click: (): void => {
+          mainWindow?.show()
+          mainWindow?.focus()
+        }
+      },
+      { type: 'separator' },
+      {
+        label: 'Quit',
+        click: (): void => {
+          isQuitting = true
+          app.quit()
+        }
       }
-    },
-    { type: 'separator' },
-    {
-      label: 'Quit',
-      click: (): void => {
-        isQuitting = true
-        app.quit()
-      }
-    }
-  ])
-  tray.setContextMenu(contextMenu)
-  tray.on('double-click', () => {
-    mainWindow?.show()
-    mainWindow?.focus()
-  })
+    ])
+    tray.setContextMenu(contextMenu)
+    tray.on('double-click', () => {
+      mainWindow?.show()
+      mainWindow?.focus()
+    })
+  } catch (err) {
+    console.warn('[Tray] Failed to create system tray (no tray service available):', err)
+    tray = null
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -226,9 +260,9 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => {
-  // Don't quit — app lives in the system tray.
-  // On macOS this is standard behavior already.
-  if (process.platform !== 'darwin') {
-    // no-op: tray keeps the app alive
+  // When a tray is available the app lives in the system tray.
+  // Without a tray (e.g. Steam Deck gaming mode), quit on window close.
+  if (process.platform !== 'darwin' && !tray) {
+    app.quit()
   }
 })

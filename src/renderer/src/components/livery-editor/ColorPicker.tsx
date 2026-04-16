@@ -77,26 +77,26 @@ export function ColorPicker({ color, onChange, label }: ColorPickerProps): React
 
   return (
     <div className="flex flex-col gap-2">
-      {label && <span className="text-[10px] uppercase tracking-wider text-slate-500">{label}</span>}
+      {label && <span className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)]">{label}</span>}
 
       {/* Current color preview + hex input */}
       <div className="flex items-center gap-2">
         <div
-          className="w-8 h-8 rounded border border-white/20 shrink-0"
+          className="w-8 h-8 rounded border border-[var(--color-border-hover)] shrink-0"
           style={{ backgroundColor: color }}
         />
         <input
           type="text"
           value={hexInput}
           onChange={(e) => handleHexChange(e.target.value)}
-          className="flex-1 px-2 py-1 text-xs rounded bg-black/30 border border-white/10 text-white font-mono focus:border-[var(--color-accent)] focus:outline-none"
+          className="flex-1 px-2 py-1 text-xs rounded bg-[var(--color-scrim-30)] border border-[var(--color-border)] text-[var(--color-text-primary)] font-mono focus:border-[var(--color-accent)] focus:outline-none"
           maxLength={7}
         />
       </div>
 
       {/* Hue slider */}
       <div className="flex flex-col gap-0.5">
-        <span className="text-[10px] text-slate-500">Hue</span>
+        <span className="text-[10px] text-[var(--color-text-muted)]">Hue</span>
         <input
           type="range" min={0} max={360} value={hsl.h}
           onChange={handleHueChange}
@@ -109,7 +109,7 @@ export function ColorPicker({ color, onChange, label }: ColorPickerProps): React
 
       {/* Saturation slider */}
       <div className="flex flex-col gap-0.5">
-        <span className="text-[10px] text-slate-500">Saturation</span>
+        <span className="text-[10px] text-[var(--color-text-muted)]">Saturation</span>
         <input
           type="range" min={0} max={100} value={hsl.s}
           onChange={handleSatChange}
@@ -122,7 +122,7 @@ export function ColorPicker({ color, onChange, label }: ColorPickerProps): React
 
       {/* Lightness slider */}
       <div className="flex flex-col gap-0.5">
-        <span className="text-[10px] text-slate-500">Lightness</span>
+        <span className="text-[10px] text-[var(--color-text-muted)]">Lightness</span>
         <input
           type="range" min={0} max={100} value={hsl.l}
           onChange={handleLightChange}
@@ -139,7 +139,7 @@ export function ColorPicker({ color, onChange, label }: ColorPickerProps): React
           <button
             key={c}
             onClick={() => { onChange(c); setHexInput(c) }}
-            className="w-5 h-5 rounded border border-white/10 hover:border-white/40 transition-colors"
+            className="w-5 h-5 rounded border border-[var(--color-border)] hover:border-[var(--color-border-hover)] transition-colors"
             style={{ backgroundColor: c }}
             title={c}
           />

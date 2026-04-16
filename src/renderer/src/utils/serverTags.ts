@@ -45,7 +45,7 @@ export const TAG_TONES: Record<string, string> = {
   blue:    'border-blue-400/25 bg-blue-400/10 text-blue-300',
   purple:  'border-purple-400/25 bg-purple-400/10 text-purple-300',
   stone:   'border-stone-400/25 bg-stone-400/10 text-stone-300',
-  default: 'border-white/8 bg-white/5 text-slate-300',
+  default: 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)]',
   accent:  'border-[var(--color-accent-25)] bg-[var(--color-accent-subtle)] text-[var(--color-accent-text-muted)]',
 }
 

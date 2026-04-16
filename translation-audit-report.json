@@ -1,0 +1,6522 @@
+{
+  "date": "2026-04-16T03:38:50.550Z",
+  "results": [
+    {
+      "lang": "Russian",
+      "perfect": 827,
+      "acceptable": 196,
+      "flagged": 166,
+      "missing": 0,
+      "issues": [
+        {
+          "key": "common.next",
+          "enVal": "Next",
+          "currentVal": "Далее",
+          "gtVal": "Следующий",
+          "severity": "REVIEW",
+          "sim": 30
+        },
+        {
+          "key": "common.disabled",
+          "enVal": "Disabled",
+          "currentVal": "Отключено",
+          "gtVal": "Неполноценный",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "common.none",
+          "enVal": "None",
+          "currentVal": "Нет",
+          "gtVal": "Никто",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "common.name",
+          "enVal": "Name",
+          "currentVal": "Название",
+          "gtVal": "Имя",
+          "severity": "REVIEW",
+          "sim": 13
+        },
+        {
+          "key": "common.stock",
+          "enVal": "Stock",
+          "currentVal": "Стандартный",
+          "gtVal": "Запас",
+          "severity": "REVIEW",
+          "sim": 20
+        },
+        {
+          "key": "common.goBack",
+          "enVal": "Go back",
+          "currentVal": "Назад",
+          "gtVal": "Возвращаться",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "common.more",
+          "enVal": "more",
+          "currentVal": "ещё",
+          "gtVal": "более",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "time.justNow",
+          "enVal": "just now",
+          "currentVal": "только что",
+          "gtVal": "прямо сейчас",
+          "severity": "REVIEW",
+          "sim": 20
+        },
+        {
+          "key": "sidebar.home",
+          "enVal": "Home",
+          "currentVal": "Главная",
+          "gtVal": "Дом",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "sidebar.collapse",
+          "enVal": "Collapse",
+          "currentVal": "Свернуть",
+          "gtVal": "Крах",
+          "severity": "REVIEW",
+          "sim": 9
+        },
+        {
+          "key": "home.title",
+          "enVal": "Home",
+          "currentVal": "Главная",
+          "gtVal": "Дом",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "servers.signInRequired",
+          "enVal": "You must sign in to BeamMP before joining a server",
+          "currentVal": "Требуется вход",
+          "gtVal": "Вы должны войти в BeamMP, прежде чем присоединиться к серверу.",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "servers.browse",
+          "enVal": "Browse",
+          "currentVal": "Обзор",
+          "gtVal": "Просматривать",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "servers.logout",
+          "enVal": "Logout",
+          "currentVal": "Выйти",
+          "gtVal": "Выход из системы",
+          "severity": "REVIEW",
+          "sim": 31
+        },
+        {
+          "key": "servers.sortName",
+          "enVal": "Name",
+          "currentVal": "Название",
+          "gtVal": "Имя",
+          "severity": "REVIEW",
+          "sim": 13
+        },
+        {
+          "key": "servers.sortRegion",
+          "enVal": "Region",
+          "currentVal": "Регион",
+          "gtVal": "Область",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "servers.tagHighPop",
+          "enVal": "High Pop",
+          "currentVal": "Популярный",
+          "gtVal": "Хай-поп",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "servers.connection",
+          "enVal": "Connection",
+          "currentVal": "Соединение",
+          "gtVal": "Связь",
+          "severity": "REVIEW",
+          "sim": 10
+        },
+        {
+          "key": "servers.region",
+          "enVal": "Region",
+          "currentVal": "Регион",
+          "gtVal": "Область",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "servers.details",
+          "enVal": "Details",
+          "currentVal": "Детали",
+          "gtVal": "Подробности",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "servers.allowed",
+          "enVal": "Allowed",
+          "currentVal": "Разрешено",
+          "gtVal": "Допустимый",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "servers.login",
+          "enVal": "Login",
+          "currentVal": "Вход",
+          "gtVal": "Авторизоваться",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "vehicles.brandLabel",
+          "enVal": "Brand:",
+          "currentVal": "Марка:",
+          "gtVal": "Бренд:",
+          "severity": "REVIEW",
+          "sim": 22
+        },
+        {
+          "key": "vehicles.car",
+          "enVal": "Car",
+          "currentVal": "Легковой",
+          "gtVal": "Машина",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "vehicles.utility",
+          "enVal": "Utility",
+          "currentVal": "Спецтехника",
+          "gtVal": "Утилита",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "vehicles.power",
+          "enVal": "Power",
+          "currentVal": "Мощность",
+          "gtVal": "Власть",
+          "severity": "REVIEW",
+          "sim": 30
+        },
+        {
+          "key": "vehicles.weight",
+          "enVal": "Weight",
+          "currentVal": "Вес",
+          "gtVal": "Масса",
+          "severity": "REVIEW",
+          "sim": 20
+        },
+        {
+          "key": "vehicles.drivetrain",
+          "enVal": "Drivetrain",
+          "currentVal": "Привод",
+          "gtVal": "Трансмиссия",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "vehicles.transmission",
+          "enVal": "Transmission",
+          "currentVal": "Трансмиссия",
+          "gtVal": "Передача инфекции",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "vehicles.value",
+          "enVal": "Value: ${{value}}",
+          "currentVal": "Стоимость: ${{value}}",
+          "gtVal": "Значение: ${{значение}}",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "vehicles.other",
+          "enVal": "Other",
+          "currentVal": "Прочее",
+          "gtVal": "Другой",
+          "severity": "REVIEW",
+          "sim": 22
+        },
+        {
+          "key": "vehicles.sunOverhead",
+          "enVal": "Overhead",
+          "currentVal": "Сверху",
+          "gtVal": "Накладные расходы",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "maps.stockMaps",
+          "enVal": "Stock",
+          "currentVal": "Стандартные",
+          "gtVal": "Запас",
+          "severity": "REVIEW",
+          "sim": 20
+        },
+        {
+          "key": "maps.preview",
+          "enVal": "Preview",
+          "currentVal": "Превью",
+          "gtVal": "Предварительный просмотр",
+          "severity": "REVIEW",
+          "sim": 28
+        },
+        {
+          "key": "maps.released",
+          "enVal": "Released:",
+          "currentVal": "Дата выпуска:",
+          "gtVal": "Выпущенный:",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "maps.downloadSize",
+          "enVal": "{{size}} download",
+          "currentVal": "{{size}} загрузка",
+          "gtVal": "{{size}} скачать",
+          "severity": "REVIEW",
+          "sim": 20
+        },
+        {
+          "key": "mods.browse",
+          "enVal": "Browse",
+          "currentVal": "Обзор",
+          "gtVal": "Просматривать",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "mods.automation",
+          "enVal": "Automation",
+          "currentVal": "Automation",
+          "gtVal": "Автоматизация",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "mods.otherType",
+          "enVal": "Other",
+          "currentVal": "Прочее",
+          "gtVal": "Другой",
+          "severity": "REVIEW",
+          "sim": 22
+        },
+        {
+          "key": "mods.release",
+          "enVal": "Release",
+          "currentVal": "Релиз",
+          "gtVal": "Выпускать",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "mods.modified",
+          "enVal": "Modified",
+          "currentVal": "Изменён",
+          "gtVal": "Модифицированный",
+          "severity": "REVIEW",
+          "sim": 20
+        },
+        {
+          "key": "mods.mostDownloaded",
+          "enVal": "Most Downloaded",
+          "currentVal": "Популярные",
+          "gtVal": "Самый загружаемый",
+          "severity": "REVIEW",
+          "sim": 24
+        },
+        {
+          "key": "mods.signOut",
+          "enVal": "Sign out",
+          "currentVal": "Выйти",
+          "gtVal": "выход",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "mods.byAuthor",
+          "enVal": "by {{author}}",
+          "currentVal": "от {{author}}",
+          "gtVal": "автор: {{author}}",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "mods.clear",
+          "enVal": "Clear",
+          "currentVal": "Очистить",
+          "gtVal": "Прозрачный",
+          "severity": "REVIEW",
+          "sim": 15
+        },
+        {
+          "key": "mods.starting",
+          "enVal": "Starting...",
+          "currentVal": "Запуск...",
+          "gtVal": "Начало...",
+          "severity": "REVIEW",
+          "sim": 18
+        },
+        {
+          "key": "mods.scope",
+          "enVal": "Scope",
+          "currentVal": "Область",
+          "gtVal": "Объем",
+          "severity": "REVIEW",
+          "sim": 20
+        },
+        {
+          "key": "controls.devices",
+          "enVal": "Devices",
+          "currentVal": "Devices",
+          "gtVal": "Устройства",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.deviceType_keyboard",
+          "enVal": "Keyboard",
+          "currentVal": "Keyboard",
+          "gtVal": "Клавиатура",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.deviceType_mouse",
+          "enVal": "Mouse",
+          "currentVal": "Mouse",
+          "gtVal": "Мышь",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.deviceType_xinput",
+          "enVal": "Gamepad",
+          "currentVal": "Gamepad",
+          "gtVal": "Геймпад",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.deviceType_joystick",
+          "enVal": "Wheel / Joystick",
+          "currentVal": "Wheel / Joystick",
+          "gtVal": "Руль / Джойстик",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "controls.tabBindings",
+          "enVal": "Bindings",
+          "currentVal": "Bindings",
+          "gtVal": "Привязки",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.tabAxes",
+          "enVal": "Axes",
+          "currentVal": "Axes",
+          "gtVal": "Топоры",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.tabFFB",
+          "enVal": "Force Feedback",
+          "currentVal": "Force Feedback",
+          "gtVal": "Силовая обратная связь",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.tabFilters",
+          "enVal": "Steering Filters",
+          "currentVal": "Steering Filters",
+          "gtVal": "Рулевые фильтры",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.tabPresets",
+          "enVal": "Presets",
+          "currentVal": "Presets",
+          "gtVal": "Пресеты",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.searchBindings",
+          "enVal": "Search actions...",
+          "currentVal": "Search actions...",
+          "gtVal": "Поиск действий...",
+          "severity": "REVIEW",
+          "sim": 9
+        },
+        {
+          "key": "controls.loading",
+          "enVal": "Loading controls...",
+          "currentVal": "Loading controls...",
+          "gtVal": "Загрузка элементов управления...",
+          "severity": "REVIEW",
+          "sim": 7
+        },
+        {
+          "key": "controls.noGamePaths",
+          "enVal": "Game paths not configured. Set them in Settings to manage controls.",
+          "currentVal": "Game paths not configured. Set them in Settings to manage controls.",
+          "gtVal": "Пути игры не настроены. Установите их в настройках для управления элементами управления.",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.noBindings",
+          "enVal": "No bindings found for this device.",
+          "currentVal": "No bindings found for this device.",
+          "gtVal": "Для этого устройства привязок не найдено.",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.noDevice",
+          "enVal": "Select a device to view its bindings.",
+          "currentVal": "Select a device to view its bindings.",
+          "gtVal": "Выберите устройство, чтобы просмотреть его привязки.",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.axesComingSoon",
+          "enVal": "Axis configuration coming in next update.",
+          "currentVal": "Axis configuration coming in next update.",
+          "gtVal": "Конфигурация оси появится в следующем обновлении.",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.noAxes",
+          "enVal": "No axis bindings found for this device.",
+          "currentVal": "No axis bindings found for this device.",
+          "gtVal": "Для этого устройства не найдено привязок осей.",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.axisLinearity",
+          "enVal": "Linearity",
+          "currentVal": "Linearity",
+          "gtVal": "Линейность",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.axisDeadzone",
+          "enVal": "Deadzone",
+          "currentVal": "Deadzone",
+          "gtVal": "Мертвая зона",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.axisDeadzoneEnd",
+          "enVal": "Deadzone End",
+          "currentVal": "Deadzone End",
+          "gtVal": "Конец мертвой зоны",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.axisInvert",
+          "enVal": "Invert",
+          "currentVal": "Invert",
+          "gtVal": "Инвертировать",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.axisSteeringAngle",
+          "enVal": "Steering Angle",
+          "currentVal": "Steering Angle",
+          "gtVal": "Угол поворота рулевого колеса",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.ffbComingSoon",
+          "enVal": "Force feedback editor coming in next update.",
+          "currentVal": "Force feedback editor coming in next update.",
+          "gtVal": "Редактор принудительной обратной связи появится в следующем обновлении.",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.ffbStrength",
+          "enVal": "Force Strength",
+          "currentVal": "Force Strength",
+          "gtVal": "Сила Силы",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.ffbForceCoef",
+          "enVal": "Force Coefficient",
+          "currentVal": "Force Coefficient",
+          "gtVal": "Коэффициент силы",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.ffbSmoothing",
+          "enVal": "Smoothing",
+          "currentVal": "Smoothing",
+          "gtVal": "Сглаживание",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.ffbSmoothing1",
+          "enVal": "Smoothing 1",
+          "currentVal": "Smoothing 1",
+          "gtVal": "Сглаживание 1",
+          "severity": "REVIEW",
+          "sim": 11
+        },
+        {
+          "key": "controls.ffbSmoothing2",
+          "enVal": "Smoothing 2",
+          "currentVal": "Smoothing 2",
+          "gtVal": "Сглаживание 2",
+          "severity": "REVIEW",
+          "sim": 11
+        },
+        {
+          "key": "controls.ffbAuto",
+          "enVal": "Auto",
+          "currentVal": "Auto",
+          "gtVal": "Авто",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.ffbOptions",
+          "enVal": "Options",
+          "currentVal": "Options",
+          "gtVal": "Параметры",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.ffbLowSpeed",
+          "enVal": "Low Speed Compensation",
+          "currentVal": "Low Speed Compensation",
+          "gtVal": "Компенсация низкой скорости",
+          "severity": "REVIEW",
+          "sim": 3
+        },
+        {
+          "key": "controls.ffbResponseCorrected",
+          "enVal": "Response Correction",
+          "currentVal": "Response Correction",
+          "gtVal": "Коррекция ответа",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.ffbUpdateType",
+          "enVal": "Update Mode",
+          "currentVal": "Update Mode",
+          "gtVal": "Режим обновления",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.ffbUpdateFast",
+          "enVal": "Fast",
+          "currentVal": "Fast",
+          "gtVal": "Быстрый",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.ffbUpdateSmooth",
+          "enVal": "Smooth",
+          "currentVal": "Smooth",
+          "gtVal": "Гладкий",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.ffbUpdateLegacy",
+          "enVal": "Legacy",
+          "currentVal": "Legacy",
+          "gtVal": "Наследие",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.ffbResponseCurve",
+          "enVal": "Response Curve",
+          "currentVal": "Response Curve",
+          "gtVal": "Кривая отклика",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.ffbResetCurve",
+          "enVal": "Reset to Linear",
+          "currentVal": "Reset to Linear",
+          "gtVal": "Сбросить до линейного",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.ffbCurveHint",
+          "enVal": "Double-click to add points. Right-click to remove. Drag to adjust.",
+          "currentVal": "Double-click to add points. Right-click to remove. Drag to adjust.",
+          "gtVal": "Дважды щелкните, чтобы добавить точки. Щелкните правой кнопкой мыши, чтобы удалить. Перетащите, чтобы настроить.",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.filtersComingSoon",
+          "enVal": "Steering filter settings coming in next update.",
+          "currentVal": "Steering filter settings coming in next update.",
+          "gtVal": "Настройки фильтра рулевого управления появятся в следующем обновлении.",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.filtersLoading",
+          "enVal": "Loading steering settings...",
+          "currentVal": "Loading steering settings...",
+          "gtVal": "Загрузка настроек рулевого управления...",
+          "severity": "REVIEW",
+          "sim": 7
+        },
+        {
+          "key": "controls.filtersKeyboard",
+          "enVal": "Keyboard / Gamepad",
+          "currentVal": "Keyboard / Gamepad",
+          "gtVal": "Клавиатура/геймпад",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.filtersWheel",
+          "enVal": "Direct Input / Wheel",
+          "currentVal": "Direct Input / Wheel",
+          "gtVal": "Прямой ввод/колесо",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "controls.filterAutocenter",
+          "enVal": "Autocenter",
+          "currentVal": "Autocenter",
+          "gtVal": "Автоцентр",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.filterSlowdown",
+          "enVal": "Speed-Sensitive Slowdown",
+          "currentVal": "Speed-Sensitive Slowdown",
+          "gtVal": "Чувствительное к скорости замедление",
+          "severity": "REVIEW",
+          "sim": 3
+        },
+        {
+          "key": "controls.filterSlowdownStart",
+          "enVal": "Start Speed",
+          "currentVal": "Start Speed",
+          "gtVal": "Стартовая скорость",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.filterSlowdownEnd",
+          "enVal": "End Speed",
+          "currentVal": "End Speed",
+          "gtVal": "Конечная скорость",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.filterSlowdownMult",
+          "enVal": "Multiplier",
+          "currentVal": "Multiplier",
+          "gtVal": "Множитель",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.filterLimit",
+          "enVal": "Steering Limit",
+          "currentVal": "Steering Limit",
+          "gtVal": "Предел рулевого управления",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.filterLimitMult",
+          "enVal": "Limit Multiplier",
+          "currentVal": "Limit Multiplier",
+          "gtVal": "Предельный множитель",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.filterStabilization",
+          "enVal": "Stabilization",
+          "currentVal": "Stabilization",
+          "gtVal": "Стабилизация",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.filterStabilizationMult",
+          "enVal": "Strength",
+          "currentVal": "Strength",
+          "gtVal": "Сила",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.filterUndersteer",
+          "enVal": "Understeer Reduction",
+          "currentVal": "Understeer Reduction",
+          "gtVal": "Снижение недостаточной поворачиваемости",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.filterUndersteerMult",
+          "enVal": "Strength",
+          "currentVal": "Strength",
+          "gtVal": "Сила",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.presetsComingSoon",
+          "enVal": "Preset management coming in next update.",
+          "currentVal": "Preset management coming in next update.",
+          "gtVal": "Управление предустановками появится в следующем обновлении.",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.resetDevice",
+          "enVal": "Reset to Defaults",
+          "currentVal": "Reset to Defaults",
+          "gtVal": "Сброс к настройкам по умолчанию",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.resetConfirm",
+          "enVal": "This will delete all custom bindings for this device. Are you sure?",
+          "currentVal": "This will delete all custom bindings for this device. Are you sure?",
+          "gtVal": "Это приведет к удалению всех пользовательских привязок для этого устройства. Вы уверены?",
+          "severity": "REVIEW",
+          "sim": 7
+        },
+        {
+          "key": "controls.bindAction",
+          "enVal": "Press a key or button to bind...",
+          "currentVal": "Press a key or button to bind...",
+          "gtVal": "Нажмите клавишу или кнопку, чтобы привязать...",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.bindActionGamepad",
+          "enVal": "Press a button on your gamepad...",
+          "currentVal": "Press a button on your gamepad...",
+          "gtVal": "Нажмите кнопку на геймпаде...",
+          "severity": "REVIEW",
+          "sim": 7
+        },
+        {
+          "key": "controls.bindActionWheel",
+          "enVal": "Press a button or move an axis on your wheel...",
+          "currentVal": "Press a button or move an axis on your wheel...",
+          "gtVal": "Нажмите кнопку или переместите ось на колесе...",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.bindEscape",
+          "enVal": "Press Escape to cancel",
+          "currentVal": "Press Escape to cancel",
+          "gtVal": "Нажмите Escape, чтобы отменить",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "controls.conflictAlreadyBound",
+          "enVal": "is already bound to",
+          "currentVal": "is already bound to",
+          "gtVal": "уже привязан к",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.clearBinding",
+          "enVal": "Clear",
+          "currentVal": "Clear",
+          "gtVal": "Прозрачный",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.editBinding",
+          "enVal": "Edit",
+          "currentVal": "Edit",
+          "gtVal": "Редактировать",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.conflict",
+          "enVal": "Conflict",
+          "currentVal": "Conflict",
+          "gtVal": "Конфликт",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.conflictMessage",
+          "enVal": "\"{{control}}\" is already bound to: {{actions}}",
+          "currentVal": "\"{{control}}\" is already bound to: {{actions}}",
+          "gtVal": "«{{control}}» уже привязан к: {{actions}}",
+          "severity": "REVIEW",
+          "sim": 7
+        },
+        {
+          "key": "controls.conflictReplace",
+          "enVal": "Replace",
+          "currentVal": "Replace",
+          "gtVal": "Заменять",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.conflictBindBoth",
+          "enVal": "Bind to Both",
+          "currentVal": "Bind to Both",
+          "gtVal": "Привязать к обоим",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.conflictSwap",
+          "enVal": "Swap",
+          "currentVal": "Swap",
+          "gtVal": "Менять",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.conflictCancel",
+          "enVal": "Cancel",
+          "currentVal": "Cancel",
+          "gtVal": "Отмена",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.presetSave",
+          "enVal": "Save Preset",
+          "currentVal": "Save Preset",
+          "gtVal": "Сохранить предустановку",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.presetLoad",
+          "enVal": "Load Preset",
+          "currentVal": "Load Preset",
+          "gtVal": "Загрузить пресет",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.presetDelete",
+          "enVal": "Delete Preset",
+          "currentVal": "Delete Preset",
+          "gtVal": "Удалить предустановку",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.presetExport",
+          "enVal": "Export",
+          "currentVal": "Export",
+          "gtVal": "Экспорт",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.presetImport",
+          "enVal": "Import",
+          "currentVal": "Import",
+          "gtVal": "Импорт",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.presetName",
+          "enVal": "Preset name",
+          "currentVal": "Preset name",
+          "gtVal": "Имя предустановки",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.presetLoadConfirm",
+          "enVal": "Loading this preset will overwrite current bindings. Continue?",
+          "currentVal": "Loading this preset will overwrite current bindings. Continue?",
+          "gtVal": "Загрузка этого пресета перезапишет текущие привязки. Продолжать?",
+          "severity": "REVIEW",
+          "sim": 7
+        },
+        {
+          "key": "controls.presetEmpty",
+          "enVal": "No presets saved yet. Save your current bindings as a preset.",
+          "currentVal": "No presets saved yet. Save your current bindings as a preset.",
+          "gtVal": "Пресеты пока не сохранены. Сохраните текущие привязки в качестве предустановки.",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.presetDeleteConfirm",
+          "enVal": "Delete this preset? This cannot be undone.",
+          "currentVal": "Delete this preset? This cannot be undone.",
+          "gtVal": "Удалить эту предустановку? Это невозможно отменить.",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "controls.tabLiveInput",
+          "enVal": "Live Input",
+          "currentVal": "Live Input",
+          "gtVal": "Живой ввод",
+          "severity": "REVIEW",
+          "sim": 7
+        },
+        {
+          "key": "controls.liveInputTitle",
+          "enVal": "Live Input Monitor",
+          "currentVal": "Live Input Monitor",
+          "gtVal": "Монитор живого входа",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.liveInputActive",
+          "enVal": "Polling",
+          "currentVal": "Polling",
+          "gtVal": "Опрос",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.liveInputStart",
+          "enVal": "Start",
+          "currentVal": "Start",
+          "gtVal": "Начинать",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.liveInputStop",
+          "enVal": "Stop",
+          "currentVal": "Stop",
+          "gtVal": "Останавливаться",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.liveInputHint",
+          "enVal": "Enable polling to see real-time input from your device.",
+          "currentVal": "Enable polling to see real-time input from your device.",
+          "gtVal": "Включите опрос, чтобы видеть входные данные с вашего устройства в реальном времени.",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.liveInputNoGamepad",
+          "enVal": "No gamepad detected. Connect a controller and press a button.",
+          "currentVal": "No gamepad detected. Connect a controller and press a button.",
+          "gtVal": "Геймпад не обнаружен. Подключите контроллер и нажмите кнопку.",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.liveInputAxes",
+          "enVal": "Axes",
+          "currentVal": "Axes",
+          "gtVal": "Топоры",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.liveInputButtons",
+          "enVal": "Buttons",
+          "currentVal": "Buttons",
+          "gtVal": "Кнопки",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "serverManager.paused",
+          "enVal": "paused",
+          "currentVal": "на паузе",
+          "gtVal": "остановился",
+          "severity": "REVIEW",
+          "sim": 14
+        },
+        {
+          "key": "serverManager.freqHourly",
+          "enVal": "Hourly",
+          "currentVal": "Каждый час",
+          "gtVal": "Ежечасно",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "serverManager.browseExe",
+          "enVal": "Browse",
+          "currentVal": "Обзор",
+          "gtVal": "Просматривать",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "serverManager.running",
+          "enVal": "Running",
+          "currentVal": "Работает",
+          "gtVal": "Бег",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "serverManager.starting",
+          "enVal": "Starting",
+          "currentVal": "Запуск",
+          "gtVal": "Начало",
+          "severity": "REVIEW",
+          "sim": 10
+        },
+        {
+          "key": "serverManager.idle",
+          "enVal": "Idle",
+          "currentVal": "Ожидание",
+          "gtVal": "Праздный",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "serverManager.cpuUsage",
+          "enVal": "CPU USAGE",
+          "currentVal": "ИСПОЛЬЗОВАНИЕ ЦП",
+          "gtVal": "ЗАГРУЗКА ЦП",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "serverManager.public",
+          "enVal": "Public",
+          "currentVal": "Публичный",
+          "gtVal": "Общественный",
+          "severity": "REVIEW",
+          "sim": 27
+        },
+        {
+          "key": "serverManager.metricsEstCpu",
+          "enVal": "Est. CPU",
+          "currentVal": "ЦП (оц.)",
+          "gtVal": "Стандартное восточное время. Процессор",
+          "severity": "REVIEW",
+          "sim": 28
+        },
+        {
+          "key": "serverManager.bold",
+          "enVal": "Bold",
+          "currentVal": "Жирный",
+          "gtVal": "Смелый",
+          "severity": "REVIEW",
+          "sim": 20
+        },
+        {
+          "key": "serverManager.viewMode",
+          "enVal": "View",
+          "currentVal": "Просмотр",
+          "gtVal": "Вид",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "serverManager.undeployVoicePlugin",
+          "enVal": "Undeploy",
+          "currentVal": "Удалить плагин",
+          "gtVal": "Отменить развертывание",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "serverManager.undeployLabel",
+          "enVal": "Undeploy",
+          "currentVal": "Удалить",
+          "gtVal": "Отменить развертывание",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "serverManager.disable",
+          "enVal": "Disable",
+          "currentVal": "Отключить",
+          "gtVal": "Запрещать",
+          "severity": "REVIEW",
+          "sim": 14
+        },
+        {
+          "key": "serverManager.enable",
+          "enVal": "Enable",
+          "currentVal": "Включить",
+          "gtVal": "Давать возможность",
+          "severity": "REVIEW",
+          "sim": 18
+        },
+        {
+          "key": "serverManager.commandPlaceholder",
+          "enVal": "e.g. kick all",
+          "currentVal": "напр. kick all",
+          "gtVal": "например выгнать всех",
+          "severity": "REVIEW",
+          "sim": 24
+        },
+        {
+          "key": "settings.appearance",
+          "enVal": "Appearance",
+          "currentVal": "Внешний вид",
+          "gtVal": "Появление",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "settings.uiScale",
+          "enVal": "UI Scale",
+          "currentVal": "Масштаб UI",
+          "gtVal": "Масштаб пользовательского интерфейса",
+          "severity": "REVIEW",
+          "sim": 30
+        },
+        {
+          "key": "settings.cssLargerText",
+          "enVal": "Larger text",
+          "currentVal": "Крупный текст",
+          "gtVal": "Текст большего размера",
+          "severity": "REVIEW",
+          "sim": 30
+        },
+        {
+          "key": "settings.cssCatLayout",
+          "enVal": "Layout",
+          "currentVal": "Компоновка",
+          "gtVal": "Макет",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "settings.cssSquareEverything",
+          "enVal": "Square everything",
+          "currentVal": "Прямые углы везде",
+          "gtVal": "Возведите все в квадрат",
+          "severity": "REVIEW",
+          "sim": 32
+        },
+        {
+          "key": "setup.launchApp",
+          "enVal": "Launch Content Manager",
+          "currentVal": "Запустить Content Manager",
+          "gtVal": "Запустить контент-менеджер",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "career.browse",
+          "enVal": "Browse",
+          "currentVal": "Обзор",
+          "gtVal": "Просматривать",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "career.backupSlot",
+          "enVal": "Backup Slot",
+          "currentVal": "Копия слота",
+          "gtVal": "Резервный слот",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "career.mod.customDir",
+          "enVal": "Browse",
+          "currentVal": "Обзор",
+          "gtVal": "Просматривать",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "gps.heading",
+          "enVal": "Heading",
+          "currentVal": "Направление",
+          "gtVal": "Заголовок",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "gps.nearby",
+          "enVal": "nearby",
+          "currentVal": "поблизости",
+          "gtVal": "рядом",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "gps.zoomIn",
+          "enVal": "Zoom in",
+          "currentVal": "Приблизить",
+          "gtVal": "Увеличить масштаб",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "gps.zoomOut",
+          "enVal": "Zoom out",
+          "currentVal": "Отдалить",
+          "gtVal": "Уменьшить масштаб",
+          "severity": "REVIEW",
+          "sim": 27
+        },
+        {
+          "key": "voiceChat.disabled",
+          "enVal": "Disabled",
+          "currentVal": "Отключён",
+          "gtVal": "Неполноценный",
+          "severity": "REVIEW",
+          "sim": 23
+        },
+        {
+          "key": "voiceChat.panel.pttHint",
+          "enVal": "PTT: {{key}}",
+          "currentVal": "PTT: {{key}}",
+          "gtVal": "РТТ: {{ключ}}",
+          "severity": "REVIEW",
+          "sim": 20
+        }
+      ]
+    },
+    {
+      "lang": "Bulgarian",
+      "perfect": 864,
+      "acceptable": 228,
+      "flagged": 97,
+      "missing": 0,
+      "issues": [
+        {
+          "key": "common.next",
+          "enVal": "Next",
+          "currentVal": "Напред",
+          "gtVal": "Следваща",
+          "severity": "REVIEW",
+          "sim": 30
+        },
+        {
+          "key": "common.enabled",
+          "enVal": "Enabled",
+          "currentVal": "Включено",
+          "gtVal": "Активирано",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "common.none",
+          "enVal": "None",
+          "currentVal": "Никой",
+          "gtVal": "Няма",
+          "severity": "REVIEW",
+          "sim": 13
+        },
+        {
+          "key": "time.justNow",
+          "enVal": "just now",
+          "currentVal": "току-що",
+          "gtVal": "точно сега",
+          "severity": "REVIEW",
+          "sim": 15
+        },
+        {
+          "key": "sidebar.mods",
+          "enVal": "Mods",
+          "currentVal": "Модове",
+          "gtVal": "Модификации",
+          "severity": "REVIEW",
+          "sim": 30
+        },
+        {
+          "key": "sidebar.controls",
+          "enVal": "Controls",
+          "currentVal": "Управление",
+          "gtVal": "Контроли",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "home.launching",
+          "enVal": "Launching...",
+          "currentVal": "Запускане...",
+          "gtVal": "Стартира се...",
+          "severity": "REVIEW",
+          "sim": 31
+        },
+        {
+          "key": "servers.modded",
+          "enVal": "Modded",
+          "currentVal": "С модове",
+          "gtVal": "Модифициран",
+          "severity": "REVIEW",
+          "sim": 23
+        },
+        {
+          "key": "servers.signIn",
+          "enVal": "Sign in",
+          "currentVal": "Вписване",
+          "gtVal": "влезте",
+          "severity": "REVIEW",
+          "sim": 20
+        },
+        {
+          "key": "servers.logout",
+          "enVal": "Logout",
+          "currentVal": "Отписване",
+          "gtVal": "Изход",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "servers.tabModded",
+          "enVal": "Modded",
+          "currentVal": "С модове",
+          "gtVal": "Модифициран",
+          "severity": "REVIEW",
+          "sim": 23
+        },
+        {
+          "key": "servers.tagModded",
+          "enVal": "Modded",
+          "currentVal": "С модове",
+          "gtVal": "Модифициран",
+          "severity": "REVIEW",
+          "sim": 23
+        },
+        {
+          "key": "servers.tagHighPop",
+          "enVal": "High Pop",
+          "currentVal": "Много населен",
+          "gtVal": "Висок поп",
+          "severity": "REVIEW",
+          "sim": 23
+        },
+        {
+          "key": "servers.tags",
+          "enVal": "Tags",
+          "currentVal": "Етикети",
+          "gtVal": "Тагове",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "servers.login",
+          "enVal": "Login",
+          "currentVal": "Вписване",
+          "gtVal": "Вход",
+          "severity": "REVIEW",
+          "sim": 10
+        },
+        {
+          "key": "vehicles.utility",
+          "enVal": "Utility",
+          "currentVal": "Утилитарен",
+          "gtVal": "полезност",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "vehicles.drivetrain",
+          "enVal": "Drivetrain",
+          "currentVal": "Трансмисия",
+          "gtVal": "Задвижване",
+          "severity": "REVIEW",
+          "sim": 23
+        },
+        {
+          "key": "vehicles.transmission",
+          "enVal": "Transmission",
+          "currentVal": "Скоростна кутия",
+          "gtVal": "Предаване",
+          "severity": "REVIEW",
+          "sim": 20
+        },
+        {
+          "key": "vehicles.sunOverhead",
+          "enVal": "Overhead",
+          "currentVal": "Отгоре",
+          "gtVal": "Режийни",
+          "severity": "REVIEW",
+          "sim": 22
+        },
+        {
+          "key": "vehicles.floor",
+          "enVal": "Floor",
+          "currentVal": "Под",
+          "gtVal": "Етаж",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "maps.modMaps",
+          "enVal": "Mods",
+          "currentVal": "Модове",
+          "gtVal": "Модификации",
+          "severity": "REVIEW",
+          "sim": 30
+        },
+        {
+          "key": "mods.title",
+          "enVal": "Mods",
+          "currentVal": "Модове",
+          "gtVal": "Модификации",
+          "severity": "REVIEW",
+          "sim": 30
+        },
+        {
+          "key": "mods.enabledCount",
+          "enVal": "Enabled",
+          "currentVal": "Включени",
+          "gtVal": "Активирано",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "mods.modCount_other",
+          "enVal": "{{count}} mods",
+          "currentVal": "{{count}} модове",
+          "gtVal": "{{count}} модификации",
+          "severity": "REVIEW",
+          "sim": 30
+        },
+        {
+          "key": "mods.signIn",
+          "enVal": "Sign in",
+          "currentVal": "Вписване",
+          "gtVal": "влезте",
+          "severity": "REVIEW",
+          "sim": 20
+        },
+        {
+          "key": "mods.signOut",
+          "enVal": "Sign out",
+          "currentVal": "Отписване",
+          "gtVal": "Излезте",
+          "severity": "REVIEW",
+          "sim": 27
+        },
+        {
+          "key": "mods.released",
+          "enVal": "Released",
+          "currentVal": "Издадена",
+          "gtVal": "Освободен",
+          "severity": "REVIEW",
+          "sim": 30
+        },
+        {
+          "key": "mods.clear",
+          "enVal": "Clear",
+          "currentVal": "Изчистване",
+          "gtVal": "ясно",
+          "severity": "REVIEW",
+          "sim": 18
+        },
+        {
+          "key": "mods.loggedIn",
+          "enVal": "Logged in",
+          "currentVal": "Вписи",
+          "gtVal": "Влезли в системата",
+          "severity": "REVIEW",
+          "sim": 27
+        },
+        {
+          "key": "mods.logOut",
+          "enVal": "Log out",
+          "currentVal": "Отписване",
+          "gtVal": "Излезте",
+          "severity": "REVIEW",
+          "sim": 27
+        },
+        {
+          "key": "mods.rating",
+          "enVal": "Rating",
+          "currentVal": "Оценка",
+          "gtVal": "Рейтинг",
+          "severity": "REVIEW",
+          "sim": 18
+        },
+        {
+          "key": "mods.starting",
+          "enVal": "Starting...",
+          "currentVal": "Начало...",
+          "gtVal": "Стартиране...",
+          "severity": "REVIEW",
+          "sim": 27
+        },
+        {
+          "key": "mods.winsOver",
+          "enVal": "Wins over",
+          "currentVal": "Печели над",
+          "gtVal": "Побеждава",
+          "severity": "REVIEW",
+          "sim": 31
+        },
+        {
+          "key": "controls.title",
+          "enVal": "Controls",
+          "currentVal": "Управление",
+          "gtVal": "Контроли",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "controls.deviceType_xinput",
+          "enVal": "Gamepad",
+          "currentVal": "Джойстик",
+          "gtVal": "Геймпад",
+          "severity": "REVIEW",
+          "sim": 15
+        },
+        {
+          "key": "controls.tabAxes",
+          "enVal": "Axes",
+          "currentVal": "Оси",
+          "gtVal": "Брадви",
+          "severity": "REVIEW",
+          "sim": 13
+        },
+        {
+          "key": "controls.filtersLoading",
+          "enVal": "Loading steering settings...",
+          "currentVal": "Loading steering settings...",
+          "gtVal": "Настройките за управление се зареждат...",
+          "severity": "REVIEW",
+          "sim": 7
+        },
+        {
+          "key": "controls.filtersKeyboard",
+          "enVal": "Keyboard / Gamepad",
+          "currentVal": "Keyboard / Gamepad",
+          "gtVal": "Клавиатура / геймпад",
+          "severity": "REVIEW",
+          "sim": 7
+        },
+        {
+          "key": "controls.filtersWheel",
+          "enVal": "Direct Input / Wheel",
+          "currentVal": "Direct Input / Wheel",
+          "gtVal": "Директен вход / Колело",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "controls.filterAutocenter",
+          "enVal": "Autocenter",
+          "currentVal": "Autocenter",
+          "gtVal": "Автоцентър",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.filterSlowdown",
+          "enVal": "Speed-Sensitive Slowdown",
+          "currentVal": "Speed-Sensitive Slowdown",
+          "gtVal": "Забавяне, чувствително към скоростта",
+          "severity": "REVIEW",
+          "sim": 3
+        },
+        {
+          "key": "controls.filterSlowdownStart",
+          "enVal": "Start Speed",
+          "currentVal": "Start Speed",
+          "gtVal": "Стартова скорост",
+          "severity": "REVIEW",
+          "sim": 7
+        },
+        {
+          "key": "controls.filterSlowdownEnd",
+          "enVal": "End Speed",
+          "currentVal": "End Speed",
+          "gtVal": "Крайна скорост",
+          "severity": "REVIEW",
+          "sim": 7
+        },
+        {
+          "key": "controls.filterSlowdownMult",
+          "enVal": "Multiplier",
+          "currentVal": "Multiplier",
+          "gtVal": "Множител",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.filterLimit",
+          "enVal": "Steering Limit",
+          "currentVal": "Steering Limit",
+          "gtVal": "Ограничение на управлението",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.filterLimitMult",
+          "enVal": "Limit Multiplier",
+          "currentVal": "Limit Multiplier",
+          "gtVal": "Ограничен множител",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.filterStabilization",
+          "enVal": "Stabilization",
+          "currentVal": "Stabilization",
+          "gtVal": "Стабилизация",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.filterStabilizationMult",
+          "enVal": "Strength",
+          "currentVal": "Strength",
+          "gtVal": "Сила",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.filterUndersteer",
+          "enVal": "Understeer Reduction",
+          "currentVal": "Understeer Reduction",
+          "gtVal": "Намаляване на недозавиването",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.filterUndersteerMult",
+          "enVal": "Strength",
+          "currentVal": "Strength",
+          "gtVal": "Сила",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.clearBinding",
+          "enVal": "Clear",
+          "currentVal": "Изчистване",
+          "gtVal": "ясно",
+          "severity": "REVIEW",
+          "sim": 18
+        },
+        {
+          "key": "controls.conflictReplace",
+          "enVal": "Replace",
+          "currentVal": "Замяна",
+          "gtVal": "Сменете",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "controls.conflictSwap",
+          "enVal": "Swap",
+          "currentVal": "Обмен",
+          "gtVal": "Размяна",
+          "severity": "REVIEW",
+          "sim": 22
+        },
+        {
+          "key": "controls.presetEmpty",
+          "enVal": "No presets saved yet. Save your current bindings as a preset.",
+          "currentVal": "No presets saved yet. Save your current bindings as a preset.",
+          "gtVal": "Все още няма запазени предварително зададени настройки. Запазете текущите си обвързвания като предварително зададени.",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.presetDeleteConfirm",
+          "enVal": "Delete this preset? This cannot be undone.",
+          "currentVal": "Delete this preset? This cannot be undone.",
+          "gtVal": "Да се ​​изтрие ли тази предварителна настройка? Това не може да бъде отменено.",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "controls.tabLiveInput",
+          "enVal": "Live Input",
+          "currentVal": "Live Input",
+          "gtVal": "Въвеждане на живо",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.liveInputTitle",
+          "enVal": "Live Input Monitor",
+          "currentVal": "Live Input Monitor",
+          "gtVal": "Монитор за въвеждане на живо",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.liveInputActive",
+          "enVal": "Polling",
+          "currentVal": "Polling",
+          "gtVal": "Проучване",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.liveInputStart",
+          "enVal": "Start",
+          "currentVal": "Start",
+          "gtVal": "Започнете",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.liveInputStop",
+          "enVal": "Stop",
+          "currentVal": "Stop",
+          "gtVal": "Спрете",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.liveInputHint",
+          "enVal": "Enable polling to see real-time input from your device.",
+          "currentVal": "Enable polling to see real-time input from your device.",
+          "gtVal": "Активирайте запитването, за да видите въвеждане в реално време от вашето устройство.",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.liveInputNoGamepad",
+          "enVal": "No gamepad detected. Connect a controller and press a button.",
+          "currentVal": "No gamepad detected. Connect a controller and press a button.",
+          "gtVal": "Не е открит геймпад. Свържете контролер и натиснете бутон.",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.liveInputAxes",
+          "enVal": "Axes",
+          "currentVal": "Axes",
+          "gtVal": "Брадви",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.liveInputButtons",
+          "enVal": "Buttons",
+          "currentVal": "Buttons",
+          "gtVal": "Бутони",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "serverManager.modsTab",
+          "enVal": "Mods",
+          "currentVal": "Модове",
+          "gtVal": "Модификации",
+          "severity": "REVIEW",
+          "sim": 30
+        },
+        {
+          "key": "serverManager.paused",
+          "enVal": "paused",
+          "currentVal": "спрян",
+          "gtVal": "на пауза",
+          "severity": "REVIEW",
+          "sim": 22
+        },
+        {
+          "key": "serverManager.sidebarMods",
+          "enVal": "Mods",
+          "currentVal": "Модове",
+          "gtVal": "Модификации",
+          "severity": "REVIEW",
+          "sim": 30
+        },
+        {
+          "key": "serverManager.sidebarSoon",
+          "enVal": "Soon",
+          "currentVal": "Предстой",
+          "gtVal": "Скоро",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "serverManager.running",
+          "enVal": "Running",
+          "currentVal": "Работещ",
+          "gtVal": "бягане",
+          "severity": "REVIEW",
+          "sim": 30
+        },
+        {
+          "key": "serverManager.idle",
+          "enVal": "Idle",
+          "currentVal": "Неактивен",
+          "gtVal": "празен ход",
+          "severity": "REVIEW",
+          "sim": 21
+        },
+        {
+          "key": "serverManager.start",
+          "enVal": "Start",
+          "currentVal": "Стартирай",
+          "gtVal": "Започнете",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "serverManager.public",
+          "enVal": "Public",
+          "currentVal": "Публичен",
+          "gtVal": "Обществен",
+          "severity": "REVIEW",
+          "sim": 23
+        },
+        {
+          "key": "serverManager.configTags",
+          "enVal": "Tags",
+          "currentVal": "Етикети",
+          "gtVal": "Тагове",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "serverManager.metricsRunningCount_one",
+          "enVal": "{{count}} running",
+          "currentVal": "{{count}} работещ",
+          "gtVal": "{{count}} се изпълняват",
+          "severity": "REVIEW",
+          "sim": 18
+        },
+        {
+          "key": "serverManager.metricsRunningCount_other",
+          "enVal": "{{count}} running",
+          "currentVal": "{{count}} работещи",
+          "gtVal": "{{count}} се изпълняват",
+          "severity": "REVIEW",
+          "sim": 24
+        },
+        {
+          "key": "serverManager.metricsInstanceCount_one",
+          "enVal": "{{count}} instance",
+          "currentVal": "{{count}} инстанция",
+          "gtVal": "{{count}} екземпляр",
+          "severity": "REVIEW",
+          "sim": 7
+        },
+        {
+          "key": "serverManager.metricsInstanceCount_other",
+          "enVal": "{{count}} instances",
+          "currentVal": "{{count}} инстанции",
+          "gtVal": "{{count}} екземпляра",
+          "severity": "REVIEW",
+          "sim": 7
+        },
+        {
+          "key": "serverManager.bold",
+          "enVal": "Bold",
+          "currentVal": "Получер",
+          "gtVal": "Удебелен",
+          "severity": "REVIEW",
+          "sim": 30
+        },
+        {
+          "key": "serverManager.lnCol",
+          "enVal": "Ln {{line}}, Col {{col}}",
+          "currentVal": "Редова {{line}}, Кол {{col}}",
+          "gtVal": "Ln {{line}}, Col {{col}}",
+          "severity": "REVIEW",
+          "sim": 14
+        },
+        {
+          "key": "serverManager.deployed",
+          "enVal": "Deployed",
+          "currentVal": "Разположен",
+          "gtVal": "Разгърнат",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "serverManager.deploying",
+          "enVal": "Deploying…",
+          "currentVal": "Разлагане…",
+          "gtVal": "Внедряване...",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "serverManager.tailscalePeers",
+          "enVal": "Peers on your Tailnet",
+          "currentVal": "Устройства във вашата мрежа",
+          "gtVal": "Връстници във вашата Tailnet",
+          "severity": "REVIEW",
+          "sim": 35
+        },
+        {
+          "key": "settings.general",
+          "enVal": "General",
+          "currentVal": "Общи",
+          "gtVal": "генерал",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "settings.backendServer",
+          "enVal": "Backend Server",
+          "currentVal": "Бекен сервър",
+          "gtVal": "Backend сървър",
+          "severity": "REVIEW",
+          "sim": 31
+        },
+        {
+          "key": "settings.uiScale",
+          "enVal": "UI Scale",
+          "currentVal": "Мащаб UI",
+          "gtVal": "Мащаб на потребителския интерфейс",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "settings.cssMonospace",
+          "enVal": "Monospace everywhere",
+          "currentVal": "Monospace всъщност",
+          "gtVal": "Монопространство навсякъде",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "settings.cssDesaturate",
+          "enVal": "Desaturate UI",
+          "currentVal": "Десатурирай UI",
+          "gtVal": "Обезцветяване на потребителския интерфейс",
+          "severity": "REVIEW",
+          "sim": 35
+        },
+        {
+          "key": "settings.cssPillButtons",
+          "enVal": "Pill-shaped buttons",
+          "currentVal": "Пилулни бутони",
+          "gtVal": "Копчета във формата на хапче",
+          "severity": "REVIEW",
+          "sim": 26
+        },
+        {
+          "key": "settings.cssSepiaTint",
+          "enVal": "Sepia tint",
+          "currentVal": "Sepia оцветяване",
+          "gtVal": "Оттенък сепия",
+          "severity": "REVIEW",
+          "sim": 32
+        },
+        {
+          "key": "setup.backendServer",
+          "enVal": "Backend Server",
+          "currentVal": "Бекен сервър",
+          "gtVal": "Backend сървър",
+          "severity": "REVIEW",
+          "sim": 31
+        },
+        {
+          "key": "gps.undeploy",
+          "enVal": "Undeploy Tracker",
+          "currentVal": "Премахни проследяване",
+          "gtVal": "Отменете разгръщането на Tracker",
+          "severity": "REVIEW",
+          "sim": 27
+        },
+        {
+          "key": "gps.heading",
+          "enVal": "Heading",
+          "currentVal": "Посока",
+          "gtVal": "Заглавие",
+          "severity": "REVIEW",
+          "sim": 9
+        },
+        {
+          "key": "voiceChat.enabled",
+          "enVal": "Enabled",
+          "currentVal": "Включен",
+          "gtVal": "Активирано",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "voiceChat.disabled",
+          "enVal": "Disabled",
+          "currentVal": "Изключен",
+          "gtVal": "Забранено",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "voiceChat.pushToTalk",
+          "enVal": "Push to Talk",
+          "currentVal": "Натисни за говорене",
+          "gtVal": "Push to Talk",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "voiceChat.pttKey",
+          "enVal": "Push-to-Talk Key",
+          "currentVal": "Клавиш за говорене",
+          "gtVal": "Бутон Push-to-Talk",
+          "severity": "REVIEW",
+          "sim": 12
+        },
+        {
+          "key": "voiceChat.panel.pttHint",
+          "enVal": "PTT: {{key}}",
+          "currentVal": "PTT: {{key}}",
+          "gtVal": "РТТ: {{ключ}}",
+          "severity": "REVIEW",
+          "sim": 20
+        }
+      ]
+    },
+    {
+      "lang": "Arabic",
+      "perfect": 756,
+      "acceptable": 236,
+      "flagged": 197,
+      "missing": 0,
+      "issues": [
+        {
+          "key": "common.cancel",
+          "enVal": "Cancel",
+          "currentVal": "إلغاء",
+          "gtVal": "يلغي",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "common.delete",
+          "enVal": "Delete",
+          "currentVal": "حذف",
+          "gtVal": "يمسح",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "common.edit",
+          "enVal": "Edit",
+          "currentVal": "تعديل",
+          "gtVal": "يحرر",
+          "severity": "REVIEW",
+          "sim": 14
+        },
+        {
+          "key": "common.back",
+          "enVal": "Back",
+          "currentVal": "رجوع",
+          "gtVal": "خلف",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "common.continue",
+          "enVal": "Continue",
+          "currentVal": "متابعة",
+          "gtVal": "يكمل",
+          "severity": "REVIEW",
+          "sim": 11
+        },
+        {
+          "key": "common.refresh",
+          "enVal": "Refresh",
+          "currentVal": "تحديث",
+          "gtVal": "ينعش",
+          "severity": "REVIEW",
+          "sim": 13
+        },
+        {
+          "key": "common.enabled",
+          "enVal": "Enabled",
+          "currentVal": "مُفعّل",
+          "gtVal": "ممكّن",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "common.disabled",
+          "enVal": "Disabled",
+          "currentVal": "مُعطّل",
+          "gtVal": "عاجز",
+          "severity": "REVIEW",
+          "sim": 11
+        },
+        {
+          "key": "common.uninstall",
+          "enVal": "Uninstall",
+          "currentVal": "إزالة",
+          "gtVal": "إلغاء التثبيت",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "common.all",
+          "enVal": "All",
+          "currentVal": "الكل",
+          "gtVal": "الجميع",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "common.none",
+          "enVal": "None",
+          "currentVal": "لا شيء",
+          "gtVal": "لا أحد",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "common.test",
+          "enVal": "Test",
+          "currentVal": "اختبار",
+          "gtVal": "امتحان",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "common.type",
+          "enVal": "Type",
+          "currentVal": "النوع",
+          "gtVal": "يكتب",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "common.size",
+          "enVal": "Size",
+          "currentVal": "الحجم",
+          "gtVal": "مقاس",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "common.stock",
+          "enVal": "Stock",
+          "currentVal": "أصلي",
+          "gtVal": "مخزون",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "common.mod",
+          "enVal": "Mod",
+          "currentVal": "تعديل",
+          "gtVal": "وزارة الدفاع",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "common.auto",
+          "enVal": "auto",
+          "currentVal": "تلقائي",
+          "gtVal": "آلي",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "common.goBack",
+          "enVal": "Go back",
+          "currentVal": "رجوع",
+          "gtVal": "عُد",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "common.more",
+          "enVal": "more",
+          "currentVal": "المزيد",
+          "gtVal": "أكثر",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "time.weeksAgo",
+          "enVal": "{{n}}w ago",
+          "currentVal": "منذ {{n}} أسبوع",
+          "gtVal": "{{ن}} منذ",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "sidebar.home",
+          "enVal": "Home",
+          "currentVal": "الرئيسية",
+          "gtVal": "بيت",
+          "severity": "REVIEW",
+          "sim": 11
+        },
+        {
+          "key": "sidebar.controls",
+          "enVal": "Controls",
+          "currentVal": "التحكم",
+          "gtVal": "الضوابط",
+          "severity": "REVIEW",
+          "sim": 20
+        },
+        {
+          "key": "sidebar.liveGPS",
+          "enVal": "Live GPS",
+          "currentVal": "GPS مباشر",
+          "gtVal": "نظام تحديد المواقع المباشر",
+          "severity": "REVIEW",
+          "sim": 32
+        },
+        {
+          "key": "sidebar.liveryEditor",
+          "enVal": "Livery Editor",
+          "currentVal": "محرر الطلاء",
+          "gtVal": "محرر هيئة",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "sidebar.collapse",
+          "enVal": "Collapse",
+          "currentVal": "طي",
+          "gtVal": "ينهار",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "titlebar.maximize",
+          "enVal": "Maximize",
+          "currentVal": "تكبير",
+          "gtVal": "تعظيم",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "titlebar.restore",
+          "enVal": "Restore",
+          "currentVal": "استعادة",
+          "gtVal": "يعيد",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "home.title",
+          "enVal": "Home",
+          "currentVal": "الرئيسية",
+          "gtVal": "بيت",
+          "severity": "REVIEW",
+          "sim": 11
+        },
+        {
+          "key": "servers.refresh",
+          "enVal": "Refresh",
+          "currentVal": "تحديث",
+          "gtVal": "ينعش",
+          "severity": "REVIEW",
+          "sim": 13
+        },
+        {
+          "key": "servers.tabAll",
+          "enVal": "All",
+          "currentVal": "الكل",
+          "gtVal": "الجميع",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "servers.tagHighPop",
+          "enVal": "High Pop",
+          "currentVal": "شعبي",
+          "gtVal": "ارتفاع البوب",
+          "severity": "REVIEW",
+          "sim": 18
+        },
+        {
+          "key": "servers.type",
+          "enVal": "Type",
+          "currentVal": "النوع",
+          "gtVal": "يكتب",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "servers.standard",
+          "enVal": "Standard",
+          "currentVal": "قياسي",
+          "gtVal": "معيار",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "servers.openJoin",
+          "enVal": "Open join",
+          "currentVal": "دخول حر",
+          "gtVal": "فتح الانضمام",
+          "severity": "REVIEW",
+          "sim": 23
+        },
+        {
+          "key": "servers.population",
+          "enVal": "Population",
+          "currentVal": "العدد",
+          "gtVal": "سكان",
+          "severity": "REVIEW",
+          "sim": 14
+        },
+        {
+          "key": "servers.label",
+          "enVal": "Label",
+          "currentVal": "التسمية",
+          "gtVal": "ملصق",
+          "severity": "REVIEW",
+          "sim": 22
+        },
+        {
+          "key": "servers.recent",
+          "enVal": "Recent",
+          "currentVal": "الأخيرة",
+          "gtVal": "مؤخرًا",
+          "severity": "REVIEW",
+          "sim": 30
+        },
+        {
+          "key": "vehicles.typeLabel",
+          "enVal": "Type:",
+          "currentVal": "النوع:",
+          "gtVal": "يكتب:",
+          "severity": "REVIEW",
+          "sim": 10
+        },
+        {
+          "key": "vehicles.utility",
+          "enVal": "Utility",
+          "currentVal": "مركبة خدمية",
+          "gtVal": "جدوى",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "vehicles.sunLow",
+          "enVal": "Low",
+          "currentVal": "منخفض",
+          "gtVal": "قليل",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "maps.stockMaps",
+          "enVal": "Stock",
+          "currentVal": "أصلية",
+          "gtVal": "مخزون",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "maps.released",
+          "enVal": "Released:",
+          "currentVal": "تاريخ الإصدار:",
+          "gtVal": "مطلق سراحه:",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "mods.enabledCount",
+          "enVal": "Enabled",
+          "currentVal": "مُفعّل",
+          "gtVal": "ممكّن",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "mods.modCount",
+          "enVal": "{{count}} mod",
+          "currentVal": "{{count}} تعديل",
+          "gtVal": "{{عدد}} وزارة الدفاع",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "mods.skinType",
+          "enVal": "Skins",
+          "currentVal": "مظاهر",
+          "gtVal": "جلود",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "mods.sounds",
+          "enVal": "Sounds",
+          "currentVal": "أصوات",
+          "gtVal": "يبدو",
+          "severity": "REVIEW",
+          "sim": 13
+        },
+        {
+          "key": "mods.tableMod",
+          "enVal": "Mod",
+          "currentVal": "التعديل",
+          "gtVal": "وزارة الدفاع",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "mods.tableType",
+          "enVal": "Type",
+          "currentVal": "النوع",
+          "gtVal": "يكتب",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "mods.tableSize",
+          "enVal": "Size",
+          "currentVal": "الحجم",
+          "gtVal": "مقاس",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "mods.configuration",
+          "enVal": "Configuration",
+          "currentVal": "التكوين",
+          "gtVal": "إعدادات",
+          "severity": "REVIEW",
+          "sim": 20
+        },
+        {
+          "key": "mods.release",
+          "enVal": "Release",
+          "currentVal": "الإصدار",
+          "gtVal": "يطلق",
+          "severity": "REVIEW",
+          "sim": 11
+        },
+        {
+          "key": "mods.modified",
+          "enVal": "Modified",
+          "currentVal": "تاريخ التعديل",
+          "gtVal": "معدل",
+          "severity": "REVIEW",
+          "sim": 30
+        },
+        {
+          "key": "mods.released",
+          "enVal": "Released",
+          "currentVal": "تاريخ الإصدار",
+          "gtVal": "مطلق سراحه",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "mods.byAuthor",
+          "enVal": "by {{author}}",
+          "currentVal": "بواسطة {{author}}",
+          "gtVal": "بقلم {{مؤلف}}",
+          "severity": "REVIEW",
+          "sim": 11
+        },
+        {
+          "key": "mods.clear",
+          "enVal": "Clear",
+          "currentVal": "مسح",
+          "gtVal": "واضح",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "mods.rating",
+          "enVal": "Rating",
+          "currentVal": "التقييم",
+          "gtVal": "تصنيف",
+          "severity": "REVIEW",
+          "sim": 22
+        },
+        {
+          "key": "mods.serverPlugin",
+          "enVal": "Server Plugin",
+          "currentVal": "إضافة خادم",
+          "gtVal": "البرنامج المساعد للخادم",
+          "severity": "REVIEW",
+          "sim": 31
+        },
+        {
+          "key": "mods.enhances",
+          "enVal": "Enhances",
+          "currentVal": "يُحسّن",
+          "gtVal": "يعزز",
+          "severity": "REVIEW",
+          "sim": 13
+        },
+        {
+          "key": "friends.tabAll",
+          "enVal": "All",
+          "currentVal": "الكل",
+          "gtVal": "الجميع",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "friends.addPlayer",
+          "enVal": "Add {{name}}",
+          "currentVal": "إضافة {{name}}",
+          "gtVal": "أضف {{اسم}}",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "controls.title",
+          "enVal": "Controls",
+          "currentVal": "التحكم",
+          "gtVal": "الضوابط",
+          "severity": "REVIEW",
+          "sim": 20
+        },
+        {
+          "key": "controls.devices",
+          "enVal": "Devices",
+          "currentVal": "Devices",
+          "gtVal": "الأجهزة",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.deviceType_keyboard",
+          "enVal": "Keyboard",
+          "currentVal": "Keyboard",
+          "gtVal": "لوحة المفاتيح",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.deviceType_mouse",
+          "enVal": "Mouse",
+          "currentVal": "Mouse",
+          "gtVal": "الفأر",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.deviceType_xinput",
+          "enVal": "Gamepad",
+          "currentVal": "Gamepad",
+          "gtVal": "لوحة اللعبة",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.deviceType_joystick",
+          "enVal": "Wheel / Joystick",
+          "currentVal": "Wheel / Joystick",
+          "gtVal": "عجلة / عصا التحكم",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "controls.tabBindings",
+          "enVal": "Bindings",
+          "currentVal": "Bindings",
+          "gtVal": "الارتباطات",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.tabAxes",
+          "enVal": "Axes",
+          "currentVal": "Axes",
+          "gtVal": "محاور",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.tabFFB",
+          "enVal": "Force Feedback",
+          "currentVal": "Force Feedback",
+          "gtVal": "ردود فعل القوة",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.tabFilters",
+          "enVal": "Steering Filters",
+          "currentVal": "Steering Filters",
+          "gtVal": "مرشحات التوجيه",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.tabPresets",
+          "enVal": "Presets",
+          "currentVal": "Presets",
+          "gtVal": "الإعدادات المسبقة",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.searchBindings",
+          "enVal": "Search actions...",
+          "currentVal": "Search actions...",
+          "gtVal": "إجراءات البحث...",
+          "severity": "REVIEW",
+          "sim": 9
+        },
+        {
+          "key": "controls.loading",
+          "enVal": "Loading controls...",
+          "currentVal": "Loading controls...",
+          "gtVal": "جارٍ تحميل عناصر التحكم...",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "controls.noGamePaths",
+          "enVal": "Game paths not configured. Set them in Settings to manage controls.",
+          "currentVal": "Game paths not configured. Set them in Settings to manage controls.",
+          "gtVal": "لم يتم تكوين مسارات اللعبة. قم بتعيينها في الإعدادات لإدارة عناصر التحكم.",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.noBindings",
+          "enVal": "No bindings found for this device.",
+          "currentVal": "No bindings found for this device.",
+          "gtVal": "لم يتم العثور على روابط لهذا الجهاز.",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.noDevice",
+          "enVal": "Select a device to view its bindings.",
+          "currentVal": "Select a device to view its bindings.",
+          "gtVal": "حدد جهازًا لعرض روابطه.",
+          "severity": "REVIEW",
+          "sim": 7
+        },
+        {
+          "key": "controls.axesComingSoon",
+          "enVal": "Axis configuration coming in next update.",
+          "currentVal": "Axis configuration coming in next update.",
+          "gtVal": "تكوين المحور يأتي في التحديث القادم.",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.noAxes",
+          "enVal": "No axis bindings found for this device.",
+          "currentVal": "No axis bindings found for this device.",
+          "gtVal": "لم يتم العثور على روابط محاور لهذا الجهاز.",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.axisLinearity",
+          "enVal": "Linearity",
+          "currentVal": "Linearity",
+          "gtVal": "الخطية",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.axisDeadzone",
+          "enVal": "Deadzone",
+          "currentVal": "Deadzone",
+          "gtVal": "المنطقة الميتة",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.axisDeadzoneEnd",
+          "enVal": "Deadzone End",
+          "currentVal": "Deadzone End",
+          "gtVal": "نهاية المنطقة الميتة",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.axisInvert",
+          "enVal": "Invert",
+          "currentVal": "Invert",
+          "gtVal": "عكس",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.axisSteeringAngle",
+          "enVal": "Steering Angle",
+          "currentVal": "Steering Angle",
+          "gtVal": "زاوية التوجيه",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.ffbComingSoon",
+          "enVal": "Force feedback editor coming in next update.",
+          "currentVal": "Force feedback editor coming in next update.",
+          "gtVal": "محرر التعليقات الإجبارية قادم في التحديث القادم.",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.ffbStrength",
+          "enVal": "Force Strength",
+          "currentVal": "Force Strength",
+          "gtVal": "قوة القوة",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.ffbForceCoef",
+          "enVal": "Force Coefficient",
+          "currentVal": "Force Coefficient",
+          "gtVal": "معامل القوة",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.ffbSmoothing",
+          "enVal": "Smoothing",
+          "currentVal": "Smoothing",
+          "gtVal": "تنعيم",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.ffbSmoothing1",
+          "enVal": "Smoothing 1",
+          "currentVal": "Smoothing 1",
+          "gtVal": "تنعيم 1",
+          "severity": "REVIEW",
+          "sim": 13
+        },
+        {
+          "key": "controls.ffbSmoothing2",
+          "enVal": "Smoothing 2",
+          "currentVal": "Smoothing 2",
+          "gtVal": "تنعيم 2",
+          "severity": "REVIEW",
+          "sim": 13
+        },
+        {
+          "key": "controls.ffbAuto",
+          "enVal": "Auto",
+          "currentVal": "Auto",
+          "gtVal": "آلي",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.ffbOptions",
+          "enVal": "Options",
+          "currentVal": "Options",
+          "gtVal": "خيارات",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.ffbLowSpeed",
+          "enVal": "Low Speed Compensation",
+          "currentVal": "Low Speed Compensation",
+          "gtVal": "تعويض السرعة المنخفضة",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.ffbResponseCorrected",
+          "enVal": "Response Correction",
+          "currentVal": "Response Correction",
+          "gtVal": "تصحيح الاستجابة",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.ffbUpdateType",
+          "enVal": "Update Mode",
+          "currentVal": "Update Mode",
+          "gtVal": "وضع التحديث",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.ffbUpdateFast",
+          "enVal": "Fast",
+          "currentVal": "Fast",
+          "gtVal": "سريع",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.ffbUpdateSmooth",
+          "enVal": "Smooth",
+          "currentVal": "Smooth",
+          "gtVal": "سلس",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.ffbUpdateLegacy",
+          "enVal": "Legacy",
+          "currentVal": "Legacy",
+          "gtVal": "إرث",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.ffbResponseCurve",
+          "enVal": "Response Curve",
+          "currentVal": "Response Curve",
+          "gtVal": "منحنى الاستجابة",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.ffbResetCurve",
+          "enVal": "Reset to Linear",
+          "currentVal": "Reset to Linear",
+          "gtVal": "إعادة التعيين إلى الخطي",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.ffbCurveHint",
+          "enVal": "Double-click to add points. Right-click to remove. Drag to adjust.",
+          "currentVal": "Double-click to add points. Right-click to remove. Drag to adjust.",
+          "gtVal": "انقر نقرًا مزدوجًا لإضافة النقاط. انقر بزر الماوس الأيمن لإزالة. اسحب للضبط.",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.filtersComingSoon",
+          "enVal": "Steering filter settings coming in next update.",
+          "currentVal": "Steering filter settings coming in next update.",
+          "gtVal": "إعدادات مرشح التوجيه تأتي في التحديث القادم.",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.filtersLoading",
+          "enVal": "Loading steering settings...",
+          "currentVal": "Loading steering settings...",
+          "gtVal": "جارٍ تحميل إعدادات التوجيه...",
+          "severity": "REVIEW",
+          "sim": 7
+        },
+        {
+          "key": "controls.filtersKeyboard",
+          "enVal": "Keyboard / Gamepad",
+          "currentVal": "Keyboard / Gamepad",
+          "gtVal": "لوحة المفاتيح / لوحة الألعاب",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "controls.filtersWheel",
+          "enVal": "Direct Input / Wheel",
+          "currentVal": "Direct Input / Wheel",
+          "gtVal": "الإدخال المباشر / العجلة",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "controls.filterAutocenter",
+          "enVal": "Autocenter",
+          "currentVal": "Autocenter",
+          "gtVal": "مركز تلقائي",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.filterSlowdown",
+          "enVal": "Speed-Sensitive Slowdown",
+          "currentVal": "Speed-Sensitive Slowdown",
+          "gtVal": "التباطؤ الحساس للسرعة",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.filterSlowdownStart",
+          "enVal": "Start Speed",
+          "currentVal": "Start Speed",
+          "gtVal": "سرعة البداية",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.filterSlowdownEnd",
+          "enVal": "End Speed",
+          "currentVal": "End Speed",
+          "gtVal": "سرعة النهاية",
+          "severity": "REVIEW",
+          "sim": 7
+        },
+        {
+          "key": "controls.filterSlowdownMult",
+          "enVal": "Multiplier",
+          "currentVal": "Multiplier",
+          "gtVal": "المضاعف",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.filterLimit",
+          "enVal": "Steering Limit",
+          "currentVal": "Steering Limit",
+          "gtVal": "حد التوجيه",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.filterLimitMult",
+          "enVal": "Limit Multiplier",
+          "currentVal": "Limit Multiplier",
+          "gtVal": "مضاعف الحد",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.filterStabilization",
+          "enVal": "Stabilization",
+          "currentVal": "Stabilization",
+          "gtVal": "الاستقرار",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.filterStabilizationMult",
+          "enVal": "Strength",
+          "currentVal": "Strength",
+          "gtVal": "قوة",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.filterUndersteerMult",
+          "enVal": "Strength",
+          "currentVal": "Strength",
+          "gtVal": "قوة",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.presetsComingSoon",
+          "enVal": "Preset management coming in next update.",
+          "currentVal": "Preset management coming in next update.",
+          "gtVal": "إدارة الإعداد المسبق تأتي في التحديث القادم.",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.resetDevice",
+          "enVal": "Reset to Defaults",
+          "currentVal": "Reset to Defaults",
+          "gtVal": "إعادة التعيين إلى الإعدادات الافتراضية",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.resetConfirm",
+          "enVal": "This will delete all custom bindings for this device. Are you sure?",
+          "currentVal": "This will delete all custom bindings for this device. Are you sure?",
+          "gtVal": "سيؤدي هذا إلى حذف جميع الارتباطات المخصصة لهذا الجهاز. هل أنت متأكد؟",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.bindAction",
+          "enVal": "Press a key or button to bind...",
+          "currentVal": "Press a key or button to bind...",
+          "gtVal": "اضغط على مفتاح أو زر لربط...",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.bindActionGamepad",
+          "enVal": "Press a button on your gamepad...",
+          "currentVal": "Press a button on your gamepad...",
+          "gtVal": "اضغط على زر على لوحة الألعاب الخاصة بك...",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.bindActionWheel",
+          "enVal": "Press a button or move an axis on your wheel...",
+          "currentVal": "Press a button or move an axis on your wheel...",
+          "gtVal": "اضغط على زر أو حرك محورًا على عجلة القيادة...",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.bindEscape",
+          "enVal": "Press Escape to cancel",
+          "currentVal": "Press Escape to cancel",
+          "gtVal": "اضغط على Escape للإلغاء",
+          "severity": "REVIEW",
+          "sim": 30
+        },
+        {
+          "key": "controls.conflictAlreadyBound",
+          "enVal": "is already bound to",
+          "currentVal": "is already bound to",
+          "gtVal": "ملزمة بالفعل ل",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.clearBinding",
+          "enVal": "Clear",
+          "currentVal": "Clear",
+          "gtVal": "واضح",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.editBinding",
+          "enVal": "Edit",
+          "currentVal": "Edit",
+          "gtVal": "يحرر",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.conflict",
+          "enVal": "Conflict",
+          "currentVal": "Conflict",
+          "gtVal": "صراع",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.conflictMessage",
+          "enVal": "\"{{control}}\" is already bound to: {{actions}}",
+          "currentVal": "\"{{control}}\" is already bound to: {{actions}}",
+          "gtVal": "\"{{control}}\" مرتبط بالفعل بـ: {{actions}}",
+          "severity": "REVIEW",
+          "sim": 12
+        },
+        {
+          "key": "controls.conflictReplace",
+          "enVal": "Replace",
+          "currentVal": "Replace",
+          "gtVal": "يستبدل",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.conflictBindBoth",
+          "enVal": "Bind to Both",
+          "currentVal": "Bind to Both",
+          "gtVal": "ربط على حد سواء",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.conflictSwap",
+          "enVal": "Swap",
+          "currentVal": "Swap",
+          "gtVal": "تبديل",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.conflictCancel",
+          "enVal": "Cancel",
+          "currentVal": "Cancel",
+          "gtVal": "يلغي",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.presetSave",
+          "enVal": "Save Preset",
+          "currentVal": "Save Preset",
+          "gtVal": "حفظ الإعداد المسبق",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.presetLoad",
+          "enVal": "Load Preset",
+          "currentVal": "Load Preset",
+          "gtVal": "تحميل الإعداد المسبق",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.presetDelete",
+          "enVal": "Delete Preset",
+          "currentVal": "Delete Preset",
+          "gtVal": "حذف الإعداد المسبق",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.presetExport",
+          "enVal": "Export",
+          "currentVal": "Export",
+          "gtVal": "يصدّر",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.presetImport",
+          "enVal": "Import",
+          "currentVal": "Import",
+          "gtVal": "يستورد",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.presetName",
+          "enVal": "Preset name",
+          "currentVal": "Preset name",
+          "gtVal": "اسم محدد مسبقًا",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.presetLoadConfirm",
+          "enVal": "Loading this preset will overwrite current bindings. Continue?",
+          "currentVal": "Loading this preset will overwrite current bindings. Continue?",
+          "gtVal": "سيؤدي تحميل هذا الإعداد المسبق إلى استبدال الارتباطات الحالية. يكمل؟",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.presetEmpty",
+          "enVal": "No presets saved yet. Save your current bindings as a preset.",
+          "currentVal": "No presets saved yet. Save your current bindings as a preset.",
+          "gtVal": "لم يتم حفظ أي إعدادات مسبقة حتى الآن. احفظ الارتباطات الحالية كإعداد مسبق.",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.presetDeleteConfirm",
+          "enVal": "Delete this preset? This cannot be undone.",
+          "currentVal": "Delete this preset? This cannot be undone.",
+          "gtVal": "هل تريد حذف هذا الإعداد المسبق؟ لا يمكن التراجع عن هذا.",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.tabLiveInput",
+          "enVal": "Live Input",
+          "currentVal": "Live Input",
+          "gtVal": "الإدخال المباشر",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.liveInputTitle",
+          "enVal": "Live Input Monitor",
+          "currentVal": "Live Input Monitor",
+          "gtVal": "مراقبة الإدخال المباشر",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.liveInputActive",
+          "enVal": "Polling",
+          "currentVal": "Polling",
+          "gtVal": "الاقتراع",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.liveInputStart",
+          "enVal": "Start",
+          "currentVal": "Start",
+          "gtVal": "يبدأ",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.liveInputStop",
+          "enVal": "Stop",
+          "currentVal": "Stop",
+          "gtVal": "قف",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.liveInputHint",
+          "enVal": "Enable polling to see real-time input from your device.",
+          "currentVal": "Enable polling to see real-time input from your device.",
+          "gtVal": "تمكين الاستقصاء لرؤية المدخلات في الوقت الحقيقي من جهازك.",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.liveInputNoGamepad",
+          "enVal": "No gamepad detected. Connect a controller and press a button.",
+          "currentVal": "No gamepad detected. Connect a controller and press a button.",
+          "gtVal": "لم يتم اكتشاف لوحة ألعاب. قم بتوصيل وحدة التحكم واضغط على زر.",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.liveInputAxes",
+          "enVal": "Axes",
+          "currentVal": "Axes",
+          "gtVal": "محاور",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.liveInputButtons",
+          "enVal": "Buttons",
+          "currentVal": "Buttons",
+          "gtVal": "أزرار",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "serverManager.taskLabel",
+          "enVal": "Label",
+          "currentVal": "التسمية",
+          "gtVal": "ملصق",
+          "severity": "REVIEW",
+          "sim": 22
+        },
+        {
+          "key": "serverManager.create",
+          "enVal": "Create",
+          "currentVal": "إنشاء",
+          "gtVal": "يخلق",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "serverManager.browseExe",
+          "enVal": "Browse",
+          "currentVal": "استعراض",
+          "gtVal": "تصفح",
+          "severity": "REVIEW",
+          "sim": 11
+        },
+        {
+          "key": "serverManager.instances",
+          "enVal": "Instances",
+          "currentVal": "النسخ",
+          "gtVal": "المثيلات",
+          "severity": "REVIEW",
+          "sim": 22
+        },
+        {
+          "key": "serverManager.running",
+          "enVal": "Running",
+          "currentVal": "قيد التشغيل",
+          "gtVal": "جري",
+          "severity": "REVIEW",
+          "sim": 9
+        },
+        {
+          "key": "serverManager.idle",
+          "enVal": "Idle",
+          "currentVal": "خامل",
+          "gtVal": "عاطل",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "serverManager.start",
+          "enVal": "Start",
+          "currentVal": "تشغيل",
+          "gtVal": "يبدأ",
+          "severity": "REVIEW",
+          "sim": 13
+        },
+        {
+          "key": "serverManager.manage",
+          "enVal": "Manage",
+          "currentVal": "إدارة",
+          "gtVal": "يدير",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "serverManager.delete",
+          "enVal": "Delete",
+          "currentVal": "حذف",
+          "gtVal": "يمسح",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "serverManager.tcpUdp",
+          "enVal": "TCP & UDP",
+          "currentVal": "TCP و UDP",
+          "gtVal": "بروتوكول التعاون الفني وUDP",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "serverManager.fileRefresh",
+          "enVal": "Refresh",
+          "currentVal": "تحديث",
+          "gtVal": "ينعش",
+          "severity": "REVIEW",
+          "sim": 13
+        },
+        {
+          "key": "serverManager.fileSize",
+          "enVal": "Size",
+          "currentVal": "الحجم",
+          "gtVal": "مقاس",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "serverManager.configSaving",
+          "enVal": "Saving...",
+          "currentVal": "جارٍ الحفظ...",
+          "gtVal": "توفير...",
+          "severity": "REVIEW",
+          "sim": 23
+        },
+        {
+          "key": "serverManager.confirmDialogCancel",
+          "enVal": "Cancel",
+          "currentVal": "إلغاء",
+          "gtVal": "يلغي",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "serverManager.metricsInstances",
+          "enVal": "Instances",
+          "currentVal": "النسخ",
+          "gtVal": "المثيلات",
+          "severity": "REVIEW",
+          "sim": 22
+        },
+        {
+          "key": "serverManager.metricsInstanceCount_one",
+          "enVal": "{{count}} instance",
+          "currentVal": "{{count}} نسخة",
+          "gtVal": "{{count}} مثيل",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "serverManager.metricsInstanceCount_other",
+          "enVal": "{{count}} instances",
+          "currentVal": "{{count}} نسخ",
+          "gtVal": "{{count}} من الحالات",
+          "severity": "REVIEW",
+          "sim": 11
+        },
+        {
+          "key": "serverManager.underline",
+          "enVal": "Underline",
+          "currentVal": "تحته خط",
+          "gtVal": "تسطير",
+          "severity": "REVIEW",
+          "sim": 22
+        },
+        {
+          "key": "serverManager.lnCol",
+          "enVal": "Ln {{line}}, Col {{col}}",
+          "currentVal": "سطر {{line}}، عمود {{col}}",
+          "gtVal": "لين {{خط}}، العقيد {{كول}}",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "serverManager.lineCount_one",
+          "enVal": "{{count}} line",
+          "currentVal": "{{count}} سطر",
+          "gtVal": "{{عدد}} خط",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "serverManager.viewMode",
+          "enVal": "View",
+          "currentVal": "عرض",
+          "gtVal": "منظر",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "serverManager.periodAll",
+          "enVal": "All",
+          "currentVal": "الكل",
+          "gtVal": "الجميع",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "serverManager.undeployLabel",
+          "enVal": "Undeploy",
+          "currentVal": "إزالة",
+          "gtVal": "إلغاء النشر",
+          "severity": "REVIEW",
+          "sim": 27
+        },
+        {
+          "key": "serverManager.disable",
+          "enVal": "Disable",
+          "currentVal": "تعطيل",
+          "gtVal": "إبطال",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "serverManager.enable",
+          "enVal": "Enable",
+          "currentVal": "تفعيل",
+          "gtVal": "يُمكَِن",
+          "severity": "REVIEW",
+          "sim": 9
+        },
+        {
+          "key": "serverManager.edit",
+          "enVal": "Edit",
+          "currentVal": "تعديل",
+          "gtVal": "يحرر",
+          "severity": "REVIEW",
+          "sim": 14
+        },
+        {
+          "key": "serverManager.commandPlaceholder",
+          "enVal": "e.g. kick all",
+          "currentVal": "مثال: kick all",
+          "gtVal": "على سبيل المثال ركلة الكل",
+          "severity": "REVIEW",
+          "sim": 26
+        },
+        {
+          "key": "serverManager.tailscaleRunning",
+          "enVal": "Tailscale is running",
+          "currentVal": "Tailscale يعمل",
+          "gtVal": "مقياس الذيل قيد التشغيل",
+          "severity": "REVIEW",
+          "sim": 20
+        },
+        {
+          "key": "serverManager.tailscaleNotInstalled",
+          "enVal": "Tailscale not installed",
+          "currentVal": "Tailscale غير مثبت",
+          "gtVal": "لم يتم تثبيت مقياس الذيل",
+          "severity": "REVIEW",
+          "sim": 30
+        },
+        {
+          "key": "serverManager.deleteFile",
+          "enVal": "Delete",
+          "currentVal": "حذف",
+          "gtVal": "يمسح",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "settings.saved",
+          "enVal": "Saved!",
+          "currentVal": "تم الحفظ!",
+          "gtVal": "أنقذ!",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "settings.modpackName",
+          "enVal": "Modpack name",
+          "currentVal": "اسم حزمة التعديلات",
+          "gtVal": "اسم مودباك",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "settings.cssEnabled",
+          "enVal": "CSS Active",
+          "currentVal": "CSS مفعل",
+          "gtVal": "CSS نشط",
+          "severity": "REVIEW",
+          "sim": 30
+        },
+        {
+          "key": "settings.cssSnippets",
+          "enVal": "Snippet Toggles",
+          "currentVal": "مقاطع جاهزة",
+          "gtVal": "تبديل المقتطف",
+          "severity": "REVIEW",
+          "sim": 31
+        },
+        {
+          "key": "settings.cssExtraDim",
+          "enVal": "Extra dim overlay",
+          "currentVal": "تعتيم إضافي",
+          "gtVal": "تراكب خافت للغاية",
+          "severity": "REVIEW",
+          "sim": 31
+        },
+        {
+          "key": "settings.cssSquareEverything",
+          "enVal": "Square everything",
+          "currentVal": "زوايا حادة في كل مكان",
+          "gtVal": "مربع كل شيء",
+          "severity": "REVIEW",
+          "sim": 28
+        },
+        {
+          "key": "settings.cssSepiaTint",
+          "enVal": "Sepia tint",
+          "currentVal": "صبغة بنية",
+          "gtVal": "لون بني داكن",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "setup.unreachable",
+          "enVal": "Unreachable",
+          "currentVal": "غير متاح",
+          "gtVal": "لا يمكن الوصول إليه",
+          "severity": "REVIEW",
+          "sim": 27
+        },
+        {
+          "key": "career.created",
+          "enVal": "Created",
+          "currentVal": "تاريخ الإنشاء",
+          "gtVal": "مخلوق",
+          "severity": "REVIEW",
+          "sim": 14
+        },
+        {
+          "key": "career.beamXP",
+          "enVal": "BeamXP",
+          "currentVal": "BeamXP",
+          "gtVal": "بيم إكس بي",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "career.insured",
+          "enVal": "Insured",
+          "currentVal": "مؤمّن",
+          "gtVal": "المؤمن عليه",
+          "severity": "REVIEW",
+          "sim": 30
+        },
+        {
+          "key": "career.restore",
+          "enVal": "Restore",
+          "currentVal": "استعادة",
+          "gtVal": "يعيد",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "career.deleteBackup",
+          "enVal": "Delete",
+          "currentVal": "حذف",
+          "gtVal": "يمسح",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "career.mod.traffic",
+          "enVal": "Traffic",
+          "currentVal": "حركة المرور",
+          "gtVal": "مرور",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "gps.title",
+          "enVal": "Live GPS",
+          "currentVal": "GPS مباشر",
+          "gtVal": "نظام تحديد المواقع المباشر",
+          "severity": "REVIEW",
+          "sim": 32
+        },
+        {
+          "key": "gps.heading",
+          "enVal": "Heading",
+          "currentVal": "الاتجاه",
+          "gtVal": "عنوان",
+          "severity": "REVIEW",
+          "sim": 13
+        },
+        {
+          "key": "voiceChat.enabled",
+          "enVal": "Enabled",
+          "currentVal": "مُفعّل",
+          "gtVal": "ممكّن",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "voiceChat.disabled",
+          "enVal": "Disabled",
+          "currentVal": "مُعطّل",
+          "gtVal": "عاجز",
+          "severity": "REVIEW",
+          "sim": 11
+        },
+        {
+          "key": "voiceChat.panel.transmitting",
+          "enVal": "Transmitting",
+          "currentVal": "جارٍ النقل",
+          "gtVal": "الإرسال",
+          "severity": "REVIEW",
+          "sim": 30
+        }
+      ]
+    },
+    {
+      "lang": "Farsi",
+      "perfect": 721,
+      "acceptable": 293,
+      "flagged": 174,
+      "missing": 0,
+      "issues": [
+        {
+          "key": "common.refresh",
+          "enVal": "Refresh",
+          "currentVal": "بازنشانی",
+          "gtVal": "تازه کردن",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "common.disabled",
+          "enVal": "Disabled",
+          "currentVal": "غیرفعال",
+          "gtVal": "از کار افتاده است",
+          "severity": "REVIEW",
+          "sim": 21
+        },
+        {
+          "key": "common.test",
+          "enVal": "Test",
+          "currentVal": "آزمایش",
+          "gtVal": "تست کنید",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "common.type",
+          "enVal": "Type",
+          "currentVal": "نوع",
+          "gtVal": "تایپ کنید",
+          "severity": "REVIEW",
+          "sim": 10
+        },
+        {
+          "key": "common.stock",
+          "enVal": "Stock",
+          "currentVal": "اصلی",
+          "gtVal": "سهام",
+          "severity": "REVIEW",
+          "sim": 14
+        },
+        {
+          "key": "common.goBack",
+          "enVal": "Go back",
+          "currentVal": "بازگشت",
+          "gtVal": "به عقب برگرد",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "sidebar.home",
+          "enVal": "Home",
+          "currentVal": "خانه",
+          "gtVal": "صفحه اصلی",
+          "severity": "REVIEW",
+          "sim": 20
+        },
+        {
+          "key": "sidebar.collapse",
+          "enVal": "Collapse",
+          "currentVal": "جمع کردن",
+          "gtVal": "فرو ریختن",
+          "severity": "REVIEW",
+          "sim": 23
+        },
+        {
+          "key": "titlebar.minimize",
+          "enVal": "Minimize",
+          "currentVal": "کوچک کردن",
+          "gtVal": "به حداقل رساندن",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "home.title",
+          "enVal": "Home",
+          "currentVal": "خانه",
+          "gtVal": "صفحه اصلی",
+          "severity": "REVIEW",
+          "sim": 20
+        },
+        {
+          "key": "home.startSingleplayer",
+          "enVal": "Start Singleplayer",
+          "currentVal": "شروع تک‌نفره",
+          "gtVal": "Singleplayer را شروع کنید",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "servers.refresh",
+          "enVal": "Refresh",
+          "currentVal": "بازنشانی",
+          "gtVal": "تازه کردن",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "servers.tabModded",
+          "enVal": "Modded",
+          "currentVal": "ماددار",
+          "gtVal": "مود شده",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "servers.tagModded",
+          "enVal": "Modded",
+          "currentVal": "ماددار",
+          "gtVal": "مود شده",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "servers.tagHighPop",
+          "enVal": "High Pop",
+          "currentVal": "پرطرفدار",
+          "gtVal": "پاپ بالا",
+          "severity": "REVIEW",
+          "sim": 22
+        },
+        {
+          "key": "servers.type",
+          "enVal": "Type",
+          "currentVal": "نوع",
+          "gtVal": "تایپ کنید",
+          "severity": "REVIEW",
+          "sim": 10
+        },
+        {
+          "key": "vehicles.car",
+          "enVal": "Car",
+          "currentVal": "خودرو",
+          "gtVal": "ماشین",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "vehicles.utility",
+          "enVal": "Utility",
+          "currentVal": "خدماتی",
+          "gtVal": "سودمند",
+          "severity": "REVIEW",
+          "sim": 22
+        },
+        {
+          "key": "vehicles.configurations",
+          "enVal": "Configurations",
+          "currentVal": "پیکربندی‌ها",
+          "gtVal": "تنظیمات",
+          "severity": "REVIEW",
+          "sim": 23
+        },
+        {
+          "key": "vehicles.configCount_other",
+          "enVal": "{{count}} configs",
+          "currentVal": "{{count}} پیکربندی",
+          "gtVal": "{{count}} تنظیمات",
+          "severity": "REVIEW",
+          "sim": 18
+        },
+        {
+          "key": "vehicles.drivetrain",
+          "enVal": "Drivetrain",
+          "currentVal": "سیستم انتقال نیرو",
+          "gtVal": "پیشرانه",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "vehicles.transmission",
+          "enVal": "Transmission",
+          "currentVal": "گیربکس",
+          "gtVal": "انتقال",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "vehicles.other",
+          "enVal": "Other",
+          "currentVal": "سایر",
+          "gtVal": "دیگر",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "vehicles.sunLow",
+          "enVal": "Low",
+          "currentVal": "پایین",
+          "gtVal": "کم",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "vehicles.floor",
+          "enVal": "Floor",
+          "currentVal": "کف",
+          "gtVal": "طبقه",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "maps.stockMaps",
+          "enVal": "Stock",
+          "currentVal": "اصلی",
+          "gtVal": "سهام",
+          "severity": "REVIEW",
+          "sim": 14
+        },
+        {
+          "key": "maps.testing",
+          "enVal": "testing",
+          "currentVal": "آزمایشی",
+          "gtVal": "تست کردن",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "mods.skinType",
+          "enVal": "Skins",
+          "currentVal": "اسکین‌ها",
+          "gtVal": "پوسته ها",
+          "severity": "REVIEW",
+          "sim": 27
+        },
+        {
+          "key": "mods.otherType",
+          "enVal": "Other",
+          "currentVal": "سایر",
+          "gtVal": "دیگر",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "mods.tableType",
+          "enVal": "Type",
+          "currentVal": "نوع",
+          "gtVal": "تایپ کنید",
+          "severity": "REVIEW",
+          "sim": 10
+        },
+        {
+          "key": "mods.release",
+          "enVal": "Release",
+          "currentVal": "انتشار",
+          "gtVal": "رها کنید",
+          "severity": "REVIEW",
+          "sim": 30
+        },
+        {
+          "key": "mods.location",
+          "enVal": "Location",
+          "currentVal": "محل",
+          "gtVal": "مکان",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "mods.modified",
+          "enVal": "Modified",
+          "currentVal": "تاریخ تغییر",
+          "gtVal": "اصلاح شد",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "mods.signOut",
+          "enVal": "Sign out",
+          "currentVal": "خروج",
+          "gtVal": "از سیستم خارج شوید",
+          "severity": "REVIEW",
+          "sim": 31
+        },
+        {
+          "key": "mods.downloadCount",
+          "enVal": "{{count}} Downloads",
+          "currentVal": "{{count}} دانلود",
+          "gtVal": "{{count}} بارگیری",
+          "severity": "REVIEW",
+          "sim": 11
+        },
+        {
+          "key": "mods.ratingCount",
+          "enVal": "{{count}} Rating",
+          "currentVal": "{{count}} امتیاز",
+          "gtVal": "{{count}} رتبه بندی",
+          "severity": "REVIEW",
+          "sim": 18
+        },
+        {
+          "key": "mods.logOut",
+          "enVal": "Log out",
+          "currentVal": "خروج",
+          "gtVal": "از سیستم خارج شوید",
+          "severity": "REVIEW",
+          "sim": 31
+        },
+        {
+          "key": "mods.rating",
+          "enVal": "Rating",
+          "currentVal": "امتیاز",
+          "gtVal": "رتبه بندی",
+          "severity": "REVIEW",
+          "sim": 18
+        },
+        {
+          "key": "mods.conflictsWins",
+          "enVal": "Wins {{count}} conflict",
+          "currentVal": "برنده {{count}} تداخل",
+          "gtVal": "در تضاد {{count}} پیروز شد",
+          "severity": "REVIEW",
+          "sim": 31
+        },
+        {
+          "key": "controls.devices",
+          "enVal": "Devices",
+          "currentVal": "Devices",
+          "gtVal": "دستگاه ها",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.deviceType_keyboard",
+          "enVal": "Keyboard",
+          "currentVal": "Keyboard",
+          "gtVal": "صفحه کلید",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.deviceType_mouse",
+          "enVal": "Mouse",
+          "currentVal": "Mouse",
+          "gtVal": "موش",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.deviceType_xinput",
+          "enVal": "Gamepad",
+          "currentVal": "Gamepad",
+          "gtVal": "گیم پد",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.deviceType_joystick",
+          "enVal": "Wheel / Joystick",
+          "currentVal": "Wheel / Joystick",
+          "gtVal": "چرخ / جوی استیک",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "controls.tabBindings",
+          "enVal": "Bindings",
+          "currentVal": "Bindings",
+          "gtVal": "اتصالات",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.tabAxes",
+          "enVal": "Axes",
+          "currentVal": "Axes",
+          "gtVal": "تبرها",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.tabFFB",
+          "enVal": "Force Feedback",
+          "currentVal": "Force Feedback",
+          "gtVal": "بازخورد اجباری",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.tabFilters",
+          "enVal": "Steering Filters",
+          "currentVal": "Steering Filters",
+          "gtVal": "فیلترهای فرمان",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.tabPresets",
+          "enVal": "Presets",
+          "currentVal": "Presets",
+          "gtVal": "تنظیمات از پیش تعیین شده",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.searchBindings",
+          "enVal": "Search actions...",
+          "currentVal": "Search actions...",
+          "gtVal": "اقدامات جستجو...",
+          "severity": "REVIEW",
+          "sim": 10
+        },
+        {
+          "key": "controls.loading",
+          "enVal": "Loading controls...",
+          "currentVal": "Loading controls...",
+          "gtVal": "در حال بارگیری کنترل‌ها...",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "controls.noGamePaths",
+          "enVal": "Game paths not configured. Set them in Settings to manage controls.",
+          "currentVal": "Game paths not configured. Set them in Settings to manage controls.",
+          "gtVal": "مسیرهای بازی پیکربندی نشده است. برای مدیریت کنترل‌ها، آن‌ها را در تنظیمات تنظیم کنید.",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.noBindings",
+          "enVal": "No bindings found for this device.",
+          "currentVal": "No bindings found for this device.",
+          "gtVal": "هیچ پیوندی برای این دستگاه یافت نشد.",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.noDevice",
+          "enVal": "Select a device to view its bindings.",
+          "currentVal": "Select a device to view its bindings.",
+          "gtVal": "یک دستگاه را برای مشاهده اتصالات آن انتخاب کنید.",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.axesComingSoon",
+          "enVal": "Axis configuration coming in next update.",
+          "currentVal": "Axis configuration coming in next update.",
+          "gtVal": "پیکربندی محور در به روز رسانی بعدی.",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.noAxes",
+          "enVal": "No axis bindings found for this device.",
+          "currentVal": "No axis bindings found for this device.",
+          "gtVal": "هیچ اتصال محوری برای این دستگاه یافت نشد.",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.axisLinearity",
+          "enVal": "Linearity",
+          "currentVal": "Linearity",
+          "gtVal": "خطی بودن",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.axisDeadzone",
+          "enVal": "Deadzone",
+          "currentVal": "Deadzone",
+          "gtVal": "ددزون",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.axisDeadzoneEnd",
+          "enVal": "Deadzone End",
+          "currentVal": "Deadzone End",
+          "gtVal": "پایان منطقه مرده",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.axisInvert",
+          "enVal": "Invert",
+          "currentVal": "Invert",
+          "gtVal": "معکوس کردن",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.axisSteeringAngle",
+          "enVal": "Steering Angle",
+          "currentVal": "Steering Angle",
+          "gtVal": "زاویه فرمان",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.ffbComingSoon",
+          "enVal": "Force feedback editor coming in next update.",
+          "currentVal": "Force feedback editor coming in next update.",
+          "gtVal": "ویرایشگر بازخورد اجباری در به‌روزرسانی بعدی ارائه می‌شود.",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.ffbStrength",
+          "enVal": "Force Strength",
+          "currentVal": "Force Strength",
+          "gtVal": "قدرت نیرو",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.ffbForceCoef",
+          "enVal": "Force Coefficient",
+          "currentVal": "Force Coefficient",
+          "gtVal": "ضریب نیرو",
+          "severity": "REVIEW",
+          "sim": 7
+        },
+        {
+          "key": "controls.ffbSmoothing",
+          "enVal": "Smoothing",
+          "currentVal": "Smoothing",
+          "gtVal": "صاف کردن",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.ffbSmoothing1",
+          "enVal": "Smoothing 1",
+          "currentVal": "Smoothing 1",
+          "gtVal": "صاف کردن 1",
+          "severity": "REVIEW",
+          "sim": 12
+        },
+        {
+          "key": "controls.ffbSmoothing2",
+          "enVal": "Smoothing 2",
+          "currentVal": "Smoothing 2",
+          "gtVal": "صاف کردن 2",
+          "severity": "REVIEW",
+          "sim": 12
+        },
+        {
+          "key": "controls.ffbAuto",
+          "enVal": "Auto",
+          "currentVal": "Auto",
+          "gtVal": "خودکار",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.ffbOptions",
+          "enVal": "Options",
+          "currentVal": "Options",
+          "gtVal": "گزینه ها",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.ffbLowSpeed",
+          "enVal": "Low Speed Compensation",
+          "currentVal": "Low Speed Compensation",
+          "gtVal": "جبران کم سرعت",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.ffbResponseCorrected",
+          "enVal": "Response Correction",
+          "currentVal": "Response Correction",
+          "gtVal": "تصحیح پاسخ",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.ffbUpdateType",
+          "enVal": "Update Mode",
+          "currentVal": "Update Mode",
+          "gtVal": "به روز رسانی حالت",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.ffbUpdateFast",
+          "enVal": "Fast",
+          "currentVal": "Fast",
+          "gtVal": "سریع",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.ffbUpdateSmooth",
+          "enVal": "Smooth",
+          "currentVal": "Smooth",
+          "gtVal": "صاف",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.ffbUpdateLegacy",
+          "enVal": "Legacy",
+          "currentVal": "Legacy",
+          "gtVal": "میراث",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.ffbResponseCurve",
+          "enVal": "Response Curve",
+          "currentVal": "Response Curve",
+          "gtVal": "منحنی پاسخ",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.ffbCurveHint",
+          "enVal": "Double-click to add points. Right-click to remove. Drag to adjust.",
+          "currentVal": "Double-click to add points. Right-click to remove. Drag to adjust.",
+          "gtVal": "برای افزودن امتیاز دوبار کلیک کنید. برای حذف کلیک راست کنید. برای تنظیم بکشید.",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.filtersComingSoon",
+          "enVal": "Steering filter settings coming in next update.",
+          "currentVal": "Steering filter settings coming in next update.",
+          "gtVal": "تنظیمات فیلتر فرمان در به روز رسانی بعدی.",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.filtersLoading",
+          "enVal": "Loading steering settings...",
+          "currentVal": "Loading steering settings...",
+          "gtVal": "در حال بارگیری تنظیمات فرمان...",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "controls.filtersKeyboard",
+          "enVal": "Keyboard / Gamepad",
+          "currentVal": "Keyboard / Gamepad",
+          "gtVal": "صفحه کلید / گیم پد",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "controls.filtersWheel",
+          "enVal": "Direct Input / Wheel",
+          "currentVal": "Direct Input / Wheel",
+          "gtVal": "ورودی مستقیم / چرخ",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "controls.filterAutocenter",
+          "enVal": "Autocenter",
+          "currentVal": "Autocenter",
+          "gtVal": "مرکز خودکار",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.filterSlowdown",
+          "enVal": "Speed-Sensitive Slowdown",
+          "currentVal": "Speed-Sensitive Slowdown",
+          "gtVal": "کاهش سرعت حساس به سرعت",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.filterSlowdownStart",
+          "enVal": "Start Speed",
+          "currentVal": "Start Speed",
+          "gtVal": "سرعت را شروع کنید",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.filterSlowdownEnd",
+          "enVal": "End Speed",
+          "currentVal": "End Speed",
+          "gtVal": "سرعت پایان",
+          "severity": "REVIEW",
+          "sim": 7
+        },
+        {
+          "key": "controls.filterSlowdownMult",
+          "enVal": "Multiplier",
+          "currentVal": "Multiplier",
+          "gtVal": "ضرب کننده",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.filterLimit",
+          "enVal": "Steering Limit",
+          "currentVal": "Steering Limit",
+          "gtVal": "محدودیت فرمان",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.filterStabilization",
+          "enVal": "Stabilization",
+          "currentVal": "Stabilization",
+          "gtVal": "تثبیت",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.filterStabilizationMult",
+          "enVal": "Strength",
+          "currentVal": "Strength",
+          "gtVal": "قدرت",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.filterUndersteer",
+          "enVal": "Understeer Reduction",
+          "currentVal": "Understeer Reduction",
+          "gtVal": "کاهش کم فرمانی",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.filterUndersteerMult",
+          "enVal": "Strength",
+          "currentVal": "Strength",
+          "gtVal": "قدرت",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.presetsComingSoon",
+          "enVal": "Preset management coming in next update.",
+          "currentVal": "Preset management coming in next update.",
+          "gtVal": "مدیریت از پیش تعیین شده در به روز رسانی بعدی.",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.resetDevice",
+          "enVal": "Reset to Defaults",
+          "currentVal": "Reset to Defaults",
+          "gtVal": "به حالت پیش فرض بازنشانی کنید",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.resetConfirm",
+          "enVal": "This will delete all custom bindings for this device. Are you sure?",
+          "currentVal": "This will delete all custom bindings for this device. Are you sure?",
+          "gtVal": "با این کار همه اتصالات سفارشی برای این دستگاه حذف می شود. مطمئنی؟",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.bindAction",
+          "enVal": "Press a key or button to bind...",
+          "currentVal": "Press a key or button to bind...",
+          "gtVal": "یک کلید یا دکمه را برای اتصال فشار دهید...",
+          "severity": "REVIEW",
+          "sim": 7
+        },
+        {
+          "key": "controls.bindActionGamepad",
+          "enVal": "Press a button on your gamepad...",
+          "currentVal": "Press a button on your gamepad...",
+          "gtVal": "دکمه ای را در گیم پد خود فشار دهید...",
+          "severity": "REVIEW",
+          "sim": 7
+        },
+        {
+          "key": "controls.bindActionWheel",
+          "enVal": "Press a button or move an axis on your wheel...",
+          "currentVal": "Press a button or move an axis on your wheel...",
+          "gtVal": "یک دکمه را فشار دهید یا یک محور را روی چرخ خود حرکت دهید...",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.bindEscape",
+          "enVal": "Press Escape to cancel",
+          "currentVal": "Press Escape to cancel",
+          "gtVal": "برای لغو Escape را فشار دهید",
+          "severity": "REVIEW",
+          "sim": 27
+        },
+        {
+          "key": "controls.conflictAlreadyBound",
+          "enVal": "is already bound to",
+          "currentVal": "is already bound to",
+          "gtVal": "در حال حاضر مقید است",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.clearBinding",
+          "enVal": "Clear",
+          "currentVal": "Clear",
+          "gtVal": "پاک کردن",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.editBinding",
+          "enVal": "Edit",
+          "currentVal": "Edit",
+          "gtVal": "ویرایش کنید",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.conflict",
+          "enVal": "Conflict",
+          "currentVal": "Conflict",
+          "gtVal": "درگیری",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.conflictMessage",
+          "enVal": "\"{{control}}\" is already bound to: {{actions}}",
+          "currentVal": "\"{{control}}\" is already bound to: {{actions}}",
+          "gtVal": "\"{{control}}\" قبلاً به این موارد محدود شده است: {{اقدامات}}",
+          "severity": "REVIEW",
+          "sim": 9
+        },
+        {
+          "key": "controls.conflictReplace",
+          "enVal": "Replace",
+          "currentVal": "Replace",
+          "gtVal": "جایگزین کنید",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.conflictBindBoth",
+          "enVal": "Bind to Both",
+          "currentVal": "Bind to Both",
+          "gtVal": "به هر دو بپیوندید",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.conflictSwap",
+          "enVal": "Swap",
+          "currentVal": "Swap",
+          "gtVal": "تعویض کنید",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.conflictCancel",
+          "enVal": "Cancel",
+          "currentVal": "Cancel",
+          "gtVal": "لغو کنید",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.presetSave",
+          "enVal": "Save Preset",
+          "currentVal": "Save Preset",
+          "gtVal": "ذخیره از پیش تعیین شده",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.presetLoad",
+          "enVal": "Load Preset",
+          "currentVal": "Load Preset",
+          "gtVal": "بارگذاری از پیش تعیین شده",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.presetDelete",
+          "enVal": "Delete Preset",
+          "currentVal": "Delete Preset",
+          "gtVal": "حذف از پیش تعیین شده",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.presetExport",
+          "enVal": "Export",
+          "currentVal": "Export",
+          "gtVal": "صادرات",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.presetImport",
+          "enVal": "Import",
+          "currentVal": "Import",
+          "gtVal": "واردات",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.presetName",
+          "enVal": "Preset name",
+          "currentVal": "Preset name",
+          "gtVal": "نام از پیش تعیین شده",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.presetLoadConfirm",
+          "enVal": "Loading this preset will overwrite current bindings. Continue?",
+          "currentVal": "Loading this preset will overwrite current bindings. Continue?",
+          "gtVal": "بارگیری این از پیش تنظیم، اتصالات فعلی را بازنویسی می کند. ادامه دهید؟",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.presetEmpty",
+          "enVal": "No presets saved yet. Save your current bindings as a preset.",
+          "currentVal": "No presets saved yet. Save your current bindings as a preset.",
+          "gtVal": "هنوز هیچ تنظیمات از پیش تعیین شده ذخیره نشده است. اتصالات فعلی خود را به عنوان یک پیش تنظیم ذخیره کنید.",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.presetDeleteConfirm",
+          "enVal": "Delete this preset? This cannot be undone.",
+          "currentVal": "Delete this preset? This cannot be undone.",
+          "gtVal": "این از پیش تنظیم حذف شود؟ این قابل واگرد نیست.",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.tabLiveInput",
+          "enVal": "Live Input",
+          "currentVal": "Live Input",
+          "gtVal": "ورودی زنده",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.liveInputTitle",
+          "enVal": "Live Input Monitor",
+          "currentVal": "Live Input Monitor",
+          "gtVal": "مانیتور ورودی زنده",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.liveInputActive",
+          "enVal": "Polling",
+          "currentVal": "Polling",
+          "gtVal": "نظرسنجی",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.liveInputStart",
+          "enVal": "Start",
+          "currentVal": "Start",
+          "gtVal": "شروع کنید",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.liveInputStop",
+          "enVal": "Stop",
+          "currentVal": "Stop",
+          "gtVal": "توقف کنید",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.liveInputHint",
+          "enVal": "Enable polling to see real-time input from your device.",
+          "currentVal": "Enable polling to see real-time input from your device.",
+          "gtVal": "برای مشاهده ورودی بلادرنگ از دستگاهتان، نظرسنجی را فعال کنید.",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.liveInputNoGamepad",
+          "enVal": "No gamepad detected. Connect a controller and press a button.",
+          "currentVal": "No gamepad detected. Connect a controller and press a button.",
+          "gtVal": "هیچ گیم پد شناسایی نشد. یک کنترلر را وصل کنید و یک دکمه را فشار دهید.",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.liveInputAxes",
+          "enVal": "Axes",
+          "currentVal": "Axes",
+          "gtVal": "تبرها",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.liveInputButtons",
+          "enVal": "Buttons",
+          "currentVal": "Buttons",
+          "gtVal": "دکمه ها",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "serverManager.paused",
+          "enVal": "paused",
+          "currentVal": "متوقف",
+          "gtVal": "مکث کرد",
+          "severity": "REVIEW",
+          "sim": 10
+        },
+        {
+          "key": "serverManager.taskStart",
+          "enVal": "Start Server",
+          "currentVal": "شروع سرور",
+          "gtVal": "سرور را راه اندازی کنید",
+          "severity": "REVIEW",
+          "sim": 31
+        },
+        {
+          "key": "serverManager.clone",
+          "enVal": "Clone",
+          "currentVal": "کپی",
+          "gtVal": "کلون",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "serverManager.port",
+          "enVal": "Port",
+          "currentVal": "پورت",
+          "gtVal": "بندر",
+          "severity": "REVIEW",
+          "sim": 14
+        },
+        {
+          "key": "serverManager.visibility",
+          "enVal": "Visibility",
+          "currentVal": "قابلیت مشاهده",
+          "gtVal": "دید",
+          "severity": "REVIEW",
+          "sim": 18
+        },
+        {
+          "key": "serverManager.exportLog",
+          "enVal": "Export log",
+          "currentVal": "خروجی لاگ",
+          "gtVal": "گزارش صادرات",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "serverManager.fileRefresh",
+          "enVal": "Refresh",
+          "currentVal": "بازخوانی",
+          "gtVal": "تازه کردن",
+          "severity": "REVIEW",
+          "sim": 23
+        },
+        {
+          "key": "serverManager.configPort",
+          "enVal": "Port",
+          "currentVal": "پورت",
+          "gtVal": "بندر",
+          "severity": "REVIEW",
+          "sim": 14
+        },
+        {
+          "key": "serverManager.confirmDialogCancel",
+          "enVal": "Cancel",
+          "currentVal": "انصراف",
+          "gtVal": "لغو کنید",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "serverManager.metricsEstCpu",
+          "enVal": "Est. CPU",
+          "currentVal": "CPU تخمینی",
+          "gtVal": "برآورد CPU",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "serverManager.bold",
+          "enVal": "Bold",
+          "currentVal": "ضخیم",
+          "gtVal": "پررنگ",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "serverManager.italic",
+          "enVal": "Italic",
+          "currentVal": "کج",
+          "gtVal": "مورب",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "serverManager.strikethrough",
+          "enVal": "Strikethrough",
+          "currentVal": "خط‌خورده",
+          "gtVal": "ضربه زدن",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "serverManager.lnCol",
+          "enVal": "Ln {{line}}, Col {{col}}",
+          "currentVal": "خط {{line}}، ستون {{col}}",
+          "gtVal": "Ln {{line}}، سرهنگ {{col}}",
+          "severity": "REVIEW",
+          "sim": 31
+        },
+        {
+          "key": "serverManager.undeployTracker",
+          "enVal": "Undeploy",
+          "currentVal": "حذف ردیاب",
+          "gtVal": "Undeploy",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "serverManager.undeployVoicePlugin",
+          "enVal": "Undeploy",
+          "currentVal": "حذف افزونه صوتی",
+          "gtVal": "Undeploy",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "serverManager.activeNow",
+          "enVal": "Active Now",
+          "currentVal": "آنلاین الان",
+          "gtVal": "اکنون فعال است",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "serverManager.undeployMod",
+          "enVal": "Undeploy Mod",
+          "currentVal": "حذف ماد",
+          "gtVal": "Undeploy Mod",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "serverManager.undeployLabel",
+          "enVal": "Undeploy",
+          "currentVal": "حذف",
+          "gtVal": "Undeploy",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "serverManager.runNow",
+          "enVal": "Run now",
+          "currentVal": "اجرای فوری",
+          "gtVal": "حالا بدو",
+          "severity": "REVIEW",
+          "sim": 27
+        },
+        {
+          "key": "serverManager.commandPlaceholder",
+          "enVal": "e.g. kick all",
+          "currentVal": "مثال: kick all",
+          "gtVal": "به عنوان مثال لگد زدن به همه",
+          "severity": "REVIEW",
+          "sim": 26
+        },
+        {
+          "key": "settings.general",
+          "enVal": "General",
+          "currentVal": "عمومی",
+          "gtVal": "ژنرال",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "settings.userDataDir",
+          "enVal": "User Data Directory",
+          "currentVal": "پوشه داده‌های کاربر",
+          "gtVal": "فهرست اطلاعات کاربر",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "settings.backendServer",
+          "enVal": "Backend Server",
+          "currentVal": "سرور بکند",
+          "gtVal": "سرور Backend",
+          "severity": "REVIEW",
+          "sim": 27
+        },
+        {
+          "key": "settings.backendUnreachable",
+          "enVal": "Backend is unreachable",
+          "currentVal": "سرور بکند در دسترس نیست",
+          "gtVal": "Backend غیر قابل دسترسی است",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "settings.backendUrl",
+          "enVal": "Backend URL",
+          "currentVal": "آدرس بک‌اند",
+          "gtVal": "URL Backend",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "settings.verifyIntegrity",
+          "enVal": "Verify Integrity",
+          "currentVal": "بررسی صحت فایل‌ها",
+          "gtVal": "یکپارچگی را تأیید کنید",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "settings.repoUrlPlaceholder",
+          "enVal": "GitHub API URL",
+          "currentVal": "آدرس API گیت‌هاب",
+          "gtVal": "URL API GitHub",
+          "severity": "REVIEW",
+          "sim": 18
+        },
+        {
+          "key": "settings.importModpack",
+          "enVal": "Import Modpack",
+          "currentVal": "واردات بسته ماد",
+          "gtVal": "Modpack را وارد کنید",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "settings.borderOpacity",
+          "enVal": "Border Opacity",
+          "currentVal": "شفافیت حاشیه",
+          "gtVal": "کدورت مرزی",
+          "severity": "REVIEW",
+          "sim": 21
+        },
+        {
+          "key": "settings.effects",
+          "enVal": "Effects",
+          "currentVal": "افکت‌ها",
+          "gtVal": "جلوه ها",
+          "severity": "REVIEW",
+          "sim": 20
+        },
+        {
+          "key": "settings.cssSnippets",
+          "enVal": "Snippet Toggles",
+          "currentVal": "قطعه‌ها",
+          "gtVal": "Snippet Toggles",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "settings.cssScanlines",
+          "enVal": "Scanline overlay",
+          "currentVal": "پوشش خطوط اسکن",
+          "gtVal": "روکش Scanline",
+          "severity": "REVIEW",
+          "sim": 22
+        },
+        {
+          "key": "settings.cssCatLayout",
+          "enVal": "Layout",
+          "currentVal": "چیدمان",
+          "gtVal": "طرح بندی",
+          "severity": "REVIEW",
+          "sim": 27
+        },
+        {
+          "key": "settings.cssSquareEverything",
+          "enVal": "Square everything",
+          "currentVal": "گوشه‌های تیز همه جا",
+          "gtVal": "همه چیز را مربع کنید",
+          "severity": "REVIEW",
+          "sim": 32
+        },
+        {
+          "key": "setup.userDataDir",
+          "enVal": "User Data Directory",
+          "currentVal": "پوشه داده‌های کاربر",
+          "gtVal": "فهرست اطلاعات کاربر",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "setup.backendServer",
+          "enVal": "Backend Server",
+          "currentVal": "سرور بکند",
+          "gtVal": "سرور Backend",
+          "severity": "REVIEW",
+          "sim": 27
+        },
+        {
+          "key": "setup.backendUrl",
+          "enVal": "Backend URL",
+          "currentVal": "آدرس بکند",
+          "gtVal": "URL Backend",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "career.corrupted",
+          "enVal": "Corrupted",
+          "currentVal": "خراب",
+          "gtVal": "فاسد شده",
+          "severity": "REVIEW",
+          "sim": 10
+        },
+        {
+          "key": "career.vehicles",
+          "enVal": "Vehicles",
+          "currentVal": "خودروها",
+          "gtVal": "وسایل نقلیه",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "career.undeploy",
+          "enVal": "Undeploy",
+          "currentVal": "لغو استقرار",
+          "gtVal": "Undeploy",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "career.savePath",
+          "enVal": "Save Path",
+          "currentVal": "مسیر ذخیره",
+          "gtVal": "Save Path",
+          "severity": "REVIEW",
+          "sim": 7
+        },
+        {
+          "key": "gps.undeploy",
+          "enVal": "Undeploy Tracker",
+          "currentVal": "حذف ردیاب",
+          "gtVal": "Undeploy Tracker",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "gps.heading",
+          "enVal": "Heading",
+          "currentVal": "جهت",
+          "gtVal": "سرفصل",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "voiceChat.disabled",
+          "enVal": "Disabled",
+          "currentVal": "غیرفعال",
+          "gtVal": "از کار افتاده است",
+          "severity": "REVIEW",
+          "sim": 21
+        },
+        {
+          "key": "voiceChat.pttKey",
+          "enVal": "Push-to-Talk Key",
+          "currentVal": "کلید فشار برای صحبت",
+          "gtVal": "کلید Push-to-Talk",
+          "severity": "REVIEW",
+          "sim": 22
+        },
+        {
+          "key": "voiceChat.proximityRange",
+          "enVal": "Proximity Range — {{value}}m",
+          "currentVal": "برد مجاورت — {{value}} متر",
+          "gtVal": "محدوده نزدیکی - {{value}}m",
+          "severity": "REVIEW",
+          "sim": 22
+        },
+        {
+          "key": "voiceChat.panel.pttHint",
+          "enVal": "PTT: {{key}}",
+          "currentVal": "فشار برای صحبت: {{key}}",
+          "gtVal": "PTT: {{key}}",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "voiceChat.panel.voiceActive",
+          "enVal": "Voice Active",
+          "currentVal": "صدا فعال",
+          "gtVal": "Voice Active",
+          "severity": "REVIEW",
+          "sim": 7
+        }
+      ]
+    },
+    {
+      "lang": "Urdu",
+      "perfect": 744,
+      "acceptable": 270,
+      "flagged": 175,
+      "missing": 0,
+      "issues": [
+        {
+          "key": "common.back",
+          "enVal": "Back",
+          "currentVal": "واپس",
+          "gtVal": "پیچھے",
+          "severity": "REVIEW",
+          "sim": 13
+        },
+        {
+          "key": "common.disabled",
+          "enVal": "Disabled",
+          "currentVal": "غیر فعال",
+          "gtVal": "معذور",
+          "severity": "REVIEW",
+          "sim": 18
+        },
+        {
+          "key": "common.all",
+          "enVal": "All",
+          "currentVal": "سب",
+          "gtVal": "تمام",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "common.warning",
+          "enVal": "Warning",
+          "currentVal": "انتباہ",
+          "gtVal": "وارننگ",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "common.source",
+          "enVal": "Source",
+          "currentVal": "ذریعہ",
+          "gtVal": "ماخذ",
+          "severity": "REVIEW",
+          "sim": 13
+        },
+        {
+          "key": "common.stock",
+          "enVal": "Stock",
+          "currentVal": "اصلی",
+          "gtVal": "اسٹاک",
+          "severity": "REVIEW",
+          "sim": 14
+        },
+        {
+          "key": "common.auto",
+          "enVal": "auto",
+          "currentVal": "خودکار",
+          "gtVal": "آٹو",
+          "severity": "REVIEW",
+          "sim": 13
+        },
+        {
+          "key": "sidebar.home",
+          "enVal": "Home",
+          "currentVal": "ہوم",
+          "gtVal": "گھر",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "titlebar.minimize",
+          "enVal": "Minimize",
+          "currentVal": "چھوٹا کریں",
+          "gtVal": "کم سے کم کرنا",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "home.title",
+          "enVal": "Home",
+          "currentVal": "ہوم",
+          "gtVal": "گھر",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "servers.modded",
+          "enVal": "Modded",
+          "currentVal": "ماڈ شدہ",
+          "gtVal": "موڈڈ",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "servers.address",
+          "enVal": "Address",
+          "currentVal": "ایڈریس",
+          "gtVal": "پتہ",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "servers.connecting",
+          "enVal": "Connecting...",
+          "currentVal": "جڑ رہے ہیں...",
+          "gtVal": "منسلک ہو رہا ہے...",
+          "severity": "REVIEW",
+          "sim": 31
+        },
+        {
+          "key": "vehicles.filteredOf",
+          "enVal": "{{filtered}} of {{total}}",
+          "currentVal": "{{filtered}} از {{total}}",
+          "gtVal": "{{total}} میں سے {{filtered}}",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "vehicles.utility",
+          "enVal": "Utility",
+          "currentVal": "یوٹیلٹی",
+          "gtVal": "افادیت",
+          "severity": "REVIEW",
+          "sim": 13
+        },
+        {
+          "key": "vehicles.configurations",
+          "enVal": "Configurations",
+          "currentVal": "ترتیبات",
+          "gtVal": "کنفیگریشنز",
+          "severity": "REVIEW",
+          "sim": 18
+        },
+        {
+          "key": "vehicles.transmission",
+          "enVal": "Transmission",
+          "currentVal": "ٹرانسمیشن",
+          "gtVal": "منتقلی",
+          "severity": "REVIEW",
+          "sim": 27
+        },
+        {
+          "key": "vehicles.sunLow",
+          "enVal": "Low",
+          "currentVal": "نیچے",
+          "gtVal": "کم",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "maps.filteredOf",
+          "enVal": "{{filtered}} of {{total}}",
+          "currentVal": "{{filtered}} از {{total}}",
+          "gtVal": "{{total}} میں سے {{filtered}}",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "maps.sourceLabel",
+          "enVal": "Source:",
+          "currentVal": "ذریعہ:",
+          "gtVal": "ماخذ:",
+          "severity": "REVIEW",
+          "sim": 22
+        },
+        {
+          "key": "maps.stockMaps",
+          "enVal": "Stock",
+          "currentVal": "اصلی",
+          "gtVal": "اسٹاک",
+          "severity": "REVIEW",
+          "sim": 14
+        },
+        {
+          "key": "maps.modMapsDivider",
+          "enVal": "Mod Maps",
+          "currentVal": "ماڈ نقشے",
+          "gtVal": "موڈ میپس",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "maps.minimap",
+          "enVal": "Minimap",
+          "currentVal": "چھوٹا نقشہ",
+          "gtVal": "منی میپ",
+          "severity": "REVIEW",
+          "sim": 15
+        },
+        {
+          "key": "maps.testing",
+          "enVal": "testing",
+          "currentVal": "آزمائشی",
+          "gtVal": "ٹیسٹنگ",
+          "severity": "REVIEW",
+          "sim": 9
+        },
+        {
+          "key": "maps.repository",
+          "enVal": "Repository",
+          "currentVal": "ریپوزٹری",
+          "gtVal": "مخزن",
+          "severity": "REVIEW",
+          "sim": 11
+        },
+        {
+          "key": "mods.skinType",
+          "enVal": "Skins",
+          "currentVal": "سکنز",
+          "gtVal": "کھالیں",
+          "severity": "REVIEW",
+          "sim": 11
+        },
+        {
+          "key": "mods.configuration",
+          "enVal": "Configuration",
+          "currentVal": "ترتیب",
+          "gtVal": "کنفیگریشن",
+          "severity": "REVIEW",
+          "sim": 22
+        },
+        {
+          "key": "mods.release",
+          "enVal": "Release",
+          "currentVal": "ریلیز",
+          "gtVal": "رہائی",
+          "severity": "REVIEW",
+          "sim": 29
+        },
+        {
+          "key": "mods.released",
+          "enVal": "Released",
+          "currentVal": "اجراء",
+          "gtVal": "جاری کیا گیا۔",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "controls.devices",
+          "enVal": "Devices",
+          "currentVal": "Devices",
+          "gtVal": "آلات",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.deviceType_keyboard",
+          "enVal": "Keyboard",
+          "currentVal": "Keyboard",
+          "gtVal": "کی بورڈ",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.deviceType_mouse",
+          "enVal": "Mouse",
+          "currentVal": "Mouse",
+          "gtVal": "ماؤس",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.deviceType_xinput",
+          "enVal": "Gamepad",
+          "currentVal": "Gamepad",
+          "gtVal": "گیم پیڈ",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.deviceType_joystick",
+          "enVal": "Wheel / Joystick",
+          "currentVal": "Wheel / Joystick",
+          "gtVal": "وہیل / جوائس اسٹک",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "controls.tabBindings",
+          "enVal": "Bindings",
+          "currentVal": "Bindings",
+          "gtVal": "پابندیاں",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.tabAxes",
+          "enVal": "Axes",
+          "currentVal": "Axes",
+          "gtVal": "کلہاڑی",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.tabFFB",
+          "enVal": "Force Feedback",
+          "currentVal": "Force Feedback",
+          "gtVal": "زبردستی فیڈ بیک",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.tabFilters",
+          "enVal": "Steering Filters",
+          "currentVal": "Steering Filters",
+          "gtVal": "اسٹیئرنگ فلٹرز",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.searchBindings",
+          "enVal": "Search actions...",
+          "currentVal": "Search actions...",
+          "gtVal": "تلاش کے اعمال...",
+          "severity": "REVIEW",
+          "sim": 10
+        },
+        {
+          "key": "controls.loading",
+          "enVal": "Loading controls...",
+          "currentVal": "Loading controls...",
+          "gtVal": "کنٹرولز لوڈ ہو رہے ہیں...",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "controls.noGamePaths",
+          "enVal": "Game paths not configured. Set them in Settings to manage controls.",
+          "currentVal": "Game paths not configured. Set them in Settings to manage controls.",
+          "gtVal": "گیم کے راستے کنفیگر نہیں ہیں۔ کنٹرولز کا نظم کرنے کے لیے انہیں سیٹنگز میں سیٹ کریں۔",
+          "severity": "REVIEW",
+          "sim": 3
+        },
+        {
+          "key": "controls.noBindings",
+          "enVal": "No bindings found for this device.",
+          "currentVal": "No bindings found for this device.",
+          "gtVal": "اس آلہ کے لیے کوئی پابندیاں نہیں ملی۔",
+          "severity": "REVIEW",
+          "sim": 3
+        },
+        {
+          "key": "controls.noDevice",
+          "enVal": "Select a device to view its bindings.",
+          "currentVal": "Select a device to view its bindings.",
+          "gtVal": "اس کے بائنڈنگز دیکھنے کے لیے ایک آلہ منتخب کریں۔",
+          "severity": "REVIEW",
+          "sim": 3
+        },
+        {
+          "key": "controls.perDevice",
+          "enVal": "Per-device configuration",
+          "currentVal": "فی ڈیوائس ترتیب",
+          "gtVal": "فی آلہ کنفیگریشن",
+          "severity": "REVIEW",
+          "sim": 22
+        },
+        {
+          "key": "controls.axesComingSoon",
+          "enVal": "Axis configuration coming in next update.",
+          "currentVal": "Axis configuration coming in next update.",
+          "gtVal": "ایکسس کنفیگریشن اگلی اپ ڈیٹ میں آرہی ہے۔",
+          "severity": "REVIEW",
+          "sim": 3
+        },
+        {
+          "key": "controls.noAxes",
+          "enVal": "No axis bindings found for this device.",
+          "currentVal": "No axis bindings found for this device.",
+          "gtVal": "اس آلہ کے لیے کوئی محور پابندیاں نہیں ملی۔",
+          "severity": "REVIEW",
+          "sim": 3
+        },
+        {
+          "key": "controls.axisLinearity",
+          "enVal": "Linearity",
+          "currentVal": "Linearity",
+          "gtVal": "لکیریت",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.axisDeadzone",
+          "enVal": "Deadzone",
+          "currentVal": "Deadzone",
+          "gtVal": "ڈیڈ زون",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.axisDeadzoneEnd",
+          "enVal": "Deadzone End",
+          "currentVal": "Deadzone End",
+          "gtVal": "ڈیڈ زون اینڈ",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "controls.axisInvert",
+          "enVal": "Invert",
+          "currentVal": "Invert",
+          "gtVal": "الٹا",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.axisSteeringAngle",
+          "enVal": "Steering Angle",
+          "currentVal": "Steering Angle",
+          "gtVal": "اسٹیئرنگ اینگل",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.ffbComingSoon",
+          "enVal": "Force feedback editor coming in next update.",
+          "currentVal": "Force feedback editor coming in next update.",
+          "gtVal": "اگلے اپ ڈیٹ میں آنے والے فیڈ بیک ایڈیٹر کو مجبور کریں۔",
+          "severity": "REVIEW",
+          "sim": 3
+        },
+        {
+          "key": "controls.ffbStrength",
+          "enVal": "Force Strength",
+          "currentVal": "Force Strength",
+          "gtVal": "طاقت کی طاقت",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.ffbForceCoef",
+          "enVal": "Force Coefficient",
+          "currentVal": "Force Coefficient",
+          "gtVal": "قوت قابلیت",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.ffbSmoothing",
+          "enVal": "Smoothing",
+          "currentVal": "Smoothing",
+          "gtVal": "ہموار کرنا",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.ffbSmoothing1",
+          "enVal": "Smoothing 1",
+          "currentVal": "Smoothing 1",
+          "gtVal": "ہموار کرنا 1",
+          "severity": "REVIEW",
+          "sim": 12
+        },
+        {
+          "key": "controls.ffbSmoothing2",
+          "enVal": "Smoothing 2",
+          "currentVal": "Smoothing 2",
+          "gtVal": "ہموار کرنا 2",
+          "severity": "REVIEW",
+          "sim": 12
+        },
+        {
+          "key": "controls.ffbAuto",
+          "enVal": "Auto",
+          "currentVal": "Auto",
+          "gtVal": "آٹو",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.ffbOptions",
+          "enVal": "Options",
+          "currentVal": "Options",
+          "gtVal": "اختیارات",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.ffbLowSpeed",
+          "enVal": "Low Speed Compensation",
+          "currentVal": "Low Speed Compensation",
+          "gtVal": "کم رفتار معاوضہ",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.ffbResponseCorrected",
+          "enVal": "Response Correction",
+          "currentVal": "Response Correction",
+          "gtVal": "جوابی اصلاح",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.ffbUpdateType",
+          "enVal": "Update Mode",
+          "currentVal": "Update Mode",
+          "gtVal": "اپ ڈیٹ موڈ",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.ffbUpdateFast",
+          "enVal": "Fast",
+          "currentVal": "Fast",
+          "gtVal": "تیز",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.ffbUpdateSmooth",
+          "enVal": "Smooth",
+          "currentVal": "Smooth",
+          "gtVal": "ہموار",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.ffbUpdateLegacy",
+          "enVal": "Legacy",
+          "currentVal": "Legacy",
+          "gtVal": "میراث",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.ffbResponseCurve",
+          "enVal": "Response Curve",
+          "currentVal": "Response Curve",
+          "gtVal": "رسپانس وکر",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.ffbResetCurve",
+          "enVal": "Reset to Linear",
+          "currentVal": "Reset to Linear",
+          "gtVal": "لکیری پر ری سیٹ کریں۔",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.ffbCurveHint",
+          "enVal": "Double-click to add points. Right-click to remove. Drag to adjust.",
+          "currentVal": "Double-click to add points. Right-click to remove. Drag to adjust.",
+          "gtVal": "پوائنٹس شامل کرنے کے لیے ڈبل کلک کریں۔ ہٹانے کے لیے دائیں کلک کریں۔ ایڈجسٹ کرنے کے لیے گھسیٹیں۔",
+          "severity": "REVIEW",
+          "sim": 2
+        },
+        {
+          "key": "controls.filtersComingSoon",
+          "enVal": "Steering filter settings coming in next update.",
+          "currentVal": "Steering filter settings coming in next update.",
+          "gtVal": "اسٹیئرنگ فلٹر کی ترتیبات اگلی اپ ڈیٹ میں آرہی ہیں۔",
+          "severity": "REVIEW",
+          "sim": 3
+        },
+        {
+          "key": "controls.filtersLoading",
+          "enVal": "Loading steering settings...",
+          "currentVal": "Loading steering settings...",
+          "gtVal": "اسٹیئرنگ کی ترتیبات لوڈ ہو رہی ہیں...",
+          "severity": "REVIEW",
+          "sim": 7
+        },
+        {
+          "key": "controls.filtersKeyboard",
+          "enVal": "Keyboard / Gamepad",
+          "currentVal": "Keyboard / Gamepad",
+          "gtVal": "کی بورڈ / گیم پیڈ",
+          "severity": "REVIEW",
+          "sim": 9
+        },
+        {
+          "key": "controls.filtersWheel",
+          "enVal": "Direct Input / Wheel",
+          "currentVal": "Direct Input / Wheel",
+          "gtVal": "براہ راست ان پٹ / وہیل",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "controls.filterAutocenter",
+          "enVal": "Autocenter",
+          "currentVal": "Autocenter",
+          "gtVal": "آٹو سینٹر",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.filterSlowdown",
+          "enVal": "Speed-Sensitive Slowdown",
+          "currentVal": "Speed-Sensitive Slowdown",
+          "gtVal": "رفتار سے متعلق سست روی",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.filterSlowdownStart",
+          "enVal": "Start Speed",
+          "currentVal": "Start Speed",
+          "gtVal": "رفتار شروع کریں۔",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.filterSlowdownEnd",
+          "enVal": "End Speed",
+          "currentVal": "End Speed",
+          "gtVal": "اختتامی رفتار",
+          "severity": "REVIEW",
+          "sim": 8
+        },
+        {
+          "key": "controls.filterSlowdownMult",
+          "enVal": "Multiplier",
+          "currentVal": "Multiplier",
+          "gtVal": "ضرب",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.filterLimit",
+          "enVal": "Steering Limit",
+          "currentVal": "Steering Limit",
+          "gtVal": "اسٹیئرنگ کی حد",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.filterLimitMult",
+          "enVal": "Limit Multiplier",
+          "currentVal": "Limit Multiplier",
+          "gtVal": "حد ضرب",
+          "severity": "REVIEW",
+          "sim": 7
+        },
+        {
+          "key": "controls.filterStabilization",
+          "enVal": "Stabilization",
+          "currentVal": "Stabilization",
+          "gtVal": "استحکام",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.filterStabilizationMult",
+          "enVal": "Strength",
+          "currentVal": "Strength",
+          "gtVal": "طاقت",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.filterUndersteer",
+          "enVal": "Understeer Reduction",
+          "currentVal": "Understeer Reduction",
+          "gtVal": "انڈرسٹیر کمی",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.filterUndersteerMult",
+          "enVal": "Strength",
+          "currentVal": "Strength",
+          "gtVal": "طاقت",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.presetsComingSoon",
+          "enVal": "Preset management coming in next update.",
+          "currentVal": "Preset management coming in next update.",
+          "gtVal": "پیش سیٹ مینجمنٹ اگلی اپ ڈیٹ میں آرہی ہے۔",
+          "severity": "REVIEW",
+          "sim": 3
+        },
+        {
+          "key": "controls.resetDevice",
+          "enVal": "Reset to Defaults",
+          "currentVal": "Reset to Defaults",
+          "gtVal": "ڈیفالٹس پر ری سیٹ کریں۔",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.resetConfirm",
+          "enVal": "This will delete all custom bindings for this device. Are you sure?",
+          "currentVal": "This will delete all custom bindings for this device. Are you sure?",
+          "gtVal": "یہ اس آلہ کے لیے تمام حسب ضرورت پابندیوں کو حذف کر دے گا۔ کیا آپ کو یقین ہے؟",
+          "severity": "REVIEW",
+          "sim": 2
+        },
+        {
+          "key": "controls.bindAction",
+          "enVal": "Press a key or button to bind...",
+          "currentVal": "Press a key or button to bind...",
+          "gtVal": "باندھنے کے لیے ایک کلید یا بٹن دبائیں...",
+          "severity": "REVIEW",
+          "sim": 7
+        },
+        {
+          "key": "controls.bindActionGamepad",
+          "enVal": "Press a button on your gamepad...",
+          "currentVal": "Press a button on your gamepad...",
+          "gtVal": "اپنے گیم پیڈ پر ایک بٹن دبائیں...",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.bindActionWheel",
+          "enVal": "Press a button or move an axis on your wheel...",
+          "currentVal": "Press a button or move an axis on your wheel...",
+          "gtVal": "ایک بٹن دبائیں یا اپنے پہیے پر محور کو حرکت دیں...",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.bindEscape",
+          "enVal": "Press Escape to cancel",
+          "currentVal": "Press Escape to cancel",
+          "gtVal": "منسوخ کرنے کے لیے Escape دبائیں۔",
+          "severity": "REVIEW",
+          "sim": 22
+        },
+        {
+          "key": "controls.conflictAlreadyBound",
+          "enVal": "is already bound to",
+          "currentVal": "is already bound to",
+          "gtVal": "پہلے سے ہی پابند ہے",
+          "severity": "REVIEW",
+          "sim": 4
+        },
+        {
+          "key": "controls.clearBinding",
+          "enVal": "Clear",
+          "currentVal": "Clear",
+          "gtVal": "صاف",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.editBinding",
+          "enVal": "Edit",
+          "currentVal": "Edit",
+          "gtVal": "ترمیم کریں۔",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.conflict",
+          "enVal": "Conflict",
+          "currentVal": "Conflict",
+          "gtVal": "تنازعہ",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.conflictMessage",
+          "enVal": "\"{{control}}\" is already bound to: {{actions}}",
+          "currentVal": "\"{{control}}\" is already bound to: {{actions}}",
+          "gtVal": "\"{{control}}\" پہلے سے ہی پابند ہے: {{ actions}}",
+          "severity": "REVIEW",
+          "sim": 12
+        },
+        {
+          "key": "controls.conflictReplace",
+          "enVal": "Replace",
+          "currentVal": "Replace",
+          "gtVal": "بدل دیں۔",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.conflictBindBoth",
+          "enVal": "Bind to Both",
+          "currentVal": "Bind to Both",
+          "gtVal": "دونوں کو باندھیں۔",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.conflictSwap",
+          "enVal": "Swap",
+          "currentVal": "Swap",
+          "gtVal": "تبادلہ",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.conflictCancel",
+          "enVal": "Cancel",
+          "currentVal": "Cancel",
+          "gtVal": "منسوخ کریں۔",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.presetSave",
+          "enVal": "Save Preset",
+          "currentVal": "Save Preset",
+          "gtVal": "پیش سیٹ کو محفوظ کریں۔",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.presetLoad",
+          "enVal": "Load Preset",
+          "currentVal": "Load Preset",
+          "gtVal": "پیش سیٹ لوڈ کریں۔",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.presetDelete",
+          "enVal": "Delete Preset",
+          "currentVal": "Delete Preset",
+          "gtVal": "پیش سیٹ کو حذف کریں۔",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.presetExport",
+          "enVal": "Export",
+          "currentVal": "Export",
+          "gtVal": "برآمد کریں۔",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.presetImport",
+          "enVal": "Import",
+          "currentVal": "Import",
+          "gtVal": "درآمد کریں۔",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.presetName",
+          "enVal": "Preset name",
+          "currentVal": "Preset name",
+          "gtVal": "پیش سیٹ نام",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.presetLoadConfirm",
+          "enVal": "Loading this preset will overwrite current bindings. Continue?",
+          "currentVal": "Loading this preset will overwrite current bindings. Continue?",
+          "gtVal": "اس پیش سیٹ کو لوڈ کرنے سے موجودہ پابندیاں اوور رائٹ ہو جائیں گی۔ جاری رکھیں؟",
+          "severity": "REVIEW",
+          "sim": 2
+        },
+        {
+          "key": "controls.presetEmpty",
+          "enVal": "No presets saved yet. Save your current bindings as a preset.",
+          "currentVal": "No presets saved yet. Save your current bindings as a preset.",
+          "gtVal": "ابھی تک کوئی پیش سیٹ محفوظ نہیں ہوا ہے۔ اپنی موجودہ پابندیوں کو پیش سیٹ کے طور پر محفوظ کریں۔",
+          "severity": "REVIEW",
+          "sim": 2
+        },
+        {
+          "key": "controls.presetDeleteConfirm",
+          "enVal": "Delete this preset? This cannot be undone.",
+          "currentVal": "Delete this preset? This cannot be undone.",
+          "gtVal": "اس پیش سیٹ کو حذف کریں؟ اسے کالعدم نہیں کیا جا سکتا۔",
+          "severity": "REVIEW",
+          "sim": 2
+        },
+        {
+          "key": "controls.tabLiveInput",
+          "enVal": "Live Input",
+          "currentVal": "Live Input",
+          "gtVal": "لائیو ان پٹ",
+          "severity": "REVIEW",
+          "sim": 6
+        },
+        {
+          "key": "controls.liveInputTitle",
+          "enVal": "Live Input Monitor",
+          "currentVal": "Live Input Monitor",
+          "gtVal": "لائیو ان پٹ مانیٹر",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "controls.liveInputActive",
+          "enVal": "Polling",
+          "currentVal": "Polling",
+          "gtVal": "پولنگ",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.liveInputStart",
+          "enVal": "Start",
+          "currentVal": "Start",
+          "gtVal": "شروع کریں۔",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.liveInputStop",
+          "enVal": "Stop",
+          "currentVal": "Stop",
+          "gtVal": "رک جاؤ",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.liveInputHint",
+          "enVal": "Enable polling to see real-time input from your device.",
+          "currentVal": "Enable polling to see real-time input from your device.",
+          "gtVal": "اپنے آلے سے ریئل ٹائم ان پٹ دیکھنے کے لیے پولنگ کو فعال کریں۔",
+          "severity": "REVIEW",
+          "sim": 2
+        },
+        {
+          "key": "controls.liveInputNoGamepad",
+          "enVal": "No gamepad detected. Connect a controller and press a button.",
+          "currentVal": "No gamepad detected. Connect a controller and press a button.",
+          "gtVal": "کوئی گیم پیڈ نہیں ملا۔ کنٹرولر کو جوڑیں اور بٹن دبائیں۔",
+          "severity": "REVIEW",
+          "sim": 3
+        },
+        {
+          "key": "controls.liveInputAxes",
+          "enVal": "Axes",
+          "currentVal": "Axes",
+          "gtVal": "کلہاڑی",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "controls.liveInputButtons",
+          "enVal": "Buttons",
+          "currentVal": "Buttons",
+          "gtVal": "بٹن",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "serverManager.command",
+          "enVal": "Command",
+          "currentVal": "کمانڈ",
+          "gtVal": "حکم",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "serverManager.sidebarStatus",
+          "enVal": "Status",
+          "currentVal": "حالت",
+          "gtVal": "حیثیت",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "serverManager.sidebarConfiguration",
+          "enVal": "Configuration",
+          "currentVal": "ترتیب",
+          "gtVal": "کنفیگریشن",
+          "severity": "REVIEW",
+          "sim": 22
+        },
+        {
+          "key": "serverManager.sidebarPlayerHeatMap",
+          "enVal": "Player Heat Map",
+          "currentVal": "کھلاڑی ہیٹ نقشہ",
+          "gtVal": "پلیئر ہیٹ میپ",
+          "severity": "REVIEW",
+          "sim": 31
+        },
+        {
+          "key": "serverManager.sidebarSupport",
+          "enVal": "Support",
+          "currentVal": "سپورٹ",
+          "gtVal": "حمایت",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "serverManager.stop",
+          "enVal": "Stop",
+          "currentVal": "بند",
+          "gtVal": "رک جاؤ",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "serverManager.delete",
+          "enVal": "Delete",
+          "currentVal": "حذف",
+          "gtVal": "حذف کریں۔",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "serverManager.errorStatus",
+          "enVal": "ERROR",
+          "currentVal": "خرابی",
+          "gtVal": "غلطی",
+          "severity": "REVIEW",
+          "sim": 13
+        },
+        {
+          "key": "serverManager.port",
+          "enVal": "Port",
+          "currentVal": "پورٹ",
+          "gtVal": "بندرگاہ",
+          "severity": "REVIEW",
+          "sim": 10
+        },
+        {
+          "key": "serverManager.consoleLines",
+          "enVal": "{{count}} lines",
+          "currentVal": "{{count}} سطریں",
+          "gtVal": "{{count}} لائنیں۔",
+          "severity": "REVIEW",
+          "sim": 20
+        },
+        {
+          "key": "serverManager.fileRoot",
+          "enVal": "Root",
+          "currentVal": "روٹ",
+          "gtVal": "جڑ",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "serverManager.configPort",
+          "enVal": "Port",
+          "currentVal": "پورٹ",
+          "gtVal": "بندرگاہ",
+          "severity": "REVIEW",
+          "sim": 10
+        },
+        {
+          "key": "serverManager.metricsCapacity",
+          "enVal": "{{percent}}% capacity",
+          "currentVal": "{{percent}}% گنجائش",
+          "gtVal": "{{percent}}% صلاحیت",
+          "severity": "REVIEW",
+          "sim": 23
+        },
+        {
+          "key": "serverManager.metricsPorts",
+          "enVal": "Ports: {{ports}}",
+          "currentVal": "پورٹس: {{ports}}",
+          "gtVal": "بندرگاہیں: {{ports}}",
+          "severity": "REVIEW",
+          "sim": 14
+        },
+        {
+          "key": "serverManager.underline",
+          "enVal": "Underline",
+          "currentVal": "زیرِ خط",
+          "gtVal": "انڈر لائن",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "serverManager.lnCol",
+          "enVal": "Ln {{line}}, Col {{col}}",
+          "currentVal": "سطر {{line}}، کالم {{col}}",
+          "gtVal": "Ln {{line}}، Col {{col}}",
+          "severity": "REVIEW",
+          "sim": 15
+        },
+        {
+          "key": "serverManager.lineCount_one",
+          "enVal": "{{count}} line",
+          "currentVal": "{{count}} سطر",
+          "gtVal": "{{count}} لائن",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "serverManager.lineCount_other",
+          "enVal": "{{count}} lines",
+          "currentVal": "{{count}} سطریں",
+          "gtVal": "{{count}} لائنیں۔",
+          "severity": "REVIEW",
+          "sim": 20
+        },
+        {
+          "key": "serverManager.charCount_one",
+          "enVal": "{{count}} char",
+          "currentVal": "{{count}} حرف",
+          "gtVal": "{{count}} چار",
+          "severity": "REVIEW",
+          "sim": 20
+        },
+        {
+          "key": "serverManager.undeployTracker",
+          "enVal": "Undeploy",
+          "currentVal": "ہٹائیں",
+          "gtVal": "غیر تعیناتی",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "serverManager.undeployVoicePlugin",
+          "enVal": "Undeploy",
+          "currentVal": "ہٹائیں",
+          "gtVal": "غیر تعیناتی",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "serverManager.totalPlaytime",
+          "enVal": "Total Playtime",
+          "currentVal": "کل کھیلنے کا وقت",
+          "gtVal": "کل پلے ٹائم",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "serverManager.undeployMod",
+          "enVal": "Undeploy Mod",
+          "currentVal": "ماڈ ہٹائیں",
+          "gtVal": "موڈ کو ختم کریں۔",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "serverManager.undeployLabel",
+          "enVal": "Undeploy",
+          "currentVal": "ہٹائیں",
+          "gtVal": "غیر تعیناتی",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "serverManager.copyTailscaleAddress",
+          "enVal": "Copy Tailscale address",
+          "currentVal": "Tailscale پتہ کاپی کریں",
+          "gtVal": "ٹیل اسکیل ایڈریس کاپی کریں۔",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "serverManager.runNow",
+          "enVal": "Run now",
+          "currentVal": "ابھی چلائیں",
+          "gtVal": "اب دوڑو",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "serverManager.commandPlaceholder",
+          "enVal": "e.g. kick all",
+          "currentVal": "مثال: kick all",
+          "gtVal": "جیسے سب کو مارو",
+          "severity": "REVIEW",
+          "sim": 16
+        },
+        {
+          "key": "serverManager.tailscaleAddress",
+          "enVal": "Your Tailscale Address",
+          "currentVal": "آپ کا Tailscale پتہ",
+          "gtVal": "آپ کا ٹیل اسکیل ایڈریس",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "serverManager.tailscaleGoodToKnow",
+          "enVal": "Good to know",
+          "currentVal": "جاننا مفید ہے",
+          "gtVal": "جان کر اچھا لگا",
+          "severity": "REVIEW",
+          "sim": 25
+        },
+        {
+          "key": "settings.general",
+          "enVal": "General",
+          "currentVal": "عمومی",
+          "gtVal": "جنرل",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "settings.gameLaunching",
+          "enVal": "Game Launching",
+          "currentVal": "گیم لانچنگ",
+          "gtVal": "کھیل شروع",
+          "severity": "REVIEW",
+          "sim": 21
+        },
+        {
+          "key": "settings.modpackExportImport",
+          "enVal": "Modpack Export / Import",
+          "currentVal": "ماڈ پیک ایکسپورٹ / امپورٹ",
+          "gtVal": "Modpack برآمد / درآمد",
+          "severity": "REVIEW",
+          "sim": 18
+        },
+        {
+          "key": "settings.export",
+          "enVal": "Export",
+          "currentVal": "ایکسپورٹ",
+          "gtVal": "برآمد کریں۔",
+          "severity": "REVIEW",
+          "sim": 20
+        },
+        {
+          "key": "settings.exported",
+          "enVal": "Exported!",
+          "currentVal": "ایکسپورٹ ہو گیا!",
+          "gtVal": "برآمد!",
+          "severity": "REVIEW",
+          "sim": 13
+        },
+        {
+          "key": "settings.imageBlur",
+          "enVal": "Image Blur",
+          "currentVal": "تصویر کا دھندلاپن",
+          "gtVal": "امیج بلر",
+          "severity": "REVIEW",
+          "sim": 31
+        },
+        {
+          "key": "settings.borderOpacity",
+          "enVal": "Border Opacity",
+          "currentVal": "بارڈر کی شفافیت",
+          "gtVal": "سرحدی دھندلاپن",
+          "severity": "REVIEW",
+          "sim": 24
+        },
+        {
+          "key": "settings.blurEffectsDesc",
+          "enVal": "Glassmorphism blur on panels and overlays",
+          "currentVal": "پینلز اور اوورلیز پر شیشے جیسا دھندلاپن",
+          "gtVal": "پینلز اور اوورلیز پر Glassmorphism کلنک",
+          "severity": "REVIEW",
+          "sim": 35
+        },
+        {
+          "key": "settings.hiddenItems",
+          "enVal": "Hidden items",
+          "currentVal": "چھپے ہوئے آئٹمز",
+          "gtVal": "پوشیدہ اشیاء",
+          "severity": "REVIEW",
+          "sim": 24
+        },
+        {
+          "key": "settings.cssThickerBorders",
+          "enVal": "Thicker borders",
+          "currentVal": "موٹے بارڈرز",
+          "gtVal": "موٹی سرحدیں",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "settings.cssTextGlow",
+          "enVal": "Text glow effect",
+          "currentVal": "متن چمک اثر",
+          "gtVal": "ٹیکسٹ گلو اثر",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "settings.cssHighContrast",
+          "enVal": "High contrast",
+          "currentVal": "اعلی تضاد",
+          "gtVal": "ہائی کنٹراسٹ",
+          "severity": "REVIEW",
+          "sim": 20
+        },
+        {
+          "key": "settings.cssSaturateBoost",
+          "enVal": "Boost saturation",
+          "currentVal": "رنگت بڑھائیں",
+          "gtVal": "سنترپتی کو فروغ دیں۔",
+          "severity": "REVIEW",
+          "sim": 30
+        },
+        {
+          "key": "settings.cssDesaturate",
+          "enVal": "Desaturate UI",
+          "currentVal": "انٹرفیس کی رنگت کم کریں",
+          "gtVal": "Desaturate UI",
+          "severity": "REVIEW",
+          "sim": 5
+        },
+        {
+          "key": "settings.cssCatLayout",
+          "enVal": "Layout",
+          "currentVal": "ترتیب",
+          "gtVal": "لے آؤٹ",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "settings.cssAccentSelection",
+          "enVal": "Accent text selection",
+          "currentVal": "ایکسنٹ ٹیکسٹ سلیکشن",
+          "gtVal": "لہجے کے متن کا انتخاب",
+          "severity": "REVIEW",
+          "sim": 31
+        },
+        {
+          "key": "setup.connected",
+          "enVal": "Connected",
+          "currentVal": "متصل",
+          "gtVal": "جڑا ہوا",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "career.corrupted",
+          "enVal": "Corrupted",
+          "currentVal": "خراب",
+          "gtVal": "کرپٹ",
+          "severity": "REVIEW",
+          "sim": 14
+        },
+        {
+          "key": "career.money",
+          "enVal": "Money",
+          "currentVal": "رقم",
+          "gtVal": "پیسہ",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "career.beamXP",
+          "enVal": "BeamXP",
+          "currentVal": "BeamXP",
+          "gtVal": "بیم ایکس پی",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "career.undeploy",
+          "enVal": "Undeploy",
+          "currentVal": "واپس لیں",
+          "gtVal": "غیر تعیناتی",
+          "severity": "REVIEW",
+          "sim": 23
+        },
+        {
+          "key": "career.stamina",
+          "enVal": "Stamina",
+          "currentVal": "برداشت",
+          "gtVal": "اسٹیمینا",
+          "severity": "REVIEW",
+          "sim": 9
+        },
+        {
+          "key": "career.mod.saves",
+          "enVal": "Saves",
+          "currentVal": "سیوز",
+          "gtVal": "بچاتا ہے۔",
+          "severity": "REVIEW",
+          "sim": 0
+        },
+        {
+          "key": "career.mod.installFailed",
+          "enVal": "Installation failed",
+          "currentVal": "انسٹالیشن ناکام",
+          "gtVal": "تنصیب ناکام ہو گئی۔",
+          "severity": "REVIEW",
+          "sim": 33
+        },
+        {
+          "key": "gps.heading",
+          "enVal": "Heading",
+          "currentVal": "سمت",
+          "gtVal": "سرخی",
+          "severity": "REVIEW",
+          "sim": 17
+        },
+        {
+          "key": "voiceChat.disabled",
+          "enVal": "Disabled",
+          "currentVal": "غیر فعال",
+          "gtVal": "معذور",
+          "severity": "REVIEW",
+          "sim": 18
+        },
+        {
+          "key": "voiceChat.voiceActivity",
+          "enVal": "Voice Activity",
+          "currentVal": "وائس ایکٹیوٹی",
+          "gtVal": "صوتی سرگرمی",
+          "severity": "REVIEW",
+          "sim": 31
+        },
+        {
+          "key": "voiceChat.pushToTalk",
+          "enVal": "Push to Talk",
+          "currentVal": "پش ٹو ٹاک",
+          "gtVal": "بات کرنے کے لیے پش کریں۔",
+          "severity": "REVIEW",
+          "sim": 31
+        },
+        {
+          "key": "voiceChat.panel.voiceActive",
+          "enVal": "Voice Active",
+          "currentVal": "وائس فعال",
+          "gtVal": "آواز ایکٹو",
+          "severity": "REVIEW",
+          "sim": 23
+        }
+      ]
+    }
+  ]
+}

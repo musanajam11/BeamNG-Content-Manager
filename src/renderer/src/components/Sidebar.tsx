@@ -93,7 +93,7 @@ export function Sidebar(): React.JSX.Element {
         } ${
           active
             ? 'bg-[var(--color-accent-subtle)] text-[var(--color-accent-text-muted)] border border-[var(--color-accent-25)]'
-            : 'text-slate-400 hover:text-white hover:bg-white/8 border border-transparent'
+            : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-hover)] border border-transparent'
         }`}
         title={sidebarCollapsed ? label : undefined}
       >
@@ -107,7 +107,7 @@ export function Sidebar(): React.JSX.Element {
 
   return (
     <aside
-      className="flex flex-col border-r-2 border-[var(--color-border)] transition-all duration-200 bg-black/20 backdrop-blur-sm"
+      className="flex flex-col border-r-2 border-[var(--color-border)] transition-all duration-200 bg-[var(--color-scrim-20)] backdrop-blur-sm"
       style={{ width: sidebarCollapsed ? '52px' : 'var(--sidebar-width)' }}
     >
       <nav className="flex-1 flex flex-col gap-1 p-3 pt-3">
@@ -118,7 +118,7 @@ export function Sidebar(): React.JSX.Element {
         {bottomItems.map(renderItem)}
         <button
           onClick={toggleSidebar}
-          className={`flex items-center gap-3 w-full rounded-xl text-slate-500 hover:text-slate-300 hover:bg-white/5 transition-all duration-150 ${
+          className={`flex items-center gap-3 w-full rounded-xl text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:bg-[var(--color-surface)] transition-all duration-150 ${
             sidebarCollapsed ? 'justify-center px-0 py-2.5' : 'px-3 py-2'
           }`}
           aria-label={sidebarCollapsed ? t('sidebar.expandSidebar') : t('sidebar.collapseSidebar')}

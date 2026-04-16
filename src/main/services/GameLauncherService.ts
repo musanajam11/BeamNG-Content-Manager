@@ -1846,13 +1846,13 @@ export class GameLauncherService {
         const steamArgs = ['-applaunch', '284160', ...args]
         this.log(`Launching via Steam/Proton: ${steamBin} ${steamArgs.join(' ')}`)
         this.gameProcess = spawn(steamBin, steamArgs, {
-          detached: false,
+          detached: process.platform === 'linux',
           stdio: 'ignore'
         })
       } else {
         this.gameProcess = spawn(paths.executable, args, {
           cwd: paths.installDir ?? undefined,
-          detached: false,
+          detached: process.platform === 'linux',
           stdio: 'ignore'
         })
       }
@@ -1952,13 +1952,13 @@ export class GameLauncherService {
         const steamArgs = ['-applaunch', '284160', ...args]
         this.log(`Launching vanilla via Steam/Proton: ${steamBin} ${steamArgs.join(' ')}`)
         this.gameProcess = spawn(steamBin, steamArgs, {
-          detached: false,
+          detached: process.platform === 'linux',
           stdio: 'ignore'
         })
       } else {
         this.gameProcess = spawn(paths.executable, args, {
           cwd: paths.installDir ?? undefined,
-          detached: false,
+          detached: process.platform === 'linux',
           stdio: 'ignore'
         })
       }
@@ -1983,6 +1983,11 @@ export class GameLauncherService {
     }
   }
 
+  /** Public wrapper for findSteamBinary — used by IPC handlers for safe mode launches */
+  findSteamBinaryPublic(): string | null {
+    return this.findSteamBinary()
+  }
+
   /** Locate the Steam binary on Linux/Mac for Proton launches */
   private findSteamBinary(): string | null {
     // Try `which steam` first
@@ -2000,6 +2005,7 @@ export class GameLauncherService {
       join(homedir(), '.local', 'share', 'Steam', 'ubuntu12_32', 'steam'),
       // Flatpak
       '/var/lib/flatpak/exports/bin/com.valvesoftware.Steam',
+      join(homedir(), '.local', 'share', 'flatpak', 'exports', 'bin', 'com.valvesoftware.Steam'),
       // Snap
       '/snap/bin/steam'
     ]
@@ -2024,6 +2030,17 @@ export class GameLauncherService {
         } catch {
           // Fallback to normal kill if taskkill fails
           this.gameProcess.kill()
+        }
+      } else if (pid && process.platform === 'linux') {
+        // On Linux, kill the entire process group so Proton/Wine child
+        // processes (the actual game) are also terminated.
+        try {
+          process.kill(-pid, 'SIGKILL')
+          this.log(`Killed process group for PID ${pid}`)
+        } catch {
+          // Fallback: try normal kill if process group kill fails
+          // (e.g. process is not a group leader)
+          try { this.gameProcess.kill('SIGKILL') } catch { /* already dead */ }
         }
       } else {
         this.gameProcess.kill()

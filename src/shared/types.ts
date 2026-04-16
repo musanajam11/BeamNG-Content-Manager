@@ -1,43 +1,6 @@
 // Shared types used across main and renderer processes
 
-export const DEFAULT_CUSTOM_CSS = `/* [snippet:rounded-scrollbar] */
-/* Chunky rounded scrollbar */
-::-webkit-scrollbar {
-  width: 12px;
-}
-::-webkit-scrollbar-track {
-  background: var(--color-surface);
-  border-radius: 6px;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--color-accent-25);
-  border-radius: 6px;
-  border: 2px solid var(--color-surface);
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-accent);
-}
-/* [/snippet:rounded-scrollbar] */
-
-/* [snippet:smooth-fade] */
-/* Fade-in on page content */
-main > div {
-  animation: fadeIn 0.2s ease-in;
-}
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-/* [/snippet:smooth-fade] */
-
-/* [snippet:accent-selection] */
-/* Custom text selection color */
-::selection {
-  background: var(--color-accent) !important;
-  color: white !important;
-}
-/* [/snippet:accent-selection] */
-`
+export const DEFAULT_CUSTOM_CSS = ''
 
 export interface GamePaths {
   installDir: string | null
@@ -49,6 +12,8 @@ export interface GamePaths {
 }
 
 export interface AppearanceSettings {
+  /** Color mode: 'dark', 'light', or 'system' (follows OS preference) */
+  colorMode: 'dark' | 'light' | 'system'
   /** Accent color hex (e.g. '#f97316') */
   accentColor: string
   /** UI scale factor: 0.75 – 1.5 */
@@ -83,10 +48,43 @@ export interface AppearanceSettings {
   sidebarOrder: AppPage[]
   /** Sidebar items the user has explicitly hidden */
   sidebarHidden: AppPage[]
-  /** Custom CSS injected into the app at runtime */
+  /** Custom CSS injected into the app at runtime (legacy — kept for backward compat) */
   customCSS: string
-  /** Whether custom CSS is currently active */
+  /** Whether custom CSS is currently active (legacy) */
   customCSSEnabled: boolean
+
+  // ── Visual Customization (replaces raw CSS snippets) ──
+
+  /** Corner radius in px: 0 (square), 8, 12, 16, 24 */
+  cornerRadius: number
+  /** Button size preset */
+  buttonSize: 'default' | 'comfortable' | 'large'
+  /** Font family preset */
+  fontFamily: 'system' | 'monospace' | 'serif'
+  /** Scrollbar visual style */
+  scrollbarStyle: 'default' | 'thin-accent' | 'hidden' | 'rounded'
+  /** Global animation/transition speed */
+  animationSpeed: 'none' | 'normal' | 'slow'
+  /** Full-screen overlay effect */
+  overlayEffect: 'none' | 'scanlines' | 'vignette' | 'noise'
+  /** Border style override */
+  borderStyle: 'normal' | 'none' | 'thick' | 'accent'
+  /** Smooth fade-in on page transitions */
+  effectPageFade: boolean
+  /** Extra frosted glass on scrim panels */
+  effectFrostedGlass: boolean
+  /** Accent-colored text selection */
+  effectAccentSelection: boolean
+  /** Accent glow on card/surface hover */
+  effectHoverGlow: boolean
+  /** Cards lift slightly on hover */
+  effectHoverLift: boolean
+  /** Brightness post-filter: 0.7 – 1.3, default 1.0 */
+  filterBrightness: number
+  /** Contrast post-filter: 0.7 – 1.5, default 1.0 */
+  filterContrast: number
+  /** Saturation post-filter: 0.0 – 2.0, default 1.0 */
+  filterSaturation: number
 }
 
 export interface AppConfig {

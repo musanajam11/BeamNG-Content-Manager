@@ -333,7 +333,7 @@ export function VehiclesPage(): React.JSX.Element {
               onClick={() => setFilterType(ft)}
               className={`px-4 py-2 text-xs transition-colors ${
                 filterType === ft
-                  ? 'bg-[var(--color-accent)] text-white'
+                  ? 'bg-[var(--color-accent)] text-[var(--color-text-primary)]'
                   : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'
               }`}
             >
@@ -377,7 +377,7 @@ export function VehiclesPage(): React.JSX.Element {
                   onClick={() => openVehicle(v.name)}
                   className="group flex flex-col bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-accent)] transition-colors cursor-pointer text-left"
                 >
-                  <div className="relative w-full aspect-[4/3] bg-black/30 overflow-hidden">
+                  <div className="relative w-full aspect-[4/3] bg-[var(--color-scrim-30)] overflow-hidden">
                     {previews[v.name] ? (
                       <img src={previews[v.name]} alt={v.displayName} className="w-full h-full object-cover" />
                     ) : (
@@ -386,7 +386,7 @@ export function VehiclesPage(): React.JSX.Element {
                       </div>
                     )}
                     {v.configCount > 0 && (
-                      <span className="absolute top-1 right-1 px-1.5 py-0.5 text-[10px] bg-black/60 text-[var(--color-text-secondary)]">
+                      <span className="absolute top-1 right-1 px-1.5 py-0.5 text-[10px] bg-[var(--color-scrim-60)] text-[var(--color-text-secondary)]">
                         {v.configCount}
                       </span>
                     )}
@@ -477,7 +477,7 @@ export function VehiclesPage(): React.JSX.Element {
               <div className="flex items-center gap-1">
                 <button
                   onClick={handleCreateNew}
-                  className="px-1.5 py-0.5 text-[10px] bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)]"
+                  className="px-1.5 py-0.5 text-[10px] bg-[var(--color-accent)] text-[var(--color-text-primary)] hover:bg-[var(--color-accent-hover)]"
                   title={t('vehicles.createNewConfig')}
                 >
                   {t('vehicles.newConfig')}
@@ -506,7 +506,7 @@ export function VehiclesPage(): React.JSX.Element {
                 <button
                   onClick={handleSaveAs}
                   disabled={savingConfig || !saveAsName.trim()}
-                  className="px-2 py-1 text-xs bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
+                  className="px-2 py-1 text-xs bg-[var(--color-accent)] text-[var(--color-text-primary)] hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
                 >
                   {savingConfig ? <Loader2 size={12} className="animate-spin" /> : t('common.save')}
                 </button>
@@ -578,7 +578,7 @@ export function VehiclesPage(): React.JSX.Element {
     return (
       <div className="p-4 space-y-4">
         {/* Preview / 3D toggle */}
-        <div className="relative w-full aspect-[16/9] bg-black/30 overflow-hidden border border-[var(--color-border)]">
+        <div className="relative w-full aspect-[16/9] bg-[var(--color-scrim-30)] overflow-hidden border border-[var(--color-border)]">
           {show3D && selectedVehicle ? (
             <VehicleViewer vehicleName={selectedVehicle} parts={configData?.parts} paints={configData?.paints as PaintData[] | undefined} className="w-full h-full" />
           ) : configPreview ? (
@@ -596,7 +596,7 @@ export function VehiclesPage(): React.JSX.Element {
             className={`absolute top-2 right-2 p-1.5 border text-xs z-20 ${
               show3D
                 ? 'bg-[var(--color-accent)] border-[var(--color-accent)] text-black'
-                : 'bg-black/60 border-[var(--color-border)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent)]'
+                : 'bg-[var(--color-scrim-60)] border-[var(--color-border)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent)]'
             }`}
             title={show3D ? t('vehicles.showPreview') : t('vehicles.show3DModel')}
           >
@@ -752,7 +752,7 @@ export function VehiclesPage(): React.JSX.Element {
           <button
             onClick={handleSaveEdited}
             disabled={savingConfig || !editName.trim()}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-[var(--color-accent)] text-[var(--color-text-primary)] hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
           >
             {savingConfig ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
             {t('common.save')}
@@ -891,7 +891,7 @@ export function VehiclesPage(): React.JSX.Element {
                   }
                 }}
                 disabled={!newPartKey.trim()}
-                className="px-2 py-0.5 text-[10px] bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
+                className="px-2 py-0.5 text-[10px] bg-[var(--color-accent)] text-[var(--color-text-primary)] hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
               >
                 Add
               </button>

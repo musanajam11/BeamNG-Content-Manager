@@ -207,7 +207,7 @@ export function SchedulePanel({ serverId }: SchedulePanelProps): React.JSX.Eleme
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-sm text-[var(--color-text-primary)] truncate">{task.label}</span>
-                        {!task.enabled && <span className="text-[10px] px-1.5 py-0.5 bg-zinc-700 text-zinc-400 rounded">{t('serverManager.paused')}</span>}
+                        {!task.enabled && <span className="text-[10px] px-1.5 py-0.5 bg-[var(--color-scrim-30)] text-[var(--color-text-secondary)] rounded">{t('serverManager.paused')}</span>}
                       </div>
                       <div className="text-[11px] text-[var(--color-text-muted)]">
                         {task.frequency}{task.frequency !== 'hourly' && task.frequency !== 'once' ? ` at ${task.timeOfDay}` : ''}
@@ -218,9 +218,9 @@ export function SchedulePanel({ serverId }: SchedulePanelProps): React.JSX.Eleme
                     <button
                       onClick={() => handleSaveTask({ ...task, enabled: !task.enabled })}
                       title={task.enabled ? t('serverManager.disable') : t('serverManager.enable')}
-                      className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${task.enabled ? 'bg-[var(--color-accent)]' : 'bg-zinc-600'}`}
+                      className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${task.enabled ? 'bg-[var(--color-accent)]' : 'bg-[var(--color-surface-active)]'}`}
                     >
-                      <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform ${task.enabled ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+                      <span className={`inline-block h-2.5 w-2.5 transform rounded-full bg-[var(--color-text-primary)] transition-transform ${task.enabled ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
                     </button>
                     <button onClick={() => handleRunTask(task.id)} disabled={runningTask === task.id} title={t('serverManager.runNow')} className="p-1.5 rounded text-[var(--color-text-muted)] hover:text-green-400 hover:bg-green-400/10 transition-colors disabled:opacity-50">
                       {runningTask === task.id ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
@@ -438,7 +438,7 @@ function TaskForm({ task, onSave, onCancel }: TaskFormProps): React.JSX.Element 
         </button>
         <button
           onClick={submit}
-          className="px-3 py-1.5 text-xs bg-[var(--color-accent)] text-white rounded-md hover:bg-[var(--color-accent)]/80 transition-colors"
+          className="px-3 py-1.5 text-xs bg-[var(--color-accent)] text-[var(--color-text-primary)] rounded-md hover:bg-[var(--color-accent)]/80 transition-colors"
         >
           {task ? t('common.save') : t('serverManager.create')}
         </button>

@@ -95,7 +95,8 @@ export default function HeatMapScene({
 
     // Scene
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color(0x0e0e14)
+    const baseBg = getComputedStyle(document.documentElement).getPropertyValue('--color-base').trim() || '#0e0e14'
+    scene.background = new THREE.Color(baseBg)
     sceneRef.current = scene
 
     // Camera — nearly top-down to match the in-game map view

@@ -117,14 +117,14 @@ export function PropertiesPanel({ canvasRef }: PropertiesPanelProps): React.JSX.
   return (
     <div className="flex flex-col h-full overflow-y-auto">
       {/* Header */}
-      <div className="px-3 py-2 border-b border-white/10 shrink-0">
-        <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Properties</span>
+      <div className="px-3 py-2 border-b border-[var(--color-border)] shrink-0">
+        <span className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">Properties</span>
       </div>
 
       {selected ? (
         <div className="flex flex-col gap-3 p-3">
           {/* Selection info */}
-          <div className="text-[10px] text-slate-500">
+          <div className="text-[10px] text-[var(--color-text-muted)]">
             {selCount > 1 ? `${selCount} objects selected` : (selected.type ?? 'Object')}
           </div>
 
@@ -158,13 +158,13 @@ export function PropertiesPanel({ canvasRef }: PropertiesPanelProps): React.JSX.
           {/* Text-specific props */}
           {isText && (
             <>
-              <div className="border-t border-white/10 pt-2">
-                <span className="text-[10px] text-slate-500 uppercase tracking-wider">Text</span>
+              <div className="border-t border-[var(--color-border)] pt-2">
+                <span className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wider">Text</span>
               </div>
               <select
                 value={selected.fontFamily || fontFamily}
                 onChange={(e) => { setProp('fontFamily', e.target.value); setFontFamily(e.target.value) }}
-                className="px-2 py-1 text-xs rounded bg-black/30 border border-white/10 text-white focus:border-[var(--color-accent)] focus:outline-none"
+                className="px-2 py-1 text-xs rounded bg-[var(--color-scrim-30)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:border-[var(--color-accent)] focus:outline-none"
               >
                 {FONT_FAMILIES.map((f) => (
                   <option key={f} value={f}>{f}</option>
@@ -178,13 +178,13 @@ export function PropertiesPanel({ canvasRef }: PropertiesPanelProps): React.JSX.
               <div className="flex gap-1">
                 <button
                   onClick={() => setProp('fontWeight', selected.fontWeight === 'bold' ? 'normal' : 'bold')}
-                  className={`px-2 py-1 text-xs rounded border ${selected.fontWeight === 'bold' ? 'bg-[var(--color-accent)]/20 border-[var(--color-accent)]/30 text-white' : 'border-white/10 text-slate-400'}`}
+                  className={`px-2 py-1 text-xs rounded border ${selected.fontWeight === 'bold' ? 'bg-[var(--color-accent)]/20 border-[var(--color-accent)]/30 text-[var(--color-text-primary)]' : 'border-[var(--color-border)] text-[var(--color-text-secondary)]'}`}
                 >
                   <strong>B</strong>
                 </button>
                 <button
                   onClick={() => setProp('fontStyle', selected.fontStyle === 'italic' ? 'normal' : 'italic')}
-                  className={`px-2 py-1 text-xs rounded border ${selected.fontStyle === 'italic' ? 'bg-[var(--color-accent)]/20 border-[var(--color-accent)]/30 text-white' : 'border-white/10 text-slate-400'}`}
+                  className={`px-2 py-1 text-xs rounded border ${selected.fontStyle === 'italic' ? 'bg-[var(--color-accent)]/20 border-[var(--color-accent)]/30 text-[var(--color-text-primary)]' : 'border-[var(--color-border)] text-[var(--color-text-secondary)]'}`}
                 >
                   <em>I</em>
                 </button>
@@ -196,7 +196,7 @@ export function PropertiesPanel({ canvasRef }: PropertiesPanelProps): React.JSX.
         <div className="p-3">
           {/* Default tool properties when nothing selected */}
           <div className="flex flex-col gap-3">
-            <div className="text-[10px] text-slate-500">No selection — default properties</div>
+            <div className="text-[10px] text-[var(--color-text-muted)]">No selection — default properties</div>
             <ColorPicker label="Fill Color" color={fillColor} onChange={setFillColor} />
             <ColorPicker label="Stroke Color" color={strokeColor} onChange={setStrokeColor} />
             <PropInput label="Stroke Width" value={strokeWidth} onChange={setStrokeWidth} />
@@ -204,7 +204,7 @@ export function PropertiesPanel({ canvasRef }: PropertiesPanelProps): React.JSX.
             <select
               value={fontFamily}
               onChange={(e) => setFontFamily(e.target.value)}
-              className="px-2 py-1 text-xs rounded bg-black/30 border border-white/10 text-white focus:border-[var(--color-accent)] focus:outline-none"
+              className="px-2 py-1 text-xs rounded bg-[var(--color-scrim-30)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:border-[var(--color-accent)] focus:outline-none"
             >
               {FONT_FAMILIES.map((f) => (
                 <option key={f} value={f}>{f}</option>
@@ -224,15 +224,15 @@ function PropInput({
 }): React.JSX.Element {
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="text-[10px] text-slate-500">{label}</span>
+      <span className="text-[10px] text-[var(--color-text-muted)]">{label}</span>
       <div className="flex items-center">
         <input
           type="number"
           value={value}
           onChange={(e) => onChange(Number(e.target.value))}
-          className="w-full px-1.5 py-1 text-xs bg-black/30 border border-white/10 rounded text-white focus:border-[var(--color-accent)] focus:outline-none"
+          className="w-full px-1.5 py-1 text-xs bg-[var(--color-scrim-30)] border border-[var(--color-border)] rounded text-[var(--color-text-primary)] focus:border-[var(--color-accent)] focus:outline-none"
         />
-        {suffix && <span className="text-[10px] text-slate-500 ml-1">{suffix}</span>}
+        {suffix && <span className="text-[10px] text-[var(--color-text-muted)] ml-1">{suffix}</span>}
       </div>
     </div>
   )

@@ -342,7 +342,7 @@ export function BeamMPNameEditor({ value, onChange, error }: BeamMPNameEditorPro
   const prevent = (e: React.MouseEvent): void => e.preventDefault()
 
   const btnCls = (on?: boolean): string =>
-    `p-1.5 rounded transition-colors ${on ? 'bg-white/15 text-white' : 'text-slate-400 hover:bg-white/10 hover:text-white'}`
+    `p-1.5 rounded transition-colors ${on ? 'bg-[var(--color-surface-active)] text-[var(--color-text-primary)]' : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-active)] hover:text-[var(--color-text-primary)]'}`
 
   /* ── render ──────────────────────────────────────────────────── */
 
@@ -351,7 +351,7 @@ export function BeamMPNameEditor({ value, onChange, error }: BeamMPNameEditorPro
       <span className="text-xs text-[var(--color-text-muted)]">{t('serverManager.serverName')}</span>
 
       {/* ── toolbar ── */}
-      <div className="flex items-center gap-0.5 px-1 py-0.5 border border-[var(--color-border)] border-b-0 rounded-t bg-white/[0.03]">
+      <div className="flex items-center gap-0.5 px-1 py-0.5 border border-[var(--color-border)] border-b-0 rounded-t bg-[var(--color-surface)]">
         <button type="button" onMouseDown={prevent} onClick={() => toggleStyle('bold')} title={t('serverManager.bold')} className={btnCls()}>
           <Bold size={13} />
         </button>
@@ -368,7 +368,7 @@ export function BeamMPNameEditor({ value, onChange, error }: BeamMPNameEditorPro
           <Eraser size={13} />
         </button>
 
-        <div className="w-px h-4 bg-white/10 mx-1" />
+        <div className="w-px h-4 bg-[var(--color-surface-active)] mx-1" />
 
         {/* colour picker */}
         <div className="relative">
@@ -391,7 +391,7 @@ export function BeamMPNameEditor({ value, onChange, error }: BeamMPNameEditorPro
                     onMouseDown={prevent}
                     onClick={() => applyColor(code)}
                     title={`${label} (^${code})`}
-                    className="w-5 h-5 rounded border border-white/20 hover:scale-125 transition-transform"
+                    className="w-5 h-5 rounded border border-[var(--color-border-hover)] hover:scale-125 transition-transform"
                     style={{ backgroundColor: hex }}
                   />
                 ))}
@@ -400,7 +400,7 @@ export function BeamMPNameEditor({ value, onChange, error }: BeamMPNameEditorPro
           )}
         </div>
 
-        <div className="w-px h-4 bg-white/10 mx-1" />
+        <div className="w-px h-4 bg-[var(--color-surface-active)] mx-1" />
 
         <button
           type="button"
@@ -446,13 +446,13 @@ export function BeamMPNameEditor({ value, onChange, error }: BeamMPNameEditorPro
       {/* ── previews ── */}
       {value && (
         <div className="mt-1 space-y-1 min-w-0">
-          <div className="px-2 py-1.5 rounded border border-white/8 bg-black/20 flex items-center gap-2 min-w-0 overflow-hidden">
-            <span className="text-[10px] text-slate-500 shrink-0">Preview:</span>
+          <div className="px-2 py-1.5 rounded border border-[var(--color-border)] bg-[var(--color-scrim-20)] flex items-center gap-2 min-w-0 overflow-hidden">
+            <span className="text-[10px] text-[var(--color-text-muted)] shrink-0">Preview:</span>
             <BeamMPText text={value} className="text-sm truncate block min-w-0" />
           </div>
-          <div className="px-2 py-1 rounded border border-white/8 bg-black/20 overflow-x-auto">
-            <span className="text-[10px] text-slate-500 mr-2">Raw:</span>
-            <code className="text-[11px] text-slate-400 font-mono break-all select-all">{value}</code>
+          <div className="px-2 py-1 rounded border border-[var(--color-border)] bg-[var(--color-scrim-20)] overflow-x-auto">
+            <span className="text-[10px] text-[var(--color-text-muted)] mr-2">Raw:</span>
+            <code className="text-[11px] text-[var(--color-text-secondary)] font-mono break-all select-all">{value}</code>
           </div>
         </div>
       )}

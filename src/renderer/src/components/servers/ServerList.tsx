@@ -21,7 +21,7 @@ export function ServerList({
 
   if (servers.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-slate-500 text-sm">
+      <div className="flex items-center justify-center h-full text-[var(--color-text-muted)] text-sm">
         {t('servers.noServersFound')}
       </div>
     )
@@ -32,12 +32,12 @@ export function ServerList({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-white/8 px-5 py-3">
+      <div className="flex items-center justify-between border-b border-[var(--color-border)] px-5 py-3">
         <div>
-          <div className="text-sm font-semibold text-white">{t('servers.activeServerList')}</div>
-          <div className="text-[11px] text-slate-400">{t('servers.selectServerPrompt')}</div>
+          <div className="text-sm font-semibold text-[var(--color-text-primary)]">{t('servers.activeServerList')}</div>
+          <div className="text-[11px] text-[var(--color-text-secondary)]">{t('servers.selectServerPrompt')}</div>
         </div>
-        <span className="inline-flex items-center rounded-full border border-white/8 bg-white/5 px-3 py-1 text-[11px] font-medium text-slate-300">
+        <span className="inline-flex items-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1 text-[11px] font-medium text-[var(--color-text-secondary)]">
           {t('servers.results', { count: servers.length })}
         </span>
       </div>

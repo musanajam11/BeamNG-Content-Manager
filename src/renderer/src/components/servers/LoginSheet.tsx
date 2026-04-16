@@ -39,14 +39,14 @@ export function LoginSheet({ onClose, onSuccess }: Props): React.JSX.Element {
   }
 
   return (
-    <div className="rounded-2xl border border-white/8 bg-black/20 p-3">
+    <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-scrim-20)] p-3">
       <div className="flex items-center gap-2">
         <input
           type="text"
           value={loginUser}
           onChange={(e) => setLoginUser(e.target.value)}
           placeholder={t('servers.username')}
-          className="flex-1 rounded-xl border border-white/8 bg-white/5 px-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-[var(--color-accent-40)]"
+          className="flex-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent-40)]"
         />
         <input
           type="password"
@@ -54,18 +54,18 @@ export function LoginSheet({ onClose, onSuccess }: Props): React.JSX.Element {
           onChange={(e) => setLoginPass(e.target.value)}
           placeholder={t('servers.password')}
           onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-          className="flex-1 rounded-xl border border-white/8 bg-white/5 px-3 py-1.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-[var(--color-accent-40)]"
+          className="flex-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent-40)]"
         />
         <button
           onClick={handleLogin}
           disabled={loading}
-          className="rounded-xl bg-[var(--color-accent)] px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-40"
+          className="rounded-xl bg-[var(--color-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--color-text-primary)] hover:opacity-90 disabled:opacity-40"
         >
           {loading ? '...' : t('servers.login')}
         </button>
         <button
           onClick={handleGuest}
-          className="rounded-xl border border-white/8 bg-white/5 px-3 py-1.5 text-xs text-slate-300 hover:bg-white/10"
+          className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-active)]"
         >
           {t('common.guest')}
         </button>

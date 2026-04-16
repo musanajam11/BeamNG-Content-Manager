@@ -279,7 +279,7 @@ export function ControlsPage(): React.JSX.Element {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t('controls.searchBindings')}
-                className="w-52 pl-8 pr-3 py-1.5 text-xs bg-black/20 border border-[var(--color-border)] rounded-md text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)]/50"
+                className="w-52 pl-8 pr-3 py-1.5 text-xs bg-[var(--color-scrim-20)] border border-[var(--color-border)] rounded-md text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)]/50"
               />
             </div>
           )}
@@ -395,7 +395,7 @@ export function ControlsPage(): React.JSX.Element {
       {/* Reset confirmation dialog */}
       {showResetConfirm && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--color-scrim-60)] backdrop-blur-sm"
           onClick={() => setShowResetConfirm(false)}
         >
           <div
@@ -414,7 +414,7 @@ export function ControlsPage(): React.JSX.Element {
               </button>
               <button
                 onClick={handleReset}
-                className="px-3 py-1.5 text-xs text-white bg-red-500 rounded-md hover:bg-red-600 transition-colors"
+                className="px-3 py-1.5 text-xs text-[var(--color-text-primary)] bg-red-500 rounded-md hover:bg-red-600 transition-colors"
               >
                 {t('controls.resetDevice')}
               </button>

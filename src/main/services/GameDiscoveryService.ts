@@ -30,8 +30,13 @@ const COMMON_STEAM_PATHS_LINUX = [
   join(homedir(), '.steam', 'steam'),
   join(homedir(), '.steam', 'debian-installation'),
   join(homedir(), '.local', 'share', 'Steam'),
+  // Steam Deck: Flatpak Steam stores data under XDG_DATA_HOME
+  join(process.env.XDG_DATA_HOME || join(homedir(), '.local', 'share'), 'Steam'),
   '/usr/share/steam',
-  '/usr/local/share/steam'
+  '/usr/local/share/steam',
+  // Flatpak Steam (non-Deck distros)
+  join(homedir(), '.var', 'app', 'com.valvesoftware.Steam', '.steam', 'steam'),
+  join(homedir(), '.var', 'app', 'com.valvesoftware.Steam', 'data', 'Steam')
 ]
 
 const COMMON_STEAM_PATHS_MAC = [

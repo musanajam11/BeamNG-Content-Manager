@@ -186,15 +186,15 @@ export function DirectConnectDialog({ open, joining, onClose, onConnect }: Props
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-[var(--color-scrim-60)] backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative w-full max-w-md rounded-[28px] border border-white/8 bg-[#1a1a1e]/95 backdrop-blur-xl shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-md rounded-[28px] border border-[var(--color-border)] bg-[var(--color-base)] backdrop-blur-xl shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/8">
-          <h2 className="text-sm font-semibold text-white">{t('servers.directConnectTitle')}</h2>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">{t('servers.directConnectTitle')}</h2>
           <button
             onClick={onClose}
-            className="rounded-xl border border-white/8 bg-white/5 p-2 text-slate-400 transition hover:text-white hover:bg-white/10"
+            className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-2 text-[var(--color-text-secondary)] transition hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-active)]"
           >
             <X size={14} />
           </button>
@@ -203,7 +203,7 @@ export function DirectConnectDialog({ open, joining, onClose, onConnect }: Props
         {/* Body */}
         <div className="space-y-3 px-6 py-5">
           <div className="space-y-1.5">
-            <label className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">
+            <label className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--color-text-secondary)]">
               {t('servers.serverAddress')}
             </label>
             <input
@@ -213,12 +213,12 @@ export function DirectConnectDialog({ open, joining, onClose, onConnect }: Props
               onKeyDown={(e) => e.key === 'Enter' && handleConnect()}
               placeholder="127.0.0.1:30814"
               autoFocus
-              className="w-full rounded-2xl border border-white/8 bg-white/5 px-4 py-2.5 text-sm font-mono text-white placeholder:text-slate-500 focus:outline-none focus:border-[var(--color-accent-40)]"
+              className="w-full rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2.5 text-sm font-mono text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent-40)]"
             />
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">
+            <label className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--color-text-secondary)]">
               {t('servers.label')} <span className="normal-case font-normal opacity-60">({t('servers.labelOptional')})</span>
             </label>
             <input
@@ -226,7 +226,7 @@ export function DirectConnectDialog({ open, joining, onClose, onConnect }: Props
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               placeholder="My Server"
-              className="w-full rounded-2xl border border-white/8 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-[var(--color-accent-40)]"
+              className="w-full rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2.5 text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent-40)]"
             />
           </div>
 
@@ -238,7 +238,7 @@ export function DirectConnectDialog({ open, joining, onClose, onConnect }: Props
             <button
               onClick={() => handleConnect()}
               disabled={joining || !address.trim()}
-              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[var(--color-accent)] px-4 py-2.5 text-sm font-semibold text-white accent-shadow transition hover:opacity-95 disabled:opacity-40"
+              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[var(--color-accent)] px-4 py-2.5 text-sm font-semibold text-[var(--color-text-primary)] accent-shadow transition hover:opacity-95 disabled:opacity-40"
             >
               <Play size={14} fill="currentColor" />
               {joining ? t('servers.connecting') : t('servers.connect')}
@@ -246,7 +246,7 @@ export function DirectConnectDialog({ open, joining, onClose, onConnect }: Props
             <button
               onClick={handleSave}
               disabled={!address.trim()}
-              className="flex items-center gap-1.5 rounded-2xl border border-white/8 bg-white/5 px-4 py-2.5 text-sm text-slate-300 transition hover:bg-white/10 disabled:opacity-30"
+              className="flex items-center gap-1.5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2.5 text-sm text-[var(--color-text-secondary)] transition hover:bg-[var(--color-surface-active)] disabled:opacity-30"
               title={t('servers.saveToFavorites')}
             >
               <Star size={14} />
@@ -257,10 +257,10 @@ export function DirectConnectDialog({ open, joining, onClose, onConnect }: Props
 
         {/* Saved servers */}
         {(favorites.length > 0 || recents.length > 0) && (
-          <div className="border-t border-white/8">
+          <div className="border-t border-[var(--color-border)]">
             {favorites.length > 0 && (
               <div className="px-6 py-3">
-                <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">
+                <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--color-text-secondary)]">
                   {t('servers.savedServers')}
                 </h3>
                 <div className="space-y-0.5">
@@ -280,8 +280,8 @@ export function DirectConnectDialog({ open, joining, onClose, onConnect }: Props
             )}
 
             {recents.length > 0 && (
-              <div className="border-t border-white/8 px-6 py-3">
-                <h3 className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">
+              <div className="border-t border-[var(--color-border)] px-6 py-3">
+                <h3 className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--color-text-secondary)]">
                   <Clock size={10} /> {t('servers.recent')}
                 </h3>
                 <div className="space-y-0.5">
@@ -323,13 +323,13 @@ function SavedServerRow({
 }): React.JSX.Element {
   const { t } = useTranslation()
   return (
-    <div className="group flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-white/5">
+    <div className="group flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-[var(--color-surface)]">
       <button
         onClick={onToggleFavorite}
         className={`flex-shrink-0 p-0.5 ${
           server.favorite
             ? 'text-yellow-300'
-            : 'text-slate-500 hover:text-yellow-300/70'
+            : 'text-[var(--color-text-muted)] hover:text-yellow-300/70'
         }`}
       >
         <Star size={12} fill={server.favorite ? 'currentColor' : 'none'} />
@@ -338,7 +338,7 @@ function SavedServerRow({
       {/* Online/offline indicator */}
       <div className="flex-shrink-0" title={probe ? (probe.online ? t('servers.online') : t('servers.offline')) : t('servers.checking')}>
         {!probe ? (
-          <div className="h-2 w-2 rounded-full bg-slate-500 animate-pulse" />
+          <div className="h-2 w-2 rounded-full bg-[var(--color-text-muted)] animate-pulse" />
         ) : probe.online ? (
           <div className="h-2 w-2 rounded-full bg-emerald-400" />
         ) : (
@@ -353,20 +353,20 @@ function SavedServerRow({
       >
         <div className="flex items-center gap-2">
           {(probe?.online && probe.sname) ? (
-            <span className="truncate text-xs font-medium text-white">
+            <span className="truncate text-xs font-medium text-[var(--color-text-primary)]">
               <BeamMPText text={probe.sname} />
             </span>
           ) : server.label ? (
-            <span className="truncate text-xs font-medium text-white">
+            <span className="truncate text-xs font-medium text-[var(--color-text-primary)]">
               {server.label}
             </span>
           ) : null}
-          <span className="truncate font-mono text-[11px] text-slate-400">
+          <span className="truncate font-mono text-[11px] text-[var(--color-text-secondary)]">
             {server.address}
           </span>
         </div>
         {probe?.online && (
-          <div className="flex items-center gap-3 mt-0.5 text-[10px] text-slate-500">
+          <div className="flex items-center gap-3 mt-0.5 text-[10px] text-[var(--color-text-muted)]">
             {probe.players && <span className="inline-flex items-center gap-0.5"><Users size={9} /> {probe.players}/{probe.maxplayers}</span>}
             {probe.map && <span className="inline-flex items-center gap-0.5"><MapPin size={9} /> {probe.map.split('/').pop()}</span>}
           </div>
@@ -378,7 +378,7 @@ function SavedServerRow({
 
       <button
         onClick={onRemove}
-        className="flex-shrink-0 rounded p-1 text-slate-500 opacity-0 transition group-hover:opacity-100 hover:text-rose-400"
+        className="flex-shrink-0 rounded p-1 text-[var(--color-text-muted)] opacity-0 transition group-hover:opacity-100 hover:text-rose-400"
       >
         <Trash2 size={11} />
       </button>

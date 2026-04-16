@@ -24,21 +24,21 @@ export function Titlebar(): React.JSX.Element {
       <div className="titlebar-no-drag flex h-full">
         <button
           onClick={() => window.api.minimizeWindow()}
-          className="flex items-center justify-center w-12 h-full hover:bg-white/8 text-slate-400 hover:text-white rounded-none"
+          className="flex items-center justify-center w-12 h-full hover:bg-[var(--color-surface-hover)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] rounded-none"
           aria-label={t('titlebar.minimize')}
         >
           <Minus size={14} />
         </button>
         <button
           onClick={() => window.api.maximizeWindow()}
-          className="flex items-center justify-center w-12 h-full hover:bg-white/8 text-slate-400 hover:text-white rounded-none"
+          className="flex items-center justify-center w-12 h-full hover:bg-[var(--color-surface-hover)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] rounded-none"
           aria-label={maximized ? t('titlebar.restore') : t('titlebar.maximize')}
         >
           {maximized ? <Copy size={11} /> : <Square size={11} />}
         </button>
         <button
           onClick={() => window.api.closeWindow()}
-          className="flex items-center justify-center w-12 h-full hover:bg-rose-500/80 text-slate-400 hover:text-white rounded-none"
+          className="flex items-center justify-center w-12 h-full hover:bg-rose-500/80 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] rounded-none"
           aria-label={t('titlebar.close')}
         >
           <X size={14} />

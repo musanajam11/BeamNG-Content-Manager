@@ -48,9 +48,9 @@ export function Toolbar({
   const setBrushSettings = useLiveryStore((s) => s.setBrushSettings)
 
   return (
-    <div className="flex items-center gap-1 px-2 py-1.5 border-b border-white/10 bg-[var(--color-surface)]/80 shrink-0">
+    <div className="flex items-center gap-1 px-2 py-1.5 border-b border-[var(--color-border)] bg-[var(--color-surface)]/80 shrink-0">
       {/* File operations */}
-      <div className="flex items-center gap-0.5 pr-2 border-r border-white/10">
+      <div className="flex items-center gap-0.5 pr-2 border-r border-[var(--color-border)]">
         <ToolButton icon={Save} label="Save Project (Ctrl+S)" onClick={onSave} />
         <ToolButton icon={FolderOpen} label="Open Project" onClick={onLoad} />
         <ToolButton icon={Download} label="Export Skin Mod (Ctrl+E)" onClick={onExport} />
@@ -58,13 +58,13 @@ export function Toolbar({
       </div>
 
       {/* Undo/Redo */}
-      <div className="flex items-center gap-0.5 pr-2 border-r border-white/10">
+      <div className="flex items-center gap-0.5 pr-2 border-r border-[var(--color-border)]">
         <ToolButton icon={Undo2} label="Undo (Ctrl+Z)" onClick={onUndo} disabled={!canUndo} />
         <ToolButton icon={Redo2} label="Redo (Ctrl+Shift+Z)" onClick={onRedo} disabled={!canRedo} />
       </div>
 
       {/* Drawing tools */}
-      <div className="flex items-center gap-0.5 pr-2 border-r border-white/10">
+      <div className="flex items-center gap-0.5 pr-2 border-r border-[var(--color-border)]">
         {TOOLS.map((tool) => (
           <ToolButton
             key={tool.id}
@@ -78,7 +78,7 @@ export function Toolbar({
 
       {/* Shape sub-tools */}
       {activeTool === 'shape' && (
-        <div className="flex items-center gap-0.5 pr-2 border-r border-white/10">
+        <div className="flex items-center gap-0.5 pr-2 border-r border-[var(--color-border)]">
           {SHAPES.map((shape) => (
             <ToolButton
               key={shape.id}
@@ -94,16 +94,16 @@ export function Toolbar({
 
       {/* Brush size (when draw or eraser active) */}
       {(activeTool === 'draw' || activeTool === 'eraser') && (
-        <div className="flex items-center gap-1.5 px-2 border-r border-white/10">
-          <span className="text-[10px] text-slate-500">Size</span>
+        <div className="flex items-center gap-1.5 px-2 border-r border-[var(--color-border)]">
+          <span className="text-[10px] text-[var(--color-text-muted)]">Size</span>
           <input
             type="range"
             min={1} max={100}
             value={brushSettings.size}
             onChange={(e) => setBrushSettings({ size: Number(e.target.value) })}
-            className="w-20 h-1.5 rounded-full appearance-none cursor-pointer bg-white/10"
+            className="w-20 h-1.5 rounded-full appearance-none cursor-pointer bg-[var(--color-surface-active)]"
           />
-          <span className="text-[10px] text-white w-5 text-right">{brushSettings.size}</span>
+          <span className="text-[10px] text-[var(--color-text-primary)] w-5 text-right">{brushSettings.size}</span>
         </div>
       )}
 
@@ -113,11 +113,11 @@ export function Toolbar({
       {/* Zoom controls */}
       <div className="flex items-center gap-1">
         <ToolButton icon={ZoomOut} label="Zoom Out" onClick={() => setZoom(zoom / 1.2)} />
-        <span className="text-[10px] text-slate-400 w-10 text-center">{Math.round(zoom * 100)}%</span>
+        <span className="text-[10px] text-[var(--color-text-secondary)] w-10 text-center">{Math.round(zoom * 100)}%</span>
         <ToolButton icon={ZoomIn} label="Zoom In" onClick={() => setZoom(zoom * 1.2)} />
         <button
           onClick={() => setZoom(1)}
-          className="px-1.5 py-0.5 text-[10px] text-slate-400 hover:text-white rounded hover:bg-white/10 transition-colors"
+          className="px-1.5 py-0.5 text-[10px] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] rounded hover:bg-[var(--color-surface-active)] transition-colors"
         >
           Fit
         </button>
@@ -145,7 +145,7 @@ function ToolButton({
         ${small ? 'p-1' : 'p-1.5'} rounded transition-colors
         ${active
           ? 'bg-[var(--color-accent)]/20 text-[var(--color-accent)] border border-[var(--color-accent)]/30'
-          : 'text-slate-400 hover:text-white hover:bg-white/10 border border-transparent'
+          : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-active)] border border-transparent'
         }
         ${disabled ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'}
       `}

@@ -71,7 +71,7 @@ export function VehicleSelector({ onSelect, onCancel }: VehicleSelectorProps): R
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-400">
+      <div className="flex flex-col items-center justify-center h-full gap-3 text-[var(--color-text-secondary)]">
         <Loader2 size={32} className="animate-spin text-[var(--color-accent)]" />
         <p className="text-sm">Loading vehicles…</p>
       </div>
@@ -81,41 +81,41 @@ export function VehicleSelector({ onSelect, onCancel }: VehicleSelectorProps): R
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)]">
         <div className="flex items-center gap-2">
           <Car size={20} className="text-[var(--color-accent)]" />
-          <h2 className="text-lg font-semibold text-white">Select Vehicle for Livery</h2>
+          <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Select Vehicle for Livery</h2>
         </div>
         {onCancel && (
-          <button onClick={onCancel} className="p-1 rounded hover:bg-white/10 text-slate-400 hover:text-white transition-colors">
+          <button onClick={onCancel} className="p-1 rounded hover:bg-[var(--color-surface-active)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors">
             <X size={18} />
           </button>
         )}
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-3 px-4 py-2 border-b border-white/5">
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-[var(--color-border)]">
         <div className="relative flex-1 max-w-xs">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] pointer-events-none" />
           <input
             type="text"
             placeholder="Search vehicles…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 text-sm rounded bg-black/30 border border-white/10 text-white placeholder-slate-500 focus:border-[var(--color-accent)] focus:outline-none"
+            className="w-full pl-9 pr-3 py-1.5 text-sm rounded bg-[var(--color-scrim-30)] border border-[var(--color-border)] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none"
           />
         </div>
         <select
           value={filterBrand}
           onChange={(e) => setFilterBrand(e.target.value)}
-          className="px-2 py-1.5 text-sm rounded bg-black/30 border border-white/10 text-white focus:border-[var(--color-accent)] focus:outline-none"
+          className="px-2 py-1.5 text-sm rounded bg-[var(--color-scrim-30)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:border-[var(--color-accent)] focus:outline-none"
         >
           <option value="all">All Brands</option>
           {brands.map((b) => (
             <option key={b} value={b}>{b}</option>
           ))}
         </select>
-        <span className="text-xs text-slate-500">{filtered.length} vehicles</span>
+        <span className="text-xs text-[var(--color-text-muted)]">{filtered.length} vehicles</span>
       </div>
 
       {/* Vehicle Grid */}
@@ -125,9 +125,9 @@ export function VehicleSelector({ onSelect, onCancel }: VehicleSelectorProps): R
             <button
               key={v.name}
               onClick={() => onSelect(v.name, v.displayName)}
-              className="group flex flex-col items-center gap-1.5 p-2 rounded-lg border border-white/5 bg-white/[2%] hover:bg-[var(--color-accent)]/10 hover:border-[var(--color-accent)]/30 transition-all cursor-pointer"
+              className="group flex flex-col items-center gap-1.5 p-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-accent)]/10 hover:border-[var(--color-accent)]/30 transition-all cursor-pointer"
             >
-              <div className="w-full aspect-[4/3] rounded bg-black/30 overflow-hidden flex items-center justify-center">
+              <div className="w-full aspect-[4/3] rounded bg-[var(--color-scrim-30)] overflow-hidden flex items-center justify-center">
                 {previews[v.name] ? (
                   <img
                     src={previews[v.name]}
@@ -136,18 +136,18 @@ export function VehicleSelector({ onSelect, onCancel }: VehicleSelectorProps): R
                     loading="lazy"
                   />
                 ) : (
-                  <Car size={24} className="text-slate-600" />
+                  <Car size={24} className="text-[var(--color-text-dim)]" />
                 )}
               </div>
               <div className="w-full text-center">
-                <p className="text-xs font-medium text-white truncate">{v.displayName}</p>
-                <p className="text-[10px] text-slate-500 truncate">{v.brand}</p>
+                <p className="text-xs font-medium text-[var(--color-text-primary)] truncate">{v.displayName}</p>
+                <p className="text-[10px] text-[var(--color-text-muted)] truncate">{v.brand}</p>
               </div>
             </button>
           ))}
         </div>
         {filtered.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+          <div className="flex flex-col items-center justify-center py-12 text-[var(--color-text-muted)]">
             <Car size={32} className="mb-2 opacity-30" />
             <p className="text-sm">No vehicles found</p>
           </div>

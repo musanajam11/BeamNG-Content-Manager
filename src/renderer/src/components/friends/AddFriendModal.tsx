@@ -33,14 +33,14 @@ export function AddFriendModal({ open, onClose, onAdd, existingIds }: AddFriendM
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--color-scrim-60)] backdrop-blur-sm">
       <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-6 w-full max-w-sm shadow-2xl">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
             <UserPlus size={18} className="text-[var(--color-accent)]" />
             {t('friends.addFriend')}
           </h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+          <button onClick={onClose} className="text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors">
             <X size={18} />
           </button>
         </div>
@@ -55,7 +55,7 @@ export function AddFriendModal({ open, onClose, onAdd, existingIds }: AddFriendM
           onChange={(e) => { setUsername(e.target.value); setError('') }}
           onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
           placeholder={t('friends.beammpUsernamePlaceholder')}
-          className="w-full px-3 py-2 rounded-lg bg-black/20 border border-[var(--color-border)] text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)] mb-2"
+          className="w-full px-3 py-2 rounded-lg bg-[var(--color-scrim-20)] border border-[var(--color-border)] text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)] mb-2"
           autoFocus
         />
 
@@ -64,13 +64,13 @@ export function AddFriendModal({ open, onClose, onAdd, existingIds }: AddFriendM
         <div className="flex justify-end gap-2 mt-4">
           <button
             onClick={onClose}
-            className="px-3 py-1.5 text-xs rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+            className="px-3 py-1.5 text-xs rounded-lg text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-active)] transition-colors"
           >
             {t('common.cancel')}
           </button>
           <button
             onClick={handleAdd}
-            className="px-3 py-1.5 text-xs rounded-lg bg-[var(--color-accent)] text-white font-medium hover:brightness-110 transition-all"
+            className="px-3 py-1.5 text-xs rounded-lg bg-[var(--color-accent)] text-[var(--color-text-primary)] font-medium hover:brightness-110 transition-all"
           >
             {t('friends.addFriend')}
           </button>

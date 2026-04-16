@@ -115,7 +115,7 @@ export function ServerManagerToolbar({
             <div className="flex items-center gap-1.5 shrink-0">
               <button
                 onClick={onDownloadExe}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded bg-[var(--color-accent)] text-white font-semibold hover:bg-[var(--color-accent-hover)] transition-colors"
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded bg-[var(--color-accent)] text-[var(--color-text-primary)] font-semibold hover:bg-[var(--color-accent-hover)] transition-colors"
               >
                 <Download size={12} /> {t('serverManager.download')}
               </button>

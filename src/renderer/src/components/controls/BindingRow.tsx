@@ -39,7 +39,7 @@ export function BindingRow({ action, bindings, onEdit, onClear }: BindingRowProp
               className={`inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-mono rounded border ${
                 b.isUserOverride
                   ? 'bg-[var(--color-accent-subtle)] border-[var(--color-accent)]/30 text-[var(--color-accent)]'
-                  : 'bg-black/20 border-[var(--color-border)] text-[var(--color-text-secondary)]'
+                  : 'bg-[var(--color-scrim-20)] border-[var(--color-border)] text-[var(--color-text-secondary)]'
               }`}
             >
               {getControlDisplayName(b.control)}

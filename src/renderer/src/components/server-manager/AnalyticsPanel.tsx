@@ -214,7 +214,7 @@ export function AnalyticsPanel({ serverId }: AnalyticsPanelProps): React.JSX.Ele
                       />
                       {/* Tooltip */}
                       <div className="absolute bottom-full mb-2 hidden group-hover:block z-10">
-                        <div className="bg-zinc-800 text-white text-[10px] px-2 py-1.5 rounded shadow-lg whitespace-nowrap">
+                        <div className="bg-[var(--color-scrim-40)] text-[var(--color-text-primary)] text-[10px] px-2 py-1.5 rounded shadow-lg whitespace-nowrap">
                           <div className="font-medium">{d.date}</div>
                           <div>{d.uniquePlayers} unique &middot; {d.peakPlayers} peak</div>
                           <div>{formatDuration(d.totalSessionsMs)} total time</div>

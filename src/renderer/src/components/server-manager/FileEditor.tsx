@@ -349,8 +349,8 @@ export function FileEditor({ serverId, filePath, fileName, onClose }: FileEditor
             quickSuggestions: true
           }}
           loading={
-            <div className="flex items-center justify-center h-full bg-[#1e1e1e]">
-              <Loader2 size={20} className="animate-spin text-zinc-500" />
+            <div className="flex items-center justify-center h-full bg-[var(--color-base)]">
+              <Loader2 size={20} className="animate-spin text-[var(--color-text-muted)]" />
             </div>
           }
         />

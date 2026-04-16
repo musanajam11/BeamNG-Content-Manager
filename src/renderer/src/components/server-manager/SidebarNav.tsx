@@ -47,7 +47,7 @@ interface SidebarNavProps {
 const stateColors: Record<string, string> = {
   running: 'bg-green-500',
   starting: 'bg-yellow-500',
-  stopped: 'bg-zinc-500',
+  stopped: 'bg-[var(--color-text-muted)]',
   error: 'bg-red-500'
 }
 
@@ -59,7 +59,7 @@ export function SidebarNav({ activeTab, serverName, serverState, onTabChange }: 
     <div className={`${collapsed ? 'w-14' : 'w-52'} shrink-0 flex flex-col border-r border-[var(--color-border)] bg-[var(--color-bg)] transition-all duration-200`}>
       {/* Server identity */}
       <div className="px-4 py-3 border-b border-[var(--color-border)] flex items-center gap-2">
-        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${stateColors[serverState] ?? 'bg-zinc-500'}`} />
+        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${stateColors[serverState] ?? 'bg-[var(--color-text-muted)]'}`} />
         {!collapsed && (
           <div className="min-w-0 flex-1 overflow-hidden">
             <BeamMPText text={serverName} className="block text-sm font-semibold text-[var(--color-text-primary)] truncate" />

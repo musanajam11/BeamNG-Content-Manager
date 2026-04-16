@@ -168,7 +168,7 @@ export function VoiceChatPage(): React.JSX.Element {
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               voiceSettings.enabled
                 ? 'bg-green-500/15 text-green-400 border border-green-500/30 hover:bg-green-500/25'
-                : 'bg-[var(--color-surface)] text-[var(--color-text-muted)] border border-[var(--color-border)] hover:bg-white/5'
+                : 'bg-[var(--color-surface)] text-[var(--color-text-muted)] border border-[var(--color-border)] hover:bg-[var(--color-surface)]'
             }`}
           >
             {voiceSettings.enabled ? (
@@ -236,7 +236,7 @@ export function VoiceChatPage(): React.JSX.Element {
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                   testingMic
                     ? 'bg-red-500/15 text-red-400 border border-red-500/30'
-                    : 'bg-[var(--color-surface)] text-[var(--color-text-muted)] border border-[var(--color-border)] hover:bg-white/5'
+                    : 'bg-[var(--color-surface)] text-[var(--color-text-muted)] border border-[var(--color-border)] hover:bg-[var(--color-surface)]'
                 }`}
               >
                 {testingMic ? <MicOff size={14} /> : <Mic size={14} />}
@@ -297,7 +297,7 @@ export function VoiceChatPage(): React.JSX.Element {
                   className={`px-4 py-2 rounded-lg text-sm font-mono transition-colors ${
                     capturingKey
                       ? 'bg-[var(--color-accent)]/15 text-[var(--color-accent)] border-2 border-[var(--color-accent)] animate-pulse'
-                      : 'bg-[var(--color-surface)] text-[var(--color-text-primary)] border border-[var(--color-border)] hover:bg-white/5'
+                      : 'bg-[var(--color-surface)] text-[var(--color-text-primary)] border border-[var(--color-border)] hover:bg-[var(--color-surface)]'
                   }`}
                 >
                   {capturingKey ? t('voiceChat.pressAnyKey') : voiceSettings.pttKey.replace('Key', '')}
@@ -456,7 +456,7 @@ function ModeButton({
       className={`flex-1 flex flex-col items-start gap-1 p-3 rounded-lg border transition-colors text-left ${
         active
           ? 'bg-[var(--color-accent)]/10 border-[var(--color-accent)]/30 text-[var(--color-accent)]'
-          : 'bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-white/5'
+          : 'bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface)]'
       }`}
     >
       <div className="flex items-center gap-2">
@@ -499,7 +499,7 @@ function ToggleSetting({
         }`}
       >
         <div
-          className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+          className={`absolute top-0.5 w-4 h-4 rounded-full bg-[var(--color-text-primary)] shadow transition-transform ${
             enabled ? 'translate-x-5' : 'translate-x-0.5'
           }`}
         />

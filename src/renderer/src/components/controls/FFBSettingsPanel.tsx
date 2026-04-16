@@ -334,7 +334,7 @@ function ResponseCurveEditor({
           {t('controls.ffbResetCurve')}
         </button>
       </div>
-      <div className="relative bg-black/20 rounded-lg border border-[var(--color-border)] overflow-hidden">
+      <div className="relative bg-[var(--color-scrim-20)] rounded-lg border border-[var(--color-border)] overflow-hidden">
         <svg
           ref={svgRef}
           width={SIZE}

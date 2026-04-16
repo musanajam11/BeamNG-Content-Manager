@@ -45,15 +45,15 @@ export function ConfirmDialog({
 
   const confirmColors =
     variant === 'danger'
-      ? 'bg-red-600 hover:bg-red-700 text-white'
+      ? 'bg-red-600 hover:bg-red-700 text-[var(--color-text-primary)]'
       : variant === 'warning'
-        ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
+        ? 'bg-yellow-600 hover:bg-yellow-700 text-[var(--color-text-primary)]'
         : 'bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-black'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60" onClick={onCancel} />
+      <div className="absolute inset-0 bg-[var(--color-scrim-60)]" onClick={onCancel} />
 
       {/* Dialog */}
       <div className="relative w-full max-w-sm bg-[var(--color-surface)] border border-[var(--color-border)] shadow-2xl p-5 flex flex-col gap-4">

@@ -86,11 +86,11 @@ export function DecalLibrary({ onAddDecal, onImportImage }: DecalLibraryProps): 
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-white/10 shrink-0">
-        <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Decals</span>
+      <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border)] shrink-0">
+        <span className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">Decals</span>
         <button
           onClick={onImportImage}
-          className="p-1 rounded hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+          className="p-1 rounded hover:bg-[var(--color-surface-active)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors"
           title="Import Custom Image"
         >
           <ImagePlus size={14} />
@@ -98,21 +98,21 @@ export function DecalLibrary({ onAddDecal, onImportImage }: DecalLibraryProps): 
       </div>
 
       {/* Search */}
-      <div className="px-3 py-1.5 border-b border-white/5">
+      <div className="px-3 py-1.5 border-b border-[var(--color-border)]">
         <div className="relative">
-          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] pointer-events-none" />
           <input
             type="text"
             placeholder="Search…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-8 pr-2 py-1 text-xs rounded bg-black/30 border border-white/10 text-white placeholder-slate-500 focus:border-[var(--color-accent)] focus:outline-none"
+            className="w-full pl-8 pr-2 py-1 text-xs rounded bg-[var(--color-scrim-30)] border border-[var(--color-border)] text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:outline-none"
           />
         </div>
       </div>
 
       {/* Category tabs */}
-      <div className="flex flex-wrap gap-1 px-3 py-1.5 border-b border-white/5">
+      <div className="flex flex-wrap gap-1 px-3 py-1.5 border-b border-[var(--color-border)]">
         {CATEGORIES.map((cat) => {
           const Icon = cat.icon
           return (
@@ -122,7 +122,7 @@ export function DecalLibrary({ onAddDecal, onImportImage }: DecalLibraryProps): 
               className={`px-1.5 py-0.5 text-[10px] rounded flex items-center gap-0.5 transition-colors ${
                 category === cat.id
                   ? 'bg-[var(--color-accent)]/20 text-[var(--color-accent)]'
-                  : 'text-slate-400 hover:text-white hover:bg-white/10'
+                  : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-active)]'
               }`}
             >
               <Icon size={10} />
@@ -139,21 +139,21 @@ export function DecalLibrary({ onAddDecal, onImportImage }: DecalLibraryProps): 
             <button
               key={decal.id}
               onClick={() => onAddDecal(decal.svg, decal.name)}
-              className="group flex flex-col items-center gap-1 p-1.5 rounded border border-white/5 bg-white/[2%] hover:bg-[var(--color-accent)]/10 hover:border-[var(--color-accent)]/30 transition-all cursor-pointer"
+              className="group flex flex-col items-center gap-1 p-1.5 rounded border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-accent)]/10 hover:border-[var(--color-accent)]/30 transition-all cursor-pointer"
               title={decal.name}
             >
               <div
-                className="w-full aspect-square flex items-center justify-center text-slate-300 group-hover:text-[var(--color-accent)]"
+                className="w-full aspect-square flex items-center justify-center text-[var(--color-text-secondary)] group-hover:text-[var(--color-accent)]"
                 dangerouslySetInnerHTML={{ __html: decal.svg }}
               />
-              <span className="text-[9px] text-slate-500 group-hover:text-slate-300 truncate w-full text-center">
+              <span className="text-[9px] text-[var(--color-text-muted)] group-hover:text-[var(--color-text-secondary)] truncate w-full text-center">
                 {decal.name}
               </span>
             </button>
           ))}
         </div>
         {filtered.length === 0 && (
-          <div className="flex items-center justify-center py-6 text-slate-600 text-xs">
+          <div className="flex items-center justify-center py-6 text-[var(--color-text-dim)] text-xs">
             No decals found
           </div>
         )}

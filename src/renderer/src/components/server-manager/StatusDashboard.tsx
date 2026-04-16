@@ -177,7 +177,7 @@ export function StatusDashboard({
             ) : isStopped ? (
               <button
                 onClick={() => onStart(config.id)}
-                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-green-600 hover:bg-green-700 text-white transition-colors"
+                className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-green-600 hover:bg-green-700 text-[var(--color-text-primary)] transition-colors"
               >
                 <Play size={14} /> {t('serverManager.start')}
               </button>
@@ -185,7 +185,7 @@ export function StatusDashboard({
               <>
                 <button
                   onClick={() => onRestart(config.id)}
-                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-[var(--color-text-primary)] transition-colors"
                 >
                   <RotateCcw size={14} /> {t('serverManager.restart')}
                 </button>
@@ -198,7 +198,7 @@ export function StatusDashboard({
                 <button
                   onClick={handleDirectConnect}
                   disabled={connecting}
-                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-[var(--color-accent)] hover:opacity-90 text-white transition-opacity disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-[var(--color-accent)] hover:opacity-90 text-[var(--color-text-primary)] transition-opacity disabled:opacity-50"
                   title={t('serverManager.directConnectTooltip')}
                 >
                   {connecting ? <Loader2 size={14} className="animate-spin" /> : <Plug size={14} />}
@@ -363,7 +363,7 @@ export function StatusDashboard({
                         {tailscale.peers.map((peer) => (
                           <div key={peer.hostname} className="flex items-center justify-between text-xs">
                             <span className="flex items-center gap-1.5">
-                              <span className={`w-1.5 h-1.5 rounded-full ${peer.online ? 'bg-green-400' : 'bg-neutral-600'}`} />
+                              <span className={`w-1.5 h-1.5 rounded-full ${peer.online ? 'bg-green-400' : 'bg-[var(--color-text-dim)]'}`} />
                               <span className="text-[var(--color-text-secondary)]">{peer.hostname}</span>
                               <span className="text-[var(--color-text-muted)]">{peer.os}</span>
                             </span>
@@ -388,7 +388,7 @@ export function StatusDashboard({
                 </p>
                 <button
                   onClick={() => window.open('https://tailscale.com/download', '_blank')}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[var(--color-accent)] hover:opacity-90 text-white transition-opacity"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[var(--color-accent)] hover:opacity-90 text-[var(--color-text-primary)] transition-opacity"
                 >
                   <Download size={12} /> {t('serverManager.tailscaleDownload')}
                 </button>

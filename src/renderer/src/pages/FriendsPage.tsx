@@ -139,14 +139,14 @@ export function FriendsPage(): React.JSX.Element {
         <div className="flex items-center gap-2">
           <button
             onClick={() => { loadFriends(); loadSessions() }}
-            className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+            className="p-2 rounded-lg text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-active)] transition-colors"
             title={t('common.refresh')}
           >
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
           </button>
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--color-accent)] text-white text-xs font-medium hover:brightness-110 transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--color-accent)] text-[var(--color-text-primary)] text-xs font-medium hover:brightness-110 transition-all"
           >
             <UserPlus size={14} />
             {t('friends.title')}
@@ -163,7 +163,7 @@ export function FriendsPage(): React.JSX.Element {
             className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
               activeTab === tab.id
                 ? 'bg-[var(--color-accent-subtle)] text-[var(--color-accent-text-muted)] border border-[var(--color-accent-25)]'
-                : 'text-slate-400 hover:text-white hover:bg-white/8'
+                : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-hover)]'
             }`}
           >
             {tab.label}
@@ -177,13 +177,13 @@ export function FriendsPage(): React.JSX.Element {
       {/* Search */}
       {activeTab !== 'suggestions' && activeTab !== 'beammp-requests' && (
         <div className="relative shrink-0">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] pointer-events-none" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t('friends.searchFriends')}
-            className="w-full pr-3 py-2 rounded-lg bg-black/20 border border-[var(--color-border)] text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)]"
+            className="w-full pr-3 py-2 rounded-lg bg-[var(--color-scrim-20)] border border-[var(--color-border)] text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)]"
             style={{ paddingLeft: 36 }}
           />
         </div>
@@ -238,7 +238,7 @@ function BeamMPRequestsStub(): React.JSX.Element {
     <div className="flex flex-col items-center justify-center gap-5 py-16 text-center">
       <div className="relative">
         <Handshake size={56} className="text-[var(--color-accent)] opacity-30" />
-        <Lock size={20} className="absolute -bottom-1 -right-1 text-slate-500" />
+        <Lock size={20} className="absolute -bottom-1 -right-1 text-[var(--color-text-muted)]" />
       </div>
       <div className="space-y-2 max-w-sm">
         <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">
@@ -249,7 +249,7 @@ function BeamMPRequestsStub(): React.JSX.Element {
         </p>
       </div>
       <div className="grid gap-3 max-w-sm w-full text-left">
-        <div className="flex items-start gap-3 p-3 rounded-lg bg-white/5 border border-[var(--color-border)]">
+        <div className="flex items-start gap-3 p-3 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)]">
           <Handshake size={16} className="text-[var(--color-accent)] mt-0.5 shrink-0" />
           <div>
             <p className="text-sm font-medium text-[var(--color-text-primary)]">
@@ -260,7 +260,7 @@ function BeamMPRequestsStub(): React.JSX.Element {
             </p>
           </div>
         </div>
-        <div className="flex items-start gap-3 p-3 rounded-lg bg-white/5 border border-[var(--color-border)]">
+        <div className="flex items-start gap-3 p-3 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)]">
           <Construction size={16} className="text-amber-400 mt-0.5 shrink-0" />
           <div>
             <p className="text-sm font-medium text-[var(--color-text-primary)]">
@@ -272,8 +272,8 @@ function BeamMPRequestsStub(): React.JSX.Element {
           </div>
         </div>
       </div>
-      <div className="mt-1 px-4 py-2 rounded-full bg-slate-500/10 border border-slate-500/20">
-        <span className="text-xs font-medium text-slate-400">{t('friends.pendingBackendSupport')}</span>
+      <div className="mt-1 px-4 py-2 rounded-full bg-[var(--color-surface)] border border-[var(--color-border)]">
+        <span className="text-xs font-medium text-[var(--color-text-secondary)]">{t('friends.pendingBackendSupport')}</span>
       </div>
     </div>
   )
@@ -286,7 +286,7 @@ function SuggestionsView({ suggestions, onAdd }: { suggestions: Array<{ name: st
       <FriendSuggestions suggestions={suggestions} onAdd={onAdd} />
       {suggestions.length === 0 && (
         <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-          <Users size={40} className="text-slate-600" />
+          <Users size={40} className="text-[var(--color-text-dim)]" />
           <p className="text-sm text-[var(--color-text-muted)]">
             {t('friends.noSuggestionsYet')}
           </p>
@@ -300,7 +300,7 @@ function EmptyState({ onAdd }: { onAdd: () => void }): React.JSX.Element {
   const { t } = useTranslation()
   return (
     <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
-      <Users size={48} className="text-slate-600" />
+      <Users size={48} className="text-[var(--color-text-dim)]" />
       <div className="space-y-1">
         <p className="text-sm font-medium text-[var(--color-text-primary)]">{t('friends.noFriendsYet')}</p>
         <p className="text-xs text-[var(--color-text-muted)]">
@@ -309,7 +309,7 @@ function EmptyState({ onAdd }: { onAdd: () => void }): React.JSX.Element {
       </div>
       <button
         onClick={onAdd}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--color-accent)] text-white text-xs font-medium hover:brightness-110 transition-all"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--color-accent)] text-[var(--color-text-primary)] text-xs font-medium hover:brightness-110 transition-all"
       >
         <UserPlus size={14} />
         {t('friends.addFirstFriend')}
@@ -323,9 +323,9 @@ function NoResults({ activeTab }: { activeTab: string }): React.JSX.Element {
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
       {activeTab === 'online' ? (
-        <WifiOff size={40} className="text-slate-600" />
+        <WifiOff size={40} className="text-[var(--color-text-dim)]" />
       ) : (
-        <Search size={40} className="text-slate-600" />
+        <Search size={40} className="text-[var(--color-text-dim)]" />
       )}
       <p className="text-sm text-[var(--color-text-muted)]">
         {activeTab === 'online'

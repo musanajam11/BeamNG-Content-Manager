@@ -156,8 +156,14 @@ export function LiveGPSPage(): React.JSX.Element {
     const h = canvas.height
     ctx.clearRect(0, 0, w, h)
 
+    // Resolve theme colors once per frame
+    const rootStyle = getComputedStyle(document.documentElement)
+    const themeBg = rootStyle.getPropertyValue('--color-base').trim() || '#1a1a2e'
+    const themeText = rootStyle.getPropertyValue('--color-text-primary').trim() || '#fff'
+    const themeTextMuted = rootStyle.getPropertyValue('--color-text-muted').trim() || '#888'
+
     // Background
-    ctx.fillStyle = '#1a1a2e'
+    ctx.fillStyle = themeBg
     ctx.fillRect(0, 0, w, h)
 
     const bounds = minimapData?.worldBounds ?? { minX: -1024, maxX: 1024, minY: -1024, maxY: 1024 }
@@ -192,7 +198,7 @@ export function LiveGPSPage(): React.JSX.Element {
       ctx.drawImage(minimapImgRef.current, 0, 0, w, h)
     } else {
       // Grid fallback
-      ctx.strokeStyle = '#2a2a4a'
+      ctx.strokeStyle = rootStyle.getPropertyValue('--color-border').trim() || '#2a2a4a'
       ctx.lineWidth = 1
       const gridStep = w / 16
       for (let x = 0; x <= w; x += gridStep) {
@@ -269,7 +275,7 @@ export function LiveGPSPage(): React.JSX.Element {
         ctx.beginPath()
         ctx.arc(opx, opy, dotRadius, 0, Math.PI * 2)
         ctx.fillStyle = '#3b82f6'
-        ctx.strokeStyle = '#fff'
+        ctx.strokeStyle = themeText
         ctx.lineWidth = 1.5 / zoom
         ctx.fill()
         ctx.stroke()
@@ -337,7 +343,7 @@ export function LiveGPSPage(): React.JSX.Element {
 
       const size = Math.max(8, 14 / zoom)
       ctx.fillStyle = '#f97316'
-      ctx.strokeStyle = '#fff'
+      ctx.strokeStyle = themeText
       ctx.lineWidth = 2 / zoom
       ctx.beginPath()
       ctx.moveTo(0, -size)
@@ -356,7 +362,7 @@ export function LiveGPSPage(): React.JSX.Element {
     if (telemetry) {
       ctx.fillStyle = 'rgba(0,0,0,0.6)'
       ctx.fillRect(w - 140, h - 50, 130, 40)
-      ctx.fillStyle = '#fff'
+      ctx.fillStyle = themeText
       ctx.font = 'bold 18px monospace'
       ctx.textAlign = 'right'
       ctx.fillText(formatSpeed(telemetry.speed), w - 20, h - 22)
@@ -376,7 +382,7 @@ export function LiveGPSPage(): React.JSX.Element {
     if (deployed && !telemetry) {
       ctx.fillStyle = 'rgba(0,0,0,0.5)'
       ctx.fillRect(w / 2 - 80, h / 2 - 15, 160, 30)
-      ctx.fillStyle = '#888'
+      ctx.fillStyle = themeTextMuted
       ctx.font = '14px sans-serif'
       ctx.textAlign = 'center'
       ctx.fillText(t('gps.waitingForSignal'), w / 2, h / 2 + 5)
@@ -419,7 +425,7 @@ export function LiveGPSPage(): React.JSX.Element {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">
         <div className="flex items-center gap-3">
           <Navigation2 size={24} className="text-orange-400" />
           <h1 className="text-xl font-semibold">{t('gps.title')}</h1>
@@ -429,7 +435,7 @@ export function LiveGPSPage(): React.JSX.Element {
           <select
             value={selectedMap}
             onChange={(e) => setSelectedMap(e.target.value)}
-            className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-orange-400/50"
+            className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm outline-none focus:border-orange-400/50"
           >
             <option value="">{t('gps.selectMap')}</option>
             {maps.map((m) => (
@@ -466,7 +472,7 @@ export function LiveGPSPage(): React.JSX.Element {
         {/* Canvas area */}
         <div ref={containerRef} className="flex-1 min-w-0 min-h-0 flex items-center justify-center p-4 relative">
           {loadingMinimap && (
-            <div className="absolute inset-0 flex items-center justify-center z-10 bg-black/30">
+            <div className="absolute inset-0 flex items-center justify-center z-10 bg-[var(--color-scrim-30)]">
               <Loader2 size={32} className="animate-spin text-orange-400" />
             </div>
           )}
@@ -475,7 +481,7 @@ export function LiveGPSPage(): React.JSX.Element {
             ref={canvasRef}
             width={300}
             height={300}
-            className="rounded-xl border border-white/10 bg-[#1a1a2e] max-w-full max-h-full"
+            className="rounded-xl border border-[var(--color-border)] bg-[var(--color-base)] max-w-full max-h-full"
             onMouseMove={(e) => {
               const rect = canvasRef.current?.getBoundingClientRect()
               if (!rect) return
@@ -496,14 +502,14 @@ export function LiveGPSPage(): React.JSX.Element {
           <div className="absolute bottom-6 right-6 flex flex-col gap-2">
             <button
               onClick={() => setZoom((z) => Math.min(z * 1.3, 10))}
-              className="p-2 bg-white/10 rounded-lg hover:bg-white/20 transition-colors"
+              className="p-2 bg-[var(--color-surface-active)] rounded-lg hover:bg-[var(--color-surface-active)] transition-colors"
               title={t('gps.zoomIn')}
             >
               <ZoomIn size={18} />
             </button>
             <button
               onClick={() => setZoom((z) => Math.max(z / 1.3, 0.5))}
-              className="p-2 bg-white/10 rounded-lg hover:bg-white/20 transition-colors"
+              className="p-2 bg-[var(--color-surface-active)] rounded-lg hover:bg-[var(--color-surface-active)] transition-colors"
               title={t('gps.zoomOut')}
             >
               <ZoomOut size={18} />
@@ -511,7 +517,7 @@ export function LiveGPSPage(): React.JSX.Element {
             <button
               onClick={() => setFollowPlayer((f) => !f)}
               className={`p-2 rounded-lg transition-colors ${
-                followPlayer ? 'bg-orange-500/30 text-orange-400' : 'bg-white/10 hover:bg-white/20'
+                followPlayer ? 'bg-orange-500/30 text-orange-400' : 'bg-[var(--color-surface-active)] hover:bg-[var(--color-surface-active)]'
               }`}
               title={t('gps.followPlayer')}
             >
@@ -521,8 +527,8 @@ export function LiveGPSPage(): React.JSX.Element {
         </div>
 
         {/* Info panel */}
-        <div className="w-64 shrink-0 border-l border-white/10 p-4 flex flex-col gap-4 overflow-y-auto">
-          <div className="text-sm text-white/60 uppercase tracking-wider">{t('gps.telemetry')}</div>
+        <div className="w-64 shrink-0 border-l border-[var(--color-border)] p-4 flex flex-col gap-4 overflow-y-auto">
+          <div className="text-sm text-[var(--color-text-secondary)] uppercase tracking-wider">{t('gps.telemetry')}</div>
           {telemetry ? (
             <div className="space-y-3 text-sm">
               <InfoRow label="X" value={telemetry.x.toFixed(1)} />
@@ -532,22 +538,22 @@ export function LiveGPSPage(): React.JSX.Element {
               <InfoRow label={t('gps.speed')} value={formatSpeed(telemetry.speed)} />
             </div>
           ) : (
-            <div className="text-sm text-white/40">
+            <div className="text-sm text-[var(--color-text-dim)]">
               {deployed ? t('gps.waitingForSignal') : t('gps.trackerNotDeployed')}
             </div>
           )}
 
           {telemetry?.otherPlayers && telemetry.otherPlayers.length > 0 && (
             <>
-              <div className="text-sm text-white/60 uppercase tracking-wider">
+              <div className="text-sm text-[var(--color-text-secondary)] uppercase tracking-wider">
                 {t('gps.players')} ({telemetry.otherPlayers.length})
               </div>
               <div className="space-y-2 text-sm max-h-48 overflow-y-auto">
                 {telemetry.otherPlayers.map((p, i) => (
-                  <div key={i} className="flex items-center gap-2 text-white/70">
+                  <div key={i} className="flex items-center gap-2 text-[var(--color-text-secondary)]">
                     <span className="text-blue-400">●</span>
                     <span className="truncate">{p.name}</span>
-                    <span className="ml-auto text-white/40 font-mono text-xs">{formatSpeed(p.speed)}</span>
+                    <span className="ml-auto text-[var(--color-text-dim)] font-mono text-xs">{formatSpeed(p.speed)}</span>
                   </div>
                 ))}
               </div>
@@ -556,7 +562,7 @@ export function LiveGPSPage(): React.JSX.Element {
 
           {mapPOIs.length > 0 && (
             <>
-              <div className="text-sm text-white/60 uppercase tracking-wider">
+              <div className="text-sm text-[var(--color-text-secondary)] uppercase tracking-wider">
                 {t('gps.pois')} ({mapPOIs.length})
               </div>
               <div className="space-y-1 text-xs max-h-32 overflow-y-auto">
@@ -568,7 +574,7 @@ export function LiveGPSPage(): React.JSX.Element {
                   return (
                     <div
                       key={i}
-                      className={`truncate cursor-pointer rounded px-1 transition-colors ${hoveredPOI === i ? 'bg-white/15 text-white' : 'text-white/50 hover:text-white/70'}`}
+                      className={`truncate cursor-pointer rounded px-1 transition-colors ${hoveredPOI === i ? 'bg-[var(--color-surface-active)] text-[var(--color-text-primary)]' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}`}
                       onMouseEnter={() => setHoveredPOI(i)}
                       onMouseLeave={() => setHoveredPOI(null)}
                     >
@@ -576,12 +582,12 @@ export function LiveGPSPage(): React.JSX.Element {
                     </div>
                   )
                 })}
-                {mapPOIs.length > 30 && <div className="text-white/30 px-1">+{mapPOIs.length - 30} more</div>}
+                {mapPOIs.length > 30 && <div className="text-[var(--color-text-dim)] px-1">+{mapPOIs.length - 30} more</div>}
               </div>
             </>
           )}
 
-          <div className="mt-auto text-xs text-white/30 space-y-1">
+          <div className="mt-auto text-xs text-[var(--color-text-dim)] space-y-1">
             <p>{t('gps.hint1')}</p>
             <p>{t('gps.hint2')}</p>
           </div>
@@ -594,7 +600,7 @@ export function LiveGPSPage(): React.JSX.Element {
 function InfoRow({ label, value }: { label: string; value: string }): React.JSX.Element {
   return (
     <div className="flex justify-between">
-      <span className="text-white/50">{label}</span>
+      <span className="text-[var(--color-text-muted)]">{label}</span>
       <span className="font-mono">{value}</span>
     </div>
   )

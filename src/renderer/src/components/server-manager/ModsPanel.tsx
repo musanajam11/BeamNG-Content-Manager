@@ -82,7 +82,7 @@ function SortableServerModRow({
         <button
           {...attributes}
           {...listeners}
-          className="text-slate-600 hover:text-slate-300 cursor-grab active:cursor-grabbing touch-none"
+          className="text-[var(--color-text-dim)] hover:text-[var(--color-text-secondary)] cursor-grab active:cursor-grabbing touch-none"
         >
           <GripVertical size={14} />
         </button>

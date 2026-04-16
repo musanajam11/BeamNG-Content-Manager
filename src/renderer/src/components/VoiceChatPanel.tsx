@@ -105,7 +105,7 @@ export function VoiceChatPanel(): React.JSX.Element | null {
 
   return (
     <div className="fixed bottom-16 right-4 z-50 pointer-events-auto">
-      <div className="bg-black/80 backdrop-blur-md border border-[var(--color-border)] rounded-xl p-3 min-w-[180px] shadow-2xl">
+      <div className="bg-[var(--color-scrim-80)] backdrop-blur-md border border-[var(--color-border)] rounded-xl p-3 min-w-[180px] shadow-2xl">
         {/* Header */}
         <div className="flex items-center gap-2 mb-2">
           <Radio size={14} className="text-[var(--color-accent)]" />
@@ -148,7 +148,7 @@ export function VoiceChatPanel(): React.JSX.Element | null {
               >
                 <div
                   className={`w-1.5 h-1.5 rounded-full transition-colors ${
-                    peer.speaking ? 'bg-green-400' : 'bg-slate-600'
+                    peer.speaking ? 'bg-green-400' : 'bg-[var(--color-text-dim)]'
                   }`}
                 />
                 <span className="text-[11px] text-[var(--color-text-muted)] truncate">

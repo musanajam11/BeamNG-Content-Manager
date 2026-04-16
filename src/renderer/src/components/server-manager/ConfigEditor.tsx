@@ -215,14 +215,14 @@ export function ConfigEditor({
               <div className="absolute top-2 right-2 flex gap-1">
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="p-1.5 bg-black/60 hover:bg-black/80 text-white rounded transition-colors"
+                  className="p-1.5 bg-[var(--color-scrim-60)] hover:bg-[var(--color-scrim-80)] text-[var(--color-text-primary)] rounded transition-colors"
                   title={t('serverManager.replaceImage')}
                 >
                   <Upload size={12} />
                 </button>
                 <button
                   onClick={removeImage}
-                  className="p-1.5 bg-black/60 hover:bg-red-600/80 text-white rounded transition-colors"
+                  className="p-1.5 bg-[var(--color-scrim-60)] hover:bg-red-600/80 text-[var(--color-text-primary)] rounded transition-colors"
                   title={t('serverManager.removeImage')}
                 >
                   <X size={12} />

@@ -256,7 +256,7 @@ function FilterGroup({ title, enabled, onToggle, children }: FilterGroupProps): 
           }`}
         >
           <span
-            className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white transition-transform ${
+            className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-[var(--color-text-primary)] transition-transform ${
               enabled ? 'translate-x-[17px]' : 'translate-x-0.5'
             }`}
           />

@@ -93,7 +93,7 @@ export function PresetManager(): React.JSX.Element {
       <div className="flex items-center gap-2">
         <button
           onClick={() => setShowSaveDialog(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] transition-colors"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-[var(--color-accent)] text-[var(--color-text-primary)] hover:bg-[var(--color-accent-hover)] transition-colors"
         >
           <Plus size={12} />
           {t('controls.presetSave')}
@@ -166,7 +166,7 @@ export function PresetManager(): React.JSX.Element {
       {/* Save dialog */}
       {showSaveDialog && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--color-scrim-60)] backdrop-blur-sm"
           onClick={() => setShowSaveDialog(false)}
         >
           <div
@@ -181,7 +181,7 @@ export function PresetManager(): React.JSX.Element {
               value={presetName}
               onChange={(e) => setPresetName(e.target.value)}
               placeholder={t('controls.presetName')}
-              className="w-full px-3 py-2 text-xs bg-black/20 border border-[var(--color-border)] rounded-md text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)]/50"
+              className="w-full px-3 py-2 text-xs bg-[var(--color-scrim-20)] border border-[var(--color-border)] rounded-md text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)]/50"
               autoFocus
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleSave()
@@ -198,7 +198,7 @@ export function PresetManager(): React.JSX.Element {
               <button
                 onClick={handleSave}
                 disabled={!presetName.trim()}
-                className="px-3 py-1.5 text-xs text-white bg-[var(--color-accent)] rounded-md hover:bg-[var(--color-accent-hover)] transition-colors disabled:opacity-40"
+                className="px-3 py-1.5 text-xs text-[var(--color-text-primary)] bg-[var(--color-accent)] rounded-md hover:bg-[var(--color-accent-hover)] transition-colors disabled:opacity-40"
               >
                 <Save size={12} className="inline mr-1" />
                 {t('controls.presetSave')}
@@ -211,7 +211,7 @@ export function PresetManager(): React.JSX.Element {
       {/* Load confirmation */}
       {confirmLoad && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--color-scrim-60)] backdrop-blur-sm"
           onClick={() => setConfirmLoad(null)}
         >
           <div
@@ -230,7 +230,7 @@ export function PresetManager(): React.JSX.Element {
               </button>
               <button
                 onClick={() => handleLoad(confirmLoad)}
-                className="px-3 py-1.5 text-xs text-white bg-[var(--color-accent)] rounded-md hover:bg-[var(--color-accent-hover)] transition-colors"
+                className="px-3 py-1.5 text-xs text-[var(--color-text-primary)] bg-[var(--color-accent)] rounded-md hover:bg-[var(--color-accent-hover)] transition-colors"
               >
                 {t('controls.presetLoad')}
               </button>
@@ -242,7 +242,7 @@ export function PresetManager(): React.JSX.Element {
       {/* Delete confirmation */}
       {confirmDelete && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--color-scrim-60)] backdrop-blur-sm"
           onClick={() => setConfirmDelete(null)}
         >
           <div
@@ -261,7 +261,7 @@ export function PresetManager(): React.JSX.Element {
               </button>
               <button
                 onClick={() => handleDelete(confirmDelete)}
-                className="px-3 py-1.5 text-xs text-white bg-red-500 rounded-md hover:bg-red-600 transition-colors"
+                className="px-3 py-1.5 text-xs text-[var(--color-text-primary)] bg-red-500 rounded-md hover:bg-red-600 transition-colors"
               >
                 {t('controls.presetDelete')}
               </button>

@@ -44,8 +44,8 @@ export function ModSyncOverlay(): React.JSX.Element | null {
   }
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-[#111113]/90 backdrop-blur-sm">
-      <div className="w-[380px] border border-white/10 bg-[#1a1a1e] rounded-lg p-6 shadow-2xl">
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-[var(--color-scrim-80)] backdrop-blur-sm">
+      <div className="w-[380px] border border-[var(--color-border)] bg-[var(--color-base)] rounded-lg p-6 shadow-2xl">
         {/* Header */}
         <div className="flex items-center gap-3 mb-4">
           {isDone ? (
@@ -56,20 +56,20 @@ export function ModSyncOverlay(): React.JSX.Element | null {
             <Loader2 size={20} className="text-[var(--color-accent-text)] animate-spin" />
           )}
           <div>
-            <div className="text-sm font-semibold text-white">
+            <div className="text-sm font-semibold text-[var(--color-text-primary)]">
               {isDone ? 'Mods synced' : 'Syncing server mods'}
             </div>
-            <div className="text-[11px] text-slate-400">
+            <div className="text-[11px] text-[var(--color-text-secondary)]">
               {isDone
                 ? `${progress.modCount} mod${progress.modCount !== 1 ? 's' : ''} ready`
                 : `${progress.modIndex + 1} of ${progress.modCount} — ${isDownloading ? 'Downloading' : 'Loading'}`}
             </div>
           </div>
-          <span className="ml-auto text-lg font-bold text-white tabular-nums">{displayPercent}%</span>
+          <span className="ml-auto text-lg font-bold text-[var(--color-text-primary)] tabular-nums">{displayPercent}%</span>
         </div>
 
         {/* Progress bar */}
-        <div className="h-2 bg-white/5 rounded-full overflow-hidden mb-3">
+        <div className="h-2 bg-[var(--color-surface)] rounded-full overflow-hidden mb-3">
           <div
             className={`h-full transition-all duration-300 ease-out rounded-full ${isDone ? 'bg-green-500' : 'bg-[var(--color-accent)]'}`}
             style={{ width: `${displayPercent}%` }}
@@ -78,11 +78,11 @@ export function ModSyncOverlay(): React.JSX.Element | null {
 
         {/* Current file */}
         {!isDone && progress.fileName && (
-          <div className="flex items-center gap-2 text-xs text-slate-400">
+          <div className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
             <Package size={11} className="shrink-0" />
             <span className="truncate font-mono">{progress.fileName}</span>
             {isDownloading && progress.total > 0 && (
-              <span className="ml-auto shrink-0 text-slate-500">
+              <span className="ml-auto shrink-0 text-[var(--color-text-muted)]">
                 {formatSize(progress.received)} / {formatSize(progress.total)}
               </span>
             )}

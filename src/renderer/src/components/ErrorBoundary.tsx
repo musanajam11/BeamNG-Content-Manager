@@ -30,7 +30,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
           </pre>
           <button
             onClick={() => this.setState({ hasError: false, error: null })}
-            className="px-4 py-2 rounded-lg bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white text-sm transition-colors"
+            className="px-4 py-2 rounded-lg bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-[var(--color-text-primary)] text-sm transition-colors"
           >
             {i18next.t('common.tryAgain')}
           </button>

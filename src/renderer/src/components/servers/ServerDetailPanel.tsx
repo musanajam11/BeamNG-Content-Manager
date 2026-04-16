@@ -29,12 +29,12 @@ interface Props {
 
 function StatPill({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }): React.JSX.Element {
   return (
-    <div className="rounded-lg border border-white/8 bg-white/5 px-3 py-2">
-      <div className="mb-0.5 flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-slate-400">
+    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
+      <div className="mb-0.5 flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
         {icon}
         <span>{label}</span>
       </div>
-      <div className="text-sm font-semibold text-white truncate">{value}</div>
+      <div className="text-sm font-semibold text-[var(--color-text-primary)] truncate">{value}</div>
     </div>
   )
 }
@@ -44,7 +44,7 @@ function Badge({ children, tone = 'default' }: { children: React.ReactNode; tone
     ? 'border-[var(--color-accent-25)] bg-[var(--color-accent-subtle)] text-[var(--color-accent-text-muted)]'
     : tone === 'gold'
       ? 'border-yellow-400/25 bg-yellow-400/12 text-yellow-200'
-      : 'border-white/8 bg-white/5 text-slate-300'
+      : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)]'
   return <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${cls}`}>{children}</span>
 }
 
@@ -112,14 +112,14 @@ export function ServerDetailPanel({
           <img src={mapPreview} alt={cleanMapName(server.map)} className="absolute inset-0 w-full h-full object-cover opacity-60" />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center">
-            <ImageIcon size={32} className="text-white/10" />
+            <ImageIcon size={32} className="text-[var(--color-text-dim)]" />
           </div>
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-[#111113] via-[#111113]/60 to-transparent" />
         <div className="absolute bottom-2.5 left-4 right-4 flex items-end justify-between">
           <div className="flex items-center gap-2">
             <MapPin size={12} className="text-[var(--color-accent-text)]" />
-            <span className="text-xs font-semibold text-white drop-shadow">{cleanMapName(server.map)}</span>
+            <span className="text-xs font-semibold text-[var(--color-text-primary)] drop-shadow">{cleanMapName(server.map)}</span>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button
@@ -127,14 +127,14 @@ export function ServerDetailPanel({
               className={`border p-1.5 transition backdrop-blur-sm ${
                 favorite
                   ? 'border-yellow-400/25 bg-yellow-400/12 text-yellow-300'
-                  : 'border-white/20 bg-black/30 text-slate-400 hover:text-yellow-300'
+                  : 'border-[var(--color-border-hover)] bg-[var(--color-scrim-30)] text-[var(--color-text-secondary)] hover:text-yellow-300'
               }`}
             >
               <Star size={13} fill={favorite ? 'currentColor' : 'none'} />
             </button>
             <button
               onClick={onClose}
-              className="border border-white/20 bg-black/30 p-1.5 text-slate-400 transition hover:text-white backdrop-blur-sm"
+              className="border border-[var(--color-border-hover)] bg-[var(--color-scrim-30)] p-1.5 text-[var(--color-text-secondary)] transition hover:text-[var(--color-text-primary)] backdrop-blur-sm"
             >
               <X size={13} />
             </button>
@@ -143,7 +143,7 @@ export function ServerDetailPanel({
       </div>
 
       {/* Header */}
-      <div className="border-b border-white/8 px-5 py-4">
+      <div className="border-b border-[var(--color-border)] px-5 py-4">
         <div className="mb-2 flex items-center gap-2.5">
           {flagUrl ? (
             <img
@@ -154,12 +154,12 @@ export function ServerDetailPanel({
           ) : (
             <span className="text-lg">{countryFlag(server.location)}</span>
           )}
-          <BeamMPText text={server.sname} className="text-sm font-bold tracking-tight text-white line-clamp-2 leading-snug flex-1" />
+          <BeamMPText text={server.sname} className="text-sm font-bold tracking-tight text-[var(--color-text-primary)] line-clamp-2 leading-snug flex-1" />
         </div>
         {userLabel && (
-          <div className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-400">
-            <span className="text-[10px] uppercase tracking-wider text-slate-500">Label:</span>
-            <span className="text-slate-300">{userLabel}</span>
+          <div className="mt-1 flex items-center gap-1.5 text-[11px] text-[var(--color-text-secondary)]">
+            <span className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)]">Label:</span>
+            <span className="text-[var(--color-text-secondary)]">{userLabel}</span>
           </div>
         )}
         <div className="flex flex-wrap gap-1.5">
@@ -173,7 +173,7 @@ export function ServerDetailPanel({
 
         {/* Description */}
         {server.sdesc && (
-          <div className="mt-3 rounded-lg border border-white/8 bg-black/20 p-3 text-xs leading-relaxed text-slate-300">
+          <div className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-scrim-20)] p-3 text-xs leading-relaxed text-[var(--color-text-secondary)]">
             <BeamMPText text={server.sdesc} />
           </div>
         )}
@@ -228,7 +228,7 @@ export function ServerDetailPanel({
             <button
               onClick={onJoin}
               disabled={joining || isOtherQueued || isConnectedElsewhere}
-              className="flex-1 bg-[var(--color-accent)] px-4 py-2.5 text-sm font-semibold text-white accent-shadow-sm transition hover:opacity-95 disabled:opacity-40"
+              className="flex-1 bg-[var(--color-accent)] px-4 py-2.5 text-sm font-semibold text-[var(--color-text-primary)] accent-shadow-sm transition hover:opacity-95 disabled:opacity-40"
               title={isOtherQueued ? 'Already queued for another server' : isConnectedElsewhere ? 'Already connected to another server' : undefined}
             >
               <span className="inline-flex items-center gap-2">
@@ -240,7 +240,7 @@ export function ServerDetailPanel({
 
           <button
             onClick={handleCopy}
-            className="border border-white/8 bg-white/5 px-3 py-2.5 text-slate-300 transition hover:bg-white/10 hover:text-white"
+            className="border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-[var(--color-text-secondary)] transition hover:bg-[var(--color-surface-active)] hover:text-[var(--color-text-primary)]"
             title={t('servers.copyAddress')}
           >
             {copied ? <Check size={14} /> : <Copy size={14} />}
@@ -270,35 +270,35 @@ export function ServerDetailPanel({
       {/* Scrollable sections */}
       <div className="flex-1 space-y-3 overflow-y-auto px-5 py-5">
         {/* Connection */}
-        <section className="rounded-lg border border-white/8 bg-black/20 p-3.5">
-          <div className="mb-2.5 text-xs font-semibold text-white">{t('servers.connection')}</div>
+        <section className="rounded-lg border border-[var(--color-border)] bg-[var(--color-scrim-20)] p-3.5">
+          <div className="mb-2.5 text-xs font-semibold text-[var(--color-text-primary)]">{t('servers.connection')}</div>
           <div className="space-y-1.5 text-xs">
-            <div className="flex items-center justify-between rounded-lg border border-white/8 bg-white/5 px-3 py-2">
-              <span className="text-slate-400 shrink-0">{t('servers.address')}</span>
-              <span className="font-mono text-white text-[11px] truncate ml-2">{server.ip}:{server.port}</span>
+            <div className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
+              <span className="text-[var(--color-text-secondary)] shrink-0">{t('servers.address')}</span>
+              <span className="font-mono text-[var(--color-text-primary)] text-[11px] truncate ml-2">{server.ip}:{server.port}</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-lg border border-white/8 bg-white/5 px-3 py-2">
-                <div className="mb-0.5 flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-slate-400">
+              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
+                <div className="mb-0.5 flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
                   <Wifi size={10} /> {t('servers.access')}
                 </div>
-                <div className="text-xs font-medium text-white">{server.password ? t('servers.restricted') : t('servers.openJoin')}</div>
+                <div className="text-xs font-medium text-[var(--color-text-primary)]">{server.password ? t('servers.restricted') : t('servers.openJoin')}</div>
               </div>
-              <div className="rounded-lg border border-white/8 bg-white/5 px-3 py-2">
-                <div className="mb-0.5 text-[10px] uppercase tracking-[0.12em] text-slate-400">
+              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
+                <div className="mb-0.5 text-[10px] uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
                   {t('servers.version')}
                 </div>
-                <div className="text-xs font-medium text-white">{server.version || '—'}</div>
+                <div className="text-xs font-medium text-[var(--color-text-primary)]">{server.version || '—'}</div>
               </div>
             </div>
           </div>
         </section>
 
         {/* Population */}
-        <section className="rounded-lg border border-white/8 bg-black/20 p-3.5">
+        <section className="rounded-lg border border-[var(--color-border)] bg-[var(--color-scrim-20)] p-3.5">
           <div className="mb-2 flex items-center justify-between">
-            <div className="text-xs font-semibold text-white">{t('servers.population')}</div>
-            <div className="text-xs text-slate-400">{t('servers.percentFull', { percent: Math.round(fillPct) })}</div>
+            <div className="text-xs font-semibold text-[var(--color-text-primary)]">{t('servers.population')}</div>
+            <div className="text-xs text-[var(--color-text-secondary)]">{t('servers.percentFull', { percent: Math.round(fillPct) })}</div>
           </div>
           <div className="pop-bar w-full">
             <motion.div
@@ -309,18 +309,18 @@ export function ServerDetailPanel({
             />
           </div>
           <div className="mt-1.5 flex items-center justify-between text-xs">
-            <span className="text-slate-400">{t('servers.currentPlayers')}</span>
-            <span className="font-semibold text-white">{server.players}/{server.maxplayers}</span>
+            <span className="text-[var(--color-text-secondary)]">{t('servers.currentPlayers')}</span>
+            <span className="font-semibold text-[var(--color-text-primary)]">{server.players}/{server.maxplayers}</span>
           </div>
         </section>
 
         {/* Online players */}
         {server.playerslist && (
-          <section className="rounded-lg border border-white/8 bg-black/20 p-3.5">
-            <div className="mb-2.5 text-xs font-semibold text-white">{t('servers.onlinePlayers')}</div>
+          <section className="rounded-lg border border-[var(--color-border)] bg-[var(--color-scrim-20)] p-3.5">
+            <div className="mb-2.5 text-xs font-semibold text-[var(--color-text-primary)]">{t('servers.onlinePlayers')}</div>
             <div className="flex flex-wrap gap-1.5">
               {server.playerslist.split(';').filter(Boolean).map((name) => (
-                <span key={name} className="rounded-full border border-white/8 bg-white/5 px-2.5 py-1 text-xs text-slate-300">
+                <span key={name} className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1 text-xs text-[var(--color-text-secondary)]">
                   {name}
                 </span>
               ))}
@@ -330,21 +330,21 @@ export function ServerDetailPanel({
 
         {/* Mods */}
         {server.modlist && (
-          <section className="rounded-lg border border-white/8 bg-black/20 p-3.5">
+          <section className="rounded-lg border border-[var(--color-border)] bg-[var(--color-scrim-20)] p-3.5">
             <div className="mb-2.5 flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-white">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text-primary)]">
                 <Package size={13} />
                 {t('servers.requiredMods')}
               </div>
               {modSizeBytes > 0 && (
-                <span className="text-[11px] font-medium text-slate-400">
+                <span className="text-[11px] font-medium text-[var(--color-text-secondary)]">
                   {formatModSize(modSizeBytes)}
                 </span>
               )}
             </div>
             <div className="flex flex-wrap gap-1.5">
               {server.modlist.split(/[;,\n]+/).map((mod) => mod.trim()).filter(Boolean).map((mod) => (
-                <span key={mod} className="rounded-full border border-white/8 bg-white/5 px-3 py-1 text-xs text-slate-300">
+                <span key={mod} className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1 text-xs text-[var(--color-text-secondary)]">
                   {mod}
                 </span>
               ))}
@@ -353,20 +353,20 @@ export function ServerDetailPanel({
         )}
 
         {/* Extra info */}
-        <section className="rounded-lg border border-white/8 bg-black/20 p-3.5">
-          <div className="mb-2.5 text-xs font-semibold text-white">{t('servers.details')}</div>
+        <section className="rounded-lg border border-[var(--color-border)] bg-[var(--color-scrim-20)] p-3.5">
+          <div className="mb-2.5 text-xs font-semibold text-[var(--color-text-primary)]">{t('servers.details')}</div>
           <div className="space-y-1.5 text-xs">
             <div className="flex justify-between gap-2">
-              <span className="text-slate-400 shrink-0">{t('servers.owner')}</span>
-              <span className="text-white truncate">{server.owner || '—'}</span>
+              <span className="text-[var(--color-text-secondary)] shrink-0">{t('servers.owner')}</span>
+              <span className="text-[var(--color-text-primary)] truncate">{server.owner || '—'}</span>
             </div>
             <div className="flex justify-between gap-2">
-              <span className="text-slate-400 shrink-0">{t('servers.guests')}</span>
+              <span className="text-[var(--color-text-secondary)] shrink-0">{t('servers.guests')}</span>
               <span className={server.guests ? 'text-emerald-400' : 'text-rose-400'}>{server.guests ? t('servers.allowed') : t('common.no')}</span>
             </div>
             {server.tags && server.tags !== 'offline' && (
               <div className="mt-1.5">
-                <span className="text-slate-400 text-xs shrink-0">{t('servers.tags')}</span>
+                <span className="text-[var(--color-text-secondary)] text-xs shrink-0">{t('servers.tags')}</span>
                 <div className="flex flex-wrap gap-1.5 mt-1.5">
                   {parseServerTags(server.tags).map(tag => (
                     <ServerTagBadge key={tag.id} tag={tag} />

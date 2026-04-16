@@ -26,7 +26,7 @@ export function FriendSuggestions({ suggestions, onAdd }: FriendSuggestionsProps
         {suggestions.slice(0, 8).map((s) => (
           <div
             key={s.name}
-            className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-[var(--color-border)] hover:bg-white/8 transition-colors"
+            className="flex items-center justify-between p-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] transition-colors"
           >
             <div>
               <p className="text-sm text-[var(--color-text-primary)]">{s.name}</p>

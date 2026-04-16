@@ -28,6 +28,17 @@
   --color-error: #f87171;
   --color-info: #60a5fa;
 
+  /* ── Scrim overlays (dark: black-based) ── */
+  --color-scrim-20: rgba(0, 0, 0, 0.20);
+  --color-scrim-30: rgba(0, 0, 0, 0.30);
+  --color-scrim-40: rgba(0, 0, 0, 0.40);
+  --color-scrim-60: rgba(0, 0, 0, 0.60);
+  --color-scrim-80: rgba(0, 0, 0, 0.80);
+
+  /* ── Scrollbar ── */
+  --color-scroll-thumb: rgba(255, 255, 255, 0.12);
+  --color-scroll-thumb-hover: rgba(255, 255, 255, 0.20);
+
   --radius-sm: 0px;
   --radius-md: 0px;
   --radius-lg: 0px;
@@ -35,6 +46,34 @@
 
   --sidebar-width: 200px;
   --titlebar-height: 38px;
+}
+
+/* ── Light theme CSS-only fallback (JS applyTheme overrides at runtime) ── */
+[data-theme="light"] {
+  --color-base: #f5f5f7;
+  --color-surface: rgba(0, 0, 0, 0.04);
+  --color-surface-hover: rgba(0, 0, 0, 0.07);
+  --color-surface-active: rgba(0, 0, 0, 0.10);
+  --color-surface-raised: rgba(0, 0, 0, 0.05);
+  --color-overlay: rgba(255, 255, 255, 0.20);
+  --color-border: rgba(0, 0, 0, 0.08);
+  --color-border-hover: rgba(0, 0, 0, 0.14);
+  --color-text-primary: #111113;
+  --color-text-secondary: #475569;
+  --color-text-muted: #64748b;
+  --color-text-dim: #94a3b8;
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-error: #dc2626;
+  --color-info: #2563eb;
+  --color-scrim-20: rgba(255, 255, 255, 0.20);
+  --color-scrim-30: rgba(255, 255, 255, 0.30);
+  --color-scrim-40: rgba(255, 255, 255, 0.40);
+  --color-scrim-60: rgba(255, 255, 255, 0.60);
+  --color-scrim-80: rgba(255, 255, 255, 0.80);
+  --color-scroll-thumb: rgba(0, 0, 0, 0.15);
+  --color-scroll-thumb-hover: rgba(0, 0, 0, 0.25);
+  color-scheme: light;
 }
 
 * {
@@ -52,7 +91,7 @@ body,
   overflow: hidden;
   background-color: var(--color-base);
   color: var(--color-text-primary);
-  color-scheme: dark;
+  color-scheme: dark light;
   font-family: 'Segoe UI', -apple-system, system-ui, sans-serif;
   font-size: 16px;
   user-select: none;
@@ -77,8 +116,8 @@ select option {
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; margin: 4px 0; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.20); }
+::-webkit-scrollbar-thumb { background: var(--color-scroll-thumb); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-scroll-thumb-hover); }
 
 /* ── Titlebar drag ── */
 .titlebar-drag { -webkit-app-region: drag; }

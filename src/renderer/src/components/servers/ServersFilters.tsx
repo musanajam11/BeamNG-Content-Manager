@@ -57,15 +57,15 @@ export function ServersFilters({
             onClick={() => onFilterTab(key)}
             className={`rounded-full px-3 py-1 text-xs font-medium transition ${
               filterTab === key
-                ? 'bg-white text-slate-950 shadow-sm'
-                : 'bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white'
+                ? 'bg-[var(--color-text-primary)] text-[var(--color-base)] shadow-sm'
+                : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-active)] hover:text-[var(--color-text-primary)]'
             }`}
           >
             {t(TAB_I18N[key])}
           </button>
         ))}
 
-        <div className="mx-1 h-4 w-px bg-white/10" />
+        <div className="mx-1 h-4 w-px bg-[var(--color-surface-active)]" />
 
         {SORT_KEYS.map((key) => {
           const active = sortField === key
@@ -75,8 +75,8 @@ export function ServersFilters({
               onClick={() => onSort(key)}
               className={`inline-flex items-center gap-0.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
                 active
-                  ? 'bg-[var(--color-accent-15)] text-white'
-                  : 'text-slate-400 hover:bg-white/8 hover:text-slate-200'
+                  ? 'bg-[var(--color-accent-15)] text-[var(--color-text-primary)]'
+                  : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)]'
               }`}
             >
               {t(SORT_I18N[key])}
@@ -91,8 +91,8 @@ export function ServersFilters({
 
       {/* Quick filters row */}
       <div className="flex items-center gap-1.5">
-        <SlidersHorizontal size={11} className="text-slate-400" />
-        <span className="text-[11px] text-slate-400 mr-0.5">{t('servers.quickFilters')}</span>
+        <SlidersHorizontal size={11} className="text-[var(--color-text-secondary)]" />
+        <span className="text-[11px] text-[var(--color-text-secondary)] mr-0.5">{t('servers.quickFilters')}</span>
         {QF_KEYS.map((key) => {
           const active = quickFilters.has(key)
           return (
@@ -102,7 +102,7 @@ export function ServersFilters({
               className={`rounded-full border px-3 py-1.5 text-[10px] font-medium transition ${
                 active
                   ? 'border-[var(--color-border-accent)] bg-[var(--color-accent-15)] text-[var(--color-accent-text-muted)]'
-                  : 'border-white/8 bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white'
+                  : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-active)] hover:text-[var(--color-text-primary)]'
               }`}
             >
               {t(QF_I18N[key])}

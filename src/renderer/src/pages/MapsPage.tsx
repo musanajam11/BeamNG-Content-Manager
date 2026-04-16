@@ -158,7 +158,7 @@ export function MapsPage(): React.JSX.Element {
               onClick={() => setFilterSource(s)}
               className={`px-4 py-2 text-xs transition-colors ${
                 filterSource === s
-                  ? 'bg-[var(--color-accent)] text-white'
+                  ? 'bg-[var(--color-accent)] text-[var(--color-text-primary)]'
                   : 'bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'
               }`}
             >
@@ -190,7 +190,7 @@ export function MapsPage(): React.JSX.Element {
                   onClick={() => openMap(m)}
                   className="group flex flex-col bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-accent)] transition-colors cursor-pointer text-left"
                 >
-                  <div className="relative w-full aspect-[16/9] bg-black/30 overflow-hidden">
+                  <div className="relative w-full aspect-[16/9] bg-[var(--color-scrim-30)] overflow-hidden">
                     {previews[m.name] ? (
                       <img src={previews[m.name]} alt={formatMapName(m.name)} className="w-full h-full object-cover" />
                     ) : (
@@ -277,7 +277,7 @@ export function MapsPage(): React.JSX.Element {
             {/* Left column: Preview + info */}
             <div className="flex flex-col gap-3">
               <h2 className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">{t('maps.preview')}</h2>
-              <div className="aspect-[16/9] bg-black/30 border border-[var(--color-border)] overflow-hidden">
+              <div className="aspect-[16/9] bg-[var(--color-scrim-30)] border border-[var(--color-border)] overflow-hidden">
                 {detailPreview ? (
                   <img src={detailPreview} alt={mapMetadata?.title || formatMapName(selectedMap.name)} className="w-full h-full object-cover" />
                 ) : (
@@ -357,7 +357,7 @@ export function MapsPage(): React.JSX.Element {
             {/* Right column: Minimap + registry metadata */}
             <div className="flex flex-col gap-3">
               <h2 className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider">{t('maps.minimap')}</h2>
-              <div className="aspect-square bg-black/30 border border-[var(--color-border)] overflow-hidden">
+              <div className="aspect-square bg-[var(--color-scrim-30)] border border-[var(--color-border)] overflow-hidden">
                 {terrainBase ? (
                   <img src={terrainBase} alt="Terrain Base" className="w-full h-full object-cover" />
                 ) : (

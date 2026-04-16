@@ -16,7 +16,7 @@ export function ConflictDialog({ conflict, onResolve }: ConflictDialogProps): Re
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--color-scrim-60)] backdrop-blur-sm"
       onClick={() => onResolve('cancel')}
     >
       <div
@@ -42,7 +42,7 @@ export function ConflictDialog({ conflict, onResolve }: ConflictDialogProps): Re
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => onResolve('replace')}
-            className="px-3 py-2 text-xs font-medium rounded-md bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] transition-colors"
+            className="px-3 py-2 text-xs font-medium rounded-md bg-[var(--color-accent)] text-[var(--color-text-primary)] hover:bg-[var(--color-accent-hover)] transition-colors"
           >
             {t('controls.conflictReplace')}
           </button>
