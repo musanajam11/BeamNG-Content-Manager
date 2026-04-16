@@ -28,6 +28,7 @@ import { CareerModService } from '../services/CareerModService'
 import { LoadOrderService } from '../services/LoadOrderService'
 import { ConflictDetectionService } from '../services/ConflictDetectionService'
 import { InputBindingsService } from '../services/InputBindingsService'
+import { VoiceChatService } from '../services/VoiceChatService'
 import { parseBeamNGJson } from '../utils/parseBeamNGJson'
 import type { AppConfig, GamePaths, ServerInfo, RepoSortOrder, VehicleDetail, VehicleConfigInfo, VehicleConfigData, VehicleEditorData, SlotInfo, VariableInfo, WheelPlacement, ActiveMeshResult, HostedServerConfig, GPSRoute, ScheduledTask, MapRichMetadata } from '../../shared/types'
 import type { RegistrySearchOptions, RegistryRepository, BeamModMetadata, InstalledRegistryMod } from '../../shared/registry-types'
@@ -47,6 +48,18 @@ let tailscaleService: TailscaleService
 let loadOrderService: LoadOrderService
 let conflictDetectionService: ConflictDetectionService
 let inputBindingsService: InputBindingsService
+let voiceChatService: VoiceChatService
+let careerSaveService: CareerSaveService
+
+// ── Server ↔ career-save tracking state ──
+// On join we snapshot the most-recent lastSaved per deployed profile.
+// On disconnect we compare — only profiles whose saves actually changed get associated.
+let serverSessionSnapshot: {
+  serverIdent: string
+  serverName: string | null
+  /** profileName → newest lastSaved ISO string at the moment of join */
+  timestamps: Record<string, string | null>
+} | null = null
 
 export function initializeServices(): {
   config: ConfigService
@@ -82,7 +95,28 @@ export function initializeServices(): {
   loadOrderService = new LoadOrderService()
   conflictDetectionService = new ConflictDetectionService()
   inputBindingsService = new InputBindingsService()
+  voiceChatService = new VoiceChatService()
   registryService.setModManager(modManagerService)
+
+  // Auto-deploy/undeploy voice bridge on server join/leave
+  launcherService.setOnRelayStateChange((inRelay) => {
+    const cfg = configService.get()
+    if (!cfg.voiceChat.enabled) return
+    const userDir = cfg.gamePaths.userDir
+    if (!userDir) return
+    if (inRelay) {
+      if (!voiceChatService.isDeployed()) {
+        voiceChatService.deployBridge(userDir)
+      }
+      voiceChatService.enable().catch((err) =>
+        console.error('[VoiceChat] Auto-enable failed:', err)
+      )
+    } else {
+      voiceChatService.disable().catch((err) =>
+        console.error('[VoiceChat] Auto-disable failed:', err)
+      )
+    }
+  })
 
   // Initialize backup scheduler (resume saved schedules)
   backupSchedulerService.init().catch((err) =>
@@ -852,6 +886,49 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('gps:getTelemetry', async () => {
     return launcherService.getGPSTelemetry()
+  })
+
+  // ── Voice Chat ──
+  // Set the BrowserWindow reference for push events
+  const win = BrowserWindow.getAllWindows()[0]
+  if (win) voiceChatService.setWindow(win)
+
+  ipcMain.handle('voice:enable', async () => {
+    const userDir = configService.get().gamePaths?.userDir
+    if (!userDir) return { success: false, error: 'User data folder not configured' }
+    if (!voiceChatService.isDeployed()) {
+      const result = voiceChatService.deployBridge(userDir)
+      if (!result.success) return result
+    }
+    await voiceChatService.enable()
+    return { success: true }
+  })
+
+  ipcMain.handle('voice:disable', async () => {
+    await voiceChatService.disable()
+    return { success: true }
+  })
+
+  ipcMain.handle('voice:sendSignal', async (_event, data: string) => {
+    await voiceChatService.sendSignal('vc_signal', data)
+  })
+
+  ipcMain.handle('voice:getState', async () => {
+    return voiceChatService.getState()
+  })
+
+  ipcMain.handle('voice:updateSettings', async (_event, settings: import('../../shared/types').VoiceChatSettings) => {
+    await configService.update({ voiceChat: settings })
+  })
+
+  ipcMain.handle('voice:deployBridge', async () => {
+    const userDir = configService.get().gamePaths?.userDir
+    if (!userDir) return { success: false, error: 'User data folder not configured' }
+    return voiceChatService.deployBridge(userDir)
+  })
+
+  ipcMain.handle('voice:undeployBridge', async () => {
+    return voiceChatService.undeployBridge()
   })
 
   // ── GPS Map POIs ──
@@ -2562,6 +2639,28 @@ export function registerIpcHandlers(): void {
     for (const win of BrowserWindow.getAllWindows()) {
       if (!win.isDestroyed()) win.webContents.send('game:statusChange', status)
     }
+
+    // When player disconnects from a server, check if any deployed career saves were updated
+    if (!status.connectedServer && serverSessionSnapshot) {
+      const snap = serverSessionSnapshot
+      serverSessionSnapshot = null
+      ;(async () => {
+        try {
+          const profiles = await careerSaveService.listProfiles()
+          for (const p of profiles.filter(pp => pp.deployed)) {
+            const newestSlot = p.slots
+              .filter(s => !s.corrupted && s.lastSaved && s.lastSaved !== '0')
+              .sort((a, b) => (b.lastSaved ?? '').localeCompare(a.lastSaved ?? ''))[0]
+            const currentTimestamp = newestSlot?.lastSaved ?? null
+            const previousTimestamp = snap.timestamps[p.name] ?? null
+            // Only associate if the save was actually updated during this session
+            if (currentTimestamp && currentTimestamp !== previousTimestamp) {
+              await careerSaveService.recordServerAssociation(p.name, snap.serverIdent, snap.serverName)
+            }
+          }
+        } catch { /* best-effort */ }
+      })()
+    }
   })
 
   ipcMain.handle('game:joinServer', async (_event, ip: string, port: number) => {
@@ -2569,7 +2668,33 @@ export function registerIpcHandlers(): void {
     const ident = `${ip}:${port}`
     configService.addRecentServer(ident).catch(() => {})
     const rendererArgs = config.renderer === 'vulkan' ? ['-gfx', 'vk'] : config.renderer === 'dx11' ? ['-gfx', 'dx11'] : []
-    return launcherService.joinServer(ip, port, config.gamePaths, { args: rendererArgs })
+    const result = await launcherService.joinServer(ip, port, config.gamePaths, { args: rendererArgs })
+
+    // Snapshot deployed save timestamps so we can diff on disconnect
+    if (result.success) {
+      ;(async () => {
+        try {
+          let serverName: string | null = null
+          try {
+            const servers = await backendService.getServerList()
+            const match = servers.find(s => s.ip === ip && s.port === String(port))
+            if (match) serverName = match.sname
+          } catch { /* offline or timeout */ }
+
+          const profiles = await careerSaveService.listProfiles()
+          const timestamps: Record<string, string | null> = {}
+          for (const p of profiles.filter(pp => pp.deployed)) {
+            const newestSlot = p.slots
+              .filter(s => !s.corrupted && s.lastSaved && s.lastSaved !== '0')
+              .sort((a, b) => (b.lastSaved ?? '').localeCompare(a.lastSaved ?? ''))[0]
+            timestamps[p.name] = newestSlot?.lastSaved ?? null
+          }
+          serverSessionSnapshot = { serverIdent: ident, serverName, timestamps }
+        } catch { /* best-effort */ }
+      })()
+    }
+
+    return result
   })
 
   ipcMain.handle('game:beammpLogin', async (_event, username: string, password: string) => {
@@ -4020,6 +4145,24 @@ export function registerIpcHandlers(): void {
             port: savedTarget.port,
             sname: savedTarget.sname
           })
+
+          // Snapshot deployed save timestamps so we can diff on disconnect (queue path)
+          if (result.success) {
+            const queueIdent = `${savedTarget.ip}:${savedTarget.port}`
+            ;(async () => {
+              try {
+                const profiles = await careerSaveService.listProfiles()
+                const timestamps: Record<string, string | null> = {}
+                for (const p of profiles.filter(pp => pp.deployed)) {
+                  const newestSlot = p.slots
+                    .filter(s => !s.corrupted && s.lastSaved && s.lastSaved !== '0')
+                    .sort((a, b) => (b.lastSaved ?? '').localeCompare(a.lastSaved ?? ''))[0]
+                  timestamps[p.name] = newestSlot?.lastSaved ?? null
+                }
+                serverSessionSnapshot = { serverIdent: queueIdent, serverName: savedTarget.sname ?? null, timestamps }
+              } catch { /* best-effort */ }
+            })()
+          }
         } else {
           // Still full — update status
           win?.webContents.send('queue:status', {
@@ -4534,6 +4677,29 @@ export function registerIpcHandlers(): void {
     return serverManagerService.deployTrackerPlugin(id)
   })
 
+  ipcMain.handle('hostedServer:isTrackerDeployed', async (_event, id: string) => {
+    return serverManagerService.isTrackerPluginDeployed(id)
+  })
+
+  ipcMain.handle('hostedServer:undeployTracker', async (_event, id: string) => {
+    return serverManagerService.undeployTrackerPlugin(id)
+  })
+
+  ipcMain.handle('hostedServer:deployVoicePlugin', async (_event, id: string) => {
+    const config = await serverManagerService.getServerConfig(id)
+    if (!config) throw new Error('Server not found')
+    const serverDir = serverManagerService.getServerDir(id)
+    return voiceChatService.deployServerPlugin(serverDir, config.resourceFolder)
+  })
+
+  ipcMain.handle('hostedServer:isVoicePluginDeployed', async (_event, id: string) => {
+    return serverManagerService.isVoicePluginDeployed(id)
+  })
+
+  ipcMain.handle('hostedServer:undeployVoicePlugin', async (_event, id: string) => {
+    return serverManagerService.undeployVoicePlugin(id)
+  })
+
   // ── Backup Schedule ──
 
   ipcMain.handle('hostedServer:getSchedule', async (_event, id: string) => {
@@ -4866,7 +5032,7 @@ export function registerIpcHandlers(): void {
   })
 
   // ── Career Save Management ──
-  const careerSaveService = new CareerSaveService(configService)
+  careerSaveService = new CareerSaveService(configService)
 
   ipcMain.handle('career:listProfiles', async () => {
     return careerSaveService.listProfiles()
@@ -4874,6 +5040,10 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('career:getSlotMetadata', async (_event, profileName: string, slotName: string) => {
     return careerSaveService.getSlotMetadata(profileName, slotName)
+  })
+
+  ipcMain.handle('career:getProfileSummary', async (_event, profileName: string) => {
+    return careerSaveService.getProfileSummary(profileName)
   })
 
   ipcMain.handle('career:getCareerLog', async (_event, profileName: string) => {
@@ -4929,6 +5099,14 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('career:getSavePath', async () => {
     return careerSaveService.getResolvedSavesDir()
+  })
+
+  ipcMain.handle('career:recordServerAssociation', async (_event, profileName: string, serverIdent: string, serverName: string | null) => {
+    await careerSaveService.recordServerAssociation(profileName, serverIdent, serverName)
+  })
+
+  ipcMain.handle('career:getServerAssociations', async () => {
+    return careerSaveService.getAllServerAssociations()
   })
 
   // ── Career Mod Management ──
@@ -5090,5 +5268,229 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('controls:importPreset', async (_event, jsonString: string) => {
     return inputBindingsService.importPreset(jsonString)
+  })
+
+  // ── Livery Editor ──
+
+  ipcMain.handle('livery:getUVTemplate', async (_event, vehicleName: string): Promise<{ template: string | null; width: number; height: number }> => {
+    const cfg = configService.get()
+    const installDir = cfg.gamePaths?.installDir
+    if (!installDir) return { template: null, width: 2048, height: 2048 }
+
+    const modZip = getModVehicleZip(vehicleName)
+    const zipPath = modZip || join(installDir, 'content', 'vehicles', `${vehicleName}.zip`)
+
+    // Search for *skin_UVs.png or *_skin_UVs.png pattern
+    const uvPatterns = [
+      new RegExp(`^vehicles/${vehicleName}/[^/]*skin_UVs\\.png$`, 'i'),
+      new RegExp(`^vehicles/${vehicleName}/[^/]*_skin_UVs\\.png$`, 'i'),
+      new RegExp(`^vehicles/${vehicleName}/[^/]*uv[^/]*\\.png$`, 'i'),
+      new RegExp(`^vehicles/${vehicleName}/[^/]*template[^/]*\\.png$`, 'i')
+    ]
+
+    for (const pattern of uvPatterns) {
+      const result = await readFirstMatchWithName(zipPath, pattern)
+      if (result) {
+        try {
+          const png = PNG.sync.read(result.data)
+          return {
+            template: `data:image/png;base64,${result.data.toString('base64')}`,
+            width: png.width,
+            height: png.height
+          }
+        } catch {
+          return {
+            template: `data:image/png;base64,${result.data.toString('base64')}`,
+            width: 2048,
+            height: 2048
+          }
+        }
+      }
+    }
+
+    // No UV template found — look for skin baseColor textures to determine resolution
+    const skinTexPattern = new RegExp(`^vehicles/${vehicleName}/[^/]*\\.color\\.(png|dds)$`, 'i')
+    const texResult = await readFirstMatchWithName(zipPath, skinTexPattern)
+    if (texResult && texResult.fileName.toLowerCase().endsWith('.png')) {
+      try {
+        const png = PNG.sync.read(texResult.data)
+        return { template: null, width: png.width, height: png.height }
+      } catch { /* fall through */ }
+    }
+
+    return { template: null, width: 2048, height: 2048 }
+  })
+
+  ipcMain.handle('livery:getVehicleSkinMaterials', async (_event, vehicleName: string): Promise<Array<{ materialName: string; texturePath: string; uvChannel: 0 | 1; hasPaletteMap: boolean }>> => {
+    const cfg = configService.get()
+    const installDir = cfg.gamePaths?.installDir
+    if (!installDir) return []
+
+    const modZip = getModVehicleZip(vehicleName)
+    const zipPath = modZip || join(installDir, 'content', 'vehicles', `${vehicleName}.zip`)
+
+    const matPattern = new RegExp(`^vehicles/${vehicleName}/[^/]*\\.materials\\.json$`, 'i')
+    const results: Array<{ materialName: string; texturePath: string; uvChannel: 0 | 1; hasPaletteMap: boolean }> = []
+
+    await forEachMatch(zipPath, (fn) => matPattern.test(fn), (_fn, data) => {
+      try {
+        const parsed = parseBeamNGJson(data.toString('utf-8'))
+        for (const [matName, matDef] of Object.entries<Record<string, unknown>>(parsed as Record<string, Record<string, unknown>>)) {
+          const stages = matDef.Stages as Array<Record<string, unknown>> | undefined
+          if (!stages) continue
+          for (const stage of stages) {
+            if (stage.colorPaletteMap || stage.instanceDiffuse) {
+              results.push({
+                materialName: matName,
+                texturePath: (stage.baseColorMap as string) || '',
+                uvChannel: (stage.colorPaletteMapUseUV as number) === 1 ? 1 : 0,
+                hasPaletteMap: !!stage.colorPaletteMap
+              })
+            }
+          }
+        }
+      } catch { /* skip malformed material files */ }
+    })
+
+    return results
+  })
+
+  ipcMain.handle('livery:exportSkinMod', async (_event, params: {
+    vehicleName: string; skinName: string; authorName: string
+    canvasDataUrl: string
+    metallic: number; roughness: number; clearcoat: number; clearcoatRoughness: number
+  }): Promise<{ success: boolean; filePath?: string; error?: string }> => {
+    try {
+      const { vehicleName, skinName, authorName, canvasDataUrl, metallic, roughness, clearcoat, clearcoatRoughness } = params
+      const safeSkinName = skinName.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase()
+      const skinId = `${vehicleName}_${safeSkinName}`
+
+      // Decode canvas data URL to PNG buffer
+      const base64Data = canvasDataUrl.replace(/^data:image\/\w+;base64,/, '')
+      const pngBuffer = Buffer.from(base64Data, 'base64')
+
+      // Generate jbeam
+      const jbeam = JSON.stringify({
+        [skinId]: {
+          information: {
+            authors: authorName || 'BeamMP Content Manager',
+            name: skinName
+          },
+          slotType: 'paint_design',
+          globalSkin: skinId
+        }
+      }, null, 2)
+
+      // Generate materials.json
+      const materials = JSON.stringify({
+        [`${vehicleName}.skin.${safeSkinName}`]: {
+          name: `${vehicleName}.skin.${safeSkinName}`,
+          mapTo: `${vehicleName}.skin.${safeSkinName}`,
+          class: 'Material',
+          persistentId: crypto.randomUUID(),
+          Stages: [
+            {},
+            {
+              baseColorMap: `vehicles/${vehicleName}/${safeSkinName}.color.png`,
+              baseColorFactor: [1, 1, 1, 1],
+              metallicFactor: metallic,
+              roughnessFactor: roughness,
+              clearCoatFactor: clearcoat,
+              clearCoatRoughnessFactor: clearcoatRoughness,
+              instanceDiffuse: false,
+              colorPaletteMapUseUV: 1
+            }
+          ],
+          activeLayers: 2,
+          version: 1.5
+        }
+      }, null, 2)
+
+      // Ask user where to save
+      const cfg = configService.get()
+      const defaultPath = cfg.gamePaths?.userDir
+        ? join(cfg.gamePaths.userDir, 'mods', 'repo', `${skinId}.zip`)
+        : `${skinId}.zip`
+
+      const win = BrowserWindow.getFocusedWindow()
+      const result = await dialog.showSaveDialog(win!, {
+        title: 'Export Livery Mod',
+        defaultPath,
+        filters: [{ name: 'BeamNG Mod', extensions: ['zip'] }]
+      })
+
+      if (result.canceled || !result.filePath) return { success: false, error: 'Cancelled' }
+
+      // Build zip using archiver pattern with basic buffer
+      const { createWriteStream } = await import('node:fs')
+      const archiver = await import('archiver')
+      const output = createWriteStream(result.filePath)
+      const archive = archiver.default('zip', { zlib: { level: 9 } })
+
+      await new Promise<void>((resolve, reject) => {
+        output.on('close', resolve)
+        archive.on('error', reject)
+        archive.pipe(output)
+        archive.append(jbeam, { name: `vehicles/${vehicleName}/${safeSkinName}.jbeam` })
+        archive.append(materials, { name: `vehicles/${vehicleName}/${safeSkinName}.materials.json` })
+        archive.append(pngBuffer, { name: `vehicles/${vehicleName}/${safeSkinName}.color.png` })
+        archive.finalize()
+      })
+
+      return { success: true, filePath: result.filePath }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('livery:saveProject', async (_event, data: string): Promise<{ success: boolean; filePath?: string; error?: string }> => {
+    try {
+      const win = BrowserWindow.getFocusedWindow()
+      const result = await dialog.showSaveDialog(win!, {
+        title: 'Save Livery Project',
+        filters: [{ name: 'BeamMP Livery Project', extensions: ['bmcl'] }]
+      })
+      if (result.canceled || !result.filePath) return { success: false, error: 'Cancelled' }
+      await writeFile(result.filePath, data, 'utf-8')
+      return { success: true, filePath: result.filePath }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('livery:loadProject', async (): Promise<{ success: boolean; data?: string; error?: string }> => {
+    try {
+      const win = BrowserWindow.getFocusedWindow()
+      const result = await dialog.showOpenDialog(win!, {
+        title: 'Open Livery Project',
+        filters: [{ name: 'BeamMP Livery Project', extensions: ['bmcl'] }],
+        properties: ['openFile']
+      })
+      if (result.canceled || result.filePaths.length === 0) return { success: false, error: 'Cancelled' }
+      const data = await readFile(result.filePaths[0], 'utf-8')
+      return { success: true, data }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('livery:importImage', async (): Promise<string | null> => {
+    try {
+      const win = BrowserWindow.getFocusedWindow()
+      const result = await dialog.showOpenDialog(win!, {
+        title: 'Import Image',
+        filters: [
+          { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'svg', 'webp'] }
+        ],
+        properties: ['openFile']
+      })
+      if (result.canceled || result.filePaths.length === 0) return null
+      const buf = await readFile(result.filePaths[0])
+      const ext = result.filePaths[0].split('.').pop()?.toLowerCase() || 'png'
+      const mime = ext === 'svg' ? 'image/svg+xml' : ext === 'webp' ? 'image/webp' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png'
+      return `data:${mime};base64,${buf.toString('base64')}`
+    } catch {
+      return null
+    }
   })
 }

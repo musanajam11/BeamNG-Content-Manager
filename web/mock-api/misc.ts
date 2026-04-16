@@ -123,6 +123,7 @@ export const miscMocks = {
   // Career Save Management
   careerListProfiles: async () => [],
   careerGetSlotMetadata: async () => null,
+  careerGetProfileSummary: async () => null,
   careerGetLog: async () => [],
   careerDeployProfile: async () => ({ success: false, error: 'Demo mode' }),
   careerUndeployProfile: async () => ({ success: false, error: 'Demo mode' }),
@@ -134,6 +135,8 @@ export const miscMocks = {
   careerSetSavePath: async () => ({ success: false, error: 'Demo mode' }),
   careerBrowseSavePath: async () => null,
   careerGetSavePath: async () => null,
+  careerRecordServerAssociation: async () => {},
+  careerGetServerAssociations: async () => ({}),
 
   // Career Mod Management
   careerFetchCareerMPReleases: async () => [],

@@ -93,6 +93,18 @@ const api = {
   getAuthInfo: () => ipcRenderer.invoke('game:getAuthInfo'),
   getLauncherLogs: () => ipcRenderer.invoke('game:getLauncherLogs'),
 
+  // Discord Rich Presence
+  discordSetPage: (pageId: string) => ipcRenderer.send('discord:setPage', pageId),
+  discordSetPlaying: (info: {
+    serverName: string
+    mapName: string
+    carName?: string
+    tags?: string
+    playerCount?: number
+    maxPlayers?: number
+  }) => ipcRenderer.send('discord:setPlaying', info),
+  discordClearPlaying: () => ipcRenderer.send('discord:clearPlaying'),
+
   // Support Tools
   openUserFolder: () => ipcRenderer.invoke('game:openUserFolder') as Promise<{ success: boolean; error?: string }>,
   clearCache: () => ipcRenderer.invoke('game:clearCache') as Promise<{ success: boolean; error?: string; freedBytes?: number }>,
@@ -318,6 +330,16 @@ const api = {
     ipcRenderer.invoke('hostedServer:getPlayerPositions', id),
   hostedServerDeployTracker: (id: string) =>
     ipcRenderer.invoke('hostedServer:deployTracker', id),
+  hostedServerIsTrackerDeployed: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke('hostedServer:isTrackerDeployed', id),
+  hostedServerUndeployTracker: (id: string) =>
+    ipcRenderer.invoke('hostedServer:undeployTracker', id),
+  hostedServerDeployVoicePlugin: (id: string) =>
+    ipcRenderer.invoke('hostedServer:deployVoicePlugin', id),
+  hostedServerIsVoicePluginDeployed: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke('hostedServer:isVoicePluginDeployed', id),
+  hostedServerUndeployVoicePlugin: (id: string) =>
+    ipcRenderer.invoke('hostedServer:undeployVoicePlugin', id),
   hostedServerGetModLoadOrder: (id: string) =>
     ipcRenderer.invoke('hostedServer:getModLoadOrder', id),
   hostedServerSetModLoadOrder: (id: string, orderedKeys: string[]) =>
@@ -483,6 +505,8 @@ const api = {
     ipcRenderer.invoke('career:listProfiles'),
   careerGetSlotMetadata: (profileName: string, slotName: string) =>
     ipcRenderer.invoke('career:getSlotMetadata', profileName, slotName),
+  careerGetProfileSummary: (profileName: string) =>
+    ipcRenderer.invoke('career:getProfileSummary', profileName),
   careerGetLog: (profileName: string) =>
     ipcRenderer.invoke('career:getCareerLog', profileName) as Promise<string[]>,
   careerDeployProfile: (profileName: string) =>
@@ -505,6 +529,10 @@ const api = {
     ipcRenderer.invoke('career:browseSavePath') as Promise<string | null>,
   careerGetSavePath: () =>
     ipcRenderer.invoke('career:getSavePath') as Promise<string | null>,
+  careerRecordServerAssociation: (profileName: string, serverIdent: string, serverName: string | null) =>
+    ipcRenderer.invoke('career:recordServerAssociation', profileName, serverIdent, serverName) as Promise<void>,
+  careerGetServerAssociations: () =>
+    ipcRenderer.invoke('career:getServerAssociations') as Promise<Record<string, { serverIdent: string; serverName: string | null; lastPlayed: string }>>,
 
   // Career Mod Management
   careerFetchCareerMPReleases: () =>
@@ -566,7 +594,55 @@ const api = {
   gpsGetTelemetry: () =>
     ipcRenderer.invoke('gps:getTelemetry'),
   gpsGetMapPOIs: (mapName: string) =>
-    ipcRenderer.invoke('gps:getMapPOIs', mapName) as Promise<import('../shared/types').GPSMapPOI[]>
+    ipcRenderer.invoke('gps:getMapPOIs', mapName) as Promise<import('../shared/types').GPSMapPOI[]>,
+
+  // Voice Chat
+  voiceEnable: () =>
+    ipcRenderer.invoke('voice:enable') as Promise<{ success: boolean; error?: string }>,
+  voiceDisable: () =>
+    ipcRenderer.invoke('voice:disable') as Promise<{ success: boolean; error?: string }>,
+  voiceSendSignal: (data: string) =>
+    ipcRenderer.invoke('voice:sendSignal', data),
+  voiceGetState: () =>
+    ipcRenderer.invoke('voice:getState') as Promise<import('../shared/types').VoiceChatState>,
+  voiceUpdateSettings: (settings: import('../shared/types').VoiceChatSettings) =>
+    ipcRenderer.invoke('voice:updateSettings', settings),
+  voiceDeployBridge: () =>
+    ipcRenderer.invoke('voice:deployBridge') as Promise<{ success: boolean; error?: string }>,
+  voiceUndeployBridge: () =>
+    ipcRenderer.invoke('voice:undeployBridge') as Promise<{ success: boolean; error?: string }>,
+  onVoicePeerJoined: (callback: (data: { playerId: number; playerName: string }) => void) => {
+    const handler = (_event: unknown, data: { playerId: number; playerName: string }): void => callback(data)
+    ipcRenderer.on('voice:peerJoined', handler)
+    return () => { ipcRenderer.removeListener('voice:peerJoined', handler) }
+  },
+  onVoicePeerLeft: (callback: (data: { playerId: number }) => void) => {
+    const handler = (_event: unknown, data: { playerId: number }): void => callback(data)
+    ipcRenderer.on('voice:peerLeft', handler)
+    return () => { ipcRenderer.removeListener('voice:peerLeft', handler) }
+  },
+  onVoiceSignal: (callback: (data: { fromId: number; payload: string }) => void) => {
+    const handler = (_event: unknown, data: { fromId: number; payload: string }): void => callback(data)
+    ipcRenderer.on('voice:signal', handler)
+    return () => { ipcRenderer.removeListener('voice:signal', handler) }
+  },
+
+  // Livery Editor
+  liveryGetUVTemplate: (vehicleName: string) =>
+    ipcRenderer.invoke('livery:getUVTemplate', vehicleName) as Promise<{ template: string | null; width: number; height: number }>,
+  liveryGetSkinMaterials: (vehicleName: string) =>
+    ipcRenderer.invoke('livery:getVehicleSkinMaterials', vehicleName) as Promise<Array<{ materialName: string; texturePath: string; uvChannel: 0 | 1; hasPaletteMap: boolean }>>,
+  liveryExportSkinMod: (params: {
+    vehicleName: string; skinName: string; authorName: string; canvasDataUrl: string
+    metallic: number; roughness: number; clearcoat: number; clearcoatRoughness: number
+  }) =>
+    ipcRenderer.invoke('livery:exportSkinMod', params) as Promise<{ success: boolean; filePath?: string; error?: string }>,
+  liverySaveProject: (data: string) =>
+    ipcRenderer.invoke('livery:saveProject', data) as Promise<{ success: boolean; filePath?: string; error?: string }>,
+  liveryLoadProject: () =>
+    ipcRenderer.invoke('livery:loadProject') as Promise<{ success: boolean; data?: string; error?: string }>,
+  liveryImportImage: () =>
+    ipcRenderer.invoke('livery:importImage') as Promise<string | null>,
 }
 
 if (process.contextIsolated) {

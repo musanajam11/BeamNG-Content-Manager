@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0%" stop-color="#1a1d2e"/>
+      <stop offset="100%" stop-color="#0d0f18"/>
+    </linearGradient>
+    <linearGradient id="card1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f97316"/>
+      <stop offset="100%" stop-color="#c2410c"/>
+    </linearGradient>
+    <linearGradient id="card2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fb923c" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#ea580c" stop-opacity="0.7"/>
+    </linearGradient>
+    <linearGradient id="card3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fdba74" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#f97316" stop-opacity="0.4"/>
+    </linearGradient>
+    <filter id="cardShadow" x="-10%" y="-5%" width="125%" height="120%">
+      <feDropShadow dx="4" dy="8" stdDeviation="10" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+    <filter id="topShadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#f97316" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="96" ry="96" fill="url(#bgGrad)"/>
+
+  <!-- Three stacked cards — content library metaphor -->
+  <!-- Back card (faintest, most offset) -->
+  <g filter="url(#cardShadow)" opacity="0.9">
+    <rect x="132" y="90" width="280" height="340" rx="24" ry="24" fill="url(#card3)" transform="rotate(-8, 256, 260)"/>
+  </g>
+
+  <!-- Middle card -->
+  <g filter="url(#cardShadow)" opacity="0.95">
+    <rect x="122" y="95" width="280" height="340" rx="24" ry="24" fill="url(#card2)" transform="rotate(3, 256, 260)"/>
+  </g>
+
+  <!-- Front card (brightest, straight) -->
+  <g filter="url(#topShadow)">
+    <rect x="116" y="100" width="280" height="340" rx="24" ry="24" fill="url(#card1)"/>
+
+    <!-- Decorative lines on front card — like content list -->
+    <line x1="152" y1="150" x2="330" y2="150" stroke="white" stroke-width="5" opacity="0.3" stroke-linecap="round"/>
+    <line x1="152" y1="174" x2="290" y2="174" stroke="white" stroke-width="4" opacity="0.2" stroke-linecap="round"/>
+    <line x1="152" y1="196" x2="310" y2="196" stroke="white" stroke-width="4" opacity="0.15" stroke-linecap="round"/>
+
+    <!-- CM — large, white, center of card -->
+    <g opacity="0.95">
+      <!-- "C" -->
+      <path d="M 215,245 C 168,245 142,270 142,305 C 142,340 168,365 215,365"
+            fill="none" stroke="white" stroke-width="26" stroke-linecap="round"/>
+      <!-- "M" -->
+      <path d="M 248,365 L 248,245 L 290,330 L 332,245 L 332,365"
+            fill="none" stroke="white" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+  </g>
+</svg>

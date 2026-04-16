@@ -507,6 +507,38 @@ export class ServerManagerService {
     }
   }
 
+  async isTrackerPluginDeployed(id: string): Promise<boolean> {
+    const config = await this.getServerConfig(id)
+    if (!config) return false
+    const pluginPath = join(this.serversDir, id, config.resourceFolder, 'Server', 'BeamMPCM', 'main.lua')
+    return existsSync(pluginPath)
+  }
+
+  async undeployTrackerPlugin(id: string): Promise<void> {
+    const config = await this.getServerConfig(id)
+    if (!config) throw new Error('Server not found')
+    const pluginDir = join(this.serversDir, id, config.resourceFolder, 'Server', 'BeamMPCM')
+    if (existsSync(pluginDir)) {
+      await rm(pluginDir, { recursive: true, force: true })
+    }
+  }
+
+  async isVoicePluginDeployed(id: string): Promise<boolean> {
+    const config = await this.getServerConfig(id)
+    if (!config) return false
+    const pluginPath = join(this.serversDir, id, config.resourceFolder, 'Server', 'BeamMPCMVoice', 'main.lua')
+    return existsSync(pluginPath)
+  }
+
+  async undeployVoicePlugin(id: string): Promise<void> {
+    const config = await this.getServerConfig(id)
+    if (!config) throw new Error('Server not found')
+    const pluginDir = join(this.serversDir, id, config.resourceFolder, 'Server', 'BeamMPCMVoice')
+    if (existsSync(pluginDir)) {
+      await rm(pluginDir, { recursive: true, force: true })
+    }
+  }
+
   /* ── CRUD ── */
 
   async listServers(): Promise<HostedServerEntry[]> {
@@ -1033,67 +1065,61 @@ export class ServerManagerService {
 /* ── BeamMPCM Tracker Lua Plugin ── */
 const TRACKER_LUA_PLUGIN = `-- BeamMPCM Position Tracker Plugin
 -- Auto-deployed by BeamMP Content Manager
--- Writes player vehicle positions to player_positions.json
+-- Polls MP.GetPositionRaw every 500ms and writes player_positions.json
 
 local posFile = "player_positions.json"
-local positions = {}
 
-MP.RegisterEvent("onVehicleSpawn", "handleVehicleSpawn")
-MP.RegisterEvent("onVehicleEdited", "handleVehicleEdited")
-MP.RegisterEvent("onVehicleDeleted", "handleVehicleDeleted")
 MP.RegisterEvent("onPlayerDisconnect", "handlePlayerDisconnect")
+MP.RegisterEvent("onVehicleDeleted", "handleVehicleDeleted")
 MP.CreateEventTimer("writePositions", 500)
 
-function handleVehicleSpawn(player_id, vehicle_id, data)
-  local name = MP.GetPlayerName(player_id) or ("Player " .. tostring(player_id))
-  if not positions[player_id] then positions[player_id] = {} end
-  positions[player_id][vehicle_id] = {
-    playerId = player_id,
-    playerName = name,
-    vehicleId = vehicle_id,
-    x = 0, y = 0, z = 0,
-    heading = 0,
-    speed = 0,
-    timestamp = os.time()
-  }
-end
+-- Track which vehicles belong to which player for cleanup
+local playerVehicles = {}
 
-function handleVehicleEdited(player_id, vehicle_id, data)
-  if not positions[player_id] then positions[player_id] = {} end
-  local name = MP.GetPlayerName(player_id) or ("Player " .. tostring(player_id))
-  local pos = {0, 0, 0}
-  if type(data) == "string" then
-    local ok, parsed = pcall(function() return Util.JsonDecode(data) end)
-    if ok and parsed and parsed.pos then
-      pos = {parsed.pos[1] or 0, parsed.pos[2] or 0, parsed.pos[3] or 0}
-    end
-  end
-  positions[player_id][vehicle_id] = {
-    playerId = player_id,
-    playerName = name,
-    vehicleId = vehicle_id,
-    x = pos[1], y = pos[2], z = pos[3],
-    heading = 0,
-    speed = 0,
-    timestamp = os.time()
-  }
+MP.RegisterEvent("onVehicleSpawn", "handleVehicleSpawn")
+
+function handleVehicleSpawn(player_id, vehicle_id, data)
+  if not playerVehicles[player_id] then playerVehicles[player_id] = {} end
+  playerVehicles[player_id][vehicle_id] = true
 end
 
 function handleVehicleDeleted(player_id, vehicle_id)
-  if positions[player_id] then
-    positions[player_id][vehicle_id] = nil
+  if playerVehicles[player_id] then
+    playerVehicles[player_id][vehicle_id] = nil
   end
 end
 
 function handlePlayerDisconnect(player_id)
-  positions[player_id] = nil
+  playerVehicles[player_id] = nil
 end
 
 function writePositions()
   local allPos = {}
-  for _, vehicles in pairs(positions) do
-    for _, data in pairs(vehicles) do
-      table.insert(allPos, data)
+  local players = MP.GetPlayers()
+  for pid, name in pairs(players) do
+    local ok, vehicles = pcall(MP.GetPlayerVehicles, pid)
+    if ok and vehicles then
+      for vid, _ in pairs(vehicles) do
+        local raw, err = MP.GetPositionRaw(pid, vid)
+        if err == "" and raw and raw.pos then
+          local speed = 0
+          if raw.vel then
+            local vx, vy, vz = raw.vel[1] or 0, raw.vel[2] or 0, raw.vel[3] or 0
+            speed = math.sqrt(vx * vx + vy * vy + vz * vz)
+          end
+          table.insert(allPos, {
+            playerId = pid,
+            playerName = name,
+            vehicleId = vid,
+            x = raw.pos[1] or 0,
+            y = raw.pos[2] or 0,
+            z = raw.pos[3] or 0,
+            heading = 0,
+            speed = speed,
+            timestamp = os.time()
+          })
+        end
+      end
     end
   end
   local json = Util.JsonEncode(allPos)

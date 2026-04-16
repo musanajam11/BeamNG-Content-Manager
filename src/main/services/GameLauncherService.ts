@@ -308,6 +308,7 @@ local function onUpdate(dt)
     heading = heading,
     speed = speed,
     map = levelName,
+    vehicle = veh:getJBeamFilename() or "",
     others = getOtherVehicles(veh),
     route = getNavRoute(),
     t = os.clock()
@@ -413,6 +414,14 @@ export class GameLauncherService {
   private gpsFilePoller: ReturnType<typeof setInterval> | null = null
   private gpsTrackerDeployed: boolean = false
   private latestGpsTelemetry: import('../../shared/types').GPSTelemetry | null = null
+
+  // Callback fired when serverInRelay state changes (true = joined server, false = disconnected)
+  private onRelayStateChangeCallback: ((inRelay: boolean) => void) | null = null
+
+  /** Register a callback for when the server relay state changes */
+  setOnRelayStateChange(cb: (inRelay: boolean) => void): void {
+    this.onRelayStateChangeCallback = cb
+  }
 
   /** Set a callback that returns the configured backend URL */
   setBackendUrlResolver(resolver: () => string): void {
@@ -1077,6 +1086,7 @@ export class GameLauncherService {
       const wasInRelay = this.serverInRelay
       this.connectedServerAddress = null
       this.serverInRelay = false
+      if (wasInRelay) this.onRelayStateChangeCallback?.(false)
       this.notifyStatusChange()
       // If we were in relay (game was actively connected to server), kill the game
       // so the user doesn't get stranded at the main menu
@@ -1261,6 +1271,7 @@ export class GameLauncherService {
 
     this.log('Handshake complete, entering relay mode')
     this.serverInRelay = true
+    this.onRelayStateChangeCallback?.(true)
     this.pendingRelayServer = { ip, port }
 
     // If the game is already connected to the proxy (early join signal flow),
@@ -2597,6 +2608,7 @@ export class GameLauncherService {
           speed: data.speed ?? 0,
           timestamp: Date.now(),
           map: typeof data.map === 'string' && data.map ? data.map : undefined,
+          vehicleId: typeof data.vehicle === 'string' && data.vehicle ? data.vehicle : undefined,
           otherPlayers: Array.isArray(data.others) ? data.others.map((o: Record<string, unknown>) => ({
             x: typeof o.x === 'number' ? o.x : 0,
             y: typeof o.y === 'number' ? o.y : 0,

@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#1c1f33"/>
+      <stop offset="100%" stop-color="#0c0e16"/>
+    </linearGradient>
+    <radialGradient id="nodeGrad" cx="38%" cy="32%">
+      <stop offset="0%" stop-color="#fbbf6a"/>
+      <stop offset="45%" stop-color="#f97316"/>
+      <stop offset="100%" stop-color="#b45309"/>
+    </radialGradient>
+    <radialGradient id="nodeGradDim" cx="38%" cy="32%">
+      <stop offset="0%" stop-color="#c8845a"/>
+      <stop offset="45%" stop-color="#a85a10"/>
+      <stop offset="100%" stop-color="#6b2f0e"/>
+    </radialGradient>
+    <filter id="beamGlow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="nodeShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="3" stdDeviation="8" flood-color="#f97316" flood-opacity="0.5"/>
+    </filter>
+    <filter id="nodeShadowBack" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#f97316" flood-opacity="0.2"/>
+    </filter>
+    <filter id="badgeGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="96" ry="96" fill="url(#bgGrad)"/>
+
+  <!--
+    Concept 14: Big prominent pyramid filling most of the icon, CM as a compact badge bottom-right
+    Inverted tetrahedron — large and dramatic
+    Apex: 256,465  TopL: 55,55  TopR: 457,75  Back: 285,225
+  -->
+
+  <!-- Faces with orange tint -->
+  <polygon points="256,465 55,55 285,225" fill="#f97316" opacity="0.05"/>
+  <polygon points="256,465 457,75 285,225" fill="#f97316" opacity="0.08"/>
+  <polygon points="55,55 457,75 285,225" fill="#f97316" opacity="0.03"/>
+  <polygon points="256,465 55,55 457,75" fill="#f97316" opacity="0.12"/>
+
+  <!-- Back edges -->
+  <g filter="url(#beamGlow)" opacity="0.35">
+    <line x1="256" y1="465" x2="285" y2="225" stroke="white" stroke-width="14" stroke-linecap="round"/>
+    <line x1="55" y1="55" x2="285" y2="225" stroke="white" stroke-width="14" stroke-linecap="round"/>
+    <line x1="457" y1="75" x2="285" y2="225" stroke="white" stroke-width="14" stroke-linecap="round"/>
+  </g>
+
+  <!-- Front edges — thick and prominent -->
+  <g filter="url(#beamGlow)" opacity="1">
+    <line x1="256" y1="465" x2="55" y2="55" stroke="white" stroke-width="22" stroke-linecap="round"/>
+    <line x1="256" y1="465" x2="457" y2="75" stroke="white" stroke-width="22" stroke-linecap="round"/>
+    <line x1="55" y1="55" x2="457" y2="75" stroke="white" stroke-width="20" stroke-linecap="round"/>
+  </g>
+
+  <!-- Back node -->
+  <circle cx="285" cy="225" r="24" fill="url(#nodeGradDim)" filter="url(#nodeShadowBack)"/>
+
+  <!-- Front nodes — large -->
+  <g filter="url(#nodeShadow)">
+    <circle cx="256" cy="465" r="44" fill="url(#nodeGrad)"/>
+    <circle cx="55" cy="55" r="40" fill="url(#nodeGrad)"/>
+    <circle cx="457" cy="75" r="40" fill="url(#nodeGrad)"/>
+  </g>
+
+  <!-- CM badge — compact, bottom right area, bold orange -->
+  <g filter="url(#badgeGlow)" transform="translate(290, 320)">
+    <rect x="0" y="0" width="170" height="80" rx="16" ry="16" fill="#0c0e16" opacity="0.85"/>
+    <rect x="0" y="0" width="170" height="80" rx="16" ry="16" fill="none" stroke="#f97316" stroke-width="3" opacity="0.6"/>
+    <!-- "C" -->
+    <path d="M 50,20 C 28,20 16,30 16,42 C 16,54 28,64 50,64"
+          fill="none" stroke="#f97316" stroke-width="10" stroke-linecap="round"/>
+    <!-- "M" -->
+    <path d="M 68,64 L 68,20 L 92,48 L 116,20 L 116,64"
+          fill="none" stroke="#f97316" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

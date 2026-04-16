@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0%" stop-color="#1a1d2e"/>
+      <stop offset="100%" stop-color="#0d0f18"/>
+    </linearGradient>
+    <linearGradient id="shieldGrad" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#fb923c"/>
+      <stop offset="60%" stop-color="#ea580c"/>
+      <stop offset="100%" stop-color="#9a3412"/>
+    </linearGradient>
+    <linearGradient id="shieldInner" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#1e2033"/>
+      <stop offset="100%" stop-color="#12141f"/>
+    </linearGradient>
+    <filter id="shieldShadow" x="-15%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="6" stdDeviation="12" flood-color="#f97316" flood-opacity="0.3"/>
+    </filter>
+    <filter id="textGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="glow"/>
+      <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="96" ry="96" fill="url(#bgGrad)"/>
+
+  <!-- Shield shape — automotive badge style -->
+  <g filter="url(#shieldShadow)">
+    <!-- Outer shield (orange) -->
+    <path d="M 256,58 L 420,120 C 430,124 436,134 436,145 L 436,290 C 436,360 370,420 256,462 C 142,420 76,360 76,290 L 76,145 C 76,134 82,124 92,120 Z"
+          fill="url(#shieldGrad)"/>
+    <!-- Inner cutout (dark) -->
+    <path d="M 256,86 L 398,140 C 404,142 408,148 408,155 L 408,282 C 408,340 352,392 256,428 C 160,392 104,340 104,282 L 104,155 C 104,148 108,142 114,140 Z"
+          fill="url(#shieldInner)"/>
+  </g>
+
+  <!-- Three small connected nodes inside shield — subtle beam reference -->
+  <g opacity="0.2">
+    <line x1="180" y1="170" x2="330" y2="170" stroke="white" stroke-width="3"/>
+    <line x1="180" y1="170" x2="256" y2="140" stroke="white" stroke-width="3"/>
+    <line x1="330" y1="170" x2="256" y2="140" stroke="white" stroke-width="3"/>
+    <circle cx="256" cy="140" r="6" fill="#f97316" opacity="0.5"/>
+    <circle cx="180" cy="170" r="5" fill="#f97316" opacity="0.4"/>
+    <circle cx="330" cy="170" r="5" fill="#f97316" opacity="0.4"/>
+  </g>
+
+  <!-- CM letters — bold, white -->
+  <g filter="url(#textGlow)">
+    <!-- "C" -->
+    <path d="M 220,215 C 162,215 130,248 130,295 C 130,342 162,375 220,375"
+          fill="none" stroke="white" stroke-width="30" stroke-linecap="round"/>
+    <!-- "M" -->
+    <path d="M 258,375 L 258,215 L 305,320 L 352,215 L 352,375"
+          fill="none" stroke="white" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

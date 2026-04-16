@@ -17,6 +17,13 @@ export interface CareerVehicleSummary {
   name: string | null
   model: string | null
   thumbnailDataUrl: string | null
+  value: number | null              // from insurance.json
+  power: number | null              // kW from certifications
+  torque: number | null             // Nm from certifications
+  weight: number | null             // kg from certifications
+  odometer: number | null           // metres from gameplay_stat.json
+  insuranceClass: string | null     // e.g. "Daily driver"
+  licensePlate: string | null       // from vehicle config
 }
 
 export interface SkillCategory {
@@ -48,10 +55,17 @@ export interface CareerSaveMetadata {
   }
   insuranceCount: number
   missionCount: number
+  totalMissions: number
   skills: SkillCategory[]
   reputations: BusinessReputation[]
   stamina: number | null
   vouchers: number | null
+  discoveredLocations: number
+  unlockedBranches: number
+  totalBranches: number
+  discoveredBusinesses: string[]
+  logbookEntries: number
+  favoriteVehicleId: string | null
 }
 
 export interface ProfileBackupInfo {
@@ -68,6 +82,32 @@ export interface CareerProfile {
   path: string
   deployed: boolean           // true = in cloud saves, false = in CM storage
   slots: CareerSaveSlot[]
+}
+
+export interface ServerAssociation {
+  serverIdent: string       // "ip:port"
+  serverName: string | null // resolved display name
+  lastPlayed: string        // ISO timestamp
+}
+
+/** Lightweight summary for profile cards in the list view */
+export interface CareerProfileSummary {
+  money: number | null
+  beamXPLevel: number | null
+  level: string | null
+  vehicleCount: number
+  lastSaved: string | null
+  totalOdometer: number | null
+  missionCount: number
+  totalMissions: number
+  bankBalance: number | null
+  creditScore: number | null
+  discoveredLocations: number
+  unlockedBranches: number
+  discoveredBusinesses: number
+  insuranceCount: number
+  logbookEntries: number
+  lastServer: ServerAssociation | null
 }
 
 export class CareerSaveService {
@@ -299,10 +339,14 @@ export class CareerSaveService {
 
     // Read general.json
     let level: string | null = null
+    let discoveredBusinesses: string[] = []
     try {
       const raw = await readFile(join(careerPath, 'general.json'), 'utf-8')
       const general = JSON.parse(raw)
       level = general.level ?? null
+      if (general.organizationInteraction && typeof general.organizationInteraction === 'object') {
+        discoveredBusinesses = Object.keys(general.organizationInteraction)
+      }
     } catch { /* not present in RLS */ }
 
     // Read playerAttributes.json
@@ -333,7 +377,88 @@ export class CareerSaveService {
       vouchers = extracted.vouchers
     } catch { /* not present in RLS */ }
 
-    // Count and read vehicles
+    // Read insurance data (for vehicle values and classes)
+    const insuranceMap = new Map<number, { value: number; className: string | null }>()
+    let insuranceCount = 0
+    try {
+      const raw = await readFile(join(careerPath, 'insurance.json'), 'utf-8')
+      const ins = JSON.parse(raw)
+      const invVehs = Array.isArray(ins.invVehs) ? ins.invVehs : Array.isArray(ins) ? ins : []
+      insuranceCount = invVehs.length
+      for (const entry of invVehs) {
+        if (typeof entry.id === 'number') {
+          insuranceMap.set(entry.id, {
+            value: typeof entry.initialValue === 'number' ? entry.initialValue : 0,
+            className: entry.requiredInsuranceClass?.name ?? null
+          })
+        }
+      }
+    } catch { /* missing */ }
+
+    // Read gameplay_stat.json - handle both formats
+    let totalOdometer: number | null = null
+    let totalDriftScore: number | null = null
+    let totalCollisions: number | null = null
+    const vehicleOdometers = new Map<string, number>()
+    try {
+      const raw = await readFile(join(careerPath, 'gameplay_stat.json'), 'utf-8')
+      const stats = JSON.parse(raw)
+
+      // Format 1: entries-based (confirmed in actual save files)
+      if (stats.entries && typeof stats.entries === 'object') {
+        const entries = stats.entries as Record<string, { value?: number }>
+        let odoTotal = 0
+        let driftTotal = 0
+        let collisionTotal = 0
+        let hasOdo = false, hasDrift = false, hasCollision = false
+
+        for (const [key, entry] of Object.entries(entries)) {
+          const val = entry?.value
+          if (typeof val !== 'number') continue
+
+          // vehicle/odometer/{model}.length
+          if (key.startsWith('vehicle/odometer/') && key.endsWith('.length')) {
+            hasOdo = true
+            odoTotal += val
+            const model = key.slice('vehicle/odometer/'.length, key.length - '.length'.length)
+            vehicleOdometers.set(model, (vehicleOdometers.get(model) ?? 0) + val)
+          }
+          // drift scores
+          else if (key.startsWith('drift/')) {
+            if (key.includes('Score') || key === 'drift/totalScore') {
+              hasDrift = true
+              driftTotal += val
+            }
+          }
+          // collisions
+          else if (key.startsWith('collision') || key.includes('collision')) {
+            hasCollision = true
+            collisionTotal += val
+          }
+        }
+        if (hasOdo) totalOdometer = odoTotal
+        if (hasDrift) totalDriftScore = driftTotal
+        if (hasCollision) totalCollisions = collisionTotal
+      }
+      // Format 2: legacy general.* format (fallback)
+      else {
+        if (stats.general?.odometer) {
+          totalOdometer = Object.values(stats.general.odometer as Record<string, number>)
+            .reduce((sum: number, v) => sum + (typeof v === 'number' ? v : 0), 0)
+        }
+        if (stats.general?.drift) {
+          const drift = stats.general.drift as Record<string, unknown>
+          totalDriftScore = (drift.totalScore as number) ?? null
+        }
+        if (stats.general?.collisions) {
+          const col = stats.general.collisions as Record<string, number>
+          totalCollisions = Object.values(col)
+            .reduce((sum: number, v) => sum + (typeof v === 'number' ? v : 0), 0)
+        }
+      }
+    } catch { /* missing */ }
+
+    // Count and read vehicles with rich data
     const vehicles: CareerVehicleSummary[] = []
     const vehiclesDir = join(careerPath, 'vehicles')
     if (existsSync(vehiclesDir)) {
@@ -351,49 +476,61 @@ export class CareerSaveService {
             const buf = await readFile(pngPath)
             thumbnailDataUrl = `data:image/png;base64,${buf.toString('base64')}`
           }
-          vehicles.push({ id, name: vData.name ?? null, model, thumbnailDataUrl })
+
+          // Extract certifications (power, torque, weight)
+          const cert = vData.certifications as Record<string, unknown> | undefined
+          const power = typeof cert?.Power === 'number' ? cert.Power : null
+          const torque = typeof cert?.Torque === 'number' ? cert.Torque : null
+          const weight = typeof cert?.Weight === 'number' ? cert.Weight : null
+
+          // Extract license plate
+          const licensePlate = vData.config?.licensePlate ?? null
+
+          // Match to insurance entry for value
+          const insEntry = insuranceMap.get(Number(id))
+
+          // Match odometer by model name (extract base model from path)
+          let odometer: number | null = null
+          if (model) {
+            const modelBase = typeof model === 'string'
+              ? model.replace(/^vehicles\//, '').split('/')[0]
+              : null
+            if (modelBase && vehicleOdometers.has(modelBase)) {
+              odometer = vehicleOdometers.get(modelBase) ?? null
+            }
+          }
+
+          vehicles.push({
+            id,
+            name: vData.name ?? null,
+            model,
+            thumbnailDataUrl,
+            value: insEntry?.value ?? null,
+            power,
+            torque,
+            weight,
+            odometer,
+            insuranceClass: insEntry?.className ?? null,
+            licensePlate
+          })
         } catch {
-          vehicles.push({ id, name: null, model: null, thumbnailDataUrl: null })
+          vehicles.push({
+            id, name: null, model: null, thumbnailDataUrl: null,
+            value: null, power: null, torque: null, weight: null,
+            odometer: null, insuranceClass: null, licensePlate: null
+          })
         }
       }
     }
 
-    // Read gameplay_stat.json
-    let totalOdometer: number | null = null
-    let totalDriftScore: number | null = null
-    let totalCollisions: number | null = null
-    try {
-      const raw = await readFile(join(careerPath, 'gameplay_stat.json'), 'utf-8')
-      const stats = JSON.parse(raw)
-      if (stats.general?.odometer) {
-        totalOdometer = Object.values(stats.general.odometer as Record<string, number>)
-          .reduce((sum: number, v) => sum + (typeof v === 'number' ? v : 0), 0)
-      }
-      if (stats.general?.drift) {
-        const drift = stats.general.drift as Record<string, unknown>
-        totalDriftScore = (drift.totalScore as number) ?? null
-      }
-      if (stats.general?.collisions) {
-        const col = stats.general.collisions as Record<string, number>
-        totalCollisions = Object.values(col)
-          .reduce((sum: number, v) => sum + (typeof v === 'number' ? v : 0), 0)
-      }
-    } catch { /* missing */ }
-
-    // Insurance count
-    let insuranceCount = 0
-    try {
-      const raw = await readFile(join(careerPath, 'insurance.json'), 'utf-8')
-      const ins = JSON.parse(raw)
-      insuranceCount = Array.isArray(ins.invVehs) ? ins.invVehs.length : 0
-    } catch { /* missing */ }
-
     // Mission count from playbook
     let missionCount = 0
+    let totalMissions = 0
     try {
       const raw = await readFile(join(careerPath, 'playbook.json'), 'utf-8')
       const pb = JSON.parse(raw)
       if (Array.isArray(pb)) {
+        totalMissions = pb.length
         missionCount = pb.filter((m: Record<string, unknown>) => m.completed).length
       }
     } catch { /* missing */ }
@@ -418,6 +555,44 @@ export class CareerSaveService {
       } catch { /* missing */ }
     }
 
+    // Discovered spawn points
+    let discoveredLocations = 0
+    try {
+      const raw = await readFile(join(careerPath, 'spawnPoints.json'), 'utf-8')
+      const sp = JSON.parse(raw)
+      for (const mapSpawns of Object.values(sp)) {
+        if (mapSpawns && typeof mapSpawns === 'object') {
+          discoveredLocations += Object.values(mapSpawns as Record<string, boolean>).filter(Boolean).length
+        }
+      }
+    } catch { /* missing */ }
+
+    // Branch unlocks
+    let unlockedBranches = 0
+    let totalBranches = 0
+    try {
+      const raw = await readFile(join(careerPath, 'branchUnlocks.json'), 'utf-8')
+      const branches = JSON.parse(raw) as Record<string, { unlocked?: boolean }>
+      totalBranches = Object.keys(branches).length
+      unlockedBranches = Object.values(branches).filter(b => b.unlocked).length
+    } catch { /* missing */ }
+
+    // Logbook entry count
+    let logbookEntries = 0
+    try {
+      const raw = await readFile(join(careerPath, 'logbook.json'), 'utf-8')
+      const lb = JSON.parse(raw)
+      if (lb.logbook && Array.isArray(lb.logbook)) logbookEntries = lb.logbook.length
+    } catch { /* missing */ }
+
+    // Favorite vehicle from inventory
+    let favoriteVehicleId: string | null = null
+    try {
+      const raw = await readFile(join(careerPath, 'inventory.json'), 'utf-8')
+      const inv = JSON.parse(raw)
+      if (typeof inv.favoriteVehicle === 'number') favoriteVehicleId = String(inv.favoriteVehicle)
+    } catch { /* missing */ }
+
     return {
       slot: {
         name: slotName,
@@ -437,10 +612,182 @@ export class CareerSaveService {
       gameplayStats: { totalOdometer, totalDriftScore, totalCollisions },
       insuranceCount,
       missionCount,
+      totalMissions,
       skills,
       reputations,
       stamina,
-      vouchers
+      vouchers,
+      discoveredLocations,
+      unlockedBranches,
+      totalBranches,
+      discoveredBusinesses,
+      logbookEntries,
+      favoriteVehicleId
+    }
+  }
+
+  /** Lightweight summary of the most recent save slot for profile list cards */
+  async getProfileSummary(profileName: string): Promise<CareerProfileSummary | null> {
+    const location = this.findProfilePath(profileName)
+    if (!location) return null
+
+    const slots = await this.listSlots(location.path)
+    if (slots.length === 0) return null
+
+    // Pick most recent non-corrupted slot
+    const best = slots
+      .filter(s => !s.corrupted && s.lastSaved && s.lastSaved !== '0')
+      .sort((a, b) => (b.lastSaved ?? '').localeCompare(a.lastSaved ?? ''))[0]
+      ?? slots[0]
+
+    const slotPath = join(location.path, best.name)
+    const careerPath = join(slotPath, 'career')
+    const isRLS = profileName.toLowerCase().endsWith('_rls')
+
+    let money: number | null = null
+    let beamXPLevel: number | null = null
+    let level: string | null = null
+    let discoveredBusinesses = 0
+    let discoveredLocations = 0
+    let unlockedBranches = 0
+    let logbookEntries = 0
+
+    // general.json
+    try {
+      const raw = await readFile(join(careerPath, 'general.json'), 'utf-8')
+      const general = JSON.parse(raw)
+      level = general.level ?? null
+      if (general.organizationInteraction && typeof general.organizationInteraction === 'object') {
+        discoveredBusinesses = Object.keys(general.organizationInteraction).length
+      }
+    } catch { /* */ }
+
+    // playerAttributes.json
+    try {
+      const raw = await readFile(join(careerPath, 'playerAttributes.json'), 'utf-8')
+      const attrs = JSON.parse(raw) as Record<string, unknown>
+      const moneyAttr = attrs.money as Record<string, unknown> | undefined
+      money = typeof moneyAttr?.value === 'number' ? moneyAttr.value : null
+      const xp = attrs.beamXP as Record<string, unknown> | undefined
+      beamXPLevel = typeof xp?.level === 'number' ? xp.level : null
+    } catch { /* */ }
+
+    // Vehicle count
+    let vehicleCount = 0
+    const vehiclesDir = join(careerPath, 'vehicles')
+    try {
+      if (existsSync(vehiclesDir)) {
+        const vEntries = await readdir(vehiclesDir)
+        vehicleCount = vEntries.filter(f => f.endsWith('.json')).length
+      }
+    } catch { /* */ }
+
+    // Gameplay stats - total odometer
+    let totalOdometer: number | null = null
+    try {
+      const raw = await readFile(join(careerPath, 'gameplay_stat.json'), 'utf-8')
+      const stats = JSON.parse(raw)
+      if (stats.entries && typeof stats.entries === 'object') {
+        let odoTotal = 0
+        let hasOdo = false
+        for (const [key, entry] of Object.entries(stats.entries as Record<string, { value?: number }>)) {
+          if (key.startsWith('vehicle/odometer/') && key.endsWith('.length') && typeof entry?.value === 'number') {
+            hasOdo = true
+            odoTotal += entry.value
+          }
+        }
+        if (hasOdo) totalOdometer = odoTotal
+      } else if (stats.general?.odometer) {
+        totalOdometer = Object.values(stats.general.odometer as Record<string, number>)
+          .reduce((sum: number, v) => sum + (typeof v === 'number' ? v : 0), 0)
+      }
+    } catch { /* */ }
+
+    // Insurance count
+    let insuranceCount = 0
+    try {
+      const raw = await readFile(join(careerPath, 'insurance.json'), 'utf-8')
+      const ins = JSON.parse(raw)
+      const invVehs = Array.isArray(ins.invVehs) ? ins.invVehs : Array.isArray(ins) ? ins : []
+      insuranceCount = invVehs.length
+    } catch { /* */ }
+
+    // Mission count
+    let missionCount = 0
+    let totalMissions = 0
+    try {
+      const raw = await readFile(join(careerPath, 'playbook.json'), 'utf-8')
+      const pb = JSON.parse(raw)
+      if (Array.isArray(pb)) {
+        totalMissions = pb.length
+        missionCount = pb.filter((m: Record<string, unknown>) => m.completed).length
+      }
+    } catch { /* */ }
+
+    // RLS-specific
+    let bankBalance: number | null = null
+    let creditScore: number | null = null
+    if (isRLS) {
+      try {
+        const raw = await readFile(join(careerPath, 'rls_career', 'bank.json'), 'utf-8')
+        const bank = JSON.parse(raw)
+        if (bank.accounts && Array.isArray(bank.accounts)) {
+          bankBalance = bank.accounts.reduce(
+            (sum: number, acc: Record<string, unknown>) => sum + ((acc.balance as number) ?? 0), 0
+          )
+        }
+      } catch { /* */ }
+      try {
+        const raw = await readFile(join(careerPath, 'rls_career', 'credit.json'), 'utf-8')
+        const credit = JSON.parse(raw)
+        creditScore = credit.score ?? credit.creditScore ?? null
+      } catch { /* */ }
+    }
+
+    // Spawn points count
+    try {
+      const raw = await readFile(join(careerPath, 'spawnPoints.json'), 'utf-8')
+      const sp = JSON.parse(raw)
+      for (const mapSpawns of Object.values(sp)) {
+        if (mapSpawns && typeof mapSpawns === 'object') {
+          discoveredLocations += Object.values(mapSpawns as Record<string, boolean>).filter(Boolean).length
+        }
+      }
+    } catch { /* */ }
+
+    // Branch unlocks count
+    try {
+      const raw = await readFile(join(careerPath, 'branchUnlocks.json'), 'utf-8')
+      const branches = JSON.parse(raw) as Record<string, { unlocked?: boolean }>
+      unlockedBranches = Object.values(branches).filter(b => b.unlocked).length
+    } catch { /* */ }
+
+    // Logbook count
+    try {
+      const raw = await readFile(join(careerPath, 'logbook.json'), 'utf-8')
+      const lb = JSON.parse(raw)
+      if (lb.logbook && Array.isArray(lb.logbook)) logbookEntries = lb.logbook.length
+    } catch { /* */ }
+
+    const lastServer = await this.getServerAssociation(profileName)
+
+    return {
+      money,
+      beamXPLevel,
+      level,
+      vehicleCount,
+      lastSaved: best.lastSaved,
+      totalOdometer,
+      missionCount,
+      totalMissions,
+      bankBalance,
+      creditScore,
+      discoveredLocations,
+      unlockedBranches,
+      discoveredBusinesses,
+      insuranceCount,
+      logbookEntries,
+      lastServer
     }
   }
 
@@ -659,6 +1006,45 @@ export class CareerSaveService {
     } catch (err) {
       return { success: false, error: String(err) }
     }
+  }
+
+  // ── Server association tracking ──
+
+  private getServerAssociationsPath(): string {
+    return join(app.getPath('userData'), 'career-server-map.json')
+  }
+
+  private async readServerAssociations(): Promise<Record<string, ServerAssociation>> {
+    const filePath = this.getServerAssociationsPath()
+    try {
+      const raw = await readFile(filePath, 'utf-8')
+      return JSON.parse(raw)
+    } catch {
+      return {}
+    }
+  }
+
+  async recordServerAssociation(
+    profileName: string,
+    serverIdent: string,
+    serverName: string | null
+  ): Promise<void> {
+    const map = await this.readServerAssociations()
+    map[profileName] = {
+      serverIdent,
+      serverName,
+      lastPlayed: new Date().toISOString()
+    }
+    await writeFile(this.getServerAssociationsPath(), JSON.stringify(map, null, 2))
+  }
+
+  async getServerAssociation(profileName: string): Promise<ServerAssociation | null> {
+    const map = await this.readServerAssociations()
+    return map[profileName] ?? null
+  }
+
+  async getAllServerAssociations(): Promise<Record<string, ServerAssociation>> {
+    return this.readServerAssociations()
   }
 
   private async copyDirRecursive(src: string, dest: string, exclude: string[] = []): Promise<void> {

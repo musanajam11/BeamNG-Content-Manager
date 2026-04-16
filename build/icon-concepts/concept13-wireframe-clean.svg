@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#1c1f33"/>
+      <stop offset="100%" stop-color="#0c0e16"/>
+    </linearGradient>
+    <radialGradient id="nodeGrad" cx="38%" cy="32%">
+      <stop offset="0%" stop-color="#fbbf6a"/>
+      <stop offset="45%" stop-color="#f97316"/>
+      <stop offset="100%" stop-color="#b45309"/>
+    </radialGradient>
+    <radialGradient id="nodeGradSmall" cx="38%" cy="32%">
+      <stop offset="0%" stop-color="#fdd5a0"/>
+      <stop offset="45%" stop-color="#fb923c"/>
+      <stop offset="100%" stop-color="#c2410c"/>
+    </radialGradient>
+    <filter id="beamGlow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="nodeShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#f97316" flood-opacity="0.45"/>
+    </filter>
+    <filter id="cmGlow" x="-15%" y="-15%" width="130%" height="130%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="glow"/>
+      <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="96" ry="96" fill="url(#bgGrad)"/>
+
+  <!--
+    Concept 13: Clean wireframe pyramid — no face fills, just crisp lines + nodes
+    More stylized, minimal. CM centered with orange glow.
+    Inverted tetrahedron — symmetric for cleanliness.
+    Apex: 256,450  TopL: 72,82  TopR: 440,82  Back: 256,220
+  -->
+
+  <!-- All 6 edges — back edges thin/dim, front edges bright -->
+  <!-- Back edges (to back node) -->
+  <g filter="url(#beamGlow)" opacity="0.25">
+    <line x1="256" y1="450" x2="256" y2="220" stroke="#e5e7eb" stroke-width="8" stroke-linecap="round"/>
+    <line x1="72" y1="82" x2="256" y2="220" stroke="#e5e7eb" stroke-width="8" stroke-linecap="round"/>
+    <line x1="440" y1="82" x2="256" y2="220" stroke="#e5e7eb" stroke-width="8" stroke-linecap="round"/>
+  </g>
+
+  <!-- Front edges — crisp white -->
+  <g filter="url(#beamGlow)" opacity="0.85">
+    <line x1="256" y1="450" x2="72" y2="82" stroke="white" stroke-width="14" stroke-linecap="round"/>
+    <line x1="256" y1="450" x2="440" y2="82" stroke="white" stroke-width="14" stroke-linecap="round"/>
+    <line x1="72" y1="82" x2="440" y2="82" stroke="white" stroke-width="13" stroke-linecap="round"/>
+  </g>
+
+  <!-- Back node (small, muted) -->
+  <circle cx="256" cy="220" r="16" fill="url(#nodeGradSmall)" filter="url(#nodeShadow)"/>
+
+  <!-- Front nodes -->
+  <g filter="url(#nodeShadow)">
+    <circle cx="256" cy="450" r="34" fill="url(#nodeGrad)"/>
+    <circle cx="72" cy="82" r="30" fill="url(#nodeGrad)"/>
+    <circle cx="440" cy="82" r="30" fill="url(#nodeGrad)"/>
+  </g>
+
+  <!-- CM — orange, centered, medium-bold with glow -->
+  <g filter="url(#cmGlow)" opacity="0.95">
+    <!-- "C" -->
+    <path d="M 208,190 C 152,190 120,222 120,265 C 120,308 152,340 208,340"
+          fill="none" stroke="#f97316" stroke-width="26" stroke-linecap="round"/>
+    <!-- "M" -->
+    <path d="M 245,340 L 245,190 L 290,280 L 335,190 L 335,340"
+          fill="none" stroke="#f97316" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

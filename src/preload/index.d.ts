@@ -26,6 +26,18 @@ interface AppAPI {
   validatePaths(paths: GamePaths): Promise<{ valid: boolean; errors: string[] }>
   setCustomPaths(installDir: string, userDir: string): Promise<GamePaths>
 
+  // Discord
+  discordSetPage(pageId: string): void
+  discordSetPlaying(info: {
+    serverName: string
+    mapName: string
+    carName?: string
+    tags?: string
+    playerCount?: number
+    maxPlayers?: number
+  }): void
+  discordClearPlaying(): void
+
   // Game Launcher
   launchGame(): Promise<{ success: boolean; error?: string }>
   launchVanilla(config?: { mode?: string; level?: string; vehicle?: string }): Promise<{ success: boolean; error?: string }>
@@ -237,6 +249,11 @@ interface AppAPI {
   hostedServerDeleteRoute(id: string, routeId: string): Promise<GPSRoute[]>
   hostedServerGetPlayerPositions(id: string): Promise<PlayerPosition[]>
   hostedServerDeployTracker(id: string): Promise<void>
+  hostedServerIsTrackerDeployed(id: string): Promise<boolean>
+  hostedServerUndeployTracker(id: string): Promise<void>
+  hostedServerDeployVoicePlugin(id: string): Promise<void>
+  hostedServerIsVoicePluginDeployed(id: string): Promise<boolean>
+  hostedServerUndeployVoicePlugin(id: string): Promise<void>
 
   // Backup Schedule
   hostedServerGetSchedule(id: string): Promise<BackupSchedule>
@@ -333,17 +350,42 @@ interface AppAPI {
     money: number | null
     beamXP: { level: number; value: number; curLvlProgress: number; neededForNext: number } | null
     vehicleCount: number
-    vehicles: Array<{ id: string; name: string | null; model: string | null; thumbnailDataUrl: string | null }>
+    vehicles: Array<{ id: string; name: string | null; model: string | null; thumbnailDataUrl: string | null; value: number | null; power: number | null; torque: number | null; weight: number | null; odometer: number | null; insuranceClass: string | null; licensePlate: string | null }>
     isRLS: boolean
     bankBalance: number | null
     creditScore: number | null
     gameplayStats: { totalOdometer: number | null; totalDriftScore: number | null; totalCollisions: number | null }
     insuranceCount: number
     missionCount: number
+    totalMissions: number
     skills: Array<{ key: string; value: number; subcategories: Array<{ key: string; value: number }> }>
     reputations: Array<{ name: string; value: number; max: number }>
     stamina: number | null
     vouchers: number | null
+    discoveredLocations: number
+    unlockedBranches: number
+    totalBranches: number
+    discoveredBusinesses: string[]
+    logbookEntries: number
+    favoriteVehicleId: string | null
+  } | null>
+  careerGetProfileSummary(profileName: string): Promise<{
+    money: number | null
+    beamXPLevel: number | null
+    level: string | null
+    vehicleCount: number
+    lastSaved: string | null
+    totalOdometer: number | null
+    missionCount: number
+    totalMissions: number
+    bankBalance: number | null
+    creditScore: number | null
+    discoveredLocations: number
+    unlockedBranches: number
+    discoveredBusinesses: number
+    insuranceCount: number
+    logbookEntries: number
+    lastServer: { serverIdent: string; serverName: string | null; lastPlayed: string } | null
   } | null>
   careerGetLog(profileName: string): Promise<string[]>
   careerDeployProfile(profileName: string): Promise<{ success: boolean; error?: string }>
@@ -362,6 +404,8 @@ interface AppAPI {
   careerSetSavePath(savePath: string | null): Promise<{ success: boolean; error?: string }>
   careerBrowseSavePath(): Promise<string | null>
   careerGetSavePath(): Promise<string | null>
+  careerRecordServerAssociation(profileName: string, serverIdent: string, serverName: string | null): Promise<void>
+  careerGetServerAssociations(): Promise<Record<string, { serverIdent: string; serverName: string | null; lastPlayed: string }>>
 
   // Career Mod Management
   careerFetchCareerMPReleases(): Promise<Array<{
@@ -420,6 +464,26 @@ interface AppAPI {
   gpsIsTrackerDeployed(): Promise<boolean>
   gpsGetTelemetry(): Promise<import('../shared/types').GPSTelemetry | null>
   gpsGetMapPOIs(mapName: string): Promise<import('../shared/types').GPSMapPOI[]>
+
+  // Voice Chat
+  voiceEnable(): Promise<{ success: boolean; error?: string }>
+  voiceDisable(): Promise<{ success: boolean; error?: string }>
+  voiceSendSignal(data: string): Promise<void>
+  voiceGetState(): Promise<import('../shared/types').VoiceChatState>
+  voiceUpdateSettings(settings: import('../shared/types').VoiceChatSettings): Promise<void>
+  voiceDeployBridge(): Promise<{ success: boolean; error?: string }>
+  voiceUndeployBridge(): Promise<{ success: boolean; error?: string }>
+  onVoicePeerJoined(callback: (data: { playerId: number; playerName: string }) => void): () => void
+  onVoicePeerLeft(callback: (data: { playerId: number }) => void): () => void
+  onVoiceSignal(callback: (data: { fromId: number; payload: string }) => void): () => void
+
+  // Livery Editor
+  liveryGetUVTemplate(vehicleName: string): Promise<{ template: string | null; width: number; height: number }>
+  liveryGetSkinMaterials(vehicleName: string): Promise<Array<{ materialName: string; texturePath: string; uvChannel: 0 | 1; hasPaletteMap: boolean }>>
+  liveryExportSkinMod(params: import('../shared/types').LiveryExportParams): Promise<{ success: boolean; filePath?: string; error?: string }>
+  liverySaveProject(data: string): Promise<{ success: boolean; filePath?: string; error?: string }>
+  liveryLoadProject(): Promise<{ success: boolean; data?: string; error?: string }>
+  liveryImportImage(): Promise<string | null>
 }
 
 declare global {

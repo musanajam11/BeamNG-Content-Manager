@@ -4,7 +4,7 @@ import { DEFAULT_CUSTOM_CSS } from '../../../shared/types'
 
 export const DEFAULT_SIDEBAR_ORDER: AppPage[] = [
   'home', 'servers', 'friends', 'vehicles', 'maps', 'mods',
-  'career', 'server-admin', 'launcher', 'controls', 'live-gps', 'livery-editor'
+  'career', 'server-admin', 'launcher', 'controls', 'live-gps', 'livery-editor', 'voice-chat'
 ]
 
 const DEFAULT_APPEARANCE: AppearanceSettings = {

@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0%" stop-color="#1a1d2e"/>
+      <stop offset="100%" stop-color="#0d0f18"/>
+    </linearGradient>
+    <linearGradient id="gearGrad" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#f97316" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#c2410c" stop-opacity="0.15"/>
+    </linearGradient>
+    <linearGradient id="orangeGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fbbf6a"/>
+      <stop offset="50%" stop-color="#f97316"/>
+      <stop offset="100%" stop-color="#c2410c"/>
+    </linearGradient>
+    <filter id="gearGlow" x="-15%" y="-15%" width="130%" height="130%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="g"/>
+      <feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="cmShadow" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#f97316" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="96" ry="96" fill="url(#bgGrad)"/>
+
+  <!-- Gear/cog — 8-tooth, centered, rendered as outline -->
+  <!-- Gear path — 8 teeth on a circle r~190 from center, inner r~155 -->
+  <g filter="url(#gearGlow)">
+    <path d="
+      M 256,56
+      L 280,56 L 290,96 L 316,104
+      L 344,76 L 364,96 L 346,128 L 358,152
+      L 396,148 L 404,174 L 372,192 L 376,218
+      L 414,230 L 410,258 L 374,256 L 368,282
+      L 400,306 L 386,330 L 354,318 L 338,340
+      L 358,374 L 338,392 L 312,370 L 290,382
+      L 296,418 L 270,426 L 256,392 L 242,426
+      L 216,418 L 222,382 L 200,370
+      L 174,392 L 154,374 L 174,340 L 158,318
+      L 126,330 L 112,306 L 144,282 L 138,256
+      L 102,258 L 98,230 L 136,218 L 140,192
+      L 108,174 L 116,148 L 154,152 L 166,128
+      L 148,96 L 168,76 L 196,104 L 222,96
+      L 232,56 Z
+    " fill="url(#gearGrad)" stroke="#f97316" stroke-width="4" opacity="0.7"/>
+  </g>
+
+  <!-- Inner ring of gear -->
+  <circle cx="256" cy="241" r="100" fill="none" stroke="#f97316" stroke-width="3" opacity="0.3"/>
+
+  <!-- CM monogram — large, orange gradient, center -->
+  <g filter="url(#cmShadow)">
+    <path d="M 218,190 C 164,190 136,218 136,252 C 136,286 164,314 218,314"
+          fill="none" stroke="url(#orangeGrad)" stroke-width="28" stroke-linecap="round"/>
+    <path d="M 252,314 L 252,190 L 296,275 L 340,190 L 340,314"
+          fill="none" stroke="url(#orangeGrad)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Subtle tagline area — "CONTENT MANAGER" implied by horizontal rule -->
+  <line x1="160" y1="370" x2="352" y2="370" stroke="white" stroke-width="2" opacity="0.15" stroke-linecap="round"/>
+  <line x1="180" y1="386" x2="332" y2="386" stroke="white" stroke-width="2" opacity="0.08" stroke-linecap="round"/>
+</svg>

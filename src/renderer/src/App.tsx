@@ -16,8 +16,11 @@ import { ServerManagerPage } from './pages/ServerManagerPage'
 import { CareerPage } from './pages/CareerPage'
 import { LiveGPSPage } from './pages/LiveGPSPage'
 import { LiveryEditorPage } from './pages/LiveryEditorPage'
+import { VoiceChatPage } from './pages/VoiceChatPage'
 import { SetupWizard } from './pages/SetupWizard'
+import { VoiceChatPanel } from './components/VoiceChatPanel'
 import { useAppStore } from './stores/useAppStore'
+import { useServerStore } from './stores/useServerStore'
 import { useThemeStore } from './stores/useThemeStore'
 import i18n from './i18n'
 
@@ -49,6 +52,8 @@ function PageRouter(): React.JSX.Element {
       return <LiveGPSPage />
     case 'livery-editor':
       return <LiveryEditorPage />
+    case 'voice-chat':
+      return <VoiceChatPage />
     case 'settings':
       return <SettingsPage />
     default:
@@ -77,6 +82,87 @@ function App(): React.JSX.Element {
       setUpdateReady(info.version)
     })
     return () => { unsub1(); unsub2(); unsub3() }
+  }, [])
+
+  // Discord Rich Presence: update when the user joins / leaves a server
+  useEffect(() => {
+    let vehiclePoller: ReturnType<typeof setInterval> | null = null
+    let lastVehicleId = ''
+    // Cache the vehicle list so we only fetch it once per session
+    let vehicleListCache: Array<{ name: string; displayName: string; brand: string }> | null = null
+
+    async function getVehicleDisplayName(vehicleId: string): Promise<string> {
+      if (!vehicleListCache) {
+        try {
+          vehicleListCache = await window.api.listVehicles()
+        } catch {
+          vehicleListCache = []
+        }
+      }
+      const match = vehicleListCache!.find(
+        (v) => v.name.toLowerCase() === vehicleId.toLowerCase()
+      )
+      return match ? `${match.brand} ${match.displayName}`.trim() : vehicleId.replace(/_/g, ' ')
+    }
+
+    function startVehiclePoller(serverIdent: string): void {
+      if (vehiclePoller) return
+      vehiclePoller = setInterval(async () => {
+        try {
+          const telemetry = await window.api.gpsGetTelemetry()
+          if (!telemetry?.vehicleId || telemetry.vehicleId === lastVehicleId) return
+          lastVehicleId = telemetry.vehicleId
+
+          const servers = useServerStore.getState().servers
+          const server = servers.find((s) => `${s.ip}:${s.port}` === serverIdent)
+          if (!server) return
+
+          const carName = await getVehicleDisplayName(telemetry.vehicleId)
+          window.api.discordSetPlaying({
+            serverName: server.sname.replace(/\^[0-9a-fA-F]/g, ''),
+            mapName: server.map,
+            carName,
+            tags: server.tags || '',
+            playerCount: parseInt(server.players, 10) || undefined,
+            maxPlayers: parseInt(server.maxplayers, 10) || undefined
+          })
+        } catch { /* telemetry not available yet */ }
+      }, 3000)
+    }
+
+    function stopVehiclePoller(): void {
+      if (vehiclePoller) { clearInterval(vehiclePoller); vehiclePoller = null }
+      lastVehicleId = ''
+    }
+
+    const unsub = window.api.onGameStatusChange((status) => {
+      if (status.connectedServer) {
+        const servers = useServerStore.getState().servers
+        const server = servers.find(
+          (s) => `${s.ip}:${s.port}` === status.connectedServer
+        )
+        if (server) {
+          window.api.discordSetPlaying({
+            serverName: server.sname.replace(/\^[0-9a-fA-F]/g, ''),
+            mapName: server.map,
+            tags: server.tags || '',
+            playerCount: parseInt(server.players, 10) || undefined,
+            maxPlayers: parseInt(server.maxplayers, 10) || undefined
+          })
+        } else {
+          window.api.discordSetPlaying({
+            serverName: status.connectedServer,
+            mapName: 'Unknown'
+          })
+        }
+        // Start polling telemetry for vehicle info
+        startVehiclePoller(status.connectedServer)
+      } else {
+        stopVehiclePoller()
+        window.api.discordClearPlaying()
+      }
+    })
+    return () => { unsub(); stopVehiclePoller() }
   }, [])
 
   // Apply appearance settings and language once config is loaded
@@ -132,6 +218,7 @@ function App(): React.JSX.Element {
           </main>
         </div>
         <StatusBar />
+        <VoiceChatPanel />
       </div>
     </div>
   )

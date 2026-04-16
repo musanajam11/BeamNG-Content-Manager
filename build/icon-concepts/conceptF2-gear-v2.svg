@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0%" stop-color="#1a1d2e"/>
+      <stop offset="100%" stop-color="#0d0f18"/>
+    </linearGradient>
+    <linearGradient id="orangeGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fbbf6a"/>
+      <stop offset="50%" stop-color="#f97316"/>
+      <stop offset="100%" stop-color="#b45309"/>
+    </linearGradient>
+    <linearGradient id="toothGrad" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#f97316"/>
+      <stop offset="100%" stop-color="#9a3412"/>
+    </linearGradient>
+    <filter id="gearShadow" x="-15%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="10" flood-color="#f97316" flood-opacity="0.35"/>
+    </filter>
+    <filter id="cmGlow" x="-15%" y="-15%" width="130%" height="130%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="g"/>
+      <feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="96" ry="96" fill="url(#bgGrad)"/>
+
+  <!-- Gear — cleaner 10-tooth design using a proper path -->
+  <!-- Outer r=210, inner r=170, tooth height=40, tooth width ~22° each -->
+  <g filter="url(#gearShadow)">
+    <path d="
+      M 256,46
+      L 270,46 L 278,86 L 310,94 L 332,60 L 346,68 L 334,106 L 360,126
+      L 386,102 L 396,114 L 374,144 L 390,174 L 420,168 L 424,184
+      L 394,198 L 400,232 L 432,240 L 430,256
+      L 398,260 L 394,294 L 424,308 L 420,324
+      L 390,318 L 374,348 L 396,378 L 386,390
+      L 360,366 L 334,386 L 346,424 L 332,432
+      L 310,398 L 278,406 L 270,446 L 256,446
+      L 242,446 L 234,406 L 202,398 L 180,432 L 166,424
+      L 178,386 L 152,366 L 126,390 L 116,378
+      L 138,348 L 122,318 L 92,324 L 88,308
+      L 118,294 L 114,260 L 82,256 L 84,240
+      L 112,232 L 118,198 L 88,184 L 92,168
+      L 122,174 L 138,144 L 116,114 L 126,102
+      L 152,126 L 178,106 L 166,68 L 180,60
+      L 202,94 L 234,86 L 242,46 Z
+    " fill="url(#toothGrad)" opacity="0.35" stroke="#f97316" stroke-width="3" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Inner bore circle -->
+  <circle cx="256" cy="246" r="110" fill="url(#bgGrad)" stroke="#f97316" stroke-width="4" opacity="0.5"/>
+
+  <!-- Decorative inner ring -->
+  <circle cx="256" cy="246" r="90" fill="none" stroke="#f97316" stroke-width="2" opacity="0.2"/>
+
+  <!-- Small mounting holes for mechanical feel -->
+  <circle cx="256" cy="150" r="8" fill="none" stroke="#f97316" stroke-width="2" opacity="0.3"/>
+  <circle cx="178" cy="295" r="8" fill="none" stroke="#f97316" stroke-width="2" opacity="0.3"/>
+  <circle cx="334" cy="295" r="8" fill="none" stroke="#f97316" stroke-width="2" opacity="0.3"/>
+
+  <!-- CM — large, orange gradient, bold -->
+  <g filter="url(#cmGlow)">
+    <path d="M 222,200 C 172,200 148,224 148,254 C 148,284 172,308 222,308"
+          fill="none" stroke="url(#orangeGrad)" stroke-width="30" stroke-linecap="round"/>
+    <path d="M 254,308 L 254,200 L 296,278 L 338,200 L 338,308"
+          fill="none" stroke="url(#orangeGrad)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
