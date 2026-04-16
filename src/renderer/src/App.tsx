@@ -21,7 +21,7 @@ import { SetupWizard } from './pages/SetupWizard'
 import { VoiceChatPanel } from './components/VoiceChatPanel'
 import { useAppStore } from './stores/useAppStore'
 import { useServerStore } from './stores/useServerStore'
-import { useThemeStore, resolveColorMode } from './stores/useThemeStore'
+import { useThemeStore, resolveColorMode, applyTheme } from './stores/useThemeStore'
 import i18n from './i18n'
 
 function PageRouter(): React.JSX.Element {
@@ -182,7 +182,7 @@ function App(): React.JSX.Element {
       const appearance = useAppStore.getState().config?.appearance
       if (appearance?.colorMode === 'system') {
         const mode = resolveColorMode('system')
-        useThemeStore.getState().applyTheme(appearance, mode)
+        applyTheme(appearance, mode)
       }
     }
     mql.addEventListener('change', onChange)

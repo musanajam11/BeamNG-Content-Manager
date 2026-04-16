@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Search, ImagePlus, Flame, Star, Flag, Hash, Type, Shapes, Zap, Heart } from 'lucide-react'
+import { Search, ImagePlus, Flame, Star, Flag, Hash, Shapes, Zap, Heart } from 'lucide-react'
 
 export interface DecalAsset {
   id: string

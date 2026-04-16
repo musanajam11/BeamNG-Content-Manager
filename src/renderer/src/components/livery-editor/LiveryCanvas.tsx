@@ -415,7 +415,7 @@ function configureTool(
       canvas.freeDrawingBrush = new fabric.PencilBrush(canvas)
       canvas.freeDrawingBrush.width = brushSettings.size
       canvas.freeDrawingBrush.color = fillColor
-      ;(canvas.freeDrawingBrush as fabric.PencilBrush).opacity = brushSettings.opacity
+      ;(canvas.freeDrawingBrush as fabric.PencilBrush & { opacity: number }).opacity = brushSettings.opacity
       break
     case 'eraser':
       canvas.isDrawingMode = true

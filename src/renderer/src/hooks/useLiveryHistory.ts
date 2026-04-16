@@ -17,7 +17,7 @@ export function useLiveryHistory(canvasRef: React.MutableRefObject<FabricCanvas 
     const canvas = canvasRef.current
     if (!canvas || isRestoring.current) return
 
-    const json = JSON.stringify(canvas.toJSON(['id', 'name', 'selectable', 'evented', 'layerId']))
+    const json = JSON.stringify((canvas as any).toJSON(['id', 'name', 'selectable', 'evented', 'layerId']))
     const last = undoStack.current[undoStack.current.length - 1]
     if (last && last.json === json) return
 

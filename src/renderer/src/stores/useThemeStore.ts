@@ -230,7 +230,7 @@ function lightenHex(hex: string, amount: number): string {
 }
 
 /** Apply all appearance settings to CSS custom properties + zoom */
-function applyTheme(s: AppearanceSettings, mode: 'dark' | 'light'): void {
+export function applyTheme(s: AppearanceSettings, mode: 'dark' | 'light'): void {
   const root = document.documentElement
   const p = PALETTES[mode]
   const accent = s.accentColor
