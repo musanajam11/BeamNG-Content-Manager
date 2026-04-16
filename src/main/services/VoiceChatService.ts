@@ -19,6 +19,9 @@ local outgoingFile = "settings/BeamCM/vc_outgoing.json"
 local pollInterval = 0.25
 local timer = 0
 local registered = false
+local pollCount = 0
+local signalsSent = 0
+local signalsReceived = 0
 
 local function tryRegister()
   if registered then return end
@@ -30,7 +33,7 @@ local function tryRegister()
     AddEventHandler("vc_peers_list", "beamcmVoiceOnPeersList")
   end)
   registered = true
-  log('I', 'beamcmVoice', 'Registered BeamMP event handlers')
+  log('I', 'beamcmVoice', 'Registered BeamMP event handlers (AddEventHandler available)')
 end
 
 -- Append a message to the incoming JSON file for CM to read
@@ -40,14 +43,17 @@ local function appendIncoming(msg)
   if ok and type(content) == "table" then existing = content end
   table.insert(existing, msg)
   jsonWriteFile(incomingFile, existing)
+  signalsReceived = signalsReceived + 1
 end
 
 -- Global event handlers (called by BeamMP event system)
 function beamcmVoiceOnPeerJoined(senderId, data)
+  log('I', 'beamcmVoice', 'Peer joined event from server: sender=' .. tostring(senderId) .. ' data=' .. tostring(data))
   appendIncoming({ event = "vc_peer_joined", data = tostring(senderId) .. "|" .. tostring(data) })
 end
 
 function beamcmVoiceOnPeerLeft(senderId, data)
+  log('I', 'beamcmVoice', 'Peer left event from server: sender=' .. tostring(senderId) .. ' data=' .. tostring(data))
   appendIncoming({ event = "vc_peer_left", data = tostring(senderId) .. "|" .. tostring(data) })
 end
 
@@ -56,11 +62,20 @@ function beamcmVoiceOnSignal(senderId, data)
 end
 
 function beamcmVoiceOnPeersList(senderId, data)
+  log('I', 'beamcmVoice', 'Peers list from server: ' .. tostring(data))
   appendIncoming({ event = "vc_peers_list", data = tostring(data) })
 end
 
 local function onExtensionLoaded()
+  -- Survive level transitions so voice chat stays active across map loads
+  if setExtensionUnloadMode then
+    setExtensionUnloadMode('beamcmVoice', 'manual')
+    log('I', 'beamcmVoice', 'Set unload mode to manual (survives level transitions)')
+  end
   log('I', 'beamcmVoice', 'BeamCM Voice Chat bridge loaded')
+  log('I', 'beamcmVoice', 'Outgoing file: ' .. outgoingFile)
+  log('I', 'beamcmVoice', 'Incoming file: ' .. incomingFile)
+  log('I', 'beamcmVoice', 'Poll interval: ' .. tostring(pollInterval) .. 's')
   tryRegister()
 end
 
@@ -69,22 +84,46 @@ local function onUpdate(dt)
   timer = timer + dt
   if timer < pollInterval then return end
   timer = 0
+  pollCount = pollCount + 1
 
   -- Read outgoing signals written by CM and send them as BeamMP events
   local ok, content = pcall(jsonReadFile, outgoingFile)
   if ok and type(content) == "table" and #content > 0 then
+    local sent = 0
+    local skipped = 0
     for _, msg in ipairs(content) do
-      if msg.event and msg.data and type(TriggerServerEvent) == "function" then
-        pcall(function() TriggerServerEvent(msg.event, msg.data) end)
+      if msg.event and msg.data then
+        if type(TriggerServerEvent) == "function" then
+          local sendOk, sendErr = pcall(function() TriggerServerEvent(msg.event, msg.data) end)
+          if sendOk then
+            sent = sent + 1
+            signalsSent = signalsSent + 1
+          else
+            log('W', 'beamcmVoice', 'TriggerServerEvent failed: ' .. tostring(sendErr))
+          end
+        else
+          skipped = skipped + 1
+        end
       end
     end
     -- Clear the file after processing
     jsonWriteFile(outgoingFile, {})
+    if sent > 0 then
+      log('I', 'beamcmVoice', 'Sent ' .. sent .. ' signal(s) to server (total: ' .. signalsSent .. ')')
+    end
+    if skipped > 0 then
+      log('W', 'beamcmVoice', 'Skipped ' .. skipped .. ' signal(s) — TriggerServerEvent not available (not in multiplayer?)')
+    end
+  end
+
+  -- Periodic status log every 60s (240 polls at 0.25s)
+  if pollCount % 240 == 0 then
+    log('I', 'beamcmVoice', 'Status: registered=' .. tostring(registered) .. ', sent=' .. signalsSent .. ', received=' .. signalsReceived .. ', TriggerServerEvent=' .. tostring(type(TriggerServerEvent) == "function"))
   end
 end
 
 local function onExtensionUnloaded()
-  log('I', 'beamcmVoice', 'BeamCM Voice Chat bridge unloaded')
+  log('I', 'beamcmVoice', 'BeamCM Voice Chat bridge unloaded (sent=' .. signalsSent .. ', received=' .. signalsReceived .. ')')
 end
 
 M.onExtensionLoaded = onExtensionLoaded
@@ -99,7 +138,11 @@ const VOICE_SERVER_PLUGIN = `-- BeamCM Voice Chat Server Plugin
 -- Auto-deployed by BeamMP Content Manager
 -- Relays WebRTC signaling between voice-chat-enabled players.
 
-local voicePeers = {}  -- [playerId] = { name = "..." }
+local TAG = "[BeamCM-Voice] "
+local voicePeers = {}  -- [playerId] = { name = "...", joinedAt = os.time() }
+local signalCount = 0
+
+print(TAG .. "Voice chat server plugin loading...")
 
 MP.RegisterEvent("vc_enable", "vcOnEnable")
 MP.RegisterEvent("vc_disable", "vcOnDisable")
@@ -107,16 +150,38 @@ MP.RegisterEvent("vc_signal", "vcOnSignal")
 MP.RegisterEvent("onPlayerDisconnect", "vcOnDisconnect")
 MP.RegisterEvent("onPlayerJoin", "vcOnPlayerJoin")
 
-print("[VoiceChat] Server plugin loaded")
+print(TAG .. "Events registered: vc_enable, vc_disable, vc_signal, onPlayerDisconnect, onPlayerJoin")
+
+local function getPeerCount()
+  local count = 0
+  for _ in pairs(voicePeers) do count = count + 1 end
+  return count
+end
+
+local function getPeerNames()
+  local names = {}
+  for _, info in pairs(voicePeers) do
+    table.insert(names, info.name)
+  end
+  return table.concat(names, ", ")
+end
 
 function vcOnEnable(player_id, data)
   local name = MP.GetPlayerName(player_id) or ("Player " .. tostring(player_id))
-  voicePeers[player_id] = { name = name }
+  voicePeers[player_id] = { name = name, joinedAt = os.time() }
+  local peerCount = getPeerCount()
+  print(TAG .. "ENABLED: " .. name .. " (pid=" .. tostring(player_id) .. ") joined voice chat")
+  print(TAG .. "Active voice peers: " .. peerCount .. " [" .. getPeerNames() .. "]")
   -- Notify all other voice peers that this player joined
+  local notified = 0
   for pid, _ in pairs(voicePeers) do
     if pid ~= player_id then
       MP.TriggerClientEvent(pid, "vc_peer_joined", player_id .. "," .. name)
+      notified = notified + 1
     end
+  end
+  if notified > 0 then
+    print(TAG .. "Notified " .. notified .. " existing peer(s) about new joiner")
   end
   -- Send existing peers list to the new voice peer
   local peerList = {}
@@ -127,45 +192,81 @@ function vcOnEnable(player_id, data)
   end
   if #peerList > 0 then
     MP.TriggerClientEvent(player_id, "vc_peers_list", table.concat(peerList, ","))
+    print(TAG .. "Sent peers list to " .. name .. ": " .. #peerList .. " peer(s)")
+  else
+    print(TAG .. name .. " is the first voice peer (no existing peers to send)")
   end
-  print("[VoiceChat] " .. name .. " (ID " .. player_id .. ") enabled voice")
 end
 
 function vcOnDisable(player_id, data)
   if voicePeers[player_id] then
+    local name = voicePeers[player_id].name
+    local duration = os.time() - (voicePeers[player_id].joinedAt or os.time())
     voicePeers[player_id] = nil
+    local remaining = getPeerCount()
+    print(TAG .. "DISABLED: " .. name .. " (pid=" .. tostring(player_id) .. ") left voice chat (was active " .. duration .. "s)")
     -- Notify all remaining voice peers
+    local notified = 0
     for pid, _ in pairs(voicePeers) do
       MP.TriggerClientEvent(pid, "vc_peer_left", tostring(player_id))
+      notified = notified + 1
     end
-    print("[VoiceChat] Player " .. player_id .. " disabled voice")
+    print(TAG .. "Active voice peers: " .. remaining .. (remaining > 0 and (" [" .. getPeerNames() .. "]") or " (none)"))
+    if notified > 0 then
+      print(TAG .. "Notified " .. notified .. " remaining peer(s) about departure")
+    end
+  else
+    print(TAG .. "WARNING: vc_disable from pid=" .. tostring(player_id) .. " but they were not in voice peers")
   end
 end
 
 function vcOnSignal(player_id, data)
   -- data format: "targetId|jsonPayload"
   local sep = string.find(data, "|", 1, true)
-  if not sep then return end
+  if not sep then
+    print(TAG .. "WARNING: Malformed signal from pid=" .. tostring(player_id) .. " (no separator)")
+    return
+  end
   local targetId = tonumber(string.sub(data, 1, sep - 1))
   local payload = string.sub(data, sep + 1)
-  if targetId and voicePeers[targetId] then
+  if not targetId then
+    print(TAG .. "WARNING: Invalid target ID in signal from pid=" .. tostring(player_id))
+    return
+  end
+  if voicePeers[targetId] then
     MP.TriggerClientEvent(targetId, "vc_signal", player_id .. "|" .. payload)
+    signalCount = signalCount + 1
+    -- Log signal relay activity periodically (every 50 signals)
+    if signalCount % 50 == 0 then
+      print(TAG .. "Relayed " .. signalCount .. " total signals (" .. getPeerCount() .. " active peers)")
+    end
+  else
+    print(TAG .. "WARNING: Signal from pid=" .. tostring(player_id) .. " to pid=" .. tostring(targetId) .. " but target is not a voice peer")
   end
 end
 
 function vcOnDisconnect(player_id)
   if voicePeers[player_id] then
+    local name = voicePeers[player_id].name
+    local duration = os.time() - (voicePeers[player_id].joinedAt or os.time())
     voicePeers[player_id] = nil
+    local remaining = getPeerCount()
+    print(TAG .. "DISCONNECT: " .. name .. " (pid=" .. tostring(player_id) .. ") left server (was in voice " .. duration .. "s)")
+    local notified = 0
     for pid, _ in pairs(voicePeers) do
       MP.TriggerClientEvent(pid, "vc_peer_left", tostring(player_id))
+      notified = notified + 1
     end
-    print("[VoiceChat] Player " .. player_id .. " disconnected (voice cleaned up)")
+    print(TAG .. "Active voice peers: " .. remaining .. (remaining > 0 and (" [" .. getPeerNames() .. "]") or " (none)"))
   end
 end
 
 function vcOnPlayerJoin(player_id)
-  -- Nothing to do — player must explicitly enable voice
+  local name = MP.GetPlayerName(player_id) or ("Player " .. tostring(player_id))
+  print(TAG .. "Player joined server: " .. name .. " (pid=" .. tostring(player_id) .. ") — voice not yet enabled")
 end
+
+print(TAG .. "Plugin loaded successfully — waiting for players to enable voice chat")
 `
 
 export class VoiceChatService {
@@ -266,7 +367,9 @@ export class VoiceChatService {
     const pluginPath = join(pluginDir, 'main.lua')
     if (!existsSync(pluginPath)) {
       await writeFile(pluginPath, VOICE_SERVER_PLUGIN, 'utf-8')
-      this.log('Server plugin deployed to ' + pluginPath)
+      this.log('Server voice plugin deployed to ' + pluginPath)
+    } else {
+      this.log('Server voice plugin already exists at ' + pluginPath)
     }
   }
 
@@ -370,20 +473,21 @@ export class VoiceChatService {
   /* ── Outgoing Signals (renderer → file → Lua → server) ── */
 
   async sendSignal(event: string, data: string): Promise<void> {
-    if (!this.userDir) return
+    if (!this.userDir) {
+      this.log(`Cannot send signal '${event}': userDir not set`)
+      return
+    }
     try {
-      let existing: VoiceSignalMessage[] = []
-      if (existsSync(this.outgoingPath)) {
-        try {
-          const raw = await readFile(this.outgoingPath, 'utf-8')
-          const parsed = JSON.parse(raw)
-          if (Array.isArray(parsed)) existing = parsed
-        } catch { /* ignore */ }
+      // Ensure signal directory exists
+      if (!existsSync(this.signalDir)) {
+        mkdirSync(this.signalDir, { recursive: true })
       }
-      existing.push({ event, data })
-      await writeFile(this.outgoingPath, JSON.stringify(existing), 'utf-8')
+      // Write as a single-element array — the Lua bridge reads and clears the file
+      // each poll cycle, so we don't need to accumulate
+      await writeFile(this.outgoingPath, JSON.stringify([{ event, data }]), 'utf-8')
+      this.log(`Signal '${event}' written to ${this.outgoingPath}`)
     } catch (err) {
-      this.log(`Failed to write outgoing signal: ${err}`)
+      this.log(`Failed to write outgoing signal '${event}': ${err}`)
     }
   }
 
@@ -392,14 +496,15 @@ export class VoiceChatService {
   async enable(): Promise<void> {
     this.enabled = true
     await this.sendSignal('vc_enable', '')
-    this.log('Voice chat enabled')
+    this.log('Voice chat enabled — vc_enable signal queued for server')
   }
 
   async disable(): Promise<void> {
+    const peerCount = this.peers.length
     this.enabled = false
     this.peers = []
     await this.sendSignal('vc_disable', '')
-    this.log('Voice chat disabled')
+    this.log(`Voice chat disabled — vc_disable signal queued (had ${peerCount} peer(s))`)
   }
 
   /* ── State Query ── */

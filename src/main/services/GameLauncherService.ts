@@ -43,9 +43,20 @@ local signalFile = "settings/BeamMP/cm_join.json"
 local pollInterval = 0.25
 local timer = 0
 local joined = false
+local voiceLoaded = false
 
 local function onExtensionLoaded()
   log('I', 'beammpCMBridge', 'BeamMP Content Manager bridge extension loaded')
+  -- Auto-load voice chat bridge if deployed
+  local voiceExt = "lua/ge/extensions/beamcmVoice.lua"
+  local f = io.open(voiceExt, "r")
+  if f then
+    f:close()
+    extensions.load('beamcmVoice')
+    setExtensionUnloadMode('beamcmVoice', 'manual')
+    voiceLoaded = true
+    log('I', 'beammpCMBridge', 'Auto-loaded beamcmVoice extension (manual unload mode)')
+  end
 end
 
 -- ── GPS tracker hot-load support ──
@@ -1776,6 +1787,31 @@ export class GameLauncherService {
       this.gameProxyServer.close()
       this.gameProxyServer = null
     }
+
+    // Clean up server mods from mods/multiplayer so stale zips aren't loaded
+    // on the next join. Fresh copies are always placed from the hash-verified
+    // cache by syncMods(), so this is safe.
+    this.cleanupMultiplayerMods()
+  }
+
+  /**
+   * Remove all non-BeamMP.zip files from mods/multiplayer.
+   * Called on disconnect / game exit so the next server join always starts
+   * with a clean directory and never loads stale (hash-mismatched) mod zips.
+   */
+  private cleanupMultiplayerMods(): void {
+    if (!this.gameUserDir) return
+    const modsDir = join(this.gameUserDir, 'mods', 'multiplayer')
+    try {
+      for (const file of readdirSync(modsDir)) {
+        if (file.toLowerCase() === 'beammp.zip') continue
+        if (!file.toLowerCase().endsWith('.zip')) continue
+        try {
+          unlinkSync(join(modsDir, file))
+          this.log(`Cleaned up multiplayer mod: ${file}`)
+        } catch { /* ignore removal errors */ }
+      }
+    } catch { /* directory may not exist yet */ }
   }
 
   // ── Public API ──

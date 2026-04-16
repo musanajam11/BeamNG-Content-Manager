@@ -747,14 +747,17 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('game:setCustomPaths', async (_event, installDir: string, userDir: string): Promise<void> => {
     const exeName = process.platform === 'win32' ? 'BeamNG.drive.exe' : 'BeamNG.drive'
-    const executable = join(installDir, exeName)
+    let executable = join(installDir, exeName)
     const gameVersion = await discoveryService.readGameVersion(userDir)
-    // Detect Proton: on Linux, if the exe doesn't exist but a .exe does, it's Proton
+    // Detect Proton: on Linux, if the native binary doesn't exist but a .exe does, it's Proton
     let isProton = false
     if (process.platform === 'linux') {
       if (!existsSync(executable)) {
         const protonExe = join(installDir, 'BeamNG.drive.exe')
-        isProton = existsSync(protonExe)
+        if (existsSync(protonExe)) {
+          isProton = true
+          executable = protonExe
+        }
       } else {
         isProton = installDir.includes('steamapps')
       }

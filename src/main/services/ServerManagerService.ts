@@ -1067,39 +1067,62 @@ const TRACKER_LUA_PLUGIN = `-- BeamMPCM Position Tracker Plugin
 -- Auto-deployed by BeamMP Content Manager
 -- Polls MP.GetPositionRaw every 500ms and writes player_positions.json
 
+local TAG = "[BeamCM-Tracker] "
 local posFile = "player_positions.json"
+local writeCount = 0
+local lastPlayerCount = 0
+
+print(TAG .. "Position tracker plugin loading...")
+print(TAG .. "Output file: " .. posFile)
+print(TAG .. "Poll interval: 500ms")
 
 MP.RegisterEvent("onPlayerDisconnect", "handlePlayerDisconnect")
 MP.RegisterEvent("onVehicleDeleted", "handleVehicleDeleted")
+MP.RegisterEvent("onVehicleSpawn", "handleVehicleSpawn")
 MP.CreateEventTimer("writePositions", 500)
+
+print(TAG .. "Events registered: onVehicleSpawn, onVehicleDeleted, onPlayerDisconnect")
+print(TAG .. "Timer registered: writePositions (500ms)")
 
 -- Track which vehicles belong to which player for cleanup
 local playerVehicles = {}
 
-MP.RegisterEvent("onVehicleSpawn", "handleVehicleSpawn")
-
 function handleVehicleSpawn(player_id, vehicle_id, data)
   if not playerVehicles[player_id] then playerVehicles[player_id] = {} end
   playerVehicles[player_id][vehicle_id] = true
+  local name = MP.GetPlayerName(player_id) or ("Player " .. tostring(player_id))
+  print(TAG .. "Vehicle spawned: " .. name .. " (pid=" .. tostring(player_id) .. ", vid=" .. tostring(vehicle_id) .. ")")
 end
 
 function handleVehicleDeleted(player_id, vehicle_id)
   if playerVehicles[player_id] then
     playerVehicles[player_id][vehicle_id] = nil
   end
+  print(TAG .. "Vehicle deleted: pid=" .. tostring(player_id) .. ", vid=" .. tostring(vehicle_id))
 end
 
 function handlePlayerDisconnect(player_id)
+  local name = MP.GetPlayerName(player_id) or ("Player " .. tostring(player_id))
+  local vehCount = 0
+  if playerVehicles[player_id] then
+    for _ in pairs(playerVehicles[player_id]) do vehCount = vehCount + 1 end
+  end
   playerVehicles[player_id] = nil
+  print(TAG .. "Player disconnected: " .. name .. " (pid=" .. tostring(player_id) .. ", vehicles cleaned: " .. vehCount .. ")")
 end
 
 function writePositions()
   local allPos = {}
   local players = MP.GetPlayers()
+  local playerCount = 0
+  local vehicleCount = 0
+  local posErrors = 0
   for pid, name in pairs(players) do
+    playerCount = playerCount + 1
     local ok, vehicles = pcall(MP.GetPlayerVehicles, pid)
     if ok and vehicles then
       for vid, _ in pairs(vehicles) do
+        vehicleCount = vehicleCount + 1
         local raw, err = MP.GetPositionRaw(pid, vid)
         if err == "" and raw and raw.pos then
           local speed = 0
@@ -1118,15 +1141,38 @@ function writePositions()
             speed = speed,
             timestamp = os.time()
           })
+        else
+          posErrors = posErrors + 1
         end
       end
+    elseif not ok then
+      print(TAG .. "WARNING: Failed to get vehicles for pid=" .. tostring(pid) .. ": " .. tostring(vehicles))
     end
   end
+
+  -- Log when player count changes
+  if playerCount ~= lastPlayerCount then
+    print(TAG .. "Tracking " .. playerCount .. " player(s), " .. vehicleCount .. " vehicle(s)")
+    lastPlayerCount = playerCount
+  end
+
+  -- Log position errors periodically (every 60 writes = ~30s)
+  writeCount = writeCount + 1
+  if posErrors > 0 and writeCount % 60 == 0 then
+    print(TAG .. "WARNING: " .. posErrors .. " position read error(s) this tick")
+  end
+
   local json = Util.JsonEncode(allPos)
   local f = io.open(posFile, "w")
   if f then
     f:write(json)
     f:close()
+  else
+    if writeCount % 60 == 0 then
+      print(TAG .. "ERROR: Failed to open " .. posFile .. " for writing")
+    end
   end
 end
+
+print(TAG .. "Plugin loaded successfully")
 `
