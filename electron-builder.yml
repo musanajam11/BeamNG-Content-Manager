@@ -34,7 +34,6 @@ linux:
   target:
     - AppImage
     - deb
-    - pacman
   maintainer: Justmusa
   category: Game
   executableName: beamng-content-manager
