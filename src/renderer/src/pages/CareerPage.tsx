@@ -36,7 +36,10 @@ import {
   ToggleLeft,
   ToggleRight,
   Check,
-  GitBranch
+  GitBranch,
+  MapPinned,
+  BookOpen,
+  Unlock
 } from 'lucide-react'
 
 /* ── types mirrored from backend ── */
@@ -61,6 +64,13 @@ interface CareerVehicleSummary {
   name: string | null
   model: string | null
   thumbnailDataUrl: string | null
+  value: number | null
+  power: number | null
+  torque: number | null
+  weight: number | null
+  odometer: number | null
+  insuranceClass: string | null
+  licensePlate: string | null
 }
 
 interface SkillCategory {
@@ -100,10 +110,36 @@ interface CareerSaveMetadata {
   }
   insuranceCount: number
   missionCount: number
+  totalMissions: number
   skills: SkillCategory[]
   reputations: BusinessReputation[]
   stamina: number | null
   vouchers: number | null
+  discoveredLocations: number
+  unlockedBranches: number
+  totalBranches: number
+  discoveredBusinesses: string[]
+  logbookEntries: number
+  favoriteVehicleId: string | null
+}
+
+interface CareerProfileSummary {
+  money: number | null
+  beamXPLevel: number | null
+  level: string | null
+  vehicleCount: number
+  lastSaved: string | null
+  totalOdometer: number | null
+  missionCount: number
+  totalMissions: number
+  bankBalance: number | null
+  creditScore: number | null
+  discoveredLocations: number
+  unlockedBranches: number
+  discoveredBusinesses: number
+  insuranceCount: number
+  logbookEntries: number
+  lastServer: { serverIdent: string; serverName: string | null; lastPlayed: string } | null
 }
 
 /* ── mod release types ── */
@@ -147,6 +183,20 @@ function formatMoney(v: number): string {
 }
 function formatOdometer(m: number): string {
   return `${(m / 1000).toFixed(1)} km`
+}
+function formatPower(kw: number): string {
+  const hp = Math.round(kw * 1.341)
+  return `${hp} hp`
+}
+function formatWeight(kg: number): string {
+  return `${Math.round(kg)} kg`
+}
+function formatModelName(model: string | null): string {
+  if (!model) return 'Unknown'
+  // Extract readable name from path like "vehicles/pessima/pessima_base.pc"
+  const parts = model.replace(/^vehicles\//, '').split('/')
+  const name = parts[0] || model
+  return name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 function formatDate(iso: string | null): string {
   if (!iso) return '—'
@@ -194,6 +244,9 @@ export function CareerPage(): React.JSX.Element {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Profile summaries for list view cards
+  const [profileSummaries, setProfileSummaries] = useState<Record<string, CareerProfileSummary | null>>({})
+
   // Selected profile + slot for detail view
   const [selectedProfile, setSelectedProfile] = useState<CareerProfile | null>(null)
   const [selectedSlot, setSelectedSlot] = useState<CareerSaveSlot | null>(null)
@@ -201,6 +254,10 @@ export function CareerPage(): React.JSX.Element {
   const [metadataLoading, setMetadataLoading] = useState(false)
   const [logLines, setLogLines] = useState<string[]>([])
   const [showLog, setShowLog] = useState(false)
+
+  // Slot preview metadata for profile detail view
+  const [slotPreviews, setSlotPreviews] = useState<Record<string, CareerSaveMetadata | null>>({})
+  const [slotPreviewsLoading, setSlotPreviewsLoading] = useState(false)
 
   // Deploy / backup state
   const [deploying, setDeploying] = useState(false)
@@ -257,6 +314,21 @@ export function CareerPage(): React.JSX.Element {
     try {
       const result = await window.api.careerListProfiles()
       setProfiles(result)
+      // Load summaries for all profiles in parallel
+      const summaryPromises = result.map(async (p) => {
+        try {
+          const summary = await window.api.careerGetProfileSummary(p.name)
+          return [p.name, summary] as const
+        } catch {
+          return [p.name, null] as const
+        }
+      })
+      const summaryResults = await Promise.all(summaryPromises)
+      const summaries: Record<string, CareerProfileSummary | null> = {}
+      for (const [name, summary] of summaryResults) {
+        summaries[name] = summary
+      }
+      setProfileSummaries(summaries)
     } catch (err) {
       setError(String(err))
     } finally {
@@ -392,7 +464,25 @@ export function CareerPage(): React.JSX.Element {
     setShowLog(false)
     setShowBackups(false)
     setActionMsg(null)
+    setSlotPreviews({})
     setView('profile')
+    // Load slot previews in parallel
+    setSlotPreviewsLoading(true)
+    Promise.all(
+      profile.slots.map(async (slot) => {
+        try {
+          const meta = await window.api.careerGetSlotMetadata(profile.name, slot.name)
+          return [slot.name, meta] as const
+        } catch {
+          return [slot.name, null] as const
+        }
+      })
+    ).then((results) => {
+      const previews: Record<string, CareerSaveMetadata | null> = {}
+      for (const [name, meta] of results) previews[name] = meta
+      setSlotPreviews(previews)
+      setSlotPreviewsLoading(false)
+    })
   }, [])
 
   const openSlot = useCallback(async (profile: CareerProfile, slot: CareerSaveSlot) => {
@@ -491,6 +581,7 @@ export function CareerPage(): React.JSX.Element {
       setShowLog(false)
       setShowBackups(false)
       setActionMsg(null)
+      setSlotPreviews({})
       setView('list')
     }
   }, [view])
@@ -649,16 +740,28 @@ export function CareerPage(): React.JSX.Element {
               )}
               <StatCard icon={Car} label={t('career.vehicles')} value={String(metadata.vehicleCount)} />
               {metadata.insuranceCount > 0 && (
-                <StatCard icon={Shield} label={t('career.insured')} value={String(metadata.insuranceCount)} />
+                <StatCard icon={Shield} label={t('career.insured')} value={`${metadata.insuranceCount} / ${metadata.vehicleCount}`} />
               )}
-              {metadata.missionCount > 0 && (
-                <StatCard icon={Trophy} label={t('career.missionsCompleted')} value={String(metadata.missionCount)} />
+              {metadata.totalMissions > 0 && (
+                <StatCard icon={Trophy} label={t('career.missionsCompleted')} value={`${metadata.missionCount} / ${metadata.totalMissions}`} />
               )}
               {metadata.gameplayStats.totalOdometer !== null && (
                 <StatCard icon={Gauge} label={t('career.odometer')} value={formatOdometer(metadata.gameplayStats.totalOdometer)} />
               )}
               {metadata.gameplayStats.totalDriftScore !== null && (
                 <StatCard icon={Star} label={t('career.driftScore')} value={metadata.gameplayStats.totalDriftScore.toLocaleString()} />
+              )}
+              {metadata.discoveredLocations > 0 && (
+                <StatCard icon={MapPinned} label="Discovered Locations" value={String(metadata.discoveredLocations)} />
+              )}
+              {metadata.totalBranches > 0 && (
+                <StatCard icon={Unlock} label="Branches Unlocked" value={`${metadata.unlockedBranches} / ${metadata.totalBranches}`} />
+              )}
+              {metadata.discoveredBusinesses.length > 0 && (
+                <StatCard icon={Building2} label="Businesses Visited" value={String(metadata.discoveredBusinesses.length)} />
+              )}
+              {metadata.logbookEntries > 0 && (
+                <StatCard icon={BookOpen} label="Logbook Entries" value={String(metadata.logbookEntries)} />
               )}
               {metadata.stamina !== null && metadata.stamina > 0 && (
                 <StatCard icon={Heart} label={t('career.stamina')} value={String(metadata.stamina)} />
@@ -748,24 +851,54 @@ export function CareerPage(): React.JSX.Element {
                 <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
                   <Car size={18} /> {t('career.ownedVehicles')}
                 </h2>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                  {metadata.vehicles.map((v) => (
-                    <div key={v.id} className="bg-white/5 rounded-xl border border-[var(--color-border)] overflow-hidden">
-                      {v.thumbnailDataUrl ? (
-                        <img src={v.thumbnailDataUrl} alt={v.name || v.id} className="w-full h-24 object-cover bg-black/30" />
-                      ) : (
-                        <div className="w-full h-24 bg-black/20 flex items-center justify-center">
-                          <Car size={28} className="text-[var(--text-muted)]" />
-                        </div>
-                      )}
-                      <div className="p-2">
-                        <p className="text-xs font-medium text-white truncate">{v.name || v.model || `Vehicle ${v.id}`}</p>
-                        {v.model && v.name && (
-                          <p className="text-[10px] text-[var(--text-muted)] truncate">{v.model}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {metadata.vehicles.map((v) => {
+                    const isFavorite = metadata.favoriteVehicleId === v.id
+                    return (
+                      <div key={v.id} className={`bg-white/5 rounded-xl border overflow-hidden ${isFavorite ? 'border-yellow-500/40' : 'border-[var(--color-border)]'}`}>
+                        {v.thumbnailDataUrl ? (
+                          <img src={v.thumbnailDataUrl} alt={v.name || v.id} className="w-full h-28 object-cover bg-black/30" />
+                        ) : (
+                          <div className="w-full h-28 bg-black/20 flex items-center justify-center">
+                            <Car size={32} className="text-[var(--text-muted)]" />
+                          </div>
                         )}
+                        <div className="p-3 space-y-1.5">
+                          <div className="flex items-center gap-1.5">
+                            {isFavorite && <Star size={12} className="text-yellow-400 shrink-0" />}
+                            <p className="text-sm font-medium text-white truncate">{v.name || formatModelName(v.model)}</p>
+                          </div>
+                          {v.model && v.name && (
+                            <p className="text-[10px] text-[var(--text-muted)] truncate">{formatModelName(v.model)}</p>
+                          )}
+                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px]">
+                            {v.value !== null && (
+                              <span className="text-green-400 font-medium">{formatMoney(v.value)}</span>
+                            )}
+                            {v.power !== null && (
+                              <span className="text-[var(--text-muted)]">{formatPower(v.power)}</span>
+                            )}
+                            {v.weight !== null && (
+                              <span className="text-[var(--text-muted)]">{formatWeight(v.weight)}</span>
+                            )}
+                            {v.odometer !== null && (
+                              <span className="text-[var(--text-muted)]">{formatOdometer(v.odometer)}</span>
+                            )}
+                          </div>
+                          {(v.insuranceClass || v.licensePlate) && (
+                            <div className="flex items-center gap-2 text-[10px] text-[var(--text-muted)]">
+                              {v.insuranceClass && (
+                                <span className="flex items-center gap-0.5"><Shield size={9} /> {v.insuranceClass}</span>
+                              )}
+                              {v.licensePlate && (
+                                <span className="bg-white/10 px-1.5 py-0.5 rounded font-mono">{v.licensePlate}</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )}
@@ -903,29 +1036,115 @@ export function CareerPage(): React.JSX.Element {
           <div>
             <h2 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
               <Save size={18} /> {t('career.saveSlots')}
+              {slotPreviewsLoading && <Loader2 size={14} className="animate-spin text-[var(--text-muted)]" />}
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {selectedProfile.slots.map((slot) => (
-                <button
-                  key={slot.name}
-                  onClick={() => openSlot(selectedProfile, slot)}
-                  className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-[var(--color-border)] hover:border-[var(--color-accent-25)] transition-colors text-left"
-                >
-                  <div className="flex items-center gap-3">
-                    <Save size={16} className="text-[var(--color-accent)]" />
-                    <div>
-                      <p className="text-sm font-medium text-white">{slot.name}</p>
-                      {slot.lastSaved && (
-                        <p className="text-xs text-[var(--text-muted)]">{t('career.lastSaved')}: {formatDate(slot.lastSaved)}</p>
+            <div className="space-y-4">
+              {selectedProfile.slots.map((slot) => {
+                const preview = slotPreviews[slot.name]
+                return (
+                  <button
+                    key={slot.name}
+                    onClick={() => openSlot(selectedProfile, slot)}
+                    className="w-full bg-white/5 rounded-xl border border-[var(--color-border)] hover:border-[var(--color-accent-25)] transition-colors text-left overflow-hidden"
+                  >
+                    <div className="p-4">
+                      {/* Slot header */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <Save size={16} className="text-[var(--color-accent)]" />
+                          <div>
+                            <p className="text-sm font-medium text-white flex items-center gap-2">
+                              {slot.name}
+                              {slot.corrupted && (
+                                <span className="text-xs bg-red-500/20 text-red-300 px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                                  <AlertTriangle size={10} /> Corrupted
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-xs text-[var(--text-muted)]">
+                              {slot.lastSaved && slot.lastSaved !== '0'
+                                ? `${t('career.lastSaved')}: ${formatDate(slot.lastSaved)}`
+                                : 'No save data'}
+                              {slot.creationDate && (
+                                <> &middot; Created: {formatDate(slot.creationDate)}</>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                        <ChevronLeft size={14} className="text-[var(--text-muted)] rotate-180" />
+                      </div>
+
+                      {/* Slot preview stats */}
+                      {preview && !slot.corrupted && (
+                        <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs">
+                          {preview.level && (
+                            <span className="flex items-center gap-1 text-[var(--text-muted)]">
+                              <MapPin size={12} /> {formatMapName(preview.level)}
+                            </span>
+                          )}
+                          {preview.money !== null && (
+                            <span className="flex items-center gap-1 text-green-400">
+                              <DollarSign size={12} /> {formatMoney(preview.money)}
+                            </span>
+                          )}
+                          {preview.beamXP && (
+                            <span className="flex items-center gap-1 text-yellow-400">
+                              <Star size={12} /> Lvl {preview.beamXP.level}
+                            </span>
+                          )}
+                          {preview.vehicleCount > 0 && (
+                            <span className="flex items-center gap-1 text-[var(--text-muted)]">
+                              <Car size={12} /> {preview.vehicleCount} vehicles
+                            </span>
+                          )}
+                          {preview.gameplayStats.totalOdometer !== null && (
+                            <span className="flex items-center gap-1 text-[var(--text-muted)]">
+                              <Gauge size={12} /> {formatOdometer(preview.gameplayStats.totalOdometer)}
+                            </span>
+                          )}
+                          {preview.totalMissions > 0 && (
+                            <span className="flex items-center gap-1 text-[var(--text-muted)]">
+                              <Trophy size={12} /> {preview.missionCount}/{preview.totalMissions} missions
+                            </span>
+                          )}
+                          {preview.isRLS && preview.bankBalance !== null && (
+                            <span className="flex items-center gap-1 text-green-400">
+                              <Building2 size={12} /> {formatMoney(preview.bankBalance)}
+                            </span>
+                          )}
+                          {preview.isRLS && preview.creditScore !== null && (
+                            <span className="flex items-center gap-1 text-[var(--text-muted)]">
+                              <CreditCard size={12} /> Score {preview.creditScore}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Vehicle thumbnails strip */}
+                      {preview && preview.vehicles.length > 0 && !slot.corrupted && (
+                        <div className="flex gap-2 mt-3 overflow-hidden">
+                          {preview.vehicles.slice(0, 6).map((v) => (
+                            <div key={v.id} className="shrink-0 w-16 h-10 rounded-lg overflow-hidden border border-[var(--color-border)]">
+                              {v.thumbnailDataUrl ? (
+                                <img src={v.thumbnailDataUrl} alt={v.name || v.id} className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full bg-black/20 flex items-center justify-center">
+                                  <Car size={12} className="text-[var(--text-muted)]" />
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                          {preview.vehicles.length > 6 && (
+                            <div className="shrink-0 w-16 h-10 rounded-lg bg-black/20 flex items-center justify-center text-[10px] text-[var(--text-muted)] border border-[var(--color-border)]">
+                              +{preview.vehicles.length - 6}
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {slot.corrupted && <AlertTriangle size={14} className="text-red-400" />}
-                    <ChevronLeft size={14} className="text-[var(--text-muted)] rotate-180" />
-                  </div>
-                </button>
-              ))}
+                  </button>
+                )
+              })}
             </div>
           </div>
 
@@ -1041,7 +1260,7 @@ export function CareerPage(): React.JSX.Element {
               <p className="text-sm text-[var(--text-muted)] max-w-md mx-auto">{t('career.noProfilesDescription')}</p>
             </div>
           ) : (
-            <ProfileListGrouped profiles={profiles} openProfile={openProfile} t={t} />
+            <ProfileListGrouped profiles={profiles} openProfile={openProfile} summaries={profileSummaries} t={t} />
           )}
         </div>
       )}
@@ -1299,9 +1518,10 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
 }
 
 /* ── Profile List Grouped sub-component ── */
-function ProfileListGrouped({ profiles, openProfile, t }: {
+function ProfileListGrouped({ profiles, openProfile, summaries, t }: {
   profiles: CareerProfile[]
   openProfile: (p: CareerProfile) => void
+  summaries: Record<string, CareerProfileSummary | null>
   t: (key: string, opts?: Record<string, unknown>) => string
 }): React.JSX.Element {
   const careerMPProfiles = profiles.filter((p) => !p.isRLS)
@@ -1318,7 +1538,7 @@ function ProfileListGrouped({ profiles, openProfile, t }: {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {careerMPProfiles.map((profile) => (
-              <ProfileCard key={profile.name} profile={profile} openProfile={openProfile} t={t} />
+              <ProfileCard key={profile.name} profile={profile} summary={summaries[profile.name] ?? null} openProfile={openProfile} t={t} />
             ))}
           </div>
         </div>
@@ -1333,7 +1553,7 @@ function ProfileListGrouped({ profiles, openProfile, t }: {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {rlsProfiles.map((profile) => (
-              <ProfileCard key={profile.name} profile={profile} openProfile={openProfile} t={t} />
+              <ProfileCard key={profile.name} profile={profile} summary={summaries[profile.name] ?? null} openProfile={openProfile} t={t} />
             ))}
           </div>
         </div>
@@ -1343,8 +1563,9 @@ function ProfileListGrouped({ profiles, openProfile, t }: {
 }
 
 /* ── Profile Card sub-component ── */
-function ProfileCard({ profile, openProfile, t }: {
+function ProfileCard({ profile, summary, openProfile, t }: {
   profile: CareerProfile
+  summary: CareerProfileSummary | null
   openProfile: (p: CareerProfile) => void
   t: (key: string, opts?: Record<string, unknown>) => string
 }): React.JSX.Element {
@@ -1354,7 +1575,8 @@ function ProfileCard({ profile, openProfile, t }: {
       className="bg-white/5 rounded-xl border border-[var(--color-border)] overflow-hidden hover:border-[var(--color-accent-25)] transition-colors text-left"
     >
       <div className="p-4">
-        <div className="flex items-center gap-2 mb-1">
+        {/* Header row */}
+        <div className="flex items-center gap-2 mb-2">
           <Briefcase size={18} className="text-[var(--color-accent)]" />
           <h3 className="text-base font-semibold text-white">{profile.name}</h3>
           {profile.isRLS && (
@@ -1365,13 +1587,96 @@ function ProfileCard({ profile, openProfile, t }: {
           ) : (
             <span className="text-xs bg-yellow-500/20 text-yellow-300 px-2 py-0.5 rounded-full">{t('career.undeployed')}</span>
           )}
+          <ChevronLeft size={14} className="text-[var(--text-muted)] rotate-180 ml-auto shrink-0" />
         </div>
-        <div className="flex items-center justify-between mt-2">
-          <p className="text-xs text-[var(--text-muted)]">
-            {t('career.slotCount', { count: profile.slots.length })}
-          </p>
-          <ChevronLeft size={14} className="text-[var(--text-muted)] rotate-180" />
-        </div>
+
+        {/* Summary stats */}
+        {summary ? (
+          <div className="space-y-2">
+            {/* Primary stats row */}
+            <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs">
+              {summary.level && (
+                <span className="flex items-center gap-1 text-[var(--text-muted)]">
+                  <MapPin size={12} /> {formatMapName(summary.level)}
+                </span>
+              )}
+              {summary.money !== null && (
+                <span className="flex items-center gap-1 text-green-400 font-medium">
+                  <DollarSign size={12} /> {formatMoney(summary.money)}
+                </span>
+              )}
+              {summary.beamXPLevel !== null && (
+                <span className="flex items-center gap-1 text-yellow-400">
+                  <Star size={12} /> Level {summary.beamXPLevel}
+                </span>
+              )}
+              {summary.vehicleCount > 0 && (
+                <span className="flex items-center gap-1 text-[var(--text-muted)]">
+                  <Car size={12} /> {summary.vehicleCount} vehicles
+                </span>
+              )}
+            </div>
+
+            {/* Secondary stats row */}
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[var(--text-muted)]">
+              {summary.totalOdometer !== null && (
+                <span className="flex items-center gap-1">
+                  <Gauge size={11} /> {formatOdometer(summary.totalOdometer)}
+                </span>
+              )}
+              {summary.totalMissions > 0 && (
+                <span className="flex items-center gap-1">
+                  <Trophy size={11} /> {summary.missionCount}/{summary.totalMissions} missions
+                </span>
+              )}
+              {summary.discoveredBusinesses > 0 && (
+                <span className="flex items-center gap-1">
+                  <Building2 size={11} /> {summary.discoveredBusinesses} businesses
+                </span>
+              )}
+              {summary.discoveredLocations > 0 && (
+                <span className="flex items-center gap-1">
+                  <MapPinned size={11} /> {summary.discoveredLocations} locations
+                </span>
+              )}
+              {/* RLS-specific */}
+              {profile.isRLS && summary.bankBalance !== null && (
+                <span className="flex items-center gap-1 text-green-400">
+                  <Building2 size={11} /> Bank: {formatMoney(summary.bankBalance)}
+                </span>
+              )}
+              {profile.isRLS && summary.creditScore !== null && (
+                <span className="flex items-center gap-1">
+                  <CreditCard size={11} /> Credit: {summary.creditScore}
+                </span>
+              )}
+            </div>
+
+            {/* Server association */}
+            {summary.lastServer && (
+              <div className="flex items-center gap-1.5 text-[11px] text-blue-400">
+                <Server size={11} />
+                <span className="truncate" title={summary.lastServer.serverName ?? summary.lastServer.serverIdent}>
+                  {summary.lastServer.serverName ?? summary.lastServer.serverIdent}
+                </span>
+              </div>
+            )}
+
+            {/* Bottom info row */}
+            <div className="flex items-center justify-between pt-1 border-t border-[var(--color-border)]">
+              <p className="text-[10px] text-[var(--text-muted)]">
+                {t('career.slotCount', { count: profile.slots.length })}
+                {summary.lastSaved && <> &middot; Last saved: {formatDate(summary.lastSaved)}</>}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between mt-1">
+            <p className="text-xs text-[var(--text-muted)]">
+              {t('career.slotCount', { count: profile.slots.length })}
+            </p>
+          </div>
+        )}
       </div>
     </button>
   )

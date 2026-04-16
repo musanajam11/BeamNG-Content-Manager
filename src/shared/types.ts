@@ -112,6 +112,8 @@ export interface AppConfig {
   customServerExe: string | null
   /** Graphics renderer to use when launching BeamNG.drive */
   renderer: 'ask' | 'dx11' | 'vulkan'
+  /** Voice chat settings */
+  voiceChat: VoiceChatSettings
 }
 
 export interface ServerInfo {
@@ -402,6 +404,7 @@ export type AppPage =
   | 'career'
   | 'live-gps'
   | 'livery-editor'
+  | 'voice-chat'
 
 /* ── Hosted Server Manager ── */
 
@@ -584,6 +587,7 @@ export interface GPSTelemetry {
   speed: number
   timestamp: number
   map?: string
+  vehicleId?: string
   otherPlayers?: GPSPlayerInfo[]
   /** Active navigation route — array of 2D waypoints from player to destination */
   navRoute?: Array<{ x: number; y: number }>
@@ -737,6 +741,41 @@ export interface SteeringFilterSettings {
   steeringUndersteerReductionMultiplierDirect: number
 }
 
+/* ── Livery Editor ── */
+
+export interface SkinMaterialInfo {
+  materialName: string
+  texturePath: string
+  uvChannel: 0 | 1
+  hasPaletteMap: boolean
+}
+
+export interface LiveryExportParams {
+  vehicleName: string
+  skinName: string
+  authorName: string
+  canvasDataUrl: string
+  metallic: number
+  roughness: number
+  clearcoat: number
+  clearcoatRoughness: number
+}
+
+export interface LiveryProjectData {
+  version: number
+  vehicleName: string
+  vehicleDisplayName: string
+  templateWidth: number
+  templateHeight: number
+  canvasJson: string
+  layerMeta: Array<{
+    name: string
+    visible: boolean
+    locked: boolean
+    opacity: number
+  }>
+}
+
 export type ControlsTab = 'bindings' | 'axes' | 'ffb' | 'filters' | 'presets' | 'liveInput'
 
 export interface ControlsPreset {
@@ -764,4 +803,55 @@ export interface BindingConflict {
 export interface LiveInputState {
   axes: Record<string, number>
   buttons: Record<string, boolean>
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Voice Chat Types
+   ══════════════════════════════════════════════════════════════ */
+
+export type VoiceChatMode = 'ptt' | 'vad'
+
+export interface VoiceChatSettings {
+  /** Whether voice chat is enabled */
+  enabled: boolean
+  /** Input device ID (from navigator.mediaDevices) — null = system default */
+  inputDeviceId: string | null
+  /** Input gain multiplier: 0.0 – 3.0 */
+  inputGain: number
+  /** Output volume: 0.0 – 1.0 */
+  outputVolume: number
+  /** Activation mode: push-to-talk or voice activity detection */
+  mode: VoiceChatMode
+  /** Key code for push-to-talk (e.g. 'KeyV') */
+  pttKey: string
+  /** Voice activity detection threshold: 0.0 – 1.0 */
+  vadThreshold: number
+  /** Proximity range in meters (distance beyond which audio is silent) */
+  proximityRange: number
+  /** Enable door muffling (voice muffled through closed car doors) */
+  doorMuffling: boolean
+  /** Optional TURN server URL for users behind symmetric NATs (e.g. 'turn:my.turn.server:3478') */
+  turnServerUrl: string | null
+  /** TURN server username (if required) */
+  turnUsername: string | null
+  /** TURN server credential (if required) */
+  turnCredential: string | null
+}
+
+export interface VoiceSignalMessage {
+  event: string
+  data: string
+}
+
+export interface VoicePeerInfo {
+  playerId: number
+  playerName: string
+  speaking: boolean
+}
+
+export interface VoiceChatState {
+  available: boolean
+  enabled: boolean
+  connected: boolean
+  peers: VoicePeerInfo[]
 }

@@ -1,4 +1,4 @@
-import { Play, Star, Package, Users, MapPin, Globe, Gauge, Wifi, Copy, Check, X, Clock, Square, ImageIcon } from 'lucide-react'
+import { Play, Star, Package, Users, MapPin, Globe, Gauge, Wifi, Copy, Check, X, Clock, Square, ImageIcon, HardDrive } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
@@ -6,6 +6,8 @@ import type { ServerInfo } from '../../../../shared/types'
 import { countryFlag, cleanMapName } from '../../utils/countryFlags'
 import { useFlagUrl } from '../../utils/flagCache'
 import { BeamMPText } from '../BeamMPText'
+import { parseServerTags } from '../../utils/serverTags'
+import { ServerTagBadge } from './ServerTag'
 
 interface Props {
   server: ServerInfo
@@ -55,6 +57,17 @@ export function ServerDetailPanel({
   const maxPlayers = parseInt(server.maxplayers, 10) || 0
   const fillPct = maxPlayers > 0 ? Math.min(100, (playerCount / maxPlayers) * 100) : 0
 
+  const modSizeBytes = parseInt(server.modstotalsize, 10) || 0
+  const formatModSize = (bytes: number): string => {
+    if (bytes <= 0) return '0 B'
+    const gb = bytes / (1024 * 1024 * 1024)
+    if (gb >= 1) return `${gb.toFixed(2)} GB`
+    const mb = bytes / (1024 * 1024)
+    if (mb >= 1) return `${mb.toFixed(1)} MB`
+    const kb = bytes / 1024
+    return `${kb.toFixed(0)} KB`
+  }
+
   const [copied, setCopied] = useState(false)
   const [mapPreview, setMapPreview] = useState<string | null>(null)
 
@@ -87,6 +100,7 @@ export function ServerDetailPanel({
   const isConnectedHere = connectedServer === `${server.ip}:${server.port}`
   const isConnectedElsewhere = !!connectedServer && !isConnectedHere
   const flagUrl = useFlagUrl(server.location)
+  const contentTags = parseServerTags(server.tags)
 
   const popColor = fillPct >= 90 ? 'pop-fill-rose' : fillPct >= 65 ? 'pop-fill-amber' : 'pop-fill-green'
 
@@ -150,8 +164,11 @@ export function ServerDetailPanel({
         )}
         <div className="flex flex-wrap gap-1.5">
           {server.official && <Badge tone="accent">{t('servers.tagOfficial')}</Badge>}
-          {parseInt(server.modstotal, 10) > 0 && <Badge tone="gold">{t('servers.tagModded')}</Badge>}
+          {contentTags.every(ct => ct.label !== 'Modded') && parseInt(server.modstotal, 10) > 0 && <Badge tone="gold">{t('servers.tagModded')}</Badge>}
           {server.password ? <Badge>{t('servers.private')}</Badge> : <Badge>{t('servers.open')}</Badge>}
+          {contentTags.map(tag => (
+            <ServerTagBadge key={tag.id} tag={tag} />
+          ))}
         </div>
 
         {/* Description */}
@@ -167,6 +184,9 @@ export function ServerDetailPanel({
           <StatPill icon={<MapPin size={10} />} label={t('servers.map')} value={cleanMapName(server.map)} />
           <StatPill icon={<Globe size={10} />} label={t('servers.region')} value={server.location || 'Global'} />
           <StatPill icon={<Gauge size={10} />} label={t('servers.type')} value={parseInt(server.modstotal, 10) > 0 ? t('servers.tagModded') : t('servers.standard')} />
+          {modSizeBytes > 0 && (
+            <StatPill icon={<HardDrive size={10} />} label={t('servers.modSize', 'Mod Size')} value={formatModSize(modSizeBytes)} />
+          )}
         </div>
 
         {/* Action buttons */}
@@ -311,9 +331,16 @@ export function ServerDetailPanel({
         {/* Mods */}
         {server.modlist && (
           <section className="rounded-lg border border-white/8 bg-black/20 p-3.5">
-            <div className="mb-2.5 flex items-center gap-1.5 text-xs font-semibold text-white">
-              <Package size={13} />
-              {t('servers.requiredMods')}
+            <div className="mb-2.5 flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-white">
+                <Package size={13} />
+                {t('servers.requiredMods')}
+              </div>
+              {modSizeBytes > 0 && (
+                <span className="text-[11px] font-medium text-slate-400">
+                  {formatModSize(modSizeBytes)}
+                </span>
+              )}
             </div>
             <div className="flex flex-wrap gap-1.5">
               {server.modlist.split(/[;,\n]+/).map((mod) => mod.trim()).filter(Boolean).map((mod) => (
@@ -337,10 +364,14 @@ export function ServerDetailPanel({
               <span className="text-slate-400 shrink-0">{t('servers.guests')}</span>
               <span className={server.guests ? 'text-emerald-400' : 'text-rose-400'}>{server.guests ? t('servers.allowed') : t('common.no')}</span>
             </div>
-            {server.tags && (
-              <div className="flex justify-between gap-2">
-                <span className="text-slate-400 shrink-0">{t('servers.tags')}</span>
-                <span className="text-slate-300 truncate">{server.tags}</span>
+            {server.tags && server.tags !== 'offline' && (
+              <div className="mt-1.5">
+                <span className="text-slate-400 text-xs shrink-0">{t('servers.tags')}</span>
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  {parseServerTags(server.tags).map(tag => (
+                    <ServerTagBadge key={tag.id} tag={tag} />
+                  ))}
+                </div>
               </div>
             )}
           </div>

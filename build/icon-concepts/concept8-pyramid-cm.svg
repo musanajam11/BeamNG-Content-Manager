@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a1d2e"/>
+      <stop offset="100%" stop-color="#0f1119"/>
+    </linearGradient>
+    <radialGradient id="nodeGrad" cx="40%" cy="35%">
+      <stop offset="0%" stop-color="#fdba74"/>
+      <stop offset="50%" stop-color="#f97316"/>
+      <stop offset="100%" stop-color="#c2410c"/>
+    </radialGradient>
+    <filter id="beamGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="nodeShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#f97316" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect x="16" y="16" width="480" height="480" rx="96" ry="96" fill="url(#bgGrad)"/>
+
+  <!--
+    Pyramid viewed in 3/4 perspective:
+    - Apex (top center): 256, 100
+    - Base front-left: 120, 370
+    - Base front-right: 392, 370
+    - Base back-center: 256, 290
+    CM hub at centroid ~256, 270
+  -->
+
+  <!-- Back edges (dimmer, behind) -->
+  <g filter="url(#beamGlow)" opacity="0.4">
+    <!-- back-center to front-left -->
+    <line x1="256" y1="290" x2="120" y2="370" stroke="white" stroke-width="14" stroke-linecap="round"/>
+    <!-- back-center to front-right -->
+    <line x1="256" y1="290" x2="392" y2="370" stroke="white" stroke-width="14" stroke-linecap="round"/>
+    <!-- apex to back-center -->
+    <line x1="256" y1="100" x2="256" y2="290" stroke="white" stroke-width="14" stroke-linecap="round"/>
+  </g>
+
+  <!-- Front edges (brighter) -->
+  <g filter="url(#beamGlow)">
+    <!-- base front edge -->
+    <line x1="120" y1="370" x2="392" y2="370" stroke="white" stroke-width="16" stroke-linecap="round"/>
+    <!-- apex to front-left -->
+    <line x1="256" y1="100" x2="120" y2="370" stroke="white" stroke-width="16" stroke-linecap="round"/>
+    <!-- apex to front-right -->
+    <line x1="256" y1="100" x2="392" y2="370" stroke="white" stroke-width="16" stroke-linecap="round"/>
+  </g>
+
+  <!-- Inner beams to CM hub -->
+  <g filter="url(#beamGlow)" opacity="0.45">
+    <line x1="256" y1="100" x2="256" y2="270" stroke="white" stroke-width="10" stroke-linecap="round"/>
+    <line x1="120" y1="370" x2="256" y2="270" stroke="white" stroke-width="10" stroke-linecap="round"/>
+    <line x1="392" y1="370" x2="256" y2="270" stroke="white" stroke-width="10" stroke-linecap="round"/>
+    <line x1="256" y1="290" x2="256" y2="270" stroke="white" stroke-width="10" stroke-linecap="round"/>
+  </g>
+
+  <!-- Back node (behind, dimmer) -->
+  <circle cx="256" cy="290" r="34" fill="url(#nodeGrad)" filter="url(#nodeShadow)" opacity="0.55"/>
+
+  <!-- CM hub node (center) -->
+  <circle cx="256" cy="270" r="38" fill="url(#nodeGrad)" filter="url(#nodeShadow)"/>
+  <!-- "C" arc -->
+  <path d="M 252,254 C 238,254 230,260 230,270 C 230,280 238,286 252,286"
+        fill="none" stroke="white" stroke-width="5.5" stroke-linecap="round"/>
+  <!-- "M" strokes -->
+  <path d="M 260,286 L 260,254 L 270,274 L 280,254 L 280,286"
+        fill="none" stroke="white" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Front nodes (on top) -->
+  <g filter="url(#nodeShadow)">
+    <circle cx="256" cy="100" r="40" fill="url(#nodeGrad)"/>
+    <circle cx="120" cy="370" r="40" fill="url(#nodeGrad)"/>
+    <circle cx="392" cy="370" r="40" fill="url(#nodeGrad)"/>
+  </g>
+</svg>

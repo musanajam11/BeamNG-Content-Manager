@@ -13,6 +13,7 @@ interface HeatMapPanelProps {
 export default function HeatMapPanel({ server }: HeatMapPanelProps): React.JSX.Element {
   const [players, setPlayers] = useState<PlayerPosition[]>([])
   const [trackerDeployed, setTrackerDeployed] = useState(false)
+  const [voicePluginDeployed, setVoicePluginDeployed] = useState(false)
   const [showHeatmap, setShowHeatmap] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const heatGridRef = useRef<Float32Array>(new Float32Array(HEATMAP_RES * HEATMAP_RES))
@@ -20,6 +21,13 @@ export default function HeatMapPanel({ server }: HeatMapPanelProps): React.JSX.E
 
   const bounds = getBounds(server.config.map)
   const isRunning = server.status.state === 'running'
+
+  /* ── Check deploy state on mount ─────────────────────────────── */
+  useEffect(() => {
+    const id = server.config.id
+    window.api.hostedServerIsTrackerDeployed(id).then(setTrackerDeployed).catch(() => {})
+    window.api.hostedServerIsVoicePluginDeployed(id).then(setVoicePluginDeployed).catch(() => {})
+  }, [server.config.id])
 
   /* ── Poll player positions while server is running ───────────── */
   useEffect(() => {
@@ -66,6 +74,27 @@ export default function HeatMapPanel({ server }: HeatMapPanelProps): React.JSX.E
       .catch(() => {})
   }, [server.config.id])
 
+  const handleUndeployTracker = useCallback(() => {
+    window.api
+      .hostedServerUndeployTracker(server.config.id)
+      .then(() => setTrackerDeployed(false))
+      .catch(() => {})
+  }, [server.config.id])
+
+  const handleDeployVoicePlugin = useCallback(() => {
+    window.api
+      .hostedServerDeployVoicePlugin(server.config.id)
+      .then(() => setVoicePluginDeployed(true))
+      .catch(() => {})
+  }, [server.config.id])
+
+  const handleUndeployVoicePlugin = useCallback(() => {
+    window.api
+      .hostedServerUndeployVoicePlugin(server.config.id)
+      .then(() => setVoicePluginDeployed(false))
+      .catch(() => {})
+  }, [server.config.id])
+
   const handleClearHeatmap = useCallback(() => {
     heatGridRef.current.fill(0)
     setHeatGridVersion((v) => v + 1)
@@ -77,10 +106,14 @@ export default function HeatMapPanel({ server }: HeatMapPanelProps): React.JSX.E
       <HeatMapToolbar
         playerCount={players.length}
         trackerDeployed={trackerDeployed}
+        voicePluginDeployed={voicePluginDeployed}
         showHeatmap={showHeatmap}
         onToggleHeatmap={() => setShowHeatmap((v) => !v)}
         onClearHeatmap={handleClearHeatmap}
         onDeployTracker={handleDeployTracker}
+        onUndeployTracker={handleUndeployTracker}
+        onDeployVoicePlugin={handleDeployVoicePlugin}
+        onUndeployVoicePlugin={handleUndeployVoicePlugin}
       />
 
       <div className="flex flex-1 min-h-0 overflow-hidden">

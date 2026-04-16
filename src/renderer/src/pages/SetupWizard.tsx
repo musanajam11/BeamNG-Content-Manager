@@ -1,9 +1,21 @@
-import { useState } from 'react'
+
+import { useState, useEffect, useRef } from 'react'
 import { Loader2, CheckCircle, AlertCircle, FolderOpen, Globe, ArrowRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/useAppStore'
 
 type WizardStep = 'welcome' | 'paths' | 'backend' | 'done'
+
+const TIPS = [
+  'Manage all your BeamNG mods, maps, and vehicles in one place.',
+  'Browse and join multiplayer servers with a single click.',
+  'Customize your UI with themes, backgrounds, and accent colors.',
+  'Auto-detect your BeamNG.drive installation — no manual setup needed.',
+  'Track your friends and see what servers they\'re playing on.',
+  'Create and manage your own BeamMP server directly from the app.',
+  'Organize your mod load order for the best experience.',
+  'Explore career mode progress and saved games.',
+]
 
 export function SetupWizard(): React.JSX.Element {
   const { t } = useTranslation()
@@ -15,6 +27,34 @@ export function SetupWizard(): React.JSX.Element {
   const [backendUrl, setBackendUrl] = useState('https://backend.beammp.com')
   const [backendType, setBackendType] = useState<'official' | 'custom'>('official')
   const [backendHealthy, setBackendHealthy] = useState<boolean | null>(null)
+  const [bgDataUrl, setBgDataUrl] = useState<string | null>(null)
+  const [tipIndex, setTipIndex] = useState(0)
+  const [tipVisible, setTipVisible] = useState(true)
+  const tipTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Load a random background image via IPC on mount
+  useEffect(() => {
+    window.api.getDefaultBackgrounds().then((paths) => {
+      if (paths.length > 0) {
+        const pick = paths[Math.floor(Math.random() * paths.length)]
+        window.api.loadBackgroundImage(pick).then((dataUrl) => {
+          if (dataUrl) setBgDataUrl(dataUrl)
+        })
+      }
+    })
+  }, [])
+
+  // Rotate tips every 5 seconds with fade
+  useEffect(() => {
+    tipTimer.current = setInterval(() => {
+      setTipVisible(false)
+      setTimeout(() => {
+        setTipIndex((prev) => (prev + 1) % TIPS.length)
+        setTipVisible(true)
+      }, 400)
+    }, 5000)
+    return () => { if (tipTimer.current) clearInterval(tipTimer.current) }
+  }, [])
 
   const handleAutoDetect = async (): Promise<void> => {
     setDetecting(true)
@@ -66,35 +106,49 @@ export function SetupWizard(): React.JSX.Element {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-[var(--bg-primary)]">
+    <div className="flex flex-col h-screen relative overflow-hidden">
+      {/* Blurred random background */}
+      <div
+        className="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat pointer-events-none transition-opacity duration-1000"
+        style={{
+          backgroundImage: bgDataUrl ? `url(${bgDataUrl})` : 'none',
+          filter: 'blur(18px) brightness(0.6) saturate(1.2)',
+          transform: 'scale(1.08)',
+          opacity: bgDataUrl ? 1 : 0,
+        }}
+      />
+      {/* Overlay for readability */}
+      <div className="absolute inset-0 z-0 pointer-events-none" style={{ background: 'linear-gradient(180deg, rgba(20,20,24,0.55) 0%, rgba(20,20,24,0.75) 100%)' }} />
+
       {/* Minimal titlebar for drag */}
-      <div className="titlebar h-9 bg-[var(--bg-primary)] border-b border-[var(--border-primary)]">
-        <div className="drag h-full" />
-        <div className="absolute right-0 top-0 flex no-drag">
+      <div className="titlebar-drag h-9 bg-transparent relative z-10">
+        <div className="h-full" />
+        <div className="absolute right-0 top-0 flex titlebar-no-drag">
           <button
             onClick={() => window.api.minimizeWindow()}
-            className="w-11 h-9 flex items-center justify-center hover:bg-[var(--bg-hover)] text-[var(--text-muted)] text-xs"
+            className="w-11 h-9 flex items-center justify-center hover:bg-white/10 text-white/60 text-xs"
           >
             ─
           </button>
           <button
             onClick={() => window.api.closeWindow()}
-            className="w-11 h-9 flex items-center justify-center hover:bg-red-600 text-[var(--text-muted)] text-xs"
+            className="w-11 h-9 flex items-center justify-center hover:bg-red-600 text-white/60 text-xs"
           >
             ✕
           </button>
         </div>
       </div>
 
-      <div className="flex-1 flex items-center justify-center p-8">
+      <div className="flex-1 flex flex-col items-center justify-center px-12 pb-8 relative z-10">
         <div className="w-full max-w-lg">
+
           {/* Step: Welcome */}
           {step === 'welcome' && (
-            <div className="flex flex-col items-center gap-6 text-center">
-              <h1 className="text-3xl font-bold text-[var(--text-primary)]">
+            <div className="flex flex-col items-center gap-6 text-center animate-fadein">
+              <h1 className="text-4xl font-bold text-white drop-shadow-lg">
                 {t('setup.welcome')}
               </h1>
-              <p className="text-[var(--text-secondary)] text-sm max-w-sm">
+              <p className="text-white/70 text-sm max-w-sm">
                 {t('setup.welcomeDesc')}
               </p>
               <button
@@ -102,7 +156,7 @@ export function SetupWizard(): React.JSX.Element {
                   setStep('paths')
                   handleAutoDetect()
                 }}
-                className="flex items-center gap-2 px-8 py-3 rounded-xl bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white font-semibold transition-colors"
+                className="flex items-center gap-2 px-8 py-3 rounded-xl bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white font-semibold transition-colors shadow-lg mt-2"
               >
                 {t('setup.getStarted')}
                 <ArrowRight size={18} />
@@ -112,21 +166,21 @@ export function SetupWizard(): React.JSX.Element {
 
           {/* Step: Game Paths */}
           {step === 'paths' && (
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-6 animate-fadein">
               <div className="flex items-center gap-3">
                 <FolderOpen size={20} className="text-[var(--accent-primary)]" />
-                <h2 className="text-xl font-semibold text-[var(--text-primary)]">{t('setup.gamePaths')}</h2>
+                <h2 className="text-xl font-semibold text-white drop-shadow">{t('setup.gamePaths')}</h2>
               </div>
 
               {detecting ? (
-                <div className="flex items-center gap-3 text-[var(--text-secondary)] text-sm">
+                <div className="flex items-center gap-3 text-white/70 text-sm">
                   <Loader2 size={16} className="animate-spin" />
                   {t('setup.autoDetecting')}
                 </div>
               ) : (
                 <div className="flex flex-col gap-4">
                   <div>
-                    <label className="text-xs text-[var(--text-muted)] mb-1 block">
+                    <label className="text-xs text-white/50 mb-1 block">
                       {t('setup.installDir')}
                     </label>
                     <input
@@ -134,11 +188,11 @@ export function SetupWizard(): React.JSX.Element {
                       value={installDir}
                       onChange={(e) => setInstallDir(e.target.value)}
                       placeholder="C:\Program Files (x86)\Steam\steamapps\common\BeamNG.drive"
-                      className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-primary)] rounded-lg px-3 py-2.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-primary)]"
+                      className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[var(--accent-primary)] backdrop-blur-sm"
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-[var(--text-muted)] mb-1 block">
+                    <label className="text-xs text-white/50 mb-1 block">
                       {t('setup.userDataDir')}
                     </label>
                     <input
@@ -146,7 +200,7 @@ export function SetupWizard(): React.JSX.Element {
                       value={userDir}
                       onChange={(e) => setUserDir(e.target.value)}
                       placeholder="C:\Users\...\AppData\Local\BeamNG.drive"
-                      className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-primary)] rounded-lg px-3 py-2.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-primary)]"
+                      className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[var(--accent-primary)] backdrop-blur-sm"
                     />
                   </div>
                   <button
@@ -178,16 +232,16 @@ export function SetupWizard(): React.JSX.Element {
 
           {/* Step: Backend */}
           {step === 'backend' && (
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-6 animate-fadein">
               <div className="flex items-center gap-3">
                 <Globe size={20} className="text-[var(--accent-primary)]" />
-                <h2 className="text-xl font-semibold text-[var(--text-primary)]">
+                <h2 className="text-xl font-semibold text-white drop-shadow">
                   {t('setup.backendServer')}
                 </h2>
               </div>
 
               <div className="flex flex-col gap-3">
-                <label className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors bg-[var(--bg-tertiary)] border-[var(--border-primary)] hover:border-[var(--accent-primary)]">
+                <label className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors bg-black/30 border-white/10 hover:border-[var(--accent-primary)] backdrop-blur-sm">
                   <input
                     type="radio"
                     name="backend"
@@ -196,16 +250,16 @@ export function SetupWizard(): React.JSX.Element {
                     className="accent-[var(--accent-primary)]"
                   />
                   <div>
-                    <p className="text-sm font-medium text-[var(--text-primary)]">
+                    <p className="text-sm font-medium text-white">
                       {t('setup.officialBackend')}
                     </p>
-                    <p className="text-xs text-[var(--text-muted)]">
+                    <p className="text-xs text-white/50">
                       {t('setup.officialBackendDesc')}
                     </p>
                   </div>
                 </label>
 
-                <label className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors bg-[var(--bg-tertiary)] border-[var(--border-primary)] hover:border-[var(--accent-primary)]">
+                <label className="flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors bg-black/30 border-white/10 hover:border-[var(--accent-primary)] backdrop-blur-sm">
                   <input
                     type="radio"
                     name="backend"
@@ -214,10 +268,10 @@ export function SetupWizard(): React.JSX.Element {
                     className="accent-[var(--accent-primary)]"
                   />
                   <div>
-                    <p className="text-sm font-medium text-[var(--text-primary)]">
+                    <p className="text-sm font-medium text-white">
                       {t('setup.selfHosted')}
                     </p>
-                    <p className="text-xs text-[var(--text-muted)]">
+                    <p className="text-xs text-white/50">
                       {t('setup.selfHostedDesc')}
                     </p>
                   </div>
@@ -226,13 +280,13 @@ export function SetupWizard(): React.JSX.Element {
 
               {backendType === 'custom' && (
                 <div>
-                  <label className="text-xs text-[var(--text-muted)] mb-1 block">{t('setup.backendUrl')}</label>
+                  <label className="text-xs text-white/50 mb-1 block">{t('setup.backendUrl')}</label>
                   <input
                     type="text"
                     value={backendUrl}
                     onChange={(e) => setBackendUrl(e.target.value)}
                     placeholder="https://beammp.yourserver.com"
-                    className="w-full bg-[var(--bg-tertiary)] border border-[var(--border-primary)] rounded-lg px-3 py-2.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-primary)]"
+                    className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[var(--accent-primary)] backdrop-blur-sm"
                   />
                 </div>
               )}
@@ -240,7 +294,7 @@ export function SetupWizard(): React.JSX.Element {
               <div className="flex items-center gap-3">
                 <button
                   onClick={handleTestBackend}
-                  className="px-4 py-2 rounded-lg bg-[var(--bg-tertiary)] border border-[var(--border-primary)] text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
+                  className="px-4 py-2 rounded-lg bg-black/30 border border-white/10 text-sm text-white/70 hover:bg-white/10 transition-colors backdrop-blur-sm"
                 >
                   {t('setup.testConnection')}
                 </button>
@@ -255,9 +309,7 @@ export function SetupWizard(): React.JSX.Element {
               </div>
 
               <button
-                onClick={() => {
-                  setStep('done')
-                }}
+                onClick={() => setStep('done')}
                 className="self-end flex items-center gap-2 px-6 py-2.5 rounded-lg bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white text-sm font-medium transition-colors"
               >
                 {t('common.continue')}
@@ -268,15 +320,15 @@ export function SetupWizard(): React.JSX.Element {
 
           {/* Step: Done */}
           {step === 'done' && (
-            <div className="flex flex-col items-center gap-6 text-center">
-              <CheckCircle size={48} className="text-green-400" />
-              <h2 className="text-2xl font-bold text-[var(--text-primary)]">{t('setup.allSet')}</h2>
-              <p className="text-[var(--text-secondary)] text-sm max-w-sm">
+            <div className="flex flex-col items-center gap-6 text-center animate-fadein">
+              <CheckCircle size={48} className="text-green-400 drop-shadow-lg" />
+              <h2 className="text-2xl font-bold text-white drop-shadow">{t('setup.allSet')}</h2>
+              <p className="text-white/70 text-sm max-w-sm">
                 {t('setup.allSetDesc')}
               </p>
               <button
                 onClick={handleFinish}
-                className="px-8 py-3 rounded-xl bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white font-semibold transition-colors"
+                className="px-8 py-3 rounded-xl bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-white font-semibold transition-colors shadow-lg"
               >
                 {t('setup.launchApp')}
               </button>
@@ -288,14 +340,26 @@ export function SetupWizard(): React.JSX.Element {
             {(['welcome', 'paths', 'backend', 'done'] as WizardStep[]).map((s) => (
               <div
                 key={s}
-                className={`w-2 h-2 rounded-full transition-colors ${
-                  s === step ? 'bg-[var(--accent-primary)]' : 'bg-[var(--border-primary)]'
+                className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                  s === step ? 'bg-[var(--accent-primary)] scale-125' : 'bg-white/20'
                 }`}
               />
             ))}
           </div>
+
+          {/* Rotating tips */}
+          <div className="mt-6 min-h-[2rem] flex items-center justify-center">
+            <p
+              className="text-xs text-white/40 text-center italic transition-opacity duration-400"
+              style={{ opacity: tipVisible ? 1 : 0 }}
+            >
+              💡 {TIPS[tipIndex]}
+            </p>
+          </div>
         </div>
       </div>
+
+
     </div>
   )
 }

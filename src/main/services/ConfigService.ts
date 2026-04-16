@@ -45,7 +45,21 @@ const DEFAULT_CONFIG: AppConfig = {
   defaultPorts: '',
   careerSavePath: null,
   customServerExe: null,
-  renderer: 'ask'
+  renderer: 'ask',
+  voiceChat: {
+    enabled: false,
+    inputDeviceId: null,
+    inputGain: 1.0,
+    outputVolume: 0.8,
+    mode: 'vad',
+    pttKey: 'KeyV',
+    vadThreshold: 0.02,
+    proximityRange: 50,
+    doorMuffling: true,
+    turnServerUrl: null,
+    turnUsername: null,
+    turnCredential: null
+  }
 }
 
 export class ConfigService {

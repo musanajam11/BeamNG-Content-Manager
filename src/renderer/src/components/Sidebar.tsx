@@ -13,7 +13,8 @@ import {
   Gamepad2,
   Briefcase,
   Navigation2,
-  Paintbrush
+  Paintbrush,
+  Mic
 } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -40,6 +41,7 @@ export const ALL_NAV_ITEMS: NavItem[] = [
   { id: 'controls', labelKey: 'sidebar.controls', icon: Gamepad2 },
   { id: 'live-gps', labelKey: 'sidebar.liveGPS', icon: Navigation2 },
   { id: 'livery-editor', labelKey: 'sidebar.liveryEditor', icon: Paintbrush },
+  { id: 'voice-chat', labelKey: 'sidebar.voiceChat', icon: Mic },
 ]
 
 const itemMap = new Map(ALL_NAV_ITEMS.map((item) => [item.id, item]))

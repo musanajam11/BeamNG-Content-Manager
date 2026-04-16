@@ -2,26 +2,36 @@ import {
   Users,
   Flame,
   RotateCcw,
-  Upload
+  Upload,
+  Mic,
+  Trash2
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 interface HeatMapToolbarProps {
   playerCount: number
   trackerDeployed: boolean
+  voicePluginDeployed: boolean
   showHeatmap: boolean
   onToggleHeatmap: () => void
   onClearHeatmap: () => void
   onDeployTracker: () => void
+  onUndeployTracker: () => void
+  onDeployVoicePlugin: () => void
+  onUndeployVoicePlugin: () => void
 }
 
 export default function HeatMapToolbar({
   playerCount,
   trackerDeployed,
+  voicePluginDeployed,
   showHeatmap,
   onToggleHeatmap,
   onClearHeatmap,
-  onDeployTracker
+  onDeployTracker,
+  onUndeployTracker,
+  onDeployVoicePlugin,
+  onUndeployVoicePlugin
 }: HeatMapToolbarProps): React.JSX.Element {
   const { t } = useTranslation()
 
@@ -61,7 +71,7 @@ export default function HeatMapToolbar({
         </span>
       </div>
 
-      {/* ── Deploy tracker ──────────────────────────── */}
+      {/* ── Deploy / Undeploy tracker ──────────────────── */}
       {!trackerDeployed && (
         <button
           onClick={onDeployTracker}
@@ -72,10 +82,37 @@ export default function HeatMapToolbar({
         </button>
       )}
       {trackerDeployed && (
-        <span className="text-xs text-emerald-400/70 flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          {t('serverManager.trackerActive')}
-        </span>
+        <button
+          onClick={onUndeployTracker}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/15 text-emerald-300 hover:bg-red-500/15 hover:text-red-300 border border-emerald-500/20 hover:border-red-500/20 transition-colors group"
+          title={t('serverManager.undeployTrackerTooltip')}
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse group-hover:bg-red-400 group-hover:animate-none" />
+          <span className="group-hover:hidden">{t('serverManager.trackerActive')}</span>
+          <span className="hidden group-hover:inline"><Trash2 size={13} className="inline mr-1" />{t('serverManager.undeployTracker')}</span>
+        </button>
+      )}
+
+      {/* ── Deploy / Undeploy voice plugin ─────────────── */}
+      {!voicePluginDeployed && (
+        <button
+          onClick={onDeployVoicePlugin}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-violet-500/15 text-violet-300 hover:bg-violet-500/25 border border-violet-500/20 transition-colors"
+          title={t('serverManager.deployVoicePluginTooltip')}
+        >
+          <Mic size={13} /> {t('serverManager.deployVoicePlugin')}
+        </button>
+      )}
+      {voicePluginDeployed && (
+        <button
+          onClick={onUndeployVoicePlugin}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/15 text-emerald-300 hover:bg-red-500/15 hover:text-red-300 border border-emerald-500/20 hover:border-red-500/20 transition-colors group"
+          title={t('serverManager.undeployVoicePluginTooltip')}
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse group-hover:bg-red-400 group-hover:animate-none" />
+          <span className="group-hover:hidden">{t('serverManager.voicePluginActive')}</span>
+          <span className="hidden group-hover:inline"><Trash2 size={13} className="inline mr-1" />{t('serverManager.undeployVoicePlugin')}</span>
+        </button>
       )}
     </div>
   )

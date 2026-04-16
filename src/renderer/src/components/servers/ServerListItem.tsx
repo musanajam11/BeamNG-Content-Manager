@@ -1,3 +1,4 @@
+import { useRef, useState, useCallback, useEffect } from 'react'
 import { Star, Shield, Lock, MapPin } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
@@ -5,6 +6,8 @@ import type { ServerInfo } from '../../../../shared/types'
 import { countryFlag, cleanMapName } from '../../utils/countryFlags'
 import { useFlagUrl } from '../../utils/flagCache'
 import { BeamMPText } from '../BeamMPText'
+import { parseServerTags } from '../../utils/serverTags'
+import { ServerTagBadge } from './ServerTag'
 
 interface Props {
   server: ServerInfo
@@ -54,7 +57,33 @@ export function ServerListItem({ server, selected, favorite, onSelect, onToggleF
   const maxPlayers = parseInt(server.maxplayers, 10) || 0
   const fillPct = getFillPct(server)
   const tags = getServerTags(server, t)
+  const contentTags = parseServerTags(server.tags)
   const flagUrl = useFlagUrl(server.location)
+
+  // Marquee: detect if server name overflows its container
+  const nameContainerRef = useRef<HTMLDivElement>(null)
+  const nameTextRef = useRef<HTMLSpanElement>(null)
+  const [nameOverflows, setNameOverflows] = useState(false)
+
+  const checkNameOverflow = useCallback(() => {
+    const container = nameContainerRef.current
+    const text = nameTextRef.current
+    if (!container || !text) return
+    const overflow = text.scrollWidth > container.clientWidth
+    setNameOverflows(overflow)
+    if (overflow) {
+      text.style.setProperty('--marquee-offset', `${container.clientWidth - text.scrollWidth}px`)
+    }
+  }, [])
+
+  useEffect(() => {
+    const container = nameContainerRef.current
+    if (!container) return
+    const ro = new ResizeObserver(() => checkNameOverflow())
+    ro.observe(container)
+    checkNameOverflow()
+    return () => ro.disconnect()
+  }, [server.sname, checkNameOverflow])
 
   return (
     <button
@@ -89,22 +118,28 @@ export function ServerListItem({ server, selected, favorite, onSelect, onToggleF
         </div>
 
         {/* Name + icons */}
-        <div className="min-w-0 flex-1 flex items-center gap-1">
-          <BeamMPText text={server.sname} className="truncate text-xs font-semibold text-white" />
+        <div ref={nameContainerRef} className="min-w-0 flex-1 flex items-center gap-1 overflow-hidden">
+          <span ref={nameTextRef} className={`marquee-scroll${nameOverflows ? ' is-overflowing' : ''}`}>
+            <BeamMPText text={server.sname} className="text-xs font-semibold text-white whitespace-nowrap" />
+          </span>
           {server.official && <Shield size={10} className="shrink-0 text-[var(--color-accent)]" />}
           {server.password && <Lock size={10} className="shrink-0 text-slate-500" />}
         </div>
 
         {/* Tags (inline) */}
-        {tags.length > 0 && (
-          <div className="flex items-center gap-1 shrink-0">
-            {tags.slice(0, 2).map((tag) => (
-              <span key={tag.label} className={`inline-flex items-center border px-1.5 py-0 text-[9px] font-medium ${BADGE_TONES[tag.tone]}`}>
-                {tag.label}
-              </span>
-            ))}
-          </div>
-        )}
+        <div className="flex items-center gap-1 shrink-0">
+          {tags.slice(0, 1).map((tag) => (
+            <span key={tag.label} className={`inline-flex items-center border px-1.5 py-0 text-[9px] font-medium ${BADGE_TONES[tag.tone]}`}>
+              {tag.label}
+            </span>
+          ))}
+          {contentTags.slice(0, 2).map((ct) => (
+            <ServerTagBadge key={ct.id} tag={ct} compact />
+          ))}
+          {contentTags.length > 2 && (
+            <span className="text-[9px] text-slate-500 font-medium">+{contentTags.length - 2}</span>
+          )}
+        </div>
 
         {/* Map */}
         <span className="shrink-0 text-[11px] text-slate-400 inline-flex items-center gap-1 w-28 truncate">

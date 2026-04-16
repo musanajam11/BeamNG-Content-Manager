@@ -43,6 +43,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (page !== 'servers') {
       useServerStore.getState().selectServer(null)
     }
+    window.api.discordSetPage(page)
   },
   setConfig: (config) => set({ config, configLoaded: true }),
   updateConfig: (partial) =>

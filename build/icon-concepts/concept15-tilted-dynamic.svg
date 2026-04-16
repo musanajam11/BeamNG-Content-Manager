@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#1c1f33"/>
+      <stop offset="100%" stop-color="#0c0e16"/>
+    </linearGradient>
+    <linearGradient id="orangeGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fb923c"/>
+      <stop offset="100%" stop-color="#c2410c"/>
+    </linearGradient>
+    <radialGradient id="nodeGrad" cx="38%" cy="32%">
+      <stop offset="0%" stop-color="#fbbf6a"/>
+      <stop offset="45%" stop-color="#f97316"/>
+      <stop offset="100%" stop-color="#b45309"/>
+    </radialGradient>
+    <radialGradient id="nodeGradDim" cx="38%" cy="32%">
+      <stop offset="0%" stop-color="#c8845a"/>
+      <stop offset="45%" stop-color="#a85a10"/>
+      <stop offset="100%" stop-color="#6b2f0e"/>
+    </radialGradient>
+    <filter id="beamGlow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="nodeShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="3" stdDeviation="8" flood-color="#f97316" flood-opacity="0.5"/>
+    </filter>
+    <filter id="nodeShadowBack" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#f97316" flood-opacity="0.2"/>
+    </filter>
+    <filter id="textGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="glow"/>
+      <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="96" ry="96" fill="url(#bgGrad)"/>
+
+  <!--
+    Concept 15: Tilted perspective — rotated slightly so pyramid looks dynamic
+    Apex at bottom-left, base top-right area — asymmetric energy
+    Apex: 120,435  TopL: 65,105  TopR: 446,68  Back: 340,260
+  -->
+
+  <!-- Faces -->
+  <polygon points="120,435 65,105 340,260" fill="#f97316" opacity="0.04"/>
+  <polygon points="120,435 446,68 340,260" fill="#f97316" opacity="0.07"/>
+  <polygon points="65,105 446,68 340,260" fill="white" opacity="0.03"/>
+  <polygon points="120,435 65,105 446,68" fill="#f97316" opacity="0.10"/>
+
+  <!-- Back edges -->
+  <g filter="url(#beamGlow)" opacity="0.3">
+    <line x1="120" y1="435" x2="340" y2="260" stroke="white" stroke-width="11" stroke-linecap="round"/>
+    <line x1="65" y1="105" x2="340" y2="260" stroke="white" stroke-width="11" stroke-linecap="round"/>
+    <line x1="446" y1="68" x2="340" y2="260" stroke="white" stroke-width="11" stroke-linecap="round"/>
+  </g>
+
+  <!-- Front edges -->
+  <g filter="url(#beamGlow)" opacity="0.95">
+    <line x1="120" y1="435" x2="65" y2="105" stroke="white" stroke-width="18" stroke-linecap="round"/>
+    <line x1="120" y1="435" x2="446" y2="68" stroke="white" stroke-width="18" stroke-linecap="round"/>
+    <line x1="65" y1="105" x2="446" y2="68" stroke="white" stroke-width="17" stroke-linecap="round"/>
+  </g>
+
+  <!-- Back node -->
+  <circle cx="340" cy="260" r="20" fill="url(#nodeGradDim)" filter="url(#nodeShadowBack)"/>
+
+  <!-- Front nodes -->
+  <g filter="url(#nodeShadow)">
+    <circle cx="120" cy="435" r="38" fill="url(#nodeGrad)"/>
+    <circle cx="65" cy="105" r="34" fill="url(#nodeGrad)"/>
+    <circle cx="446" cy="68" r="34" fill="url(#nodeGrad)"/>
+  </g>
+
+  <!-- CM — orange gradient, positioned center-right to balance the tilted pyramid -->
+  <g filter="url(#textGlow)" opacity="0.95">
+    <!-- "C" -->
+    <path d="M 258,195 C 208,195 180,222 180,265 C 180,308 208,335 258,335"
+          fill="none" stroke="url(#orangeGrad)" stroke-width="26" stroke-linecap="round"/>
+    <!-- "M" -->
+    <path d="M 290,335 L 290,195 L 330,280 L 370,195 L 370,335"
+          fill="none" stroke="url(#orangeGrad)" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#1c1f33"/>
+      <stop offset="100%" stop-color="#0c0e16"/>
+    </linearGradient>
+
+    <!-- Orange node gradient -->
+    <radialGradient id="nodeGrad" cx="38%" cy="32%">
+      <stop offset="0%" stop-color="#fbbf6a"/>
+      <stop offset="45%" stop-color="#f97316"/>
+      <stop offset="100%" stop-color="#b45309"/>
+    </radialGradient>
+    <radialGradient id="nodeGradDim" cx="38%" cy="32%">
+      <stop offset="0%" stop-color="#c8845a"/>
+      <stop offset="45%" stop-color="#a85a10"/>
+      <stop offset="100%" stop-color="#6b2f0e"/>
+    </radialGradient>
+
+    <!-- Beam gradient: orange-tinted white -->
+    <linearGradient id="beamGradLeft" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#fcd3a8"/>
+    </linearGradient>
+    <linearGradient id="beamGradRight" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#fcd3a8"/>
+    </linearGradient>
+
+    <!-- Face gradients for 3D shading -->
+    <linearGradient id="faceFront" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#f97316" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#f97316" stop-opacity="0.18"/>
+    </linearGradient>
+    <linearGradient id="faceLeft" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f97316" stop-opacity="0.03"/>
+      <stop offset="100%" stop-color="#f97316" stop-opacity="0.10"/>
+    </linearGradient>
+    <linearGradient id="faceRight" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f97316" stop-opacity="0.04"/>
+      <stop offset="100%" stop-color="#f97316" stop-opacity="0.12"/>
+    </linearGradient>
+
+    <filter id="beamGlow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="orangeGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="nodeShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="3" stdDeviation="8" flood-color="#f97316" flood-opacity="0.5"/>
+    </filter>
+    <filter id="nodeShadowBack" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#f97316" flood-opacity="0.2"/>
+    </filter>
+    <filter id="cmGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="glow"/>
+      <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect x="16" y="16" width="480" height="480" rx="96" ry="96" fill="url(#bgGrad)"/>
+
+  <!--
+    Inverted Tetrahedron — more dramatic perspective
+    Apex (bottom):     256, 448
+    Top-left:           80, 100
+    Top-right:         432, 120
+    Back (receding):   280, 250
+  -->
+
+  <!-- FACES with orange-tinted gradients -->
+  <!-- Back-left face -->
+  <polygon points="256,448 80,100 280,250" fill="url(#faceLeft)"/>
+  <!-- Back-right face -->
+  <polygon points="256,448 432,120 280,250" fill="url(#faceRight)"/>
+  <!-- Top face (receding) -->
+  <polygon points="80,100 432,120 280,250" fill="white" opacity="0.04"/>
+  <!-- Front face (largest, brightest) -->
+  <polygon points="256,448 80,100 432,120" fill="url(#faceFront)"/>
+
+  <!-- BACK EDGES (to D — dim, thinner) -->
+  <g filter="url(#beamGlow)" opacity="0.35">
+    <line x1="256" y1="448" x2="280" y2="250" stroke="white" stroke-width="12" stroke-linecap="round"/>
+    <line x1="80" y1="100" x2="280" y2="250" stroke="white" stroke-width="12" stroke-linecap="round"/>
+    <line x1="432" y1="120" x2="280" y2="250" stroke="white" stroke-width="12" stroke-linecap="round"/>
+  </g>
+
+  <!-- FRONT EDGES (bright, thick, warm-tinted) -->
+  <g filter="url(#beamGlow)" opacity="1">
+    <line x1="256" y1="448" x2="80" y2="100" stroke="url(#beamGradLeft)" stroke-width="18" stroke-linecap="round"/>
+    <line x1="256" y1="448" x2="432" y2="120" stroke="url(#beamGradRight)" stroke-width="18" stroke-linecap="round"/>
+    <line x1="80" y1="100" x2="432" y2="120" stroke="white" stroke-width="17" stroke-linecap="round"/>
+  </g>
+
+  <!-- BACK NODE (smaller, dimmer) -->
+  <circle cx="280" cy="250" r="22" fill="url(#nodeGradDim)" filter="url(#nodeShadowBack)"/>
+
+  <!-- FRONT NODES -->
+  <g filter="url(#nodeShadow)">
+    <circle cx="256" cy="448" r="40" fill="url(#nodeGrad)"/>
+    <circle cx="80" cy="100" r="36" fill="url(#nodeGrad)"/>
+    <circle cx="432" cy="120" r="36" fill="url(#nodeGrad)"/>
+  </g>
+
+  <!-- Node highlight dots (specular) -->
+  <circle cx="248" cy="438" r="10" fill="white" opacity="0.25"/>
+  <circle cx="74" cy="92" r="8" fill="white" opacity="0.22"/>
+  <circle cx="426" cy="112" r="8" fill="white" opacity="0.22"/>
+
+  <!-- "C" on left, "M" on right — orange with glow -->
+  <g filter="url(#cmGlow)" opacity="0.95">
+    <!-- "C" arc -->
+    <path d="M 200,180 C 142,180 108,212 108,260 C 108,308 142,340 200,340"
+          fill="none" stroke="#f97316" stroke-width="26" stroke-linecap="round"/>
+    <!-- "M" -->
+    <path d="M 305,340 L 305,180 L 345,278 L 385,180 L 385,340"
+          fill="none" stroke="#f97316" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

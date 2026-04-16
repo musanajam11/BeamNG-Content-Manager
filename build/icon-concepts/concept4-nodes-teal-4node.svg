@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a1d2e"/>
+      <stop offset="100%" stop-color="#0f1119"/>
+    </linearGradient>
+    <!-- Teal-to-cyan node gradient -->
+    <radialGradient id="nodeGrad" cx="40%" cy="35%">
+      <stop offset="0%" stop-color="#5eead4"/>
+      <stop offset="50%" stop-color="#14b8a6"/>
+      <stop offset="100%" stop-color="#0d9488"/>
+    </radialGradient>
+    <filter id="beamGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="nodeShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#14b8a6" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect x="16" y="16" width="480" height="480" rx="96" ry="96" fill="url(#bgGrad)"/>
+
+  <!-- Triangle beams — same as original but 4th node adds an extra beam -->
+  <g filter="url(#beamGlow)">
+    <!-- Outer triangle -->
+    <line x1="256" y1="118" x2="126" y2="340" stroke="white" stroke-width="16" stroke-linecap="round"/>
+    <line x1="256" y1="118" x2="386" y2="340" stroke="white" stroke-width="16" stroke-linecap="round"/>
+    <line x1="126" y1="340" x2="386" y2="340" stroke="white" stroke-width="16" stroke-linecap="round"/>
+    <!-- Inner beams to center node -->
+    <line x1="256" y1="118" x2="256" y2="276" stroke="white" stroke-width="12" stroke-linecap="round" opacity="0.6"/>
+    <line x1="126" y1="340" x2="256" y2="276" stroke="white" stroke-width="12" stroke-linecap="round" opacity="0.6"/>
+    <line x1="386" y1="340" x2="256" y2="276" stroke="white" stroke-width="12" stroke-linecap="round" opacity="0.6"/>
+  </g>
+
+  <!-- Outer nodes (teal) -->
+  <g filter="url(#nodeShadow)">
+    <circle cx="256" cy="118" r="42" fill="url(#nodeGrad)"/>
+    <circle cx="126" cy="340" r="42" fill="url(#nodeGrad)"/>
+    <circle cx="386" cy="340" r="42" fill="url(#nodeGrad)"/>
+  </g>
+
+  <!-- Center node (smaller, slightly different — the "manager" hub) -->
+  <circle cx="256" cy="276" r="30" fill="url(#nodeGrad)" filter="url(#nodeShadow)"/>
+  <!-- Small wrench silhouette in center node -->
+  <g transform="translate(256, 276) scale(0.6)" opacity="0.4">
+    <path d="M-8,-14 L-4,-6 L-4,8 C-4,11 -2,14 0,14 C2,14 4,11 4,8 L4,-6 L8,-14 C5,-12 2,-11 0,-11 C-2,-11 -5,-12 -8,-14Z" fill="white"/>
+  </g>
+</svg>

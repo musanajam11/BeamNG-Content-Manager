@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#1c1f33"/>
+      <stop offset="100%" stop-color="#0c0e16"/>
+    </linearGradient>
+    <radialGradient id="nodeGrad" cx="38%" cy="32%">
+      <stop offset="0%" stop-color="#fbbf6a"/>
+      <stop offset="45%" stop-color="#f97316"/>
+      <stop offset="100%" stop-color="#b45309"/>
+    </radialGradient>
+    <radialGradient id="nodeGradDim" cx="38%" cy="32%">
+      <stop offset="0%" stop-color="#c8845a"/>
+      <stop offset="45%" stop-color="#a85a10"/>
+      <stop offset="100%" stop-color="#6b2f0e"/>
+    </radialGradient>
+    <filter id="beamGlow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="orangeGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="nodeShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="3" stdDeviation="8" flood-color="#f97316" flood-opacity="0.5"/>
+    </filter>
+    <filter id="nodeShadowBack" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#f97316" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+
+  <rect x="16" y="16" width="480" height="480" rx="96" ry="96" fill="url(#bgGrad)"/>
+
+  <!--
+    Concept 12: CM woven into the pyramid — C wraps around left edge, M follows right edges
+    Inverted tetrahedron
+    Apex: 256,445  TopL: 78,95  TopR: 434,115  Back: 275,245
+  -->
+
+  <!-- Faces -->
+  <polygon points="256,445 78,95 275,245" fill="#f97316" opacity="0.05"/>
+  <polygon points="256,445 434,115 275,245" fill="#f97316" opacity="0.07"/>
+  <polygon points="78,95 434,115 275,245" fill="white" opacity="0.03"/>
+  <polygon points="256,445 78,95 434,115" fill="#f97316" opacity="0.10"/>
+
+  <!-- Back edges (dim) -->
+  <g filter="url(#beamGlow)" opacity="0.3">
+    <line x1="256" y1="445" x2="275" y2="245" stroke="white" stroke-width="11" stroke-linecap="round"/>
+    <line x1="78" y1="95" x2="275" y2="245" stroke="white" stroke-width="11" stroke-linecap="round"/>
+    <line x1="434" y1="115" x2="275" y2="245" stroke="white" stroke-width="11" stroke-linecap="round"/>
+  </g>
+
+  <!-- Front edges — orange instead of white to blend with CM -->
+  <g filter="url(#orangeGlow)" opacity="0.9">
+    <line x1="256" y1="445" x2="78" y2="95" stroke="#f97316" stroke-width="18" stroke-linecap="round"/>
+    <line x1="256" y1="445" x2="434" y2="115" stroke="#f97316" stroke-width="18" stroke-linecap="round"/>
+    <line x1="78" y1="95" x2="434" y2="115" stroke="#f97316" stroke-width="17" stroke-linecap="round"/>
+  </g>
+
+  <!-- Back node -->
+  <circle cx="275" cy="245" r="20" fill="url(#nodeGradDim)" filter="url(#nodeShadowBack)"/>
+  <!-- Front nodes -->
+  <g filter="url(#nodeShadow)">
+    <circle cx="256" cy="445" r="36" fill="url(#nodeGrad)"/>
+    <circle cx="78" cy="95" r="32" fill="url(#nodeGrad)"/>
+    <circle cx="434" cy="115" r="32" fill="url(#nodeGrad)"/>
+  </g>
+
+  <!-- CM — white, overlaid centrally so it pops against the orange beams -->
+  <g opacity="0.95">
+    <!-- "C" -->
+    <path d="M 205,175 C 148,175 115,210 115,260 C 115,310 148,345 205,345"
+          fill="none" stroke="white" stroke-width="28" stroke-linecap="round"/>
+    <!-- "M" -->
+    <path d="M 240,345 L 240,175 L 288,280 L 336,175 L 336,345"
+          fill="none" stroke="white" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
