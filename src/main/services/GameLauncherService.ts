@@ -1801,8 +1801,24 @@ export class GameLauncherService {
     // Clean up old bridge artifacts and stale signal files
     this.cleanupBridgeArtifacts()
 
-    // Patch BeamMP.zip in-place to inject bridge extension
+    // Ensure BeamMP.zip exists — download from backend if missing
     const beammpZipPath = join(paths.userDir, 'mods', 'multiplayer', 'BeamMP.zip')
+    if (!existsSync(beammpZipPath)) {
+      this.log('BeamMP.zip not found — downloading from backend...')
+      try {
+        const modDir = join(paths.userDir, 'mods', 'multiplayer')
+        mkdirSync(modDir, { recursive: true })
+        const response = await fetch(`${this.backendUrl}/builds/client`)
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        const buf = Buffer.from(await response.arrayBuffer())
+        writeFileSync(beammpZipPath, buf)
+        this.log(`BeamMP.zip downloaded successfully (${(buf.length / 1024 / 1024).toFixed(1)} MB)`)
+      } catch (err) {
+        this.log(`WARNING: Failed to download BeamMP.zip: ${err}`)
+      }
+    }
+
+    // Patch BeamMP.zip in-place to inject bridge extension
     if (existsSync(beammpZipPath)) {
       try {
         const sourceZip = readFileSync(beammpZipPath)
@@ -1813,8 +1829,6 @@ export class GameLauncherService {
       } catch (err) {
         this.log(`WARNING: Failed to patch BeamMP.zip: ${err}`)
       }
-    } else {
-      this.log('WARNING: BeamMP.zip not found at ' + beammpZipPath)
     }
 
     // Start HTTP proxy (random port)

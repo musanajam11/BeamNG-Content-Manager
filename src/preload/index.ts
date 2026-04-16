@@ -92,6 +92,8 @@ const api = {
   beammpLogout: () => ipcRenderer.invoke('game:beammpLogout'),
   getAuthInfo: () => ipcRenderer.invoke('game:getAuthInfo'),
   getLauncherLogs: () => ipcRenderer.invoke('game:getLauncherLogs'),
+  checkBeamMPInstalled: () => ipcRenderer.invoke('game:checkBeamMPInstalled') as Promise<boolean>,
+  installBeamMP: () => ipcRenderer.invoke('game:installBeamMP') as Promise<{ success: boolean; error?: string }>,
 
   // Discord Rich Presence
   discordSetPage: (pageId: string) => ipcRenderer.send('discord:setPage', pageId),

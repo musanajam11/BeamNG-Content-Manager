@@ -74,6 +74,8 @@ interface AppAPI {
   beammpLogout(): Promise<void>
   getAuthInfo(): Promise<{ authenticated: boolean; username: string; guest: boolean }>
   getLauncherLogs(): Promise<string[]>
+  checkBeamMPInstalled(): Promise<boolean>
+  installBeamMP(): Promise<{ success: boolean; error?: string }>
 
   // Support Tools
   openUserFolder(): Promise<{ success: boolean; error?: string }>

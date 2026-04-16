@@ -130,6 +130,10 @@
     "syncingMods": "Syncing mods and loading map...",
     "signInRequired": "You must sign in to BeamMP before joining a server",
     "signInDescription": "Log in to your BeamMP account or continue as a guest",
+    "beammpNotInstalled": "BeamMP Multiplayer Mod Not Installed",
+    "beammpNotInstalledDesc": "BeamMP.zip is required to join multiplayer servers. Download it now to play online.",
+    "beammpInstall": "Install",
+    "beammpDownloading": "Downloading BeamMP...",
     "installed": "Installed",
     "browse": "Browse",
     "registry": "Registry",
@@ -1102,7 +1106,14 @@
     "unreachable": "Unreachable",
     "allSet": "You're all set!",
     "allSetDesc": "Your BeamMP Content Manager is configured and ready to use.",
-    "launchApp": "Launch Content Manager"
+    "launchApp": "Launch Content Manager",
+    "beammpInstall": "BeamMP Multiplayer Mod",
+    "beammpChecking": "Checking for BeamMP installation...",
+    "beammpAlreadyInstalled": "BeamMP is already installed.",
+    "beammpNotFound": "BeamMP.zip was not found in your mods folder. Install it now to enable multiplayer.",
+    "beammpDownloadInstall": "Download & Install BeamMP",
+    "beammpDownloading": "Downloading BeamMP...",
+    "beammpInstallFailed": "Failed to install BeamMP."
   },
   "career": {
     "title": "CareerMP",

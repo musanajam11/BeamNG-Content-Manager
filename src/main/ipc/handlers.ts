@@ -2736,6 +2736,32 @@ export function registerIpcHandlers(): void {
     return launcherService.getLogs()
   })
 
+  ipcMain.handle('game:checkBeamMPInstalled', async (): Promise<boolean> => {
+    const userDir = configService.get().gamePaths?.userDir
+    if (!userDir) return false
+    const { existsSync } = await import('fs')
+    const { join } = await import('path')
+    return existsSync(join(userDir, 'mods', 'multiplayer', 'BeamMP.zip'))
+  })
+
+  ipcMain.handle('game:installBeamMP', async (): Promise<{ success: boolean; error?: string }> => {
+    const userDir = configService.get().gamePaths?.userDir
+    if (!userDir) return { success: false, error: 'Game user directory not configured' }
+    try {
+      const { existsSync, mkdirSync, writeFileSync } = await import('fs')
+      const { join } = await import('path')
+      const modDir = join(userDir, 'mods', 'multiplayer')
+      const zipPath = join(modDir, 'BeamMP.zip')
+      if (existsSync(zipPath)) return { success: true }
+      mkdirSync(modDir, { recursive: true })
+      const data = await backendService.downloadMod()
+      writeFileSync(zipPath, Buffer.from(data))
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
   // ── Backend API ──
   ipcMain.handle('backend:getServers', async () => {
     try {

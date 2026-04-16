@@ -5,7 +5,7 @@ import { ServersFilters } from '../components/servers/ServersFilters'
 import { ServerList } from '../components/servers/ServerList'
 import { ServerDetailPanel } from '../components/servers/ServerDetailPanel'
 import { ModSyncOverlay } from '../components/servers/ModSyncOverlay'
-import { Globe, Users, Shield, Package, Clock, X } from 'lucide-react'
+import { Globe, Users, Shield, Package, Clock, X, Download, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { BeamMPText } from '../components/BeamMPText'
 
@@ -19,6 +19,8 @@ export function ServersPage(): React.JSX.Element {
   const [joining, setJoining] = useState(false)
   const [joinError, setJoinError] = useState<string | null>(null)
   const [highlightSignIn, setHighlightSignIn] = useState(false)
+  const [beammpInstalled, setBeammpInstalled] = useState<boolean | null>(null)
+  const [beammpInstalling, setBeammpInstalling] = useState(false)
 
   // Track whether mod sync is actively in progress
   const [modSyncActive, setModSyncActive] = useState(false)
@@ -29,6 +31,20 @@ export function ServersPage(): React.JSX.Element {
     })
     return unsub
   }, [])
+
+  // Check if BeamMP.zip is installed
+  useEffect(() => {
+    window.api.checkBeamMPInstalled().then(setBeammpInstalled)
+  }, [])
+
+  const handleInstallBeamMP = async (): Promise<void> => {
+    setBeammpInstalling(true)
+    try {
+      const result = await window.api.installBeamMP()
+      if (result.success) setBeammpInstalled(true)
+    } catch { /* ignore */ }
+    setBeammpInstalling(false)
+  }
 
   // Connection state (real-time)
   const [gameStatus, setGameStatus] = useState<{ running: boolean; pid: number | null; connectedServer: string | null }>({ running: false, pid: null, connectedServer: null })
@@ -355,6 +371,32 @@ export function ServersPage(): React.JSX.Element {
       {error && (
         <div className="mx-5 mt-3 p-4 bg-rose-500/10 border border-rose-500/20 rounded-lg text-rose-300 text-xs">
           {error}
+        </div>
+      )}
+
+      {/* BeamMP.zip missing banner */}
+      {beammpInstalled === false && (
+        <div className="mx-5 mt-3 flex items-center gap-3 px-4 py-2.5 rounded-lg border bg-amber-500/10 border-amber-500/30">
+          <Download size={16} className={beammpInstalling ? 'text-amber-400 animate-pulse' : 'text-amber-400'} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-[var(--color-text-primary)]">
+              {beammpInstalling ? t('servers.beammpDownloading') : t('servers.beammpNotInstalled')}
+            </p>
+            <p className="text-xs text-[var(--color-text-muted)]">
+              {t('servers.beammpNotInstalledDesc')}
+            </p>
+          </div>
+          {!beammpInstalling && (
+            <button
+              onClick={handleInstallBeamMP}
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-colors shrink-0"
+            >
+              <Download size={12} /> {t('servers.beammpInstall')}
+            </button>
+          )}
+          {beammpInstalling && (
+            <Loader2 size={16} className="text-amber-400 animate-spin shrink-0" />
+          )}
         </div>
       )}
 

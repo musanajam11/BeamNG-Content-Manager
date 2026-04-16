@@ -1,10 +1,10 @@
 
 import { useState, useEffect, useRef } from 'react'
-import { Loader2, CheckCircle, AlertCircle, FolderOpen, Globe, ArrowRight } from 'lucide-react'
+import { Loader2, CheckCircle, AlertCircle, FolderOpen, Globe, ArrowRight, Download } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/useAppStore'
 
-type WizardStep = 'welcome' | 'paths' | 'backend' | 'done'
+type WizardStep = 'welcome' | 'paths' | 'backend' | 'beammp' | 'done'
 
 const TIPS = [
   'Manage all your BeamNG mods, maps, and vehicles in one place.',
@@ -27,6 +27,9 @@ export function SetupWizard(): React.JSX.Element {
   const [backendUrl, setBackendUrl] = useState('https://backend.beammp.com')
   const [backendType, setBackendType] = useState<'official' | 'custom'>('official')
   const [backendHealthy, setBackendHealthy] = useState<boolean | null>(null)
+  const [beammpInstalled, setBeammpInstalled] = useState<boolean | null>(null)
+  const [beammpInstalling, setBeammpInstalling] = useState(false)
+  const [beammpError, setBeammpError] = useState<string | null>(null)
   const [bgDataUrl, setBgDataUrl] = useState<string | null>(null)
   const [tipIndex, setTipIndex] = useState(0)
   const [tipVisible, setTipVisible] = useState(true)
@@ -309,6 +312,79 @@ export function SetupWizard(): React.JSX.Element {
               </div>
 
               <button
+                onClick={async () => {
+                  setStep('beammp')
+                  const installed = await window.api.checkBeamMPInstalled()
+                  setBeammpInstalled(installed)
+                }}
+                className="self-end flex items-center gap-2 px-6 py-2.5 rounded-lg bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-[var(--color-text-primary)] text-sm font-medium transition-colors"
+              >
+                {t('common.continue')}
+                <ArrowRight size={16} />
+              </button>
+            </div>
+          )}
+
+          {/* Step: BeamMP Install */}
+          {step === 'beammp' && (
+            <div className="flex flex-col gap-6 animate-fadein">
+              <div className="flex items-center gap-3">
+                <Download size={20} className="text-[var(--accent-primary)]" />
+                <h2 className="text-xl font-semibold text-[var(--color-text-primary)] drop-shadow">
+                  {t('setup.beammpInstall')}
+                </h2>
+              </div>
+
+              {beammpInstalled === null ? (
+                <div className="flex items-center gap-3 text-[var(--color-text-secondary)] text-sm">
+                  <Loader2 size={16} className="animate-spin" />
+                  {t('setup.beammpChecking')}
+                </div>
+              ) : beammpInstalled ? (
+                <div className="flex items-center gap-2 text-green-400 text-sm">
+                  <CheckCircle size={16} />
+                  {t('setup.beammpAlreadyInstalled')}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  <p className="text-sm text-[var(--color-text-secondary)]">
+                    {t('setup.beammpNotFound')}
+                  </p>
+                  <button
+                    onClick={async () => {
+                      setBeammpInstalling(true)
+                      setBeammpError(null)
+                      try {
+                        const result = await window.api.installBeamMP()
+                        if (result.success) {
+                          setBeammpInstalled(true)
+                        } else {
+                          setBeammpError(result.error || t('setup.beammpInstallFailed'))
+                        }
+                      } catch (err) {
+                        setBeammpError(String(err))
+                      }
+                      setBeammpInstalling(false)
+                    }}
+                    disabled={beammpInstalling}
+                    className="self-start flex items-center gap-2 px-6 py-2.5 rounded-lg bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-[var(--color-text-primary)] text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {beammpInstalling ? (
+                      <><Loader2 size={16} className="animate-spin" /> {t('setup.beammpDownloading')}</>
+                    ) : (
+                      <><Download size={16} /> {t('setup.beammpDownloadInstall')}</>
+                    )}
+                  </button>
+                  {beammpError && (
+                    <p className="text-red-400 text-xs flex items-center gap-1">
+                      <AlertCircle size={12} />
+                      {beammpError}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <button
                 onClick={() => setStep('done')}
                 className="self-end flex items-center gap-2 px-6 py-2.5 rounded-lg bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-[var(--color-text-primary)] text-sm font-medium transition-colors"
               >
@@ -337,7 +413,7 @@ export function SetupWizard(): React.JSX.Element {
 
           {/* Step indicators */}
           <div className="flex items-center justify-center gap-2 mt-10">
-            {(['welcome', 'paths', 'backend', 'done'] as WizardStep[]).map((s) => (
+            {(['welcome', 'paths', 'backend', 'beammp', 'done'] as WizardStep[]).map((s) => (
               <div
                 key={s}
                 className={`w-2 h-2 rounded-full transition-all duration-300 ${
