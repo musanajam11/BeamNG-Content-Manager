@@ -47,7 +47,6 @@ Manage mods, vehicles, maps, servers, friends, career saves, and more — from a
 | ![Controls Live Input](docs/screenshots/Controls-liveinput.jpg) | ![Career Overview](docs/screenshots/Career-Overview.jpg) |
 | ![Career Saved](docs/screenshots/Career-Saved.jpg) | ![Career Easy Install](docs/screenshots/Career-EasyInstall.jpg) |
 | ![Settings General](docs/screenshots/Settings-general.jpg) | ![Settings Appearance](docs/screenshots/Settings-appearance.jpg) |
-| ![Settings Custom CSS](docs/screenshots/Settings-CustomCSS.jpg) | |
 
 </details>
 
@@ -273,7 +272,7 @@ Pull mod metadata from configurable repositories (name, URL, priority). Verified
 ### Settings
 
 <details>
-<summary>General configuration, appearance customization, and custom CSS</summary>
+<summary>General configuration, appearance customization, and visual UI tweaks</summary>
 
 **General**
 - Auto-detect or manually set BeamNG.drive game paths (game directory, user folder, cache)
@@ -285,19 +284,26 @@ Pull mod metadata from configurable repositories (name, URL, priority). Verified
 - Modpack export (`.beampack` JSON bundle of selected mods) and import with conflict resolution
 
 **Appearance**
-- Accent color picker with 12 preset colors and custom hex input
+- **Light / Dark / System theme toggle** — three-way selector with full dark and light palettes; System mode follows OS preference and auto-switches in real time
+- Accent color picker with 12 preset colors (BeamMP Orange, Blue, Purple, Emerald, Rose, Cyan, Amber, Indigo, Pink, Teal, Lime, Sky) and custom hex input
+- Background style selector: Default gradient, Solid, Subtle Accent, Vibrant — plus image mode with upload, blur intensity, and opacity
+- Background image gallery with random rotation on launch
 - UI scale slider (50%–200%) and font size slider (12–20px)
-- Background style selector: solid color, gradient, image, or random image rotation on launch
-- Background image gallery with upload, selection, blur intensity (0–40px), and opacity control
 - Surface opacity and border opacity multipliers for glass-morphism effect
 - Glassmorphism blur toggle
 - Sidebar width slider (160–280px)
 - Sidebar page reordering via drag with per-page visibility toggles
 
-**Custom CSS**
-- Monaco editor for injecting custom CSS into the app at runtime
-- Enable/disable toggle
-- Pre-made snippet library: rounded scrollbar, fade-in animations, scale hover effects, glow on hover, card lift animations, uppercase headings, hide status bar, large button targets, sepia tint, custom text selection color
+**Visual Customization**
+- Corner Radius — slider from 0 (sharp edges) to 24px (very round)
+- Button Size — Default, Comfortable, or Large touch targets
+- Font Family — System, Monospace, or Serif
+- Scrollbar Style — Default, Thin Accent, Rounded, or Hidden
+- Animation Speed — Instant, Normal, or Relaxed
+- Border Style — Normal, Borderless, Bold, or Accent
+- Overlay Effect — None, Scanlines, Vignette, or Film Grain
+- Visual Effects toggles — page fade-in, accent text selection, frosted glass panels, hover glow, hover lift
+- Color Filters — brightness, contrast, and saturation sliders with one-click reset
 
 </details>
 
@@ -332,6 +338,9 @@ Pull mod metadata from configurable repositories (name, URL, priority). Verified
 </details>
 
 ### Additional
+- **Discord Rich Presence** — automatic Discord integration showing current activity (browsing page, server name, car, map, player count); smart server tag detection maps 30+ keywords to activity verbs (Drifting, Racing, Rallying, Rock Crawling, Demolition Derby, etc.); auto-reconnect with heartbeat; graceful fallback on Linux/Steam Deck
+- **Voice Chat** — WebRTC peer-to-peer voice with two activation modes: Voice Activity Detection (adjustable sensitivity) and Push-to-Talk (configurable keybind); spatial/proximity audio with distance-based attenuation (10–200m range); door muffling when inside a vehicle; input device selection with hot-swap, gain control (0–300%), output volume, live mic test with RMS level meter; optional TURN server configuration for NAT traversal
+- **Livery Editor** — fabric.js 2D canvas editor for painting vehicle skins onto UV templates; 8 tools (Select, Brush, Eraser, Shape, Text, Eyedropper, Fill, Pan); 4 shape types (Rectangle, Circle, Line, Triangle); full layer system with visibility, lock, and opacity; built-in decal library (30+ SVG decals across 6 categories); import external images; undo/redo history; save/load projects as JSON; export as a BeamNG skin mod with material properties (metallic, roughness, clearcoat); extensive keyboard shortcuts
 - **System Tray** — minimizes to tray on close (Discord-style); double-click to restore; right-click menu with Show/Quit
 - **Single Instance Lock** — prevents multiple app instances from running simultaneously
 - **Auto-Update** — checks for updates on startup with changelog display and background download/install
@@ -351,6 +360,7 @@ Pull mod metadata from configurable repositories (name, URL, priority). Verified
 
 - **3D Vehicle Viewer & Editor** — COLLADA `.dae` model loader with multi-DAE assembly (body, cargo, mechanicals) and DDS texture support (BC1–BC7 compression formats). Mesh classification identifies paint, chrome, glass, rubber, and interior surfaces. Multi-zone paint system (3 zones) with swatchable color palette, metallic/roughness/clearcoat per zone, and material defaults + config overrides. Showroom environment with gradient skybox and reflective ground plane. Wheel placement computed from hub node positions (median/midpoint/arm fallback with FR/FL/RR/RL corner detection). Render options panel for wireframe, normals, bounding boxes, and material overlays.
 - **Player Heat Map** — 3D terrain visualization (512×512 heightmap) with textured ground. Live player positions displayed as directional cones. Density heat map overlay with configurable color ramp.
+- **Livery Editor** — core painting and export pipeline is functional; planned enhancements include multi-material zone support, template auto-loading improvements, and expanded decal library.
 
 ---
 
@@ -364,13 +374,15 @@ Pull mod metadata from configurable repositories (name, URL, priority). Verified
 | State | Zustand 5 |
 | Build | electron-vite 5, electron-builder 26 |
 | 3D | Three.js r183 |
+| Canvas | fabric.js |
 | Editor | Monaco Editor |
 | Animations | Framer Motion 12 |
+| Voice | WebRTC (RTCPeerConnection) |
 | i18n | react-i18next 17 / i18next 26 |
 
----
+| Discord | discord-rpc |
 
-## Project Structure
+---
 
 ```
 src/
