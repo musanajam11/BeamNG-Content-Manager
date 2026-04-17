@@ -276,14 +276,17 @@ export class VoiceChatService {
   private signalPoller: ReturnType<typeof setInterval> | null = null
   private deployed = false
   private userDir: string | null = null
-  private window: BrowserWindow | null = null
+  private outgoingQueue: Array<{ event: string; data: string }> = []
+  private flushScheduled = false
 
   // State
   private enabled = false
   private peers: VoicePeerInfo[] = []
 
-  setWindow(win: BrowserWindow): void {
-    this.window = win
+  /** Get the main BrowserWindow dynamically (avoids init-order issues) */
+  private getWindow(): BrowserWindow | null {
+    const wins = BrowserWindow.getAllWindows()
+    return wins.length > 0 ? wins[0] : null
   }
 
   private log(msg: string): void {
@@ -411,7 +414,11 @@ export class VoiceChatService {
   }
 
   private handleIncomingMessage(msg: VoiceSignalMessage): void {
-    if (!this.window || this.window.isDestroyed()) return
+    const win = this.getWindow()
+    if (!win || win.isDestroyed()) {
+      this.log(`Dropping signal '${msg.event}': no BrowserWindow available`)
+      return
+    }
 
     switch (msg.event) {
       case 'vc_peer_joined': {
@@ -423,7 +430,9 @@ export class VoiceChatService {
         if (!isNaN(playerId)) {
           this.peers = this.peers.filter((p) => p.playerId !== playerId)
           this.peers.push({ playerId, playerName, speaking: false })
-          this.window.webContents.send('voice:peerJoined', { playerId, playerName })
+          // We are the existing peer being notified → impolite (our offer wins)
+          win.webContents.send('voice:peerJoined', { playerId, playerName, polite: false })
+          this.log(`Peer joined: ${playerName} (pid=${playerId})`)
         }
         break
       }
@@ -432,7 +441,7 @@ export class VoiceChatService {
         const playerId = parseInt(msg.data, 10)
         if (!isNaN(playerId)) {
           this.peers = this.peers.filter((p) => p.playerId !== playerId)
-          this.window.webContents.send('voice:peerLeft', { playerId })
+          win.webContents.send('voice:peerLeft', { playerId })
         }
         break
       }
@@ -443,7 +452,7 @@ export class VoiceChatService {
         const fromId = parseInt(msg.data.substring(0, pipeIdx), 10)
         const payload = msg.data.substring(pipeIdx + 1)
         if (!isNaN(fromId)) {
-          this.window.webContents.send('voice:signal', { fromId, payload })
+          win.webContents.send('voice:signal', { fromId, payload })
         }
         break
       }
@@ -460,7 +469,9 @@ export class VoiceChatService {
             if (!this.peers.find((p) => p.playerId === playerId)) {
               this.peers.push({ playerId, playerName: name, speaking: false })
             }
-            this.window.webContents.send('voice:peerJoined', { playerId, playerName: name })
+            // We are the newcomer receiving the existing peer list → polite (yield on collision)
+            win.webContents.send('voice:peerJoined', { playerId, playerName: name, polite: true })
+            this.log(`Peers list: added ${name} (pid=${playerId})`)
           }
         }
         break
@@ -475,17 +486,37 @@ export class VoiceChatService {
       this.log(`Cannot send signal '${event}': userDir not set`)
       return
     }
+    // Queue the signal and schedule a batched flush to avoid read-modify-write
+    // races when multiple signals (offer + ICE candidates) fire in rapid succession.
+    this.outgoingQueue.push({ event, data })
+    if (!this.flushScheduled) {
+      this.flushScheduled = true
+      queueMicrotask(() => this.flushOutgoingQueue())
+    }
+  }
+
+  private async flushOutgoingQueue(): Promise<void> {
+    this.flushScheduled = false
+    const batch = this.outgoingQueue.splice(0)
+    if (batch.length === 0) return
     try {
-      // Ensure signal directory exists
       if (!existsSync(this.signalDir)) {
         mkdirSync(this.signalDir, { recursive: true })
       }
-      // Write as a single-element array — the Lua bridge reads and clears the file
-      // each poll cycle, so we don't need to accumulate
-      await writeFile(this.outgoingPath, JSON.stringify([{ event, data }]), 'utf-8')
-      this.log(`Signal '${event}' written to ${this.outgoingPath}`)
+      // Read existing signals that Lua hasn't consumed yet
+      let existing: Array<{ event: string; data: string }> = []
+      if (existsSync(this.outgoingPath)) {
+        try {
+          const raw = await readFile(this.outgoingPath, 'utf-8')
+          const parsed = JSON.parse(raw)
+          if (Array.isArray(parsed)) existing = parsed
+        } catch { /* empty or malformed — start fresh */ }
+      }
+      existing.push(...batch)
+      await writeFile(this.outgoingPath, JSON.stringify(existing), 'utf-8')
+      this.log(`Flushed ${batch.length} signal(s) to outgoing (${existing.length} total queued)`)
     } catch (err) {
-      this.log(`Failed to write outgoing signal '${event}': ${err}`)
+      this.log(`Failed to flush outgoing signals: ${err}`)
     }
   }
 

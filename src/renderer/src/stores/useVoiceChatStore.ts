@@ -21,6 +21,7 @@ interface PeerConnection {
   audio: SpatialPeerAudio | null
   speaking: boolean
   makingOffer: boolean
+  polite: boolean
 }
 
 interface VoiceChatState {
@@ -36,7 +37,7 @@ interface VoiceChatState {
   enable: () => Promise<void>
   disable: () => void
   updateSettings: (partial: Partial<VoiceChatSettings>) => void
-  handlePeerJoined: (playerId: number, playerName: string) => void
+  handlePeerJoined: (playerId: number, playerName: string, polite?: boolean) => void
   handlePeerLeft: (playerId: number) => void
   handleSignal: (fromId: number, payload: string) => void
   updateSpatialAudio: (telemetry: GPSTelemetry) => void
@@ -188,7 +189,7 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
     window.api.voiceUpdateSettings(updated).catch(() => {})
   },
 
-  handlePeerJoined: (playerId, playerName) => {
+  handlePeerJoined: (playerId, playerName, polite = false) => {
     const { peers, localStream, settings } = get()
     if (peers.has(playerId)) return
 
@@ -200,7 +201,8 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
       stream: null,
       audio: null,
       speaking: false,
-      makingOffer: false
+      makingOffer: false,
+      polite
     }
 
     // Add local audio track
@@ -280,10 +282,10 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
 
       if (signal.type === 'offer') {
         const offerCollision = peer.makingOffer || pc.signalingState !== 'stable'
-        // Polite peer: we are polite if our ID is lower
+        // Perfect Negotiation: polite peer yields on collision, impolite peer ignores
         if (offerCollision) {
-          // Ignore the offer — the other side will accept ours
-          return
+          if (!peer.polite) return // impolite peer ignores incoming offer
+          // polite peer: rollback our offer and accept theirs
         }
         await pc.setRemoteDescription(new RTCSessionDescription(signal.data))
         const answer = await pc.createAnswer()
@@ -291,9 +293,15 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
         const answerSignal = JSON.stringify({ type: 'answer', data: pc.localDescription })
         await window.api.voiceSendSignal(fromId.toString() + '|' + answerSignal)
       } else if (signal.type === 'answer') {
+        if (pc.signalingState === 'stable') return // stale answer after rollback
         await pc.setRemoteDescription(new RTCSessionDescription(signal.data))
       } else if (signal.type === 'ice') {
-        await pc.addIceCandidate(new RTCIceCandidate(signal.data))
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(signal.data))
+        } catch {
+          if (!peer.polite) throw new Error('ICE candidate failed on impolite peer')
+          // polite peer: ignore ICE errors during rollback
+        }
       }
     } catch (err) {
       console.error(`[VoiceChat] Signal error from ${fromId}:`, err)
@@ -348,7 +356,7 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
     const { transmitGainNode } = get()
     if (!transmitGainNode) return
     const ctx = transmitGainNode.context
-    // Play a 3-tone ascending beep sequence through the transmit chain
+    // Play a 3-tone ascending beep sequence through the transmit chain (peers hear this)
     const tones = [440, 554, 659]
     const duration = 0.25
     const gap = 0.1
@@ -360,7 +368,10 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
       gain.gain.value = 0.5
       gain.gain.setTargetAtTime(0, ctx.currentTime + i * (duration + gap) + duration - 0.05, 0.02)
       osc.connect(gain)
+      // Route to transmit chain (peers)
       gain.connect(transmitGainNode)
+      // Also route to local speakers as confirmation
+      gain.connect(ctx.destination)
       const start = ctx.currentTime + i * (duration + gap)
       osc.start(start)
       osc.stop(start + duration)

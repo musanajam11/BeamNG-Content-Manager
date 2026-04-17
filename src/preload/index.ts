@@ -613,8 +613,8 @@ const api = {
     ipcRenderer.invoke('voice:deployBridge') as Promise<{ success: boolean; error?: string }>,
   voiceUndeployBridge: () =>
     ipcRenderer.invoke('voice:undeployBridge') as Promise<{ success: boolean; error?: string }>,
-  onVoicePeerJoined: (callback: (data: { playerId: number; playerName: string }) => void) => {
-    const handler = (_event: unknown, data: { playerId: number; playerName: string }): void => callback(data)
+  onVoicePeerJoined: (callback: (data: { playerId: number; playerName: string; polite?: boolean }) => void) => {
+    const handler = (_event: unknown, data: { playerId: number; playerName: string; polite?: boolean }): void => callback(data)
     ipcRenderer.on('voice:peerJoined', handler)
     return () => { ipcRenderer.removeListener('voice:peerJoined', handler) }
   },

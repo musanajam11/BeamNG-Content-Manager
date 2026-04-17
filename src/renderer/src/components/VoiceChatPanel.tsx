@@ -63,8 +63,8 @@ export function VoiceChatPanel(): React.JSX.Element | null {
     if (!enabled) return
 
     const unsubPeerJoined = window.api.onVoicePeerJoined(
-      (data: { playerId: number; playerName: string }) => {
-        handlePeerJoined(data.playerId, data.playerName)
+      (data: { playerId: number; playerName: string; polite?: boolean }) => {
+        handlePeerJoined(data.playerId, data.playerName, data.polite)
       }
     )
     const unsubPeerLeft = window.api.onVoicePeerLeft(

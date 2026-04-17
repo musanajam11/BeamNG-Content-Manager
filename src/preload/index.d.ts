@@ -475,7 +475,7 @@ interface AppAPI {
   voiceUpdateSettings(settings: import('../shared/types').VoiceChatSettings): Promise<void>
   voiceDeployBridge(): Promise<{ success: boolean; error?: string }>
   voiceUndeployBridge(): Promise<{ success: boolean; error?: string }>
-  onVoicePeerJoined(callback: (data: { playerId: number; playerName: string }) => void): () => void
+  onVoicePeerJoined(callback: (data: { playerId: number; playerName: string; polite?: boolean }) => void): () => void
   onVoicePeerLeft(callback: (data: { playerId: number }) => void): () => void
   onVoiceSignal(callback: (data: { fromId: number; payload: string }) => void): () => void
 

@@ -911,9 +911,6 @@ export function registerIpcHandlers(): void {
   })
 
   // ── Voice Chat ──
-  // Set the BrowserWindow reference for push events
-  const win = BrowserWindow.getAllWindows()[0]
-  if (win) voiceChatService.setWindow(win)
 
   ipcMain.handle('voice:enable', async () => {
     const userDir = configService.get().gamePaths?.userDir
