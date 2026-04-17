@@ -278,6 +278,7 @@ export class VoiceChatService {
   private userDir: string | null = null
   private outgoingQueue: Array<{ event: string; data: string }> = []
   private flushScheduled = false
+  private flushing = false
 
   // State
   private enabled = false
@@ -497,9 +498,20 @@ export class VoiceChatService {
 
   private async flushOutgoingQueue(): Promise<void> {
     this.flushScheduled = false
-    const batch = this.outgoingQueue.splice(0)
-    if (batch.length === 0) return
+
+    // Prevent concurrent flushes — async read+write can interleave and lose signals
+    if (this.flushing) {
+      if (this.outgoingQueue.length > 0 && !this.flushScheduled) {
+        this.flushScheduled = true
+        setTimeout(() => this.flushOutgoingQueue(), 10)
+      }
+      return
+    }
+    this.flushing = true
+
     try {
+      const batch = this.outgoingQueue.splice(0)
+      if (batch.length === 0) return
       if (!existsSync(this.signalDir)) {
         mkdirSync(this.signalDir, { recursive: true })
       }
@@ -517,6 +529,13 @@ export class VoiceChatService {
       this.log(`Flushed ${batch.length} signal(s) to outgoing (${existing.length} total queued)`)
     } catch (err) {
       this.log(`Failed to flush outgoing signals: ${err}`)
+    } finally {
+      this.flushing = false
+      // If more signals accumulated while we were flushing, flush again
+      if (this.outgoingQueue.length > 0 && !this.flushScheduled) {
+        this.flushScheduled = true
+        queueMicrotask(() => this.flushOutgoingQueue())
+      }
     }
   }
 

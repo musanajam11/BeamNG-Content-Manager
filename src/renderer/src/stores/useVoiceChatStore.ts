@@ -103,6 +103,7 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
         }
       }
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      console.log(`[VoiceChat] Got mic stream: ${stream.getAudioTracks().length} audio track(s), id=${stream.id}`)
 
       // Apply input gain via AudioContext
       const ctx = getAudioContext()
@@ -120,6 +121,7 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
       gainNode.connect(dest)
 
       set({ enabled: true, available: true, localStream: dest.stream, transmitGainNode: gainNode })
+      console.log(`[VoiceChat] Enabled — transmit stream: ${dest.stream.getAudioTracks().length} track(s), AudioContext state: ${ctx.state}`)
 
       // Enable voice on the server side
       await window.api.voiceEnable()
@@ -191,7 +193,11 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
 
   handlePeerJoined: (playerId, playerName, polite = false) => {
     const { peers, localStream, settings } = get()
-    if (peers.has(playerId)) return
+    if (peers.has(playerId)) {
+      console.log(`[VoiceChat] Peer ${playerId} already known, skipping`)
+      return
+    }
+    console.log(`[VoiceChat] handlePeerJoined: ${playerName} (id=${playerId}, polite=${polite}, hasLocalStream=${!!localStream})`)
 
     const pc = new RTCPeerConnection({ iceServers: buildIceServers(settings) })
     const peer: PeerConnection = {
@@ -215,6 +221,7 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
     // Handle remote audio track
     pc.ontrack = (event) => {
       const [remoteStream] = event.streams
+      console.log(`[VoiceChat] ontrack from peer ${playerId}: ${remoteStream?.getTracks().length} track(s)`)
       if (remoteStream) {
         peer.stream = remoteStream
         peer.audio = createPeerAudio(remoteStream, settings.proximityRange)
@@ -227,19 +234,35 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
     // ICE candidate exchange
     pc.onicecandidate = (event) => {
       if (event.candidate) {
+        console.log(`[VoiceChat] ICE candidate for peer ${playerId}: ${event.candidate.candidate.substring(0, 60)}...`)
         const signal = JSON.stringify({ type: 'ice', data: event.candidate })
-        window.api.voiceSendSignal(playerId.toString() + '|' + signal).catch(() => {})
+        window.api.voiceSendSignal(playerId.toString() + '|' + signal).catch((err) => {
+          console.error(`[VoiceChat] Failed to send ICE candidate:`, err)
+        })
+      } else {
+        console.log(`[VoiceChat] ICE gathering complete for peer ${playerId}`)
       }
+    }
+
+    pc.onicegatheringstatechange = () => {
+      console.log(`[VoiceChat] ICE gathering state for peer ${playerId}: ${pc.iceGatheringState}`)
+    }
+
+    pc.oniceconnectionstatechange = () => {
+      console.log(`[VoiceChat] ICE connection state for peer ${playerId}: ${pc.iceConnectionState}`)
     }
 
     // Negotiation
     pc.onnegotiationneeded = async () => {
+      console.log(`[VoiceChat] onnegotiationneeded for peer ${playerId} (polite=${polite})`)
       try {
         peer.makingOffer = true
         const offer = await pc.createOffer()
         await pc.setLocalDescription(offer)
+        console.log(`[VoiceChat] Created and set local offer for peer ${playerId}`)
         const signal = JSON.stringify({ type: 'offer', data: pc.localDescription })
         await window.api.voiceSendSignal(playerId.toString() + '|' + signal)
+        console.log(`[VoiceChat] Sent offer to peer ${playerId}`)
       } catch (err) {
         console.error('[VoiceChat] Negotiation error:', err)
       } finally {
@@ -248,9 +271,7 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
     }
 
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-        console.warn(`[VoiceChat] Peer ${playerId} connection ${pc.connectionState}`)
-      }
+      console.log(`[VoiceChat] Peer ${playerId} connection state: ${pc.connectionState}`)
     }
 
     const updatedPeers = new Map(peers)
@@ -274,33 +295,47 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
   handleSignal: async (fromId, payload) => {
     const { peers } = get()
     const peer = peers.get(fromId)
-    if (!peer) return
+    if (!peer) {
+      console.warn(`[VoiceChat] Signal from unknown peer ${fromId}, ignoring`)
+      return
+    }
 
     try {
       const signal = JSON.parse(payload)
       const { pc } = peer
+      console.log(`[VoiceChat] Received signal type='${signal.type}' from peer ${fromId} (signalingState=${pc.signalingState}, polite=${peer.polite})`)
 
       if (signal.type === 'offer') {
         const offerCollision = peer.makingOffer || pc.signalingState !== 'stable'
         // Perfect Negotiation: polite peer yields on collision, impolite peer ignores
         if (offerCollision) {
-          if (!peer.polite) return // impolite peer ignores incoming offer
-          // polite peer: rollback our offer and accept theirs
+          console.log(`[VoiceChat] Offer collision! makingOffer=${peer.makingOffer}, signalingState=${pc.signalingState}, polite=${peer.polite}`)
+          if (!peer.polite) {
+            console.log(`[VoiceChat] Impolite peer — ignoring incoming offer`)
+            return
+          }
+          console.log(`[VoiceChat] Polite peer — accepting incoming offer (implicit rollback)`)
         }
         await pc.setRemoteDescription(new RTCSessionDescription(signal.data))
+        console.log(`[VoiceChat] Set remote offer from peer ${fromId}`)
         const answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
+        console.log(`[VoiceChat] Created and sent answer to peer ${fromId}`)
         const answerSignal = JSON.stringify({ type: 'answer', data: pc.localDescription })
         await window.api.voiceSendSignal(fromId.toString() + '|' + answerSignal)
       } else if (signal.type === 'answer') {
-        if (pc.signalingState === 'stable') return // stale answer after rollback
+        if (pc.signalingState === 'stable') {
+          console.log(`[VoiceChat] Ignoring stale answer (already stable)`)
+          return
+        }
         await pc.setRemoteDescription(new RTCSessionDescription(signal.data))
+        console.log(`[VoiceChat] Set remote answer from peer ${fromId}`)
       } else if (signal.type === 'ice') {
         try {
           await pc.addIceCandidate(new RTCIceCandidate(signal.data))
-        } catch {
+        } catch (iceErr) {
+          console.warn(`[VoiceChat] ICE candidate error from peer ${fromId}:`, iceErr)
           if (!peer.polite) throw new Error('ICE candidate failed on impolite peer')
-          // polite peer: ignore ICE errors during rollback
         }
       }
     } catch (err) {
