@@ -27,6 +27,7 @@ interface VoiceChatState {
   enabled: boolean
   available: boolean
   localStream: MediaStream | null
+  transmitGainNode: GainNode | null
   peers: Map<number, PeerConnection>
   settings: VoiceChatSettings
   pttActive: boolean
@@ -40,6 +41,7 @@ interface VoiceChatState {
   handleSignal: (fromId: number, payload: string) => void
   updateSpatialAudio: (telemetry: GPSTelemetry) => void
   setPttActive: (active: boolean) => void
+  testTransmit: () => void
   getPeerList: () => VoicePeerInfo[]
   cleanup: () => void
 }
@@ -83,6 +85,7 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
   enabled: false,
   available: false,
   localStream: null,
+  transmitGainNode: null,
   peers: new Map(),
   settings: DEFAULT_SETTINGS,
   pttActive: false,
@@ -115,7 +118,7 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
       source.connect(gainNode)
       gainNode.connect(dest)
 
-      set({ enabled: true, available: true, localStream: dest.stream })
+      set({ enabled: true, available: true, localStream: dest.stream, transmitGainNode: gainNode })
 
       // Enable voice on the server side
       await window.api.voiceEnable()
@@ -162,7 +165,7 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
     }
 
     closeAudioContext()
-    set({ enabled: false, localStream: null, peers: new Map() })
+    set({ enabled: false, localStream: null, transmitGainNode: null, peers: new Map() })
     window.api.voiceDisable().catch(() => {})
   },
 
@@ -339,6 +342,29 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
       track.enabled = active
     }
     set({ pttActive: active })
+  },
+
+  testTransmit: () => {
+    const { transmitGainNode } = get()
+    if (!transmitGainNode) return
+    const ctx = transmitGainNode.context
+    // Play a 3-tone ascending beep sequence through the transmit chain
+    const tones = [440, 554, 659]
+    const duration = 0.25
+    const gap = 0.1
+    for (let i = 0; i < tones.length; i++) {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.value = tones[i]
+      gain.gain.value = 0.5
+      gain.gain.setTargetAtTime(0, ctx.currentTime + i * (duration + gap) + duration - 0.05, 0.02)
+      osc.connect(gain)
+      gain.connect(transmitGainNode)
+      const start = ctx.currentTime + i * (duration + gap)
+      osc.start(start)
+      osc.stop(start + duration)
+    }
   },
 
   getPeerList: () => {

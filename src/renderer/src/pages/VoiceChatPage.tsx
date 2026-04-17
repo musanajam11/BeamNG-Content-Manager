@@ -14,7 +14,8 @@ import {
   Check,
   Globe,
   Play,
-  Square
+  Square,
+  Send
 } from 'lucide-react'
 import { useAppStore } from '../stores/useAppStore'
 import { useVoiceChatStore } from '../stores/useVoiceChatStore'
@@ -28,6 +29,7 @@ export function VoiceChatPage(): React.JSX.Element {
   const enabled = useVoiceChatStore((s) => s.enabled)
   const enable = useVoiceChatStore((s) => s.enable)
   const disable = useVoiceChatStore((s) => s.disable)
+  const testTransmit = useVoiceChatStore((s) => s.testTransmit)
   const peersMap = useVoiceChatStore((s) => s.peers)
 
   const peers = useMemo(() => {
@@ -325,6 +327,21 @@ export function VoiceChatPage(): React.JSX.Element {
                   />
                 </div>
               )}
+            </div>
+
+            {/* Transmit test — sends a test tone to connected peers */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={testTransmit}
+                disabled={!enabled}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors bg-[var(--color-surface)] text-[var(--color-text-muted)] border border-[var(--color-border)] hover:bg-[var(--color-surface)] disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Send size={14} />
+                {t('voiceChat.testTransmit')}
+              </button>
+              <span className="text-[11px] text-[var(--color-text-muted)]">
+                {t('voiceChat.testTransmitHint')}
+              </span>
             </div>
           </div>
         </Section>

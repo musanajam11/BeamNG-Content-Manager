@@ -23,19 +23,6 @@ local pollCount = 0
 local signalsSent = 0
 local signalsReceived = 0
 
-local function tryRegister()
-  if registered then return end
-  if type(AddEventHandler) ~= "function" then return end
-  pcall(function()
-    AddEventHandler("vc_peer_joined", "beamcmVoiceOnPeerJoined")
-    AddEventHandler("vc_peer_left", "beamcmVoiceOnPeerLeft")
-    AddEventHandler("vc_signal", "beamcmVoiceOnSignal")
-    AddEventHandler("vc_peers_list", "beamcmVoiceOnPeersList")
-  end)
-  registered = true
-  log('I', 'beamcmVoice', 'Registered BeamMP event handlers (AddEventHandler available)')
-end
-
 -- Append a message to the incoming JSON file for CM to read
 local function appendIncoming(msg)
   local existing = {}
@@ -46,24 +33,38 @@ local function appendIncoming(msg)
   signalsReceived = signalsReceived + 1
 end
 
--- Global event handlers (called by BeamMP event system)
-function beamcmVoiceOnPeerJoined(senderId, data)
-  log('I', 'beamcmVoice', 'Peer joined event from server: sender=' .. tostring(senderId) .. ' data=' .. tostring(data))
-  appendIncoming({ event = "vc_peer_joined", data = tostring(senderId) .. "|" .. tostring(data) })
+-- Event handlers (called by BeamMP event system via function reference)
+-- With function references, handlers receive a single data argument.
+local function onPeerJoined(data)
+  log('I', 'beamcmVoice', 'Peer joined event from server: data=' .. tostring(data))
+  appendIncoming({ event = "vc_peer_joined", data = tostring(data) })
 end
 
-function beamcmVoiceOnPeerLeft(senderId, data)
-  log('I', 'beamcmVoice', 'Peer left event from server: sender=' .. tostring(senderId) .. ' data=' .. tostring(data))
-  appendIncoming({ event = "vc_peer_left", data = tostring(senderId) .. "|" .. tostring(data) })
+local function onPeerLeft(data)
+  log('I', 'beamcmVoice', 'Peer left event from server: data=' .. tostring(data))
+  appendIncoming({ event = "vc_peer_left", data = tostring(data) })
 end
 
-function beamcmVoiceOnSignal(senderId, data)
-  appendIncoming({ event = "vc_signal", data = tostring(senderId) .. "|" .. tostring(data) })
+local function onSignal(data)
+  appendIncoming({ event = "vc_signal", data = tostring(data) })
 end
 
-function beamcmVoiceOnPeersList(senderId, data)
+local function onPeersList(data)
   log('I', 'beamcmVoice', 'Peers list from server: ' .. tostring(data))
   appendIncoming({ event = "vc_peers_list", data = tostring(data) })
+end
+
+local function tryRegister()
+  if registered then return end
+  if type(AddEventHandler) ~= "function" then return end
+  pcall(function()
+    AddEventHandler("vc_peer_joined", onPeerJoined)
+    AddEventHandler("vc_peer_left", onPeerLeft)
+    AddEventHandler("vc_signal", onSignal)
+    AddEventHandler("vc_peers_list", onPeersList)
+  end)
+  registered = true
+  log('I', 'beamcmVoice', 'Registered BeamMP event handlers (AddEventHandler available)')
 end
 
 local function onExtensionLoaded()
@@ -167,7 +168,8 @@ local function getPeerNames()
 end
 
 function vcOnEnable(player_id, data)
-  local name = MP.GetPlayerName(player_id) or ("Player " .. tostring(player_id))
+  local name = MP.GetPlayerName(player_id) or ""
+  if name == "" then name = "Player_" .. tostring(player_id) end
   voicePeers[player_id] = { name = name, joinedAt = os.time() }
   local peerCount = getPeerCount()
   print(TAG .. "ENABLED: " .. name .. " (pid=" .. tostring(player_id) .. ") joined voice chat")
@@ -262,7 +264,8 @@ function vcOnDisconnect(player_id)
 end
 
 function vcOnPlayerJoin(player_id)
-  local name = MP.GetPlayerName(player_id) or ("Player " .. tostring(player_id))
+  local name = MP.GetPlayerName(player_id) or ""
+  if name == "" then name = "Player_" .. tostring(player_id) end
   print(TAG .. "Player joined server: " .. name .. " (pid=" .. tostring(player_id) .. ") — voice not yet enabled")
 end
 
@@ -412,14 +415,11 @@ export class VoiceChatService {
 
     switch (msg.event) {
       case 'vc_peer_joined': {
-        // data: "senderId|playerId,playerName"
-        const pipeIdx = msg.data.indexOf('|')
-        if (pipeIdx < 0) break
-        const payload = msg.data.substring(pipeIdx + 1)
-        const commaIdx = payload.indexOf(',')
+        // data: "playerId,playerName"
+        const commaIdx = msg.data.indexOf(',')
         if (commaIdx < 0) break
-        const playerId = parseInt(payload.substring(0, commaIdx), 10)
-        const playerName = payload.substring(commaIdx + 1)
+        const playerId = parseInt(msg.data.substring(0, commaIdx), 10)
+        const playerName = msg.data.substring(commaIdx + 1) || `Player_${playerId}`
         if (!isNaN(playerId)) {
           this.peers = this.peers.filter((p) => p.playerId !== playerId)
           this.peers.push({ playerId, playerName, speaking: false })
@@ -428,10 +428,8 @@ export class VoiceChatService {
         break
       }
       case 'vc_peer_left': {
-        // data: "senderId|playerId"
-        const pipeIdx = msg.data.indexOf('|')
-        const idStr = pipeIdx >= 0 ? msg.data.substring(pipeIdx + 1) : msg.data
-        const playerId = parseInt(idStr, 10)
+        // data: "playerId"
+        const playerId = parseInt(msg.data, 10)
         if (!isNaN(playerId)) {
           this.peers = this.peers.filter((p) => p.playerId !== playerId)
           this.window.webContents.send('voice:peerLeft', { playerId })
@@ -451,14 +449,14 @@ export class VoiceChatService {
       }
       case 'vc_peers_list': {
         // data: "id1:name1,id2:name2,..."
-        const pipeIdx = msg.data.indexOf('|')
-        const listStr = pipeIdx >= 0 ? msg.data.substring(pipeIdx + 1) : msg.data
-        if (!listStr) break
-        const entries = listStr.split(',')
+        if (!msg.data) break
+        const entries = msg.data.split(',')
         for (const entry of entries) {
-          const [idStr, name] = entry.split(':')
-          const playerId = parseInt(idStr, 10)
-          if (!isNaN(playerId) && name) {
+          const colonIdx = entry.indexOf(':')
+          if (colonIdx < 0) continue
+          const playerId = parseInt(entry.substring(0, colonIdx), 10)
+          const name = entry.substring(colonIdx + 1) || `Player_${playerId}`
+          if (!isNaN(playerId)) {
             if (!this.peers.find((p) => p.playerId === playerId)) {
               this.peers.push({ playerId, playerName: name, speaking: false })
             }

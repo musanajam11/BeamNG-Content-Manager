@@ -1232,6 +1232,8 @@
     "inputGain": "Input Gain — {{value}}%",
     "testMicrophone": "Test Microphone",
     "stopTest": "Stop Test",
+    "testTransmit": "Test Transmit",
+    "testTransmitHint": "Sends a test tone to connected peers (voice chat must be active)",
     "output": "Output",
     "outputDevice": "Output Device",
     "outputVolume": "Output Volume — {{value}}%",
