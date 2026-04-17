@@ -9,6 +9,7 @@ import { useAppStore } from '../stores/useAppStore'
 import { useThemeStore } from '../stores/useThemeStore'
 import { ALL_NAV_ITEMS } from './navItems'
 import type { NavItem } from './navItems'
+import type { AppPage } from '../../../shared/types'
 
 const itemMap = new Map(ALL_NAV_ITEMS.map((item) => [item.id, item]))
 
