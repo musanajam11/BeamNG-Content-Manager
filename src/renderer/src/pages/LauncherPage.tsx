@@ -16,8 +16,10 @@ export function LauncherPage(): React.JSX.Element {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load
     fetchLogs()
     const cleanup = window.api.onLauncherLog((line: string) => {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- subscription callback
       setLogs((prev) => {
         const next = [...prev, line]
         return next.length > 2000 ? next.slice(-2000) : next

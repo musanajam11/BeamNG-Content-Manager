@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import type { PlayerPosition, HostedServerEntry } from '../../../../shared/types'
 import { getBounds, worldToNorm } from './mapBounds'
 import HeatMapScene from './HeatMapScene'
@@ -21,6 +21,10 @@ export default function HeatMapPanel({ server }: HeatMapPanelProps): React.JSX.E
 
   const bounds = getBounds(server.config.map)
   const isRunning = server.status.state === 'running'
+
+  // Snapshot the grid for render (keyed to version so it updates when grid changes)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const heatGridSnapshot = useMemo(() => heatGridRef.current, [heatGridVersion])
 
   /* ── Check deploy state on mount ─────────────────────────────── */
   useEffect(() => {
@@ -126,7 +130,7 @@ export default function HeatMapPanel({ server }: HeatMapPanelProps): React.JSX.E
             mode="view"
             bounds={bounds}
             showHeatmap={showHeatmap}
-            heatGrid={heatGridRef.current}
+            heatGrid={heatGridSnapshot}
             heatGridVersion={heatGridVersion}
             heatGridRes={HEATMAP_RES}
           />

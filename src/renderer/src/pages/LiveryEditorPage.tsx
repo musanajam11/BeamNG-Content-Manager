@@ -139,7 +139,7 @@ export function LiveryEditorPage(): React.JSX.Element {
       vehicleDisplayName: store.vehicleDisplayName,
       templateWidth: store.templateWidth,
       templateHeight: store.templateHeight,
-      canvasJson: JSON.stringify((canvas as any).toJSON(['id', 'name', 'selectable', 'evented', 'layerId'])),
+      canvasJson: JSON.stringify((canvas as unknown as { toJSON(props: string[]): object }).toJSON(['id', 'name', 'selectable', 'evented', 'layerId'])),
       layerMeta: store.layers.map((l) => ({
         name: l.name,
         visible: l.visible,

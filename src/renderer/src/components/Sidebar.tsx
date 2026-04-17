@@ -1,48 +1,14 @@
 import {
-  Home,
-  Server,
-  Car,
-  Map as MapIcon,
-  Package,
   Settings,
   ChevronLeft,
   ChevronRight,
-  Terminal,
-  MonitorCog,
-  Users,
-  Gamepad2,
-  Briefcase,
-  Navigation2,
-  Paintbrush,
-  Mic
 } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/useAppStore'
 import { useThemeStore } from '../stores/useThemeStore'
-import type { AppPage } from '../../../shared/types'
-
-export interface NavItem {
-  id: AppPage
-  labelKey: string
-  icon: React.ComponentType<{ size?: number; className?: string }>
-}
-
-export const ALL_NAV_ITEMS: NavItem[] = [
-  { id: 'home', labelKey: 'sidebar.home', icon: Home },
-  { id: 'servers', labelKey: 'sidebar.servers', icon: Server },
-  { id: 'friends', labelKey: 'sidebar.friends', icon: Users },
-  { id: 'vehicles', labelKey: 'sidebar.vehicles', icon: Car },
-  { id: 'maps', labelKey: 'sidebar.maps', icon: MapIcon },
-  { id: 'mods', labelKey: 'sidebar.mods', icon: Package },
-  { id: 'career', labelKey: 'sidebar.career', icon: Briefcase },
-  { id: 'server-admin', labelKey: 'sidebar.serverManager', icon: MonitorCog },
-  { id: 'launcher', labelKey: 'sidebar.launcher', icon: Terminal },
-  { id: 'controls', labelKey: 'sidebar.controls', icon: Gamepad2 },
-  { id: 'live-gps', labelKey: 'sidebar.liveGPS', icon: Navigation2 },
-  { id: 'livery-editor', labelKey: 'sidebar.liveryEditor', icon: Paintbrush },
-  { id: 'voice-chat', labelKey: 'sidebar.voiceChat', icon: Mic },
-]
+import { ALL_NAV_ITEMS } from './navItems'
+import type { NavItem } from './navItems'
 
 const itemMap = new Map(ALL_NAV_ITEMS.map((item) => [item.id, item]))
 

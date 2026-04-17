@@ -359,6 +359,12 @@ export class GameLauncherService {
   private corePort: number = 4444
   private statusListeners: Array<(status: GameStatus) => void> = []
 
+  // Proton/Steam Deck: the `steam` CLI exits immediately while the game
+  // is still launching.  Track this so we don't tear down servers prematurely.
+  private isProtonLaunch: boolean = false
+  private protonShutdownTimer: ReturnType<typeof setTimeout> | null = null
+  private readonly protonConnectTimeout = 120_000 // 2 min for Proton to start the game
+
   // Auth state
   private loginAuth: boolean = false
   private username: string = ''
@@ -531,8 +537,12 @@ export class GameLauncherService {
   }
 
   getStatus(): GameStatus {
+    // On Proton/Steam Deck, the steam CLI exits immediately but the game
+    // is still starting.  Report as running if Core server is up or socket connected.
+    const processAlive = this.gameProcess !== null && !this.gameProcess.killed
+    const protonWaiting = this.isProtonLaunch && (this.coreServer !== null || this.coreSocket !== null)
     return {
-      running: this.gameProcess !== null && !this.gameProcess.killed,
+      running: processAlive || protonWaiting,
       pid: this.gameProcess?.pid ?? null,
       connectedServer: this.connectedServerAddress
     }
@@ -673,6 +683,14 @@ export class GameLauncherService {
         this.coreRecvBuffer = Buffer.alloc(0)
         this.localReset()
 
+        // Proton: game connected — cancel the connect timeout
+        if (this.protonShutdownTimer) {
+          clearTimeout(this.protonShutdownTimer)
+          this.protonShutdownTimer = null
+          this.log('Proton: Game connected to Core — cancelled shutdown timer')
+          this.notifyStatusChange()
+        }
+
         socket.on('data', (chunk) => {
           this.coreRecvBuffer = Buffer.concat([this.coreRecvBuffer, chunk])
           this.processCoreBuffer()
@@ -682,6 +700,15 @@ export class GameLauncherService {
           this.log('Game disconnected from Core')
           this.coreSocket = null
           this.netReset()
+
+          // Proton: the Core socket closing is the real "game exited" signal,
+          // since the steam CLI process has already exited long ago.
+          if (this.isProtonLaunch && !this.gameProcess) {
+            this.log('Proton: Game closed (Core socket disconnected) — shutting down servers')
+            this.isProtonLaunch = false
+            this.shutdown()
+            this.notifyStatusChange()
+          }
         })
 
         socket.on('error', (err) => {
@@ -1907,16 +1934,44 @@ export class GameLauncherService {
         })
       }
 
+      this.isProtonLaunch = !!paths.isProton
+
       this.gameProcess.on('exit', (code) => {
         this.log(`BeamNG.drive exited with code ${code}`)
         this.gameProcess = null
-        this.shutdown()
-        this.notifyStatusChange()
+
+        if (this.isProtonLaunch) {
+          // On Steam Deck / Proton, the `steam` CLI exits immediately after
+          // sending the launch request to the running Steam daemon.  The actual
+          // game hasn't started yet — don't tear down servers.  Start a timeout
+          // so we clean up if the game never connects.
+          if (!this.coreSocket) {
+            this.log('Proton: Steam CLI exited — waiting for game to connect to Core...')
+            this.protonShutdownTimer = setTimeout(() => {
+              if (!this.coreSocket) {
+                this.log('Proton: Timed out waiting for game to connect — shutting down servers')
+                this.isProtonLaunch = false
+                this.shutdown()
+                this.notifyStatusChange()
+              }
+            }, this.protonConnectTimeout)
+          } else {
+            // Core socket is still connected — game is running, real exit
+            this.log('Proton: Game disconnected normally')
+            this.isProtonLaunch = false
+            this.shutdown()
+            this.notifyStatusChange()
+          }
+        } else {
+          this.shutdown()
+          this.notifyStatusChange()
+        }
       })
 
       this.gameProcess.on('error', (err) => {
         this.log(`ERROR: Failed to launch BeamNG.drive: ${err}`)
         this.gameProcess = null
+        this.isProtonLaunch = false
         this.shutdown()
         this.notifyStatusChange()
       })
@@ -2068,6 +2123,12 @@ export class GameLauncherService {
   }
 
   killGame(): void {
+    // Cancel any pending Proton shutdown timer
+    if (this.protonShutdownTimer) {
+      clearTimeout(this.protonShutdownTimer)
+      this.protonShutdownTimer = null
+    }
+
     if (this.gameProcess && !this.gameProcess.killed) {
       const pid = this.gameProcess.pid
       // On Windows, use taskkill to kill the entire process tree.
@@ -2097,6 +2158,23 @@ export class GameLauncherService {
       }
       this.gameProcess = null
       this.kickPending = false
+      this.isProtonLaunch = false
+      this.shutdown()
+      this.notifyStatusChange()
+    } else if (this.isProtonLaunch && process.platform === 'linux') {
+      // Steam CLI already exited but game may be running under Proton.
+      // Try to find and kill the actual BeamNG process.
+      this.log('Proton: Steam CLI already exited — looking for BeamNG.drive process...')
+      try {
+        execSync('pkill -f "BeamNG.drive.x64"', { stdio: 'ignore' })
+        this.log('Proton: Killed BeamNG.drive process via pkill')
+      } catch {
+        // Process may not exist or pkill failed — not critical
+        this.log('Proton: pkill did not find a BeamNG.drive process')
+      }
+      this.gameProcess = null
+      this.kickPending = false
+      this.isProtonLaunch = false
       this.shutdown()
       this.notifyStatusChange()
     }
@@ -2703,6 +2781,11 @@ export class GameLauncherService {
   private shutdown(): void {
     this.stopGpsFilePoller()
     this.netReset()
+    if (this.protonShutdownTimer) {
+      clearTimeout(this.protonShutdownTimer)
+      this.protonShutdownTimer = null
+    }
+    this.isProtonLaunch = false
     if (this.coreSocket) {
       this.coreSocket.destroy()
       this.coreSocket = null

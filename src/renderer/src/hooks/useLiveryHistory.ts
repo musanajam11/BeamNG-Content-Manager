@@ -8,7 +8,15 @@ interface HistoryEntry {
   timestamp: number
 }
 
-export function useLiveryHistory(canvasRef: React.MutableRefObject<FabricCanvas | null>) {
+export function useLiveryHistory(canvasRef: React.MutableRefObject<FabricCanvas | null>): {
+  saveState: () => void
+  undo: () => Promise<void>
+  redo: () => Promise<void>
+  canUndo: () => boolean
+  canRedo: () => boolean
+  clearHistory: () => void
+  isRestoring: React.MutableRefObject<boolean>
+} {
   const undoStack = useRef<HistoryEntry[]>([])
   const redoStack = useRef<HistoryEntry[]>([])
   const isRestoring = useRef(false)
@@ -17,7 +25,7 @@ export function useLiveryHistory(canvasRef: React.MutableRefObject<FabricCanvas 
     const canvas = canvasRef.current
     if (!canvas || isRestoring.current) return
 
-    const json = JSON.stringify((canvas as any).toJSON(['id', 'name', 'selectable', 'evented', 'layerId']))
+    const json = JSON.stringify((canvas as unknown as { toJSON(props: string[]): object }).toJSON(['id', 'name', 'selectable', 'evented', 'layerId']))
     const last = undoStack.current[undoStack.current.length - 1]
     if (last && last.json === json) return
 

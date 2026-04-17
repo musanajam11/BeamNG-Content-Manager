@@ -63,8 +63,11 @@ export function DirectConnectDialog({ open, joining, onClose, onConnect }: Props
 
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset on open
       setSaved(loadSaved())
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset on open
       setError(null)
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset on open
       setProbeResults({})
     }
   }, [open])
@@ -72,6 +75,7 @@ export function DirectConnectDialog({ open, joining, onClose, onConnect }: Props
   // Probe all saved servers when dialog opens or saved list changes
   useEffect(() => {
     if (!open || saved.length === 0) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync external probe state
     setProbing(true)
     const addresses = saved.map((s) => s.address)
     Promise.all(

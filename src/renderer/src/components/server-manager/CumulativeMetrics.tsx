@@ -9,7 +9,6 @@ interface CumulativeMetricsProps {
 
 export function CumulativeMetrics({ servers }: CumulativeMetricsProps): React.JSX.Element | null {
   const { t } = useTranslation()
-  if (servers.length === 0) return null
 
   const runningServers = servers.filter((s) => s.status.state === 'running')
   const runningCount = runningServers.length
@@ -29,13 +28,17 @@ export function CumulativeMetrics({ servers }: CumulativeMetricsProps): React.JS
   const [longestUptime, setLongestUptime] = useState(0)
   useEffect(() => {
     if (!oldestStartedAt) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset timer
       setLongestUptime(0)
       return
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial sync
     setLongestUptime(Date.now() - oldestStartedAt)
     const id = setInterval(() => setLongestUptime(Date.now() - oldestStartedAt), 1000)
     return () => clearInterval(id)
   }, [oldestStartedAt])
+
+  if (servers.length === 0) return null
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">

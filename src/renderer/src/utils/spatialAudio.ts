@@ -34,6 +34,18 @@ export function closeAudioContext(): void {
 }
 
 /**
+ * Route all spatial audio output to a specific device.
+ * Uses AudioContext.setSinkId() (Chromium 110+).
+ * Pass empty string or null for system default.
+ */
+export async function setOutputDevice(deviceId: string | null): Promise<void> {
+  const ctx = getAudioContext() as AudioContext & { setSinkId?: (id: string) => Promise<void> }
+  if (typeof ctx.setSinkId === 'function') {
+    await ctx.setSinkId(deviceId ?? '')
+  }
+}
+
+/**
  * Create a spatial audio chain for a remote peer's audio stream.
  */
 export function createPeerAudio(

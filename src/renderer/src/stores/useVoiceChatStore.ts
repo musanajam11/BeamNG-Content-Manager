@@ -9,6 +9,7 @@ import {
   isPeerSpeaking,
   getAudioContext,
   closeAudioContext,
+  setOutputDevice,
   type SpatialPeerAudio
 } from '../utils/spatialAudio'
 
@@ -64,6 +65,7 @@ const DEFAULT_SETTINGS: VoiceChatSettings = {
   inputDeviceId: null,
   inputGain: 1.0,
   outputVolume: 0.8,
+  outputDeviceId: null,
   mode: 'vad',
   pttKey: 'KeyV',
   vadThreshold: 0.02,
@@ -100,6 +102,12 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
 
       // Apply input gain via AudioContext
       const ctx = getAudioContext()
+
+      // Route output to selected device
+      if (settings.outputDeviceId) {
+        await setOutputDevice(settings.outputDeviceId)
+      }
+
       const source = ctx.createMediaStreamSource(stream)
       const gainNode = ctx.createGain()
       gainNode.gain.value = settings.inputGain
@@ -166,6 +174,11 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
     // Live-update input gain if stream is active
     if (partial.inputGain !== undefined && localStream) {
       // Gain is handled at enable time; a re-enable would be needed for device change
+    }
+
+    // Live-update output device
+    if (partial.outputDeviceId !== undefined) {
+      setOutputDevice(partial.outputDeviceId).catch(() => {})
     }
 
     // Persist

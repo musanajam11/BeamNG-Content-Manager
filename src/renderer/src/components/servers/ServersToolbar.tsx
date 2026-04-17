@@ -32,21 +32,23 @@ export function ServersToolbar({
   const [showLogin, setShowLogin] = useState(false)
   const [showDirect, setShowDirect] = useState(false)
 
+  const refreshAuth = async (): Promise<void> => {
+    const info = await window.api.getAuthInfo()
+    setAuthInfo(info)
+  }
+
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial auth check
     refreshAuth()
   }, [])
 
   // Auto-open login sheet when sign-in is highlighted
   useEffect(() => {
     if (highlightSignIn && !authInfo.authenticated) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- react to prop
       setShowLogin(true)
     }
   }, [highlightSignIn, authInfo.authenticated])
-
-  const refreshAuth = async (): Promise<void> => {
-    const info = await window.api.getAuthInfo()
-    setAuthInfo(info)
-  }
 
   const handleLogout = async (): Promise<void> => {
     await window.api.beammpLogout()

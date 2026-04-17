@@ -47,6 +47,7 @@ export function AnalyticsPanel({ serverId }: AnalyticsPanelProps): React.JSX.Ele
   }, [serverId])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load + polling
     loadData()
     const interval = setInterval(loadData, 10000)
     return () => clearInterval(interval)
@@ -173,16 +174,7 @@ export function AnalyticsPanel({ serverId }: AnalyticsPanelProps): React.JSX.Ele
             </div>
             <div className="flex flex-wrap gap-2">
               {data.activeSessions.map((s: PlayerSession) => (
-                <span
-                  key={s.playerName}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-green-500/10 text-green-400 border border-green-500/20"
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                  {s.playerName}
-                  <span className="text-green-400/60">
-                    {formatDuration(Date.now() - s.joinedAt)}
-                  </span>
-                </span>
+                <ActiveSessionBadge key={s.playerName} session={s} formatDuration={formatDuration} />
               ))}
             </div>
           </div>
@@ -319,5 +311,22 @@ function SortHeader({
         )}
       </span>
     </th>
+  )
+}
+
+function ActiveSessionBadge({ session, formatDuration }: { session: PlayerSession; formatDuration: (ms: number) => string }): React.JSX.Element {
+  const [now, setNow] = useState(Date.now)
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-green-500/10 text-green-400 border border-green-500/20">
+      <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+      {session.playerName}
+      <span className="text-green-400/60">
+        {formatDuration(now - session.joinedAt)}
+      </span>
+    </span>
   )
 }

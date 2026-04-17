@@ -177,7 +177,8 @@ export const useHostedServerStore = create<HostedServerState>((set, get) => ({
     const { servers } = get()
     const source = servers.find((s) => s.config.id === id)
     if (!source) return
-    const { id: _id, ...rest } = source.config
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id: _sourceId, ...rest } = source.config
     const cfg = await window.api.hostedServerCreate({ ...rest, name: `${source.config.name} (Copy)`, port: source.config.port + 1 })
     await get().refresh()
     get().openDetail(cfg.id)

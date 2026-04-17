@@ -12,7 +12,9 @@ import {
   ToggleRight,
   AlertCircle,
   Check,
-  Globe
+  Globe,
+  Play,
+  Square
 } from 'lucide-react'
 import { useAppStore } from '../stores/useAppStore'
 import { useVoiceChatStore } from '../stores/useVoiceChatStore'
@@ -37,28 +39,37 @@ export function VoiceChatPage(): React.JSX.Element {
   }, [peersMap])
 
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
+  const [outputDevices, setOutputDevices] = useState<MediaDeviceInfo[]>([])
   const [capturingKey, setCapturingKey] = useState(false)
   const [testingMic, setTestingMic] = useState(false)
   const [micLevel, setMicLevel] = useState(0)
   const [testStream, setTestStream] = useState<MediaStream | null>(null)
+  const [testingSpeaker, setTestingSpeaker] = useState(false)
+  const [speakerTestCtx, setSpeakerTestCtx] = useState<AudioContext | null>(null)
 
-  // Load audio input devices
+  // Load audio devices
+  function refreshDevices(): void {
+    navigator.mediaDevices
+      .enumerateDevices()
+      .then((all) => {
+        setDevices(all.filter((d) => d.kind === 'audioinput'))
+        setOutputDevices(all.filter((d) => d.kind === 'audiooutput'))
+      })
+      .catch(() => {})
+  }
+
   useEffect(() => {
     navigator.mediaDevices
       .enumerateDevices()
-      .then((all) => setDevices(all.filter((d) => d.kind === 'audioinput')))
+      .then((all) => {
+        setDevices(all.filter((d) => d.kind === 'audioinput'))
+        setOutputDevices(all.filter((d) => d.kind === 'audiooutput'))
+      })
       .catch(() => {})
 
     navigator.mediaDevices.addEventListener('devicechange', refreshDevices)
     return () => navigator.mediaDevices.removeEventListener('devicechange', refreshDevices)
   }, [])
-
-  function refreshDevices(): void {
-    navigator.mediaDevices
-      .enumerateDevices()
-      .then((all) => setDevices(all.filter((d) => d.kind === 'audioinput')))
-      .catch(() => {})
-  }
 
   const updateSetting = useCallback(
     async <K extends keyof VoiceChatSettings>(key: K, value: VoiceChatSettings[K]) => {
@@ -88,8 +99,10 @@ export function VoiceChatPage(): React.JSX.Element {
     if (!testingMic) {
       if (testStream) {
         testStream.getTracks().forEach((t) => t.stop())
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- cleanup stream
         setTestStream(null)
       }
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset level
       setMicLevel(0)
       return
     }
@@ -137,6 +150,68 @@ export function VoiceChatPage(): React.JSX.Element {
       cancelAnimationFrame(animFrameId)
     }
   }, [testingMic, voiceSettings?.inputDeviceId])
+
+  // Speaker test — plays a short sine sweep through the selected output device
+  useEffect(() => {
+    if (!testingSpeaker) {
+      if (speakerTestCtx) {
+        speakerTestCtx.close().catch(() => {})
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- cleanup ctx
+        setSpeakerTestCtx(null)
+      }
+      return
+    }
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const ctx = new AudioContext()
+        // Route to selected output device
+        if (
+          voiceSettings?.outputDeviceId &&
+          'setSinkId' in ctx &&
+          typeof (ctx as AudioContext & { setSinkId?: (id: string) => Promise<void> }).setSinkId === 'function'
+        ) {
+          await (ctx as AudioContext & { setSinkId: (id: string) => Promise<void> }).setSinkId(voiceSettings.outputDeviceId)
+        }
+        if (cancelled) {
+          ctx.close()
+          return
+        }
+        setSpeakerTestCtx(ctx)
+
+        // Play a 3-tone ascending beep sequence
+        const tones = [440, 554, 659]
+        const duration = 0.25
+        const gap = 0.1
+        for (let i = 0; i < tones.length; i++) {
+          if (cancelled) break
+          const osc = ctx.createOscillator()
+          const gain = ctx.createGain()
+          osc.type = 'sine'
+          osc.frequency.value = tones[i]
+          gain.gain.value = 0.3
+          gain.gain.setTargetAtTime(0, ctx.currentTime + duration - 0.05, 0.02)
+          osc.connect(gain)
+          gain.connect(ctx.destination)
+          const start = ctx.currentTime + i * (duration + gap)
+          osc.start(start)
+          osc.stop(start + duration)
+        }
+        // Auto-stop after tones finish
+        const totalTime = tones.length * (duration + gap) * 1000 + 200
+        setTimeout(() => {
+          if (!cancelled) setTestingSpeaker(false)
+        }, totalTime)
+      } catch {
+        setTestingSpeaker(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [testingSpeaker, voiceSettings?.outputDeviceId])
 
   const handleToggleEnable = async (): Promise<void> => {
     const newEnabled = !voiceSettings?.enabled
@@ -256,18 +331,53 @@ export function VoiceChatPage(): React.JSX.Element {
 
         {/* ── Output ── */}
         <Section title={t('voiceChat.output')} icon={Volume2}>
-          <div>
-            <Label>{t('voiceChat.outputVolume', { value: Math.round(voiceSettings.outputVolume * 100) })}</Label>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={Math.round(voiceSettings.outputVolume * 100)}
-              onChange={(e) =>
-                updateSetting('outputVolume', parseInt(e.target.value) / 100)
-              }
-              className="w-full accent-[var(--color-accent)]"
-            />
+          <div className="space-y-4">
+            <div>
+              <Label>{t('voiceChat.outputDevice')}</Label>
+              <select
+                value={voiceSettings.outputDeviceId ?? ''}
+                onChange={(e) =>
+                  updateSetting('outputDeviceId', e.target.value || null)
+                }
+                className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-accent)]"
+              >
+                <option value="">{t('voiceChat.systemDefault')}</option>
+                {outputDevices.map((d) => (
+                  <option key={d.deviceId} value={d.deviceId}>
+                    {d.label || `Speaker ${d.deviceId.substring(0, 8)}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <Label>{t('voiceChat.outputVolume', { value: Math.round(voiceSettings.outputVolume * 100) })}</Label>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(voiceSettings.outputVolume * 100)}
+                onChange={(e) =>
+                  updateSetting('outputVolume', parseInt(e.target.value) / 100)
+                }
+                className="w-full accent-[var(--color-accent)]"
+              />
+            </div>
+
+            {/* Speaker test */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setTestingSpeaker(!testingSpeaker)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  testingSpeaker
+                    ? 'bg-red-500/15 text-red-400 border border-red-500/30'
+                    : 'bg-[var(--color-surface)] text-[var(--color-text-muted)] border border-[var(--color-border)] hover:bg-[var(--color-surface)]'
+                }`}
+              >
+                {testingSpeaker ? <Square size={14} /> : <Play size={14} />}
+                {testingSpeaker ? t('voiceChat.stopSpeakerTest') : t('voiceChat.testSpeaker')}
+              </button>
+            </div>
           </div>
         </Section>
 

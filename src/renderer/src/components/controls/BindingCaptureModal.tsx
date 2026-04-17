@@ -41,51 +41,51 @@ export function BindingCaptureModal({
     [onCapture, onCancel]
   )
 
-  // Gamepad polling
-  const pollGamepad = useCallback(() => {
-    const gamepads = navigator.getGamepads()
-    for (const gp of gamepads) {
-      if (!gp) continue
-
-      // Check buttons
-      for (let i = 0; i < gp.buttons.length; i++) {
-        const pressed = gp.buttons[i].pressed
-        const wasPrevPressed = prevButtonsRef.current[i] ?? false
-
-        if (pressed && !wasPrevPressed) {
-          const beamControl = gamepadButtonToBeamNG[i]
-          if (beamControl) {
-            onCapture(beamControl)
-            return
-          }
-        }
-      }
-      prevButtonsRef.current = gp.buttons.map((b) => b.pressed)
-
-      // Check axes (threshold-based detection)
-      for (let i = 0; i < gp.axes.length; i++) {
-        const value = gp.axes[i]
-        const prevValue = prevAxesRef.current[i] ?? 0
-        const THRESHOLD = 0.7
-
-        if (Math.abs(value) > THRESHOLD && Math.abs(prevValue) < THRESHOLD) {
-          const beamControl = gamepadAxisToBeamNG[i]
-          if (beamControl) {
-            onCapture(beamControl)
-            return
-          }
-        }
-      }
-      prevAxesRef.current = [...gp.axes]
-    }
-
-    gamepadPollRef.current = requestAnimationFrame(pollGamepad)
-  }, [onCapture])
-
   useEffect(() => {
     if (deviceType === 'keyboard' || deviceType === 'mouse') {
       window.addEventListener('keydown', handleKeyDown, true)
       return () => window.removeEventListener('keydown', handleKeyDown, true)
+    }
+
+    // Gamepad polling function (used for xinput and joystick)
+    const pollGamepad = (): void => {
+      const gamepads = navigator.getGamepads()
+      for (const gp of gamepads) {
+        if (!gp) continue
+
+        // Check buttons
+        for (let i = 0; i < gp.buttons.length; i++) {
+          const pressed = gp.buttons[i].pressed
+          const wasPrevPressed = prevButtonsRef.current[i] ?? false
+
+          if (pressed && !wasPrevPressed) {
+            const beamControl = gamepadButtonToBeamNG[i]
+            if (beamControl) {
+              onCapture(beamControl)
+              return
+            }
+          }
+        }
+        prevButtonsRef.current = gp.buttons.map((b) => b.pressed)
+
+        // Check axes (threshold-based detection)
+        for (let i = 0; i < gp.axes.length; i++) {
+          const value = gp.axes[i]
+          const prevValue = prevAxesRef.current[i] ?? 0
+          const THRESHOLD = 0.7
+
+          if (Math.abs(value) > THRESHOLD && Math.abs(prevValue) < THRESHOLD) {
+            const beamControl = gamepadAxisToBeamNG[i]
+            if (beamControl) {
+              onCapture(beamControl)
+              return
+            }
+          }
+        }
+        prevAxesRef.current = [...gp.axes]
+      }
+
+      gamepadPollRef.current = requestAnimationFrame(pollGamepad)
     }
 
     if (deviceType === 'xinput') {
@@ -111,7 +111,7 @@ export function BindingCaptureModal({
     }
 
     return undefined
-  }, [deviceType, handleKeyDown, pollGamepad])
+  }, [deviceType, handleKeyDown, onCapture])
 
   const promptText =
     deviceType === 'xinput'

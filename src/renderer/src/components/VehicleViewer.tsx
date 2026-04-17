@@ -191,7 +191,7 @@ async function placeWheels(
     }
 
     // Find mesh geometry center in WORLD space
-    let geomCenterWorld = new THREE.Vector3()
+    const geomCenterWorld = new THREE.Vector3()
     let foundGeom = false
     original.traverse((child) => {
       if (foundGeom) return
@@ -615,7 +615,7 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
   const modelRef = useRef<THREE.Object3D | null>(null)
   const paintMatRef = useRef<THREE.MeshPhysicalMaterial | null>(null)
   const partsRef = useRef(parts)
-  partsRef.current = parts
+  useEffect(() => { partsRef.current = parts }, [parts])
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
 
   // Render options state
@@ -737,6 +737,7 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
 
     modelRef.current = null
     paintMatRef.current = null
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset on vehicleName change
     setStatus('loading')
 
     const scene = new THREE.Scene()

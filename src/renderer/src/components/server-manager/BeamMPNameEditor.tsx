@@ -214,6 +214,22 @@ export function BeamMPNameEditor({ value, onChange, error }: BeamMPNameEditorPro
   const renderingRef = useRef(false)
   const lastEmitRef = useRef(value)
 
+  /* ── render & emit ──────────────────────────────────────────── */
+
+  function renderHtml(sel?: { start: number; end: number }): void {
+    if (!editorRef.current) return
+    renderingRef.current = true
+    editorRef.current.innerHTML = modelToHtml(modelRef.current)
+    if (sel) setSel(editorRef.current, sel.start, sel.end)
+    renderingRef.current = false
+  }
+
+  function emit(): void {
+    const codes = modelToCodes(modelRef.current)
+    lastEmitRef.current = codes
+    onChange(codes)
+  }
+
   /* sync external value → model (only while not editing) */
   useEffect(() => {
     if (value === lastEmitRef.current) return
@@ -230,22 +246,6 @@ export function BeamMPNameEditor({ value, onChange, error }: BeamMPNameEditorPro
       renderHtml()
     }
   }, [rawMode])
-
-  /* ── render & emit ──────────────────────────────────────────── */
-
-  function renderHtml(sel?: { start: number; end: number }): void {
-    if (!editorRef.current) return
-    renderingRef.current = true
-    editorRef.current.innerHTML = modelToHtml(modelRef.current)
-    if (sel) setSel(editorRef.current, sel.start, sel.end)
-    renderingRef.current = false
-  }
-
-  function emit(): void {
-    const codes = modelToCodes(modelRef.current)
-    lastEmitRef.current = codes
-    onChange(codes)
-  }
 
   /* ── handle text input (typing / delete / paste) ────────────── */
 

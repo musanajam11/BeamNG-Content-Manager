@@ -73,6 +73,7 @@ export function ServerDetailPanel({
 
   // Load map preview when server changes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset on server change
     setMapPreview(null)
     if (server.map) {
       window.api.getMapPreview(server.map).then((url) => {

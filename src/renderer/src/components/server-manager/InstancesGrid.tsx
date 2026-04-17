@@ -100,6 +100,7 @@ function InstanceCard({
   const [bannerImage, setBannerImage] = useState<string | null>(null)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset on dependency change
     setBannerImage(null)
     // Try custom image first, then map preview
     window.api.hostedServerGetCustomImage(config.id).then((img) => {

@@ -118,8 +118,3 @@ export function BeamMPText({ text, className }: BeamMPTextProps): React.JSX.Elem
     </span>
   )
 }
-
-/** Strip all BeamMP format codes for plain-text use (search, sort, etc.) */
-export function stripBeamMPCodes(s: string): string {
-  return s.replace(/\^[0-9a-frlonmp]/gi, '')
-}

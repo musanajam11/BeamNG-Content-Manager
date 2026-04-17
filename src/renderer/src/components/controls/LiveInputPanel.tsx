@@ -30,23 +30,6 @@ export function LiveInputPanel({ deviceType }: LiveInputPanelProps): React.JSX.E
   const isGamepadDevice = deviceType === 'xinput' || deviceType === 'joystick'
   const isKeyboardDevice = deviceType === 'keyboard' || deviceType === 'mouse'
 
-  // Gamepad polling loop — capture ALL connected gamepads
-  const pollGamepad = useCallback(() => {
-    const gamepads = navigator.getGamepads()
-    const states: GamepadState[] = []
-    for (const gp of gamepads) {
-      if (!gp) continue
-      states.push({
-        index: gp.index,
-        id: gp.id,
-        axes: gp.axes.map((v, i) => ({ index: i, value: v })),
-        buttons: gp.buttons.map((b, i) => ({ index: i, pressed: b.pressed, value: b.value }))
-      })
-    }
-    setGamepadStates(states)
-    rafRef.current = requestAnimationFrame(pollGamepad)
-  }, [])
-
   // Keyboard handlers
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     pressedKeysRef.current.add(e.code)
@@ -62,6 +45,22 @@ export function LiveInputPanel({ deviceType }: LiveInputPanelProps): React.JSX.E
     if (!polling) return
 
     if (isGamepadDevice) {
+      // Gamepad polling loop — capture ALL connected gamepads
+      const pollGamepad = (): void => {
+        const gamepads = navigator.getGamepads()
+        const states: GamepadState[] = []
+        for (const gp of gamepads) {
+          if (!gp) continue
+          states.push({
+            index: gp.index,
+            id: gp.id,
+            axes: gp.axes.map((v, i) => ({ index: i, value: v })),
+            buttons: gp.buttons.map((b, i) => ({ index: i, pressed: b.pressed, value: b.value }))
+          })
+        }
+        setGamepadStates(states)
+        rafRef.current = requestAnimationFrame(pollGamepad)
+      }
       rafRef.current = requestAnimationFrame(pollGamepad)
       return () => {
         if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
@@ -80,7 +79,7 @@ export function LiveInputPanel({ deviceType }: LiveInputPanelProps): React.JSX.E
     }
 
     return undefined
-  }, [polling, isGamepadDevice, isKeyboardDevice, pollGamepad, handleKeyDown, handleKeyUp])
+  }, [polling, isGamepadDevice, isKeyboardDevice, handleKeyDown, handleKeyUp])
 
   // Cleanup on unmount
   useEffect(() => {

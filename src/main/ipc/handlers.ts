@@ -636,19 +636,16 @@ async function buildCompositeMapImage(
 }
 
 /** Read a heightmap image from a BeamNG level zip – tries *_heightmap.png first, falls back to *.ter.depth.png */
-function readHeightmapFromZip(zipPath: string, levelName: string): Promise<string | null> {
-  return new Promise(async (resolve) => {
-    // Try dedicated heightmap first
-    const hm = await readImageFromZip(zipPath, new RegExp(
-      `^levels/${levelName}/[^/]*heightmap\\.png$`, 'i'
-    ))
-    if (hm) { resolve(hm); return }
-    // Fall back to .ter.depth.png
-    const depth = await readImageFromZip(zipPath, new RegExp(
-      `^levels/${levelName}/[^/]*\\.ter\\.depth\\.png$`, 'i'
-    ))
-    resolve(depth)
-  })
+async function readHeightmapFromZip(zipPath: string, levelName: string): Promise<string | null> {
+  // Try dedicated heightmap first
+  const hm = await readImageFromZip(zipPath, new RegExp(
+    `^levels/${levelName}/[^/]*heightmap\\.png$`, 'i'
+  ))
+  if (hm) return hm
+  // Fall back to .ter.depth.png
+  return readImageFromZip(zipPath, new RegExp(
+    `^levels/${levelName}/[^/]*\\.ter\\.depth\\.png$`, 'i'
+  ))
 }
 
 /** Read first image matching a regex from an archive, return as data URL */
@@ -834,7 +831,9 @@ export function registerIpcHandlers(): void {
     const { spawn } = await import('node:child_process')
     const tmpDir = join(app.getPath('temp'), 'BeamNG-SafeMode-' + Date.now())
     await mkdir(tmpDir, { recursive: true })
-    const args = ['-userpath', tmpDir]
+    // Proton/Wine sees Linux paths via Z: drive — convert for the game process
+    const userpath = paths.isProton ? 'Z:' + tmpDir.replace(/\//g, '\\') : tmpDir
+    const args = ['-userpath', userpath]
     if (paths.isProton) {
       // Proton: must launch through Steam — direct exe won't work on Linux
       const steamBin = launcherService.findSteamBinaryPublic()
@@ -861,7 +860,8 @@ export function registerIpcHandlers(): void {
     const { spawn } = await import('node:child_process')
     const tmpDir = join(app.getPath('temp'), 'BeamNG-SafeVulkan-' + Date.now())
     await mkdir(tmpDir, { recursive: true })
-    const args = ['-userpath', tmpDir, '-gfx', 'vk']
+    const userpath = paths.isProton ? 'Z:' + tmpDir.replace(/\//g, '\\') : tmpDir
+    const args = ['-userpath', userpath, '-gfx', 'vk']
     if (paths.isProton) {
       const steamBin = launcherService.findSteamBinaryPublic()
       if (!steamBin) return { success: false, error: 'Steam not found — required to launch via Proton' }
@@ -961,7 +961,7 @@ export function registerIpcHandlers(): void {
     // Strip common prefixes like "spawn_", "spawns_", "dropPlayerAtXxx_"
     let name = raw.replace(/^(spawns?_|dropplayerat_?)/i, '')
     // Strip numeric suffixes like "_01", "_02", trailing digits
-    name = name.replace(/[_\-]?\d+$/g, '')
+    name = name.replace(/[_-]?\d+$/g, '')
     // Replace underscores/camelCase with spaces
     name = name.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim()
     // Title-case
@@ -3096,9 +3096,9 @@ export function registerIpcHandlers(): void {
     let internalName = mapName
     if (zipPath && modZipPath) {
       // For mod archives, scan for the levels/*/info.json path to get the actual internal name
-      const result = await readFirstMatchWithName(zipPath, /^levels\/([^\/]+)\/info\.json$/i)
+      const result = await readFirstMatchWithName(zipPath, /^levels\/([^/]+)\/info\.json$/i)
       if (result) {
-        const match = result.fileName.match(/^levels\/([^\/]+)\/info\.json$/i)
+        const match = result.fileName.match(/^levels\/([^/]+)\/info\.json$/i)
         if (match) internalName = match[1]
       }
     }
@@ -3491,7 +3491,7 @@ export function registerIpcHandlers(): void {
       conflictDetectionService.invalidate()
       vehicleListCache = null
       return { success: true }
-    } catch (err) {
+    } catch {
       // File may already be gone — still clean up registry
       cleanupRegistry()
       loadOrderService.removeClientEntry(modKey).catch(() => {})
@@ -3756,7 +3756,7 @@ export function registerIpcHandlers(): void {
             if (state === 'completed') {
               try {
                 const mod = await modManagerService.installMod(userDir, tmpPath, fileName, resourceId)
-                try { await unlink(tmpPath) } catch {}
+                try { await unlink(tmpPath) } catch { /* ignore cleanup failure */ }
                 finish({ success: true, fileName: mod.fileName })
               } catch (err) {
                 finish({ success: false, error: String(err) })

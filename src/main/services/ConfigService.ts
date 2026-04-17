@@ -66,6 +66,7 @@ const DEFAULT_CONFIG: AppConfig = {
     inputDeviceId: null,
     inputGain: 1.0,
     outputVolume: 0.8,
+    outputDeviceId: null,
     mode: 'vad',
     pttKey: 'KeyV',
     vadThreshold: 0.02,

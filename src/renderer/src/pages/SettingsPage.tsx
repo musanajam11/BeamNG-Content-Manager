@@ -3,7 +3,7 @@ import { FolderOpen, Globe, Check, AlertCircle, Package, Download, Upload, Palet
 import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/useAppStore'
 import { useThemeStore, ACCENT_PRESETS, BG_STYLES, DEFAULT_SIDEBAR_ORDER } from '../stores/useThemeStore'
-import { ALL_NAV_ITEMS } from '../components/Sidebar'
+import { ALL_NAV_ITEMS } from '../components/navItems'
 import { LANGUAGES } from '../i18n'
 import * as Flags from 'country-flag-icons/react/3x2'
 import type { AppearanceSettings, AppPage } from '../../../shared/types'
@@ -105,6 +105,7 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
 
   useEffect(() => {
     if (config) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sync config into local state
       setBackendUrl(config.backendUrl)
       setAuthUrl(config.authUrl ?? '')
       setUseOfficialBackend(config.useOfficialBackend ?? true)

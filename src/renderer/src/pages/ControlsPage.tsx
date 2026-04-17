@@ -70,6 +70,7 @@ export function ControlsPage(): React.JSX.Element {
   // Auto-expand first category when bindings load
   useEffect(() => {
     if (categories.length > 0 && expandedCategories.size === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time init
       setExpandedCategories(new Set([categories[0].id]))
     }
   }, [categories])

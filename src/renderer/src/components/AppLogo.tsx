@@ -1,4 +1,4 @@
-export function AppLogo({ height = 22, className = '' }: { height?: number; className?: string }) {
+export function AppLogo({ height = 22, className = '' }: { height?: number; className?: string }): React.JSX.Element {
   return (
     <svg
       viewBox="0 0 1100 130"

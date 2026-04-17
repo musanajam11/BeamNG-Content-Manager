@@ -818,6 +818,8 @@ export interface VoiceChatSettings {
   inputGain: number
   /** Output volume: 0.0 – 1.0 */
   outputVolume: number
+  /** Output device ID (from navigator.mediaDevices) — null = system default */
+  outputDeviceId: string | null
   /** Activation mode: push-to-talk or voice activity detection */
   mode: VoiceChatMode
   /** Key code for push-to-talk (e.g. 'KeyV') */

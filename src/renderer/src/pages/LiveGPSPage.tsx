@@ -64,6 +64,7 @@ export function LiveGPSPage(): React.JSX.Element {
   // Load minimap when map is selected
   useEffect(() => {
     if (!selectedMap) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset on map change
       setMinimapData(null)
       minimapImgRef.current = null
       return
@@ -90,7 +91,11 @@ export function LiveGPSPage(): React.JSX.Element {
 
   // Load POIs when map is selected
   useEffect(() => {
-    if (!selectedMap) { setMapPOIs([]); return }
+    if (!selectedMap) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset
+      setMapPOIs([])
+      return
+    }
     let cancelled = false
     ;(async () => {
       try {
@@ -116,6 +121,7 @@ export function LiveGPSPage(): React.JSX.Element {
           (m.levelDir && m.levelDir.toLowerCase() === rawLower)
         )
         if (match) {
+          // eslint-disable-next-line react-hooks/set-state-in-effect -- auto-detect map
           setSelectedMap(match.name)
           lastDetectedMapRef.current = raw
         }
@@ -123,6 +129,7 @@ export function LiveGPSPage(): React.JSX.Element {
     } else if (!telemetry) {
       // Player left the game / no vehicle — clear detection + map so next session re-detects
       lastDetectedMapRef.current = ''
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset on disconnect
       setSelectedMap('')
     }
   }, [telemetry?.map, maps])
@@ -131,6 +138,7 @@ export function LiveGPSPage(): React.JSX.Element {
   useEffect(() => {
     if (!deployed) {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset on undeploy
       setTelemetry(null)
       return
     }
