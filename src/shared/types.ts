@@ -446,6 +446,11 @@ export interface ServerFileEntry {
   path: string
   isDirectory: boolean
   size: number
+  modified?: number
+}
+
+export interface ServerFileSearchResult extends ServerFileEntry {
+  parentPath: string
 }
 
 /* ── Backup Schedule ── */
@@ -836,6 +841,8 @@ export interface VoiceChatSettings {
   turnUsername: string | null
   /** TURN server credential (if required) */
   turnCredential: string | null
+  /** Auto-deploy the in-game voice overlay UI app to hosted servers (default: true). */
+  deployOverlay?: boolean
 }
 
 export interface VoiceSignalMessage {

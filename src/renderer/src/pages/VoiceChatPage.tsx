@@ -508,6 +508,16 @@ export function VoiceChatPage(): React.JSX.Element {
               enabled={voiceSettings.doorMuffling}
               onToggle={() => updateSetting('doorMuffling', !voiceSettings.doorMuffling)}
             />
+
+            <ToggleSetting
+              label={t('voiceChat.deployOverlay')}
+              description={t('voiceChat.deployOverlayDesc')}
+              icon={DoorOpen}
+              enabled={voiceSettings.deployOverlay !== false}
+              onToggle={() =>
+                updateSetting('deployOverlay', voiceSettings.deployOverlay === false ? true : false)
+              }
+            />
           </div>
         </Section>
 

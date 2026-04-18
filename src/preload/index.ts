@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
 const api = {
@@ -314,6 +314,30 @@ const api = {
     ipcRenderer.invoke('hostedServer:writeFile', id, filePath, content) as Promise<void>,
   hostedServerExtractZip: (id: string, zipPath: string) =>
     ipcRenderer.invoke('hostedServer:extractZip', id, zipPath) as Promise<{ success: boolean; extracted: number }>,
+  hostedServerRenameFile: (id: string, oldPath: string, newName: string) =>
+    ipcRenderer.invoke('hostedServer:renameFile', id, oldPath, newName) as Promise<string>,
+  hostedServerDuplicateFile: (id: string, filePath: string) =>
+    ipcRenderer.invoke('hostedServer:duplicateFile', id, filePath) as Promise<string>,
+  hostedServerZipEntry: (id: string, filePath: string) =>
+    ipcRenderer.invoke('hostedServer:zipEntry', id, filePath) as Promise<{ success: boolean; path: string }>,
+  hostedServerSearchFiles: (id: string, subPath: string, query: string) =>
+    ipcRenderer.invoke('hostedServer:searchFiles', id, subPath, query),
+  hostedServerRevealInExplorer: (id: string, filePath: string) =>
+    ipcRenderer.invoke('hostedServer:revealInExplorer', id, filePath) as Promise<void>,
+  hostedServerOpenEntry: (id: string, filePath: string) =>
+    ipcRenderer.invoke('hostedServer:openEntry', id, filePath) as Promise<void>,
+  hostedServerDownloadEntry: (id: string, filePath: string) =>
+    ipcRenderer.invoke('hostedServer:downloadEntry', id, filePath) as Promise<{ success: boolean; canceled?: boolean; path?: string }>,
+  hostedServerUploadFiles: (id: string, destSubPath: string, sourcePaths: string[]) =>
+    ipcRenderer.invoke('hostedServer:uploadFiles', id, destSubPath, sourcePaths) as Promise<string[]>,
+  getPathForFile: (file: File): string => {
+    try {
+      return webUtils.getPathForFile(file)
+    } catch {
+      const f = file as unknown as { path?: string }
+      return f.path ?? ''
+    }
+  },
   hostedServerTestPort: (port: number) =>
     ipcRenderer.invoke('hostedServer:testPort', port) as Promise<{ open: boolean; ip?: string; error?: string }>,
   hostedServerSaveCustomImage: (id: string, dataUrl: string) =>
@@ -525,6 +549,10 @@ const api = {
     ipcRenderer.invoke('career:restoreProfileBackup', backupName) as Promise<{ success: boolean; error?: string }>,
   careerDeleteProfileBackup: (backupName: string) =>
     ipcRenderer.invoke('career:deleteProfileBackup', backupName) as Promise<{ success: boolean; error?: string }>,
+  careerDeleteProfile: (profileName: string, options?: { backup?: boolean }) =>
+    ipcRenderer.invoke('career:deleteProfile', profileName, options) as Promise<{ success: boolean; backupName?: string; error?: string }>,
+  careerDeleteSlot: (profileName: string, slotName: string, options?: { backup?: boolean }) =>
+    ipcRenderer.invoke('career:deleteSlot', profileName, slotName, options) as Promise<{ success: boolean; backupName?: string; error?: string }>,
   careerSetSavePath: (savePath: string | null) =>
     ipcRenderer.invoke('career:setSavePath', savePath) as Promise<{ success: boolean; error?: string }>,
   careerBrowseSavePath: () =>
@@ -611,6 +639,12 @@ const api = {
     ipcRenderer.invoke('voice:getState') as Promise<import('../shared/types').VoiceChatState>,
   voiceUpdateSettings: (settings: import('../shared/types').VoiceChatSettings) =>
     ipcRenderer.invoke('voice:updateSettings', settings),
+  voiceSetOverlayState: (state: {
+    selfMuted?: boolean
+    tier?: 'p2p' | 'relay' | 'server' | 'unknown'
+    mutedPeerIds?: number[]
+    speakingPeerIds?: number[]
+  }) => ipcRenderer.invoke('voice:setOverlayState', state),
   voiceDeployBridge: () =>
     ipcRenderer.invoke('voice:deployBridge') as Promise<{ success: boolean; error?: string }>,
   voiceUndeployBridge: () =>
@@ -644,6 +678,29 @@ const api = {
     const handler = (_event: unknown, data: { selfId: number }): void => callback(data)
     ipcRenderer.on('voice:selfId', handler)
     return () => { ipcRenderer.removeListener('voice:selfId', handler) }
+  },
+  onVoiceOverlayCommand: (callback: (data: {
+    action: 'enable' | 'disable' | 'mute' | 'unmute' | 'mute_peer' | 'unmute_peer'
+    peerId?: number
+  }) => void) => {
+    const handler = (
+      _event: unknown,
+      data: {
+        action: 'enable' | 'disable' | 'mute' | 'unmute' | 'mute_peer' | 'unmute_peer'
+        peerId?: number
+      }
+    
+    peerId?: number
+  }) => void) => {
+    const handler = (
+      _event: unknown,
+      data: {
+        action: 'enable' | 'disable' | 'mute' | 'unmute' | 'mute_peer' | 'unmute_peer'
+        peerId?: number
+      }
+    ): void => callback(data)
+    ipcRenderer.on('voice:overlayCommand', handler)
+    return () => { ipcRenderer.removeListener('voice:overlayCommand', handler) }
   },
 
   // Voice mesh tier (Tier 2 — TCP P2P sockets bridged through main)

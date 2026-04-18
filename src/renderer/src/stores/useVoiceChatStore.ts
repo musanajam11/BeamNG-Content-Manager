@@ -50,6 +50,10 @@ interface VoiceChatStore {
   peers: Map<number, PeerConnection>
   settings: VoiceChatSettings
   pttActive: boolean
+  /** User toggled self-mute via overlay or settings UI (separate from PTT auto-mute). */
+  selfMuted: boolean
+  /** Peer ids the user has muted via the overlay. Audio frames are dropped on the input side. */
+  mutedPeerIds: Set<number>
 
   // Actions
   enable: () => Promise<void>
@@ -61,6 +65,8 @@ interface VoiceChatStore {
   setSelfId: (selfId: number) => void
   updateSpatialAudio: (telemetry: GPSTelemetry) => void
   setPttActive: (active: boolean) => void
+  setSelfMuted: (muted: boolean) => void
+  togglePeerMute: (peerId: number) => void
   testTransmit: () => void
   getPeerList: () => VoicePeerInfo[]
   cleanup: () => void
@@ -136,6 +142,23 @@ function fanoutFrame(peers: Map<number, PeerConnection>, frame: OpusFrame): void
   if (anyTier3) broadcastTier3(frame)
 }
 
+/**
+ * Reduce per-peer tiers into a single overlay badge. Worst-case wins so the
+ * user sees the weakest path active in their mesh (Server > Mesh > Direct).
+ */
+function aggregateTier(peers: Map<number, PeerConnection>): 'p2p' | 'relay' | 'server' | 'unknown' {
+  if (peers.size === 0) return 'unknown'
+  let worst: VoiceTier | null = null
+  for (const p of peers.values()) {
+    if (p.tier == null) continue
+    if (worst == null || p.tier > worst) worst = p.tier
+  }
+  if (worst == null) return 'unknown'
+  if (worst === VoiceTier.Direct) return 'p2p'
+  if (worst === VoiceTier.Mesh) return 'relay'
+  return 'server'
+}
+
 export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
   enabled: false,
   available: false,
@@ -144,6 +167,8 @@ export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
   peers: new Map(),
   settings: DEFAULT_SETTINGS,
   pttActive: false,
+  selfMuted: false,
+  mutedPeerIds: new Set<number>(),
 
   enable: async () => {
     const { settings } = get()
@@ -210,6 +235,7 @@ export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
         const { peers, settings: s } = get()
         let changed = false
         const updated = new Map(peers)
+        const speakingIds: number[] = []
         for (const [, p] of updated) {
           if (p.audio) {
             const speaking = isPeerSpeaking(p.audio, s.vadThreshold)
@@ -217,9 +243,21 @@ export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
               p.speaking = speaking
               changed = true
             }
+            if (speaking) speakingIds.push(p.playerId)
           }
         }
         if (changed) set({ peers: updated })
+        // Push the rolling set + aggregate tier to main so the in-game overlay
+        // sees who is talking and what mesh tier we're on.
+        const tier = aggregateTier(get().peers)
+        window.api
+          .voiceSetOverlayState({
+            speakingPeerIds: speakingIds,
+            tier,
+            selfMuted: get().selfMuted,
+            mutedPeerIds: Array.from(get().mutedPeerIds)
+          })
+          .catch(() => undefined)
       }, 100)
     } catch (err) {
       console.error('[VoiceChat] Failed to enable:', err)
@@ -430,8 +468,34 @@ export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
     const { settings } = get()
     if (settings.mode !== 'ptt') return
     captureMuted = !active
-    if (audioCapture) audioCapture.setMuted(captureMuted)
+    if (audioCapture) audioCapture.setMuted(captureMuted || get().selfMuted)
     set({ pttActive: active })
+  },
+
+  setSelfMuted: (muted) => {
+    set({ selfMuted: muted })
+    // VAD mode: mute the capture chain immediately. PTT mode: respect PTT state
+    // and OR with self-mute so toggling mute while PTT key is up still mutes.
+    const effective = muted || captureMuted
+    if (audioCapture) audioCapture.setMuted(effective)
+    window.api
+      .voiceSetOverlayState({ selfMuted: muted, mutedPeerIds: Array.from(get().mutedPeerIds) })
+      .catch(() => undefined)
+  },
+
+  togglePeerMute: (peerId) => {
+    const next = new Set(get().mutedPeerIds)
+    if (next.has(peerId)) next.delete(peerId)
+    else next.add(peerId)
+    set({ mutedPeerIds: next })
+    // Apply on the spatial audio side: mute = volume 0.
+    const peer = get().peers.get(peerId)
+    if (peer?.audio) {
+      setPeerVolume(peer.audio, next.has(peerId) ? 0 : get().settings.outputVolume, 1.0)
+    }
+    window.api
+      .voiceSetOverlayState({ mutedPeerIds: Array.from(next), selfMuted: get().selfMuted })
+      .catch(() => undefined)
   },
 
   testTransmit: () => {

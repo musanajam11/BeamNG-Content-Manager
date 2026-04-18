@@ -1,11 +1,12 @@
-import { readFile, writeFile, mkdir, readdir, unlink, stat, copyFile, rm, chmod } from 'fs/promises'
+import { readFile, writeFile, mkdir, readdir, unlink, stat, copyFile, rm, chmod, rename, cp } from 'fs/promises'
 import { existsSync, createWriteStream } from 'fs'
-import { join, basename, dirname } from 'path'
+import { join, basename, dirname, relative, sep, posix } from 'path'
 import { app, BrowserWindow, safeStorage } from 'electron'
 import { spawn, ChildProcess } from 'child_process'
 import { randomUUID } from 'crypto'
 import { get as httpsGet } from 'https'
 import { open as yauzlOpen, type Entry } from 'yauzl'
+import archiver from 'archiver'
 import { isModArchive, stripArchiveExt } from '../utils/archiveConverter'
 import type {
   HostedServerConfig,
@@ -13,6 +14,7 @@ import type {
   HostedServerState,
   HostedServerEntry,
   ServerFileEntry,
+  ServerFileSearchResult,
   GPSRoute,
   PlayerPosition
 } from '../../shared/types'
@@ -245,7 +247,8 @@ export class ServerManagerService {
         name: e.name,
         path: subPath ? `${subPath}/${e.name}` : e.name,
         isDirectory: e.isDirectory(),
-        size: s?.size ?? 0
+        size: s?.size ?? 0,
+        modified: s?.mtimeMs ?? 0
       })
     }
     return results.sort((a, b) => {
@@ -388,10 +391,159 @@ export class ServerManagerService {
   private assertInsideServerDir(id: string, filePath: string): string {
     const serverDir = join(this.serversDir, id)
     const resolved = join(serverDir, filePath)
+    const rel = relative(serverDir, resolved)
+    if (rel.startsWith('..') || (rel.length > 0 && rel[0] === sep && !rel.startsWith(serverDir))) {
+      throw new Error('Access denied: path outside server directory')
+    }
     if (!resolved.startsWith(serverDir)) {
       throw new Error('Access denied: path outside server directory')
     }
     return resolved
+  }
+
+  /** Returns the absolute path for a server entry (validated). */
+  getServerEntryAbsolutePath(id: string, filePath: string): string {
+    return this.assertInsideServerDir(id, filePath)
+  }
+
+  async renameServerEntry(id: string, oldPath: string, newName: string): Promise<string> {
+    const trimmed = newName.trim()
+    if (!trimmed) throw new Error('New name is empty')
+    if (/[\\/:*?"<>|]/.test(trimmed)) throw new Error('Invalid characters in name')
+    const fullOld = this.assertInsideServerDir(id, oldPath)
+    const parent = dirname(fullOld)
+    const fullNew = join(parent, trimmed)
+    // Ensure new path is still inside server dir
+    const serverDir = join(this.serversDir, id)
+    if (!fullNew.startsWith(serverDir)) throw new Error('Invalid target path')
+    if (fullNew === fullOld) return oldPath
+    if (existsSync(fullNew)) throw new Error('Target name already exists')
+    await rename(fullOld, fullNew)
+    const parentRel = relative(serverDir, parent).split(sep).join(posix.sep)
+    return parentRel ? `${parentRel}/${trimmed}` : trimmed
+  }
+
+  async duplicateServerEntry(id: string, filePath: string): Promise<string> {
+    const full = this.assertInsideServerDir(id, filePath)
+    const parent = dirname(full)
+    const base = basename(full)
+    const dot = base.lastIndexOf('.')
+    const stem = dot > 0 ? base.slice(0, dot) : base
+    const ext = dot > 0 ? base.slice(dot) : ''
+    let candidate = ''
+    for (let i = 1; i < 1000; i++) {
+      candidate = `${stem} (copy${i === 1 ? '' : ' ' + i})${ext}`
+      if (!existsSync(join(parent, candidate))) break
+    }
+    const dest = join(parent, candidate)
+    const s = await stat(full)
+    if (s.isDirectory()) {
+      await cp(full, dest, { recursive: true })
+    } else {
+      await copyFile(full, dest)
+    }
+    const serverDir = join(this.serversDir, id)
+    const parentRel = relative(serverDir, parent).split(sep).join(posix.sep)
+    return parentRel ? `${parentRel}/${candidate}` : candidate
+  }
+
+  /**
+   * Zip a file or folder. The output is placed beside the source as <name>.zip
+   * (with a numeric suffix if needed). Returns the relative path of the new zip.
+   */
+  async zipServerEntry(id: string, filePath: string): Promise<string> {
+    const full = this.assertInsideServerDir(id, filePath)
+    const parent = dirname(full)
+    const base = basename(full)
+    const dot = base.lastIndexOf('.')
+    const stem = dot > 0 && (await stat(full)).isFile() ? base.slice(0, dot) : base
+    let candidateName = `${stem}.zip`
+    let i = 1
+    while (existsSync(join(parent, candidateName))) {
+      i++
+      candidateName = `${stem} (${i}).zip`
+      if (i > 999) throw new Error('Too many existing archives')
+    }
+    const outAbs = join(parent, candidateName)
+    await new Promise<void>((resolve, reject) => {
+      const output = createWriteStream(outAbs)
+      const archive = archiver('zip', { zlib: { level: 9 } })
+      output.on('close', () => resolve())
+      output.on('error', (e) => reject(e))
+      archive.on('error', (e) => reject(e))
+      archive.pipe(output)
+      stat(full).then((s) => {
+        if (s.isDirectory()) {
+          archive.directory(full, basename(full))
+        } else {
+          archive.file(full, { name: basename(full) })
+        }
+        archive.finalize()
+      }).catch(reject)
+    })
+    const serverDir = join(this.serversDir, id)
+    const parentRel = relative(serverDir, parent).split(sep).join(posix.sep)
+    return parentRel ? `${parentRel}/${candidateName}` : candidateName
+  }
+
+  /** Recursively search for entries by name fragment. Limited results. */
+  async searchServerFiles(
+    id: string,
+    subPath: string,
+    query: string,
+    options: { maxResults?: number; maxDepth?: number } = {}
+  ): Promise<ServerFileSearchResult[]> {
+    const max = options.maxResults ?? 500
+    const maxDepth = options.maxDepth ?? 12
+    const q = query.toLowerCase().trim()
+    if (!q) return []
+    const serverDir = join(this.serversDir, id)
+    const root = subPath ? this.assertInsideServerDir(id, subPath) : serverDir
+    const results: ServerFileSearchResult[] = []
+    const walk = async (dir: string, depth: number): Promise<void> => {
+      if (results.length >= max || depth > maxDepth) return
+      let entries
+      try {
+        entries = await readdir(dir, { withFileTypes: true })
+      } catch {
+        return
+      }
+      for (const e of entries) {
+        if (results.length >= max) return
+        const full = join(dir, e.name)
+        const isDir = e.isDirectory()
+        if (e.name.toLowerCase().includes(q)) {
+          const s = await stat(full).catch(() => null)
+          const relPath = relative(serverDir, full).split(sep).join(posix.sep)
+          const parentRel = relative(serverDir, dirname(full)).split(sep).join(posix.sep)
+          results.push({
+            name: e.name,
+            path: relPath,
+            isDirectory: isDir,
+            size: s?.size ?? 0,
+            modified: s?.mtimeMs ?? 0,
+            parentPath: parentRel
+          })
+        }
+        if (isDir) {
+          await walk(full, depth + 1)
+        }
+      }
+    }
+    await walk(root, 0)
+    return results
+  }
+
+  /** Copy a server file/folder to an arbitrary external destination. */
+  async downloadServerEntry(id: string, filePath: string, destAbsolute: string): Promise<void> {
+    const full = this.assertInsideServerDir(id, filePath)
+    const s = await stat(full)
+    if (s.isDirectory()) {
+      await cp(full, destAbsolute, { recursive: true })
+    } else {
+      await mkdir(dirname(destAbsolute), { recursive: true })
+      await copyFile(full, destAbsolute)
+    }
   }
 
   async readServerFile(id: string, filePath: string): Promise<string> {

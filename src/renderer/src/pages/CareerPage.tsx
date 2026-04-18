@@ -269,6 +269,7 @@ export function CareerPage(): React.JSX.Element {
   const [showBackups, setShowBackups] = useState(false)
   const [profileBackingUp, setProfileBackingUp] = useState(false)
   const [restoring, setRestoring] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   // Save path settings
   const [savePath, setSavePath] = useState<string | null>(null)
@@ -636,6 +637,85 @@ export function CareerPage(): React.JSX.Element {
     }
   }, [])
 
+  const handleDeleteProfile = useCallback(async () => {
+    if (!selectedProfile) return
+    const confirmed = window.confirm(
+      t('career.deleteProfileConfirm', { name: selectedProfile.name })
+    )
+    if (!confirmed) return
+    const withBackup = window.confirm(t('career.deleteBackupFirstPrompt'))
+    setDeleting(true)
+    setActionMsg(null)
+    try {
+      const result = await window.api.careerDeleteProfile(selectedProfile.name, { backup: withBackup })
+      if (result.success) {
+        setActionMsg({
+          type: 'success',
+          text: result.backupName
+            ? t('career.deleteProfileSuccessWithBackup', { name: result.backupName })
+            : t('career.deleteProfileSuccess')
+        })
+        await loadProfiles()
+        // return to list view since the profile no longer exists
+        setSelectedProfile(null)
+        setSelectedSlot(null)
+        setMetadata(null)
+        setShowBackups(false)
+        setSlotPreviews({})
+        setView('list')
+      } else {
+        setActionMsg({ type: 'error', text: result.error || t('career.deleteFailed') })
+      }
+    } catch (err) {
+      setActionMsg({ type: 'error', text: String(err) })
+    } finally {
+      setDeleting(false)
+    }
+  }, [selectedProfile, loadProfiles, t])
+
+  const handleDeleteSlot = useCallback(async (slotName?: string) => {
+    if (!selectedProfile) return
+    const targetSlot = slotName ?? selectedSlot?.name
+    if (!targetSlot) return
+    const confirmed = window.confirm(
+      t('career.deleteSlotConfirm', { slot: targetSlot, profile: selectedProfile.name })
+    )
+    if (!confirmed) return
+    const withBackup = window.confirm(t('career.deleteBackupFirstPrompt'))
+    setDeleting(true)
+    setActionMsg(null)
+    try {
+      const result = await window.api.careerDeleteSlot(selectedProfile.name, targetSlot, { backup: withBackup })
+      if (result.success) {
+        setActionMsg({
+          type: 'success',
+          text: result.backupName
+            ? t('career.deleteSlotSuccessWithBackup', { name: result.backupName })
+            : t('career.deleteSlotSuccess')
+        })
+        await loadProfiles()
+        // refresh selected profile slot list and exit slot view if we deleted the open slot
+        setSelectedProfile(prev => prev ? { ...prev, slots: prev.slots.filter(s => s.name !== targetSlot) } : null)
+        setSlotPreviews(prev => {
+          const next = { ...prev }
+          delete next[targetSlot]
+          return next
+        })
+        if (selectedSlot?.name === targetSlot) {
+          setSelectedSlot(null)
+          setMetadata(null)
+          setView('profile')
+        }
+      } else {
+        setActionMsg({ type: 'error', text: result.error || t('career.deleteFailed') })
+      }
+    } catch (err) {
+      setActionMsg({ type: 'error', text: String(err) })
+    } finally {
+      setDeleting(false)
+    }
+  }, [selectedProfile, selectedSlot, loadProfiles, t])
+
   const handleBrowseSavePath = useCallback(async () => {
     const path = await window.api.careerBrowseSavePath()
     if (path) {
@@ -688,6 +768,14 @@ export function CareerPage(): React.JSX.Element {
             >
               {backingUp ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
               {t('career.backupSlot')}
+            </button>
+            <button
+              onClick={() => handleDeleteSlot()}
+              disabled={deleting}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 transition-colors disabled:opacity-50"
+            >
+              {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+              {t('career.deleteSlot')}
             </button>
           </div>
         </div>
@@ -978,6 +1066,14 @@ export function CareerPage(): React.JSX.Element {
             >
               <FileText size={14} /> {t('career.viewLog')}
             </button>
+            <button
+              onClick={handleDeleteProfile}
+              disabled={deleting}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 transition-colors disabled:opacity-50"
+            >
+              {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+              {t('career.deleteProfile')}
+            </button>
           </div>
         </div>
 
@@ -1042,10 +1138,13 @@ export function CareerPage(): React.JSX.Element {
               {selectedProfile.slots.map((slot) => {
                 const preview = slotPreviews[slot.name]
                 return (
-                  <button
+                  <div
                     key={slot.name}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => openSlot(selectedProfile, slot)}
-                    className="w-full bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] hover:border-[var(--color-accent-25)] transition-colors text-left overflow-hidden"
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openSlot(selectedProfile, slot) } }}
+                    className="w-full bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] hover:border-[var(--color-accent-25)] transition-colors text-left overflow-hidden cursor-pointer"
                   >
                     <div className="p-4">
                       {/* Slot header */}
@@ -1071,7 +1170,18 @@ export function CareerPage(): React.JSX.Element {
                             </p>
                           </div>
                         </div>
-                        <ChevronLeft size={14} className="text-[var(--text-muted)] rotate-180" />
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); handleDeleteSlot(slot.name) }}
+                            disabled={deleting}
+                            title={t('career.deleteSlot')}
+                            className="flex items-center gap-1 px-2 py-1 text-xs rounded-lg bg-red-500/15 hover:bg-red-500/30 text-red-300 border border-red-500/30 transition-colors disabled:opacity-50"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                          <ChevronLeft size={14} className="text-[var(--text-muted)] rotate-180" />
+                        </div>
                       </div>
 
                       {/* Slot preview stats */}
@@ -1142,7 +1252,7 @@ export function CareerPage(): React.JSX.Element {
                         </div>
                       )}
                     </div>
-                  </button>
+                  </div>
                 )
               })}
             </div>

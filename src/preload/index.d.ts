@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import type { AppConfig, GamePaths, ServerInfo, AuthResult, GameStatus, ModInfo, RepoBrowseResult, RepoCategory, RepoSortOrder, VehicleDetail, VehicleConfigInfo, VehicleConfigData, HostedServerConfig, HostedServerStatus, HostedServerEntry, ServerFileEntry, ServerExeStatus, GPSRoute, PlayerPosition, BackupSchedule, BackupEntry, ScheduledTask, AnalyticsData, MapRichMetadata, LoadOrderData, ModConflictReport } from '../shared/types'
+import type { AppConfig, GamePaths, ServerInfo, AuthResult, GameStatus, ModInfo, RepoBrowseResult, RepoCategory, RepoSortOrder, VehicleDetail, VehicleConfigInfo, VehicleConfigData, HostedServerConfig, HostedServerStatus, HostedServerEntry, ServerFileEntry, ServerFileSearchResult, ServerExeStatus, GPSRoute, PlayerPosition, BackupSchedule, BackupEntry, ScheduledTask, AnalyticsData, MapRichMetadata, LoadOrderData, ModConflictReport } from '../shared/types'
 import type { RegistryStatus, RegistrySearchOptions, RegistrySearchResult, AvailableMod, InstalledRegistryMod, ResolutionResult, RegistryRepository, BeamModMetadata, ModpackExport } from '../shared/registry-types'
 
 interface AppAPI {
@@ -242,6 +242,15 @@ interface AppAPI {
   hostedServerReadFile(id: string, filePath: string): Promise<string>
   hostedServerWriteFile(id: string, filePath: string, content: string): Promise<void>
   hostedServerExtractZip(id: string, zipPath: string): Promise<{ success: boolean; extracted: number }>
+  hostedServerRenameFile(id: string, oldPath: string, newName: string): Promise<string>
+  hostedServerDuplicateFile(id: string, filePath: string): Promise<string>
+  hostedServerZipEntry(id: string, filePath: string): Promise<{ success: boolean; path: string }>
+  hostedServerSearchFiles(id: string, subPath: string, query: string): Promise<ServerFileSearchResult[]>
+  hostedServerRevealInExplorer(id: string, filePath: string): Promise<void>
+  hostedServerOpenEntry(id: string, filePath: string): Promise<void>
+  hostedServerDownloadEntry(id: string, filePath: string): Promise<{ success: boolean; canceled?: boolean; path?: string }>
+  hostedServerUploadFiles(id: string, destSubPath: string, sourcePaths: string[]): Promise<string[]>
+  getPathForFile(file: File): string
   hostedServerTestPort(port: number): Promise<{ open: boolean; ip?: string; error?: string }>
   hostedServerSaveCustomImage(id: string, dataUrl: string): Promise<string>
   hostedServerRemoveCustomImage(id: string): Promise<void>
@@ -403,6 +412,8 @@ interface AppAPI {
   }>>
   careerRestoreProfileBackup(backupName: string): Promise<{ success: boolean; error?: string }>
   careerDeleteProfileBackup(backupName: string): Promise<{ success: boolean; error?: string }>
+  careerDeleteProfile(profileName: string, options?: { backup?: boolean }): Promise<{ success: boolean; backupName?: string; error?: string }>
+  careerDeleteSlot(profileName: string, slotName: string, options?: { backup?: boolean }): Promise<{ success: boolean; backupName?: string; error?: string }>
   careerSetSavePath(savePath: string | null): Promise<{ success: boolean; error?: string }>
   careerBrowseSavePath(): Promise<string | null>
   careerGetSavePath(): Promise<string | null>
@@ -474,6 +485,12 @@ interface AppAPI {
   voiceSendAudio(payload: { seq: number; data: string }): Promise<void>
   voiceGetState(): Promise<import('../shared/types').VoiceChatState>
   voiceUpdateSettings(settings: import('../shared/types').VoiceChatSettings): Promise<void>
+  voiceSetOverlayState(state: {
+    selfMuted?: boolean
+    tier?: 'p2p' | 'relay' | 'server' | 'unknown'
+    mutedPeerIds?: number[]
+    speakingPeerIds?: number[]
+  }): Promise<void>
   voiceDeployBridge(): Promise<{ success: boolean; error?: string }>
   voiceUndeployBridge(): Promise<{ success: boolean; error?: string }>
   onVoicePeerJoined(callback: (data: { playerId: number; playerName: string; polite?: boolean }) => void): () => void
@@ -482,6 +499,13 @@ interface AppAPI {
   onVoiceAudio(callback: (data: { fromId: number; seq: number; data: string }) => void): () => void
   onVoiceRelayState(callback: (data: { inRelay: boolean }) => void): () => void
   onVoiceSelfId(callback: (data: { selfId: number }) => void): () => void
+  onVoiceOverlayCommand(callback: (data: {
+    action: 'enable' | 'disable' | 'mute' | 'unmute' | 'mute_peer' | 'unmute_peer'
+    peerId?: number
+ 
+    action: 'enable' | 'disable' | 'mute' | 'unmute' | 'mute_peer' | 'unmute_peer'
+    peerId?: number
+  }) => void): () => void
 
   // Voice mesh tier
   voiceMeshListen(): Promise<{ port: number }>

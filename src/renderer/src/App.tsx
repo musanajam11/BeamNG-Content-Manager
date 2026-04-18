@@ -220,12 +220,36 @@ function App(): React.JSX.Element {
       }
     })
 
+    // In-game overlay → manager command bridge. The voice overlay (BeamNG UI
+    // app distributed by the BeamMP server) writes vc_command.json which the
+    // main process forwards here. Routing through the renderer ensures the
+    // game-running gate + permissions checks fire identically to clicking the
+    // toggle in the Voice Chat settings page.
+    const unsubOverlayCmd = window.api.onVoiceOverlayCommand((payload) => {
+      const action = payload.action
+      console.log('[VoiceChat][App] overlay command:', payload)
+      const store = useVoiceChatStore.getState()
+      if (action === 'enable' && !store.enabled) {
+        store.enable().catch((err) => console.error('[VoiceChat][App] overlay enable failed', err))
+      } else if (action === 'disable' && store.enabled) {
+        store.disable()
+      } else if (action === 'mute') {
+        store.setSelfMuted(true)
+      } else if (action === 'unmute') {
+        store.setSelfMuted(false)
+      } else if (action === 'mute_peer' || action === 'unmute_peer') {
+        const pid = (payload as unknown as { peerId?: number }).peerId
+        if (typeof pid === 'number') store.togglePeerMute(pid)
+      }
+    })
+
     return () => {
       unsubPeerJoined()
       unsubPeerLeft()
       unsubSignal()
       unsubSelfId()
       unsubRelay()
+      unsubOverlayCmd()
     }
   }, [])
 

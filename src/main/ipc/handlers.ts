@@ -955,6 +955,22 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('voice:updateSettings', async (_event, settings: import('../../shared/types').VoiceChatSettings) => {
     await configService.update({ voiceChat: settings })
+    voiceChatService.setDeployOverlay(settings.deployOverlay !== false)
+  })
+
+  ipcMain.handle('voice:setOverlayState', async (
+    _event,
+    state: {
+      selfMuted?: boolean
+      tier?: 'p2p' | 'relay' | 'server' | 'unknown'
+      mutedPeerIds?: number[]
+      speakingPeerIds?: number[]
+    }
+  ) => {
+    if (Array.isArray(state.speakingPeerIds)) {
+      voiceChatService.setSpeakingPeers(state.speakingPeerIds)
+    }
+    voiceChatService.setOverlayState(state)
   })
 
   ipcMain.handle('voice:deployBridge', async () => {
@@ -4590,6 +4606,89 @@ export function registerIpcHandlers(): void {
     return { success: true, extracted: count }
   })
 
+  ipcMain.handle('hostedServer:renameFile', async (_event, id: string, oldPath: string, newName: string) => {
+    return serverManagerService.renameServerEntry(id, oldPath, newName)
+  })
+
+  ipcMain.handle('hostedServer:duplicateFile', async (_event, id: string, filePath: string) => {
+    return serverManagerService.duplicateServerEntry(id, filePath)
+  })
+
+  ipcMain.handle('hostedServer:zipEntry', async (_event, id: string, filePath: string) => {
+    const created = await serverManagerService.zipServerEntry(id, filePath)
+    return { success: true, path: created }
+  })
+
+  ipcMain.handle('hostedServer:searchFiles', async (
+    _event,
+    id: string,
+    subPath: string,
+    query: string
+  ) => {
+    return serverManagerService.searchServerFiles(id, subPath, query)
+  })
+
+  ipcMain.handle('hostedServer:revealInExplorer', async (_event, id: string, filePath: string) => {
+    const abs = serverManagerService.getServerEntryAbsolutePath(id, filePath)
+    if (!existsSync(abs)) throw new Error('File not found')
+    shell.showItemInFolder(abs)
+  })
+
+  ipcMain.handle('hostedServer:openEntry', async (_event, id: string, filePath: string) => {
+    const abs = serverManagerService.getServerEntryAbsolutePath(id, filePath)
+    if (!existsSync(abs)) throw new Error('File not found')
+    const err = await shell.openPath(abs)
+    if (err) throw new Error(err)
+  })
+
+  ipcMain.handle('hostedServer:downloadEntry', async (_event, id: string, filePath: string) => {
+    const win = BrowserWindow.getFocusedWindow()
+    if (!win) return { success: false, canceled: true }
+    const abs = serverManagerService.getServerEntryAbsolutePath(id, filePath)
+    if (!existsSync(abs)) throw new Error('File not found')
+    const name = filePath.split(/[\\/]/).pop() ?? 'download'
+    const { stat: statAsync } = await import('node:fs/promises')
+    const isDir = (await statAsync(abs)).isDirectory()
+    if (isDir) {
+      const result = await dialog.showOpenDialog(win, {
+        title: 'Choose destination folder',
+        properties: ['openDirectory', 'createDirectory']
+      })
+      if (result.canceled || result.filePaths.length === 0) return { success: false, canceled: true }
+      const dest = `${result.filePaths[0]}/${name}`
+      await serverManagerService.downloadServerEntry(id, filePath, dest)
+      return { success: true, path: dest }
+    }
+    const result = await dialog.showSaveDialog(win, {
+      title: 'Save file as',
+      defaultPath: name
+    })
+    if (result.canceled || !result.filePath) return { success: false, canceled: true }
+    await serverManagerService.downloadServerEntry(id, filePath, result.filePath)
+    return { success: true, path: result.filePath }
+  })
+
+  ipcMain.handle('hostedServer:uploadFiles', async (
+    _event,
+    id: string,
+    destSubPath: string,
+    sourcePaths: string[]
+  ) => {
+    const added: string[] = []
+    for (const src of sourcePaths) {
+      if (!src) continue
+      const fname = src.split(/[\\/]/).pop()!
+      const dest = destSubPath ? `${destSubPath}/${fname}` : fname
+      try {
+        await serverManagerService.addFileToServer(id, src, dest)
+        added.push(dest)
+      } catch {
+        // skip individual failures
+      }
+    }
+    return added
+  })
+
   // Test if a port is reachable from the outside using a public port-check service
   ipcMain.handle('hostedServer:testPort', async (_event, port: number): Promise<{ open: boolean; ip?: string; error?: string }> => {
     try {
@@ -5168,6 +5267,14 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('career:deleteProfileBackup', async (_event, backupName: string) => {
     return careerSaveService.deleteProfileBackup(backupName)
+  })
+
+  ipcMain.handle('career:deleteProfile', async (_event, profileName: string, options?: { backup?: boolean }) => {
+    return careerSaveService.deleteProfile(profileName, options ?? {})
+  })
+
+  ipcMain.handle('career:deleteSlot', async (_event, profileName: string, slotName: string, options?: { backup?: boolean }) => {
+    return careerSaveService.deleteSlot(profileName, slotName, options ?? {})
   })
 
   ipcMain.handle('career:setSavePath', async (_event, savePath: string | null) => {

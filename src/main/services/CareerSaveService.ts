@@ -172,7 +172,7 @@ export class CareerSaveService {
         const slots = await this.listSlots(profilePath)
         profiles.push({
           name: entry.name,
-          isRLS: entry.name.toLowerCase().endsWith('_rls'),
+          isRLS: await this.detectIsRLS(entry.name, profilePath, slots),
           path: profilePath,
           deployed: true,
           slots
@@ -190,7 +190,7 @@ export class CareerSaveService {
         const slots = await this.listSlots(profilePath)
         profiles.push({
           name: entry.name,
-          isRLS: entry.name.toLowerCase().endsWith('_rls'),
+          isRLS: await this.detectIsRLS(entry.name, profilePath, slots),
           path: profilePath,
           deployed: false,
           slots
@@ -199,6 +199,74 @@ export class CareerSaveService {
     }
 
     return profiles
+  }
+
+  /**
+   * Determine whether a profile is from an RLS (RLS Career Overhaul) save.
+   * Uses multiple signals so we don't rely solely on the folder name suffix:
+   *   1. Folder name ends with "_rls" (legacy/explicit naming)
+   *   2. Any slot's career/ contains a `speedTrapLeaderboards/` directory (RLS feature)
+   *   3. Any slot's career/vehicles/damage/ directory exists (RLS persistent damage)
+   *   4. career/rls_career/ contains any of: globalEconomy.json, mortgages.json,
+   *      credit.json, taxiRating.json, bank.json — these files are written by the
+   *      RLS mod regardless of how empty the in-game state is
+   *   5. career/playerAttributes.json contains per-brand "*DealershipReputation"
+   *      keys (RLS-only economy)
+   *   6. career/phoneLayout.json includes RLS-exclusive apps (real-estate,
+   *      beam-eats, market-watch)
+   *
+   * Checks every non-corrupted slot (newest first) so an empty/recent slot
+   * doesn't mask RLS data sitting in older slots.
+   */
+  private async detectIsRLS(
+    profileName: string,
+    profilePath: string,
+    slots: CareerSaveSlot[]
+  ): Promise<boolean> {
+    if (profileName.toLowerCase().endsWith('_rls')) return true
+
+    const ordered = [...slots]
+      .filter(s => !s.corrupted)
+      .sort((a, b) => (b.lastSaved ?? '').localeCompare(a.lastSaved ?? ''))
+
+    const RLS_CAREER_FILES = [
+      'globalEconomy.json',
+      'mortgages.json',
+      'credit.json',
+      'taxiRating.json',
+      'bank.json'
+    ]
+
+    for (const slot of ordered) {
+      const careerPath = join(profilePath, slot.name, 'career')
+      if (!existsSync(careerPath)) continue
+
+      // Signal 2 & 3: RLS-only directories
+      if (existsSync(join(careerPath, 'speedTrapLeaderboards'))) return true
+      if (existsSync(join(careerPath, 'vehicles', 'damage'))) return true
+
+      // Signal 4: any RLS-specific file inside rls_career/
+      const rlsDir = join(careerPath, 'rls_career')
+      if (existsSync(rlsDir)) {
+        for (const f of RLS_CAREER_FILES) {
+          if (existsSync(join(rlsDir, f))) return true
+        }
+      }
+
+      // Signal 5: per-brand dealership reputations (RLS-only)
+      try {
+        const attrsRaw = await readFile(join(careerPath, 'playerAttributes.json'), 'utf-8')
+        if (/"[A-Za-z]+DealershipReputation"\s*:/.test(attrsRaw)) return true
+      } catch { /* missing */ }
+
+      // Signal 6: RLS-only phone apps
+      try {
+        const phoneRaw = await readFile(join(careerPath, 'phoneLayout.json'), 'utf-8')
+        if (/"(real-estate|beam-eats|market-watch)"/.test(phoneRaw)) return true
+      } catch { /* missing */ }
+    }
+
+    return false
   }
 
   private async listSlots(profilePath: string): Promise<CareerSaveSlot[]> {
@@ -335,7 +403,8 @@ export class CareerSaveService {
 
     const careerPath = join(slotPath, 'career')
     const info = await this.readInfoJson(slotPath)
-    const isRLS = profileName.toLowerCase().endsWith('_rls')
+    const slots = await this.listSlots(location.path)
+    const isRLS = await this.detectIsRLS(profileName, location.path, slots)
 
     // Read general.json
     let level: string | null = null
@@ -642,7 +711,7 @@ export class CareerSaveService {
 
     const slotPath = join(location.path, best.name)
     const careerPath = join(slotPath, 'career')
-    const isRLS = profileName.toLowerCase().endsWith('_rls')
+    const isRLS = await this.detectIsRLS(profileName, location.path, slots)
 
     let money: number | null = null
     let beamXPLevel: number | null = null
@@ -991,6 +1060,68 @@ export class CareerSaveService {
       } catch (err) {
         return { success: false, error: String(err) }
       }
+    }
+  }
+
+  /**
+   * Permanently delete an entire career profile (all slots).
+   * If `backup` is true, a profile backup is created first so the user can restore.
+   */
+  async deleteProfile(
+    profileName: string,
+    options: { backup?: boolean } = {}
+  ): Promise<{ success: boolean; backupName?: string; error?: string }> {
+    const location = this.findProfilePath(profileName)
+    if (!location) return { success: false, error: `Profile "${profileName}" not found` }
+
+    let backupName: string | undefined
+    if (options.backup) {
+      const result = await this.backupProfile(profileName)
+      if (!result.success) {
+        return { success: false, error: `Pre-delete backup failed: ${result.error}` }
+      }
+      backupName = result.backupName
+    }
+
+    try {
+      await rm(location.path, { recursive: true, force: true })
+      return { success: true, backupName }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  }
+
+  /**
+   * Permanently delete a single save slot from a profile.
+   * If `backup` is true, a slot backup is created first so the user can restore.
+   */
+  async deleteSlot(
+    profileName: string,
+    slotName: string,
+    options: { backup?: boolean } = {}
+  ): Promise<{ success: boolean; backupName?: string; error?: string }> {
+    const location = this.findProfilePath(profileName)
+    if (!location) return { success: false, error: `Profile "${profileName}" not found` }
+
+    const slotPath = join(location.path, slotName)
+    if (!existsSync(slotPath)) {
+      return { success: false, error: `Slot "${slotName}" not found` }
+    }
+
+    let backupName: string | undefined
+    if (options.backup) {
+      const result = await this.backupSlot(profileName, slotName)
+      if (!result.success) {
+        return { success: false, error: `Pre-delete backup failed: ${result.error}` }
+      }
+      backupName = result.backupName
+    }
+
+    try {
+      await rm(slotPath, { recursive: true, force: true })
+      return { success: true, backupName }
+    } catch (err) {
+      return { success: false, error: String(err) }
     }
   }
 
