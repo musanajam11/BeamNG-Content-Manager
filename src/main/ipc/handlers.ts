@@ -101,16 +101,19 @@ export function initializeServices(): {
   voiceMeshService = new VoiceMeshService()
   registryService.setModManager(modManagerService)
 
-  // Auto-deploy/undeploy voice bridge on server join/leave
+  // Auto-deploy/undeploy voice bridge on server join/leave.
+  // Always re-run deployBridge on relay-true so the embedded Lua source
+  // overwrites any stale beamcmVoice.lua left over from an older CM build.
+  // (The on-disk file from a previous install can lack _G.BeamCMVoice,
+  // worldReady gating, retry loop, vc_audio handler, etc., which silently
+  // breaks both the in-game overlay and vc_enable delivery.)
   launcherService.setOnRelayStateChange((inRelay) => {
     const cfg = configService.get()
     if (!cfg.voiceChat.enabled) return
     const userDir = cfg.gamePaths.userDir
     if (!userDir) return
     if (inRelay) {
-      if (!voiceChatService.isDeployed()) {
-        voiceChatService.deployBridge(userDir)
-      }
+      voiceChatService.deployBridge(userDir)
     }
     // Notify renderer so it can auto-init/teardown WebRTC stack.
     // The renderer will then call window.api.voiceEnable() which starts the
@@ -135,6 +138,48 @@ export function initializeServices(): {
   registryService.load().catch((err) =>
     console.error('[Registry] Init failed:', err)
   )
+
+  // Eagerly refresh the voice chat artifacts on startup so embedded source
+  // updates propagate without requiring the user to toggle voice off+on:
+  //   1. Client bridge Lua at <userDir>/lua/ge/extensions/beamcmVoice.lua
+  //      (without this a CM update can leave the previous build's bridge in
+  //       place — the game then runs an old extension lacking _G.BeamCMVoice,
+  //       worldReady gating, vc_audio handler, etc.; vc_enable never reaches
+  //       the server and the in-game overlay shows "app not found").
+  //   2. Server plugin + client overlay zip at every managed hosted server
+  //      (<serverDir>/<resourceFolder>/Server/BeamMPCMVoice/main.lua and
+  //       <serverDir>/<resourceFolder>/Client/beamcm-voice-overlay.zip).
+  //   3. Restore the deployOverlay setting from saved config so a value of
+  //      `false` survives restarts (otherwise it always reverts to true).
+  try {
+    const cfg = configService.get()
+    if (cfg.voiceChat?.enabled) {
+      voiceChatService.setDeployOverlay(cfg.voiceChat.deployOverlay !== false)
+      if (cfg.gamePaths?.userDir) {
+        const r = voiceChatService.deployBridge(cfg.gamePaths.userDir)
+        if (!r.success) console.warn('[VoiceChat] Startup bridge refresh failed:', r.error)
+      }
+      // Refresh server plugin + client overlay on every managed server.
+      // Fire-and-forget; logged individually on failure so one bad server
+      // never blocks app boot.
+      serverManagerService
+        .listServers()
+        .then(async (servers) => {
+          for (const s of servers) {
+            try {
+              const serverDir = serverManagerService.getServerDir(s.config.id)
+              await voiceChatService.deployServerPlugin(serverDir, s.config.resourceFolder)
+              console.log(`[VoiceChat] Refreshed server plugin + overlay for "${s.config.name}" (${s.config.id})`)
+            } catch (err) {
+              console.warn(`[VoiceChat] Startup refresh failed for server ${s.config.id}:`, err)
+            }
+          }
+        })
+        .catch((err) => console.warn('[VoiceChat] listServers failed during startup refresh:', err))
+    }
+  } catch (err) {
+    console.warn('[VoiceChat] Startup refresh threw:', err)
+  }
 
   return {
     config: configService,
@@ -918,7 +963,9 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('voice:enable', async () => {
     const userDir = configService.get().gamePaths?.userDir
     if (!userDir) return { success: false, error: 'User data folder not configured' }
-    if (!voiceChatService.isDeployed()) {
+    // Always re-deploy so the embedded Lua source overwrites any stale
+    // beamcmVoice.lua on disk from an older CM build. Idempotent + cheap.
+    {
       const result = voiceChatService.deployBridge(userDir)
       if (!result.success) return result
     }

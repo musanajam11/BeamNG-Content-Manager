@@ -689,6 +689,12 @@ export class ServerManagerService {
     if (existsSync(pluginDir)) {
       await rm(pluginDir, { recursive: true, force: true })
     }
+    // Also remove the client-side overlay zip distributed via Resources/Client
+    // so joining players stop receiving the in-game voice overlay.
+    const overlayZipPath = join(this.serversDir, id, config.resourceFolder, 'Client', 'beamcm-voice-overlay.zip')
+    if (existsSync(overlayZipPath)) {
+      await rm(overlayZipPath, { force: true })
+    }
   }
 
   /* ── CRUD ── */
