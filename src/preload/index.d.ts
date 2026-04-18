@@ -340,6 +340,7 @@ interface AppAPI {
   onUpdateDownloadProgress(callback: (progress: { percent: number; transferred: number; total: number }) => void): () => void
   onUpdateDownloaded(callback: (info: { version: string }) => void): () => void
   installUpdate(): Promise<void>
+  checkForAppUpdate(): Promise<{ ok: boolean; version?: string | null; reason?: string }>
 
   // Career Save Management
   careerListProfiles(): Promise<Array<{

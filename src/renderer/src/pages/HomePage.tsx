@@ -100,6 +100,16 @@ export function HomePage(): React.JSX.Element {
     window.api.getRecentServers().then((recent) => {
       setRecentServerIdents(recent.map((r) => r.ident))
     }).catch(() => {})
+
+    // Re-check for app updates whenever the user lands on the home tab.
+    // The startup check only runs once at boot so a release published mid-session
+    // would otherwise go unnoticed until the next full restart. Throttle to
+    // once per 5 minutes so navigating back and forth doesn't spam GitHub.
+    const last = Number(sessionStorage.getItem('lastUpdateCheck') || 0)
+    if (Date.now() - last > 5 * 60 * 1000) {
+      sessionStorage.setItem('lastUpdateCheck', String(Date.now()))
+      window.api.checkForAppUpdate?.().catch(() => {})
+    }
   }, [])
 
   const favoriteServers = servers.filter((s) => favorites.has(`${s.ip}:${s.port}`)).slice(0, 6)

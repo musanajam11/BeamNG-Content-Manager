@@ -525,6 +525,8 @@ const api = {
     return () => ipcRenderer.removeListener('updater:update-downloaded', handler)
   },
   installUpdate: () => ipcRenderer.invoke('updater:install'),
+  checkForAppUpdate: () =>
+    ipcRenderer.invoke('updater:check') as Promise<{ ok: boolean; version?: string | null; reason?: string }>,
 
   // Career Save Management
   careerListProfiles: () =>

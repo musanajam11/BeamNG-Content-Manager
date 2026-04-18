@@ -264,6 +264,22 @@ app.whenReady().then(async () => {
     autoUpdater.quitAndInstall()
   })
 
+  // Allow the renderer to re-trigger an update check (e.g. when the user
+  // returns to the home tab). The auto-updater is debounced internally so
+  // back-to-back calls won't hammer GitHub.
+  ipcMain.handle('updater:check', async () => {
+    if (is.dev) return { ok: false, reason: 'dev' }
+    try {
+      const result = await autoUpdater.checkForUpdates()
+      return {
+        ok: true,
+        version: result?.updateInfo?.version ?? null
+      }
+    } catch (err) {
+      return { ok: false, reason: (err as Error).message }
+    }
+  })
+
   // System tray — wrapped in try-catch because Linux desktops (especially
   // Steam Deck gaming mode) may lack a system tray / StatusNotifier service,
   // which would otherwise crash the app on startup.
