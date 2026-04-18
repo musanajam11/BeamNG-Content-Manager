@@ -56,7 +56,10 @@ export class GameDiscoveryService {
     if (this.cachedPaths) return this.cachedPaths
 
     const installDir = await this.findInstallDir()
-    const userDir = this.findUserDir()
+    const rawUserDir = this.findUserDir()
+    // Even auto-detected paths run through normalizeUserDir so we correctly
+    // pick up renamed version folders or non-standard layouts.
+    const userDir = rawUserDir ? this.normalizeUserDir(rawUserDir) : null
 
     // Determine executable — on Linux/Proton the actual binary is still .exe
     let executable = installDir ? join(installDir, GAME_EXECUTABLE) : null
@@ -290,6 +293,70 @@ export class GameDiscoveryService {
   }
 
   /** Find the latest versioned subdirectory (e.g. "0.33") or "current" symlink */
+  /**
+   * Normalize a user-supplied BeamNG user folder path so it always points at
+   * the active version subfolder.
+   *
+   * Strategy (most-specific to least-specific):
+   *  1. If the path itself contains BeamNG signature folders (`mods`, `lua`,
+   *     `settings`, `vehicles`) → it IS the version folder, use as-is.
+   *  2. Try the conventional `current` subfolder.
+   *  3. Try numeric version subfolders (e.g. `0.33`), highest version first.
+   *  4. Scan all immediate subfolders for BeamNG signature folders — useful if
+   *     the user renamed `current` or has a non-standard layout. Pick the most
+   *     recently modified match.
+   *  5. Fall back to the original path.
+   */
+  normalizeUserDir(userDir: string): string {
+    if (!userDir || !existsSync(userDir)) return userDir
+
+    if (this.looksLikeBeamNGUserVersionDir(userDir)) return userDir
+
+    const currentDir = join(userDir, 'current')
+    if (existsSync(currentDir) && this.looksLikeBeamNGUserVersionDir(currentDir)) {
+      return currentDir
+    }
+
+    const versionDir = this.findLatestVersionDir(userDir)
+    if (versionDir && this.looksLikeBeamNGUserVersionDir(versionDir)) {
+      return versionDir
+    }
+
+    // Last resort: scan every immediate subfolder for the BeamNG signature.
+    // Handles arbitrary rename of the version folder.
+    try {
+      const candidates: Array<{ path: string; mtime: number }> = []
+      for (const entry of readdirSync(userDir)) {
+        const full = join(userDir, entry)
+        try {
+          if (statSync(full).isDirectory() && this.looksLikeBeamNGUserVersionDir(full)) {
+            candidates.push({ path: full, mtime: statSync(full).mtimeMs })
+          }
+        } catch { /* ignore unreadable */ }
+      }
+      if (candidates.length > 0) {
+        candidates.sort((a, b) => b.mtime - a.mtime)
+        return candidates[0].path
+      }
+    } catch { /* ignore */ }
+
+    return userDir
+  }
+
+  /**
+   * A BeamNG version folder reliably contains at least one of these subfolders.
+   * `mods/` is the most distinctive; `lua/`, `settings/`, `vehicles/` confirm.
+   */
+  private looksLikeBeamNGUserVersionDir(dir: string): boolean {
+    const markers = ['mods', 'lua', 'settings', 'vehicles', 'levels']
+    let hits = 0
+    for (const m of markers) {
+      if (existsSync(join(dir, m))) hits++
+      if (hits >= 2) return true
+    }
+    return false
+  }
+
   private findLatestVersionDir(beamngDir: string): string | null {
     if (!existsSync(beamngDir)) return null
 

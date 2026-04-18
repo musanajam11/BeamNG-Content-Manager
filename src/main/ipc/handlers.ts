@@ -788,7 +788,11 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('game:setCustomPaths', async (_event, installDir: string, userDir: string): Promise<void> => {
     const exeName = process.platform === 'win32' ? 'BeamNG.drive.exe' : 'BeamNG.drive'
     let executable = join(installDir, exeName)
-    const gameVersion = await discoveryService.readGameVersion(userDir)
+    // Normalize: if the user pointed at the root user folder (e.g. E:\BeamData),
+    // descend into the active version subfolder (e.g. E:\BeamData\current) so all
+    // downstream path joins (mods/, lua/, settings/) resolve correctly.
+    const normalizedUserDir = discoveryService.normalizeUserDir(userDir)
+    const gameVersion = await discoveryService.readGameVersion(normalizedUserDir)
     // Detect Proton: on Linux, if the native binary doesn't exist but a .exe does, it's Proton
     let isProton = false
     if (process.platform === 'linux') {
@@ -802,7 +806,7 @@ export function registerIpcHandlers(): void {
         isProton = installDir.includes('steamapps')
       }
     }
-    await configService.setGamePaths(installDir, userDir, executable, gameVersion, isProton)
+    await configService.setGamePaths(installDir, normalizedUserDir, executable, gameVersion, isProton)
     discoveryService.clearCache()
   })
 
@@ -2825,12 +2829,39 @@ export function registerIpcHandlers(): void {
     return launcherService.getLogs()
   })
 
+  // Resolve possible BeamMP.zip locations under a configured user folder.
+  // BeamNG accepts either the root user folder (e.g. E:\BeamData) or a
+  // version subfolder (e.g. E:\BeamData\current). Mods live under the
+  // version subfolder. Probe `current`, the root itself, and any numeric
+  // version subfolders (e.g. 0.32) so the check works regardless of how
+  // the user pointed us.
+  const resolveBeamMPZipCandidates = async (userDir: string): Promise<string[]> => {
+    const { readdirSync, statSync } = await import('fs')
+    const { join } = await import('path')
+    const subdirs = new Set<string>(['current', ''])
+    try {
+      for (const entry of readdirSync(userDir)) {
+        try {
+          if (/^\d+\.\d+$/.test(entry) && statSync(join(userDir, entry)).isDirectory()) {
+            subdirs.add(entry)
+          }
+        } catch { /* ignore unreadable entry */ }
+      }
+    } catch { /* userDir may not exist yet */ }
+    const candidates = new Set<string>()
+    for (const sub of subdirs) {
+      const base = sub ? join(userDir, sub) : userDir
+      candidates.add(join(base, 'mods', 'multiplayer', 'BeamMP.zip'))
+    }
+    return Array.from(candidates)
+  }
+
   ipcMain.handle('game:checkBeamMPInstalled', async (): Promise<boolean> => {
     const userDir = configService.get().gamePaths?.userDir
     if (!userDir) return false
     const { existsSync } = await import('fs')
-    const { join } = await import('path')
-    return existsSync(join(userDir, 'mods', 'multiplayer', 'BeamMP.zip'))
+    const candidates = await resolveBeamMPZipCandidates(userDir)
+    return candidates.some((p) => existsSync(p))
   })
 
   ipcMain.handle('game:installBeamMP', async (): Promise<{ success: boolean; error?: string }> => {
@@ -2839,9 +2870,16 @@ export function registerIpcHandlers(): void {
     try {
       const { existsSync, mkdirSync, writeFileSync } = await import('fs')
       const { join } = await import('path')
-      const modDir = join(userDir, 'mods', 'multiplayer')
+      // If the zip already exists in any known version folder, we're done.
+      const candidates = await resolveBeamMPZipCandidates(userDir)
+      const existing = candidates.find((p) => existsSync(p))
+      if (existing) return { success: true }
+      // Pick install destination: prefer <userDir>\current if that folder
+      // exists (canonical BeamNG layout), else fall back to <userDir>.
+      const currentDir = join(userDir, 'current')
+      const baseDir = existsSync(currentDir) ? currentDir : userDir
+      const modDir = join(baseDir, 'mods', 'multiplayer')
       const zipPath = join(modDir, 'BeamMP.zip')
-      if (existsSync(zipPath)) return { success: true }
       mkdirSync(modDir, { recursive: true })
       const data = await backendService.downloadMod()
       writeFileSync(zipPath, Buffer.from(data))

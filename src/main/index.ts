@@ -185,8 +185,21 @@ app.whenReady().then(async () => {
   initVehicleAssetService(config)
   await serverManager.init()
 
+  // One-time migration: if a previously saved userDir points at the BeamNG root
+  // (e.g. E:\BeamData) instead of the active version subfolder (E:\BeamData\current),
+  // normalize it so all features (mods, careers, settings, etc.) resolve correctly.
+  const gp = appConfig.gamePaths
+  if (gp?.userDir) {
+    const { GameDiscoveryService } = await import('./services/GameDiscoveryService')
+    const normalized = new GameDiscoveryService().normalizeUserDir(gp.userDir)
+    if (normalized && normalized !== gp.userDir) {
+      console.log(`[config] Normalizing userDir: ${gp.userDir} -> ${normalized}`)
+      await config.setGamePaths(gp.installDir, normalized, gp.executable, gp.gameVersion, gp.isProton)
+    }
+  }
+
   // Repair db.json entries missing modname (prevents BeamMP MPModManager Lua crash)
-  const userDir = appConfig.gamePaths?.userDir
+  const userDir = config.get().gamePaths?.userDir
   if (userDir) {
     modManagerService.repairModNames(userDir).catch((err) =>
       console.error('[ModManager] repairModNames failed:', err)
