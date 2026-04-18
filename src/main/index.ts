@@ -147,6 +147,23 @@ app.whenReady().then(async () => {
     }
   })
 
+  // Allow the renderer to use the microphone for voice chat without prompting.
+  // Without this handler Electron's default request pipeline can drop the
+  // promise silently on Windows when the OS-level mic permission is missing,
+  // causing useVoiceChatStore.enable() to throw before vc_enable ever
+  // reaches the BeamMP server.
+  const ses = (await import('electron')).session.defaultSession
+  ses.setPermissionRequestHandler((_wc, permission, callback) => {
+    if (permission === 'media' || permission === 'mediaKeySystem') {
+      callback(true)
+      return
+    }
+    callback(false)
+  })
+  ses.setPermissionCheckHandler((_wc, permission) => {
+    return permission === 'media' || permission === 'mediaKeySystem'
+  })
+
   // Initialize services and load config
   const { config, backend, serverManager, modManagerService } = initializeServices()
   const appConfig = await config.load()

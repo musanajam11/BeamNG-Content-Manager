@@ -172,10 +172,25 @@ export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
 
   enable: async () => {
     const { settings } = get()
+    // Register on the BeamMP server FIRST so we appear in the voice peer
+    // list even if the local audio stack fails to initialise (e.g. mic
+    // denied, no input device, Opus codec missing). Other voice peers can
+    // still be discovered and we get the in-game overlay status update.
+    // Previously this happened only after getUserMedia + AudioCapture
+    // succeeded, which silently dropped server-side enable on any audio
+    // failure — leaving us invisible to the server and to other voice
+    // peers.
+    set({ enabled: true, available: true })
+    try {
+      console.log('[VoiceChat] Sending vc_enable to server (signal-only, audio init follows)')
+      await window.api.voiceEnable()
+    } catch (err) {
+      console.error('[VoiceChat] window.api.voiceEnable() failed:', err)
+    }
     try {
       const support = await probeOpusSupport()
       if (!support.encoder || !support.decoder) {
-        console.error('[VoiceChat] Opus unavailable:', support.reason)
+        console.error('[VoiceChat] Opus unavailable — staying signal-only:', support.reason)
         return
       }
 
@@ -228,8 +243,6 @@ export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
         transmitGainNode: gainNode,
       })
 
-      await window.api.voiceEnable()
-
       // VAD speaking detection on remote peers.
       speakingInterval = setInterval(() => {
         const { peers, settings: s } = get()
@@ -260,7 +273,12 @@ export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
           .catch(() => undefined)
       }, 100)
     } catch (err) {
-      console.error('[VoiceChat] Failed to enable:', err)
+      console.error('[VoiceChat] Failed to enable audio (signal-only mode active):', err)
+      // Surface a UI hint so the user knows audio failed even though the
+      // server-side registration succeeded.
+      try {
+        window.dispatchEvent(new CustomEvent('voicechat:audio-error', { detail: String(err) }))
+      } catch { /* ignore */ }
     }
   },
 
