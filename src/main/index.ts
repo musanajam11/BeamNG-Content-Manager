@@ -68,7 +68,11 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
       spellcheck: false,
-      backgroundThrottling: true,
+      // Must remain false: voice chat (renderer) relies on setInterval / AudioContext
+      // scheduling that Chromium throttles when the window is backgrounded. With
+      // BeamNG.drive in the foreground the CM window is always backgrounded, which
+      // would chop and eventually silence voice playback. See v0.3.28 regression.
+      backgroundThrottling: false,
       v8CacheOptions: 'code'
     }
   })
@@ -87,14 +91,12 @@ function createWindow(): void {
     }
   })
 
-  // When hidden to tray, release retained renderer/session memory so the app
-  // idles light. Cleared caches will be re-fetched on next show.
+  // When hidden to tray, release renderer HTTP cache so the app idles light.
+  // NOTE: do NOT force gc() here — voice chat runs in the renderer and a
+  // synchronous GC pause stalls the AudioContext scheduler, causing dropouts.
   mainWindow.on('hide', () => {
     try {
       mainWindow?.webContents.session.clearCache().catch(() => { /* ignore */ })
-      // Hint V8 to compact (only effective when --js-flags=--expose-gc was passed).
-      const g = globalThis as { gc?: () => void }
-      if (typeof g.gc === 'function') g.gc()
     } catch { /* ignore */ }
   })
 

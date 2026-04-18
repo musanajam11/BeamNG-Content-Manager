@@ -37,9 +37,17 @@ export function getAudioContext(): AudioContext {
     // both wasteful and a common source of clicks/garbled audio when the
     // input is short (60 ms) per-frame buffers.
     audioCtx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' })
+    // Defense-in-depth: if Chromium ever auto-suspends the context (window
+    // backgrounded, OS audio device change, system sleep, etc.) try to
+    // resume it again so voice playback doesn't go permanently silent.
+    audioCtx.addEventListener('statechange', () => {
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => { /* user-gesture rules — best effort */ })
+      }
+    })
   }
   if (audioCtx.state === 'suspended') {
-    audioCtx.resume()
+    audioCtx.resume().catch(() => { /* ignore */ })
   }
   return audioCtx
 }

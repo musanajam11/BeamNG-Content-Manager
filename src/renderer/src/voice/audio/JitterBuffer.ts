@@ -74,7 +74,15 @@ export class JitterBuffer {
 
   async start(): Promise<void> {
     await this.decoder.start()
-    this.decoder.on('pcm', (pcm, _ts) => this.onDecoded(pcm))
+    // Recover the originating frame.seq from the decoder's output timestamp
+    // (which round-trips frame.timestampUs through WebCodecs). Earlier this
+    // file used a parallel `pendingSeqs` queue, but ANY mismatch between
+    // pushes and decoded outputs (decode throw, decoder warmup latency,
+    // async backpressure) permanently desynced the queue — every later
+    // PCM was stamped with the wrong seq, fell past `nextSeq`, and was
+    // dropped as past-due. That manifested as severely choppy audio that
+    // eventually stopped completely.
+    this.decoder.on('pcm', (pcm, ts) => this.onDecoded(pcm, ts))
     this.decoder.on('error', (e) => console.warn('[JitterBuffer] decode error', e))
     // Tick at frame cadence to drain the buffer.
     this.tickHandle = setInterval(() => this.tick(), VOICE_CODEC.frameMs)
@@ -88,31 +96,31 @@ export class JitterBuffer {
       this.framesDropped++
       return
     }
-    // WebCodecs AudioDecoder is async but preserves input/output order for
-    // Opus. Queue this seq so onDecoded can pull the matching one when the
-    // PCM eventually arrives. Previously we used a single shared
-    // `pendingSeq` field which was overwritten by every push() before the
-    // prior decode finished — almost every frame ended up stamped with the
-    // wrong seq, producing the "broken / unusable audio" symptom.
-    //
-    // Cap the queue so a stalled decoder (e.g. tab backgrounded long
-    // enough to throttle the worker) can't grow unboundedly and leak
-    // memory over a long session. If we overflow, drop the oldest pending
-    // seq — the corresponding PCM (whenever it arrives) will be
-    // recognised as past-due and discarded by onDecoded.
-    if (this.pendingSeqs.length > this.maxDepth * 4) {
-      this.pendingSeqs.shift()
-      this.framesDropped++
+    // Remember which seq this timestamp belongs to so onDecoded can look
+    // it up. WebCodecs AudioDecoder preserves chunk.timestamp on the
+    // emitted AudioData, so this association survives any internal
+    // reordering, dropped outputs, or decoder errors without ever
+    // desyncing the stream.
+    this.tsToSeq.set(frame.timestampUs, frame.seq)
+    // Cap the lookup map so a stalled decoder can't leak memory.
+    if (this.tsToSeq.size > this.maxDepth * 6) {
+      const oldest = this.tsToSeq.keys().next().value as number | undefined
+      if (oldest !== undefined) this.tsToSeq.delete(oldest)
     }
-    this.pendingSeqs.push(frame.seq)
     this.decoder.decode(frame)
   }
 
-  private pendingSeqs: number[] = []
+  /** timestampUs (from frame.timestampUs / chunk.timestamp) → originating seq. */
+  private tsToSeq = new Map<number, number>()
 
-  private onDecoded(pcm: Float32Array): void {
-    const seq = this.pendingSeqs.shift()
-    if (seq === undefined) return
+  private onDecoded(pcm: Float32Array, ts: number): void {
+    const seq = this.tsToSeq.get(ts)
+    if (seq === undefined) {
+      // Stale output (e.g. arrived after we closed or after a reset).
+      this.framesDropped++
+      return
+    }
+    this.tsToSeq.delete(ts)
     if (this.nextSeq === null) this.nextSeq = seq
     // If the decoded frame is already in the past, drop it.
     if (seqDelta(this.nextSeq, seq) < 0) {
@@ -224,6 +232,7 @@ export class JitterBuffer {
       this.tickHandle = null
     }
     this.buffer.clear()
+    this.tsToSeq.clear()
     this.decoder.close()
     try {
       this.outputNode.disconnect()
