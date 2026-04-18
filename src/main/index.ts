@@ -66,7 +66,10 @@ function createWindow(): void {
     icon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: false,
+      spellcheck: false,
+      backgroundThrottling: true,
+      v8CacheOptions: 'code'
     }
   })
 
@@ -82,6 +85,17 @@ function createWindow(): void {
       e.preventDefault()
       mainWindow?.hide()
     }
+  })
+
+  // When hidden to tray, release retained renderer/session memory so the app
+  // idles light. Cleared caches will be re-fetched on next show.
+  mainWindow.on('hide', () => {
+    try {
+      mainWindow?.webContents.session.clearCache().catch(() => { /* ignore */ })
+      // Hint V8 to compact (only effective when --js-flags=--expose-gc was passed).
+      const g = globalThis as { gc?: () => void }
+      if (typeof g.gc === 'function') g.gc()
+    } catch { /* ignore */ }
   })
 
   mainWindow.on('maximize', () => {

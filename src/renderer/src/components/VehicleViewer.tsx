@@ -1391,7 +1391,50 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
       cancelAnimationFrame(frameIdRef.current)
       resizeObserver.disconnect()
       controls.dispose()
+
+      // Deep dispose all scene resources to free GPU memory between vehicle switches
+      const disposedTextures = new Set<THREE.Texture>()
+      const disposedMaterials = new Set<THREE.Material>()
+      const disposeMaterial = (mat: THREE.Material): void => {
+        if (disposedMaterials.has(mat)) return
+        disposedMaterials.add(mat)
+        const m = mat as THREE.Material & Record<string, unknown>
+        for (const key of Object.keys(m)) {
+          const val = m[key]
+          if (val && typeof val === 'object' && (val as { isTexture?: boolean }).isTexture) {
+            const tex = val as THREE.Texture
+            if (!disposedTextures.has(tex)) {
+              disposedTextures.add(tex)
+              tex.dispose()
+            }
+          }
+        }
+        mat.dispose()
+      }
+      scene.traverse((obj) => {
+        const mesh = obj as THREE.Mesh
+        if (mesh.geometry) {
+          try { mesh.geometry.dispose() } catch { /* ignore */ }
+        }
+        const matAny = (mesh as THREE.Mesh).material
+        if (matAny) {
+          if (Array.isArray(matAny)) matAny.forEach(disposeMaterial)
+          else disposeMaterial(matAny as THREE.Material)
+        }
+      })
+      // Drop scene background/environment textures too
+      const sceneBg = scene.background as unknown as THREE.Texture | null
+      if (sceneBg && (sceneBg as { isTexture?: boolean }).isTexture && !disposedTextures.has(sceneBg)) {
+        disposedTextures.add(sceneBg); sceneBg.dispose()
+      }
+      const sceneEnv = scene.environment as THREE.Texture | null
+      if (sceneEnv && !disposedTextures.has(sceneEnv)) {
+        disposedTextures.add(sceneEnv); sceneEnv.dispose()
+      }
+      scene.clear()
+
       renderer.dispose()
+      renderer.forceContextLoss?.()
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement)
       }

@@ -31,6 +31,7 @@ import { InputBindingsService } from '../services/InputBindingsService'
 import { VoiceChatService } from '../services/VoiceChatService'
 import { VoiceMeshService } from '../services/VoiceMeshService'
 import { parseBeamNGJson } from '../utils/parseBeamNGJson'
+import { LRUCache } from '../utils/lruCache'
 import type { AppConfig, GamePaths, ServerInfo, RepoSortOrder, VehicleDetail, VehicleConfigInfo, VehicleConfigData, VehicleEditorData, SlotInfo, VariableInfo, WheelPlacement, ActiveMeshResult, HostedServerConfig, GPSRoute, ScheduledTask, MapRichMetadata } from '../../shared/types'
 import type { RegistrySearchOptions, RegistryRepository, BeamModMetadata, InstalledRegistryMod } from '../../shared/registry-types'
 
@@ -1044,7 +1045,7 @@ export function registerIpcHandlers(): void {
   })
 
   // ── GPS Map POIs ──
-  const poiCache = new Map<string, import('../../shared/types').GPSMapPOI[]>()
+  const poiCache = new LRUCache<string, import('../../shared/types').GPSMapPOI[]>(20)
 
   /** Turn raw POI names (e.g. "spawns_gasStation01_parking", "gasStation_01") into short readable labels */
   function cleanPOIName(raw: string, type: import('../../shared/types').GPSMapPOI['type']): string {
@@ -1377,7 +1378,7 @@ export function registerIpcHandlers(): void {
   })
 
   // Vehicle preview extraction from zip
-  const vehiclePreviewCache = new Map<string, string | null>()
+  const vehiclePreviewCache = new LRUCache<string, string | null>(80)
 
   ipcMain.handle('game:getVehiclePreview', async (_event, vehicleName: string): Promise<string | null> => {
     if (vehiclePreviewCache.has(vehicleName)) return vehiclePreviewCache.get(vehicleName)!
@@ -2934,7 +2935,7 @@ export function registerIpcHandlers(): void {
 
   // ── Map Preview ──
   // In-memory cache so we only read zip files once per level
-  const mapPreviewCache = new Map<string, string | null>()
+  const mapPreviewCache = new LRUCache<string, string | null>(30)
 
   ipcMain.handle('map:getPreview', async (_event, mapPath: string, modZipPath?: string): Promise<string | null> => {
     try {
@@ -3014,7 +3015,7 @@ export function registerIpcHandlers(): void {
   })
 
   // ── Map Minimap (composite: terrain base colour + minimap overlay, disk-cached) ──
-  const minimapCache = new Map<string, { dataUrl: string; worldBounds?: { minX: number; maxX: number; minY: number; maxY: number } } | null>()
+  const minimapCache = new LRUCache<string, { dataUrl: string; worldBounds?: { minX: number; maxX: number; minY: number; maxY: number } } | null>(10)
   const minimapCacheDir = join(app.getPath('userData'), 'cache', 'minimaps')
 
   ipcMain.handle('map:getMinimap', async (_event, mapPath: string): Promise<{ dataUrl: string; worldBounds?: { minX: number; maxX: number; minY: number; maxY: number } } | null> => {
@@ -3076,7 +3077,7 @@ export function registerIpcHandlers(): void {
   })
 
   // ── Map Terrain Base ──
-  const terrainBaseCache = new Map<string, string | null>()
+  const terrainBaseCache = new LRUCache<string, string | null>(10)
 
   ipcMain.handle('map:getTerrainBase', async (_event, mapPath: string, modZipPath?: string): Promise<string | null> => {
     try {
@@ -3129,7 +3130,7 @@ export function registerIpcHandlers(): void {
   })
 
   // ── Map Heightmap ──
-  const heightmapCache = new Map<string, string | null>()
+  const heightmapCache = new LRUCache<string, string | null>(8)
 
   ipcMain.handle('map:getHeightmap', async (_event, mapPath: string): Promise<string | null> => {
     try {
@@ -3317,7 +3318,7 @@ export function registerIpcHandlers(): void {
   })
 
   // ── Map Road Route (A* pathfinding along DecalRoads) ──
-  const roadNetworkCache = new Map<string, RoadNetwork>()
+  const roadNetworkCache = new LRUCache<string, RoadNetwork>(8)
 
   ipcMain.handle('map:findRoute', async (
     _event,
@@ -3363,7 +3364,7 @@ export function registerIpcHandlers(): void {
   })
 
   // ── Flag Image Cache ──
-  const flagMemCache = new Map<string, string>()
+  const flagMemCache = new LRUCache<string, string>(64)
   const flagCacheDir = join(app.getPath('userData'), 'cache', 'flags')
 
   ipcMain.handle('flags:batch', async (_event, codes: string[]): Promise<Record<string, string>> => {
@@ -4017,7 +4018,7 @@ export function registerIpcHandlers(): void {
   })
 
   // ── Repo Thumbnail Cache ──
-  const thumbMemCache = new Map<string, string>()
+  const thumbMemCache = new LRUCache<string, string>(150)
   const thumbCacheDir = join(app.getPath('userData'), 'cache', 'repo-thumbs')
 
   ipcMain.handle(

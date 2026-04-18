@@ -132,18 +132,30 @@ export default function GPS3DScene({
     return () => {
       cancelAnimationFrame(frameIdRef.current)
       obs.disconnect()
+      scene.traverse((obj) => {
+        if (obj instanceof THREE.Mesh) {
+          obj.geometry?.dispose()
+          const m = obj.material as THREE.Material | THREE.Material[]
+          const dm = (mat: THREE.Material): void => {
+            const rec = mat as THREE.Material & Record<string, unknown>
+            for (const k of Object.keys(rec)) {
+              const v = rec[k]
+              if (v && typeof v === 'object' && (v as { isTexture?: boolean }).isTexture) {
+                try { (v as THREE.Texture).dispose() } catch { /* ignore */ }
+              }
+            }
+            mat.dispose()
+          }
+          if (Array.isArray(m)) m.forEach(dm)
+          else if (m) dm(m)
+        }
+      })
+      scene.clear()
       renderer.dispose()
+      renderer.forceContextLoss?.()
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement)
       }
-      scene.traverse((obj) => {
-        if (obj instanceof THREE.Mesh) {
-          obj.geometry.dispose()
-          const m = obj.material
-          if (Array.isArray(m)) m.forEach((x) => x.dispose())
-          else m.dispose()
-        }
-      })
     }
   }, [])
 
