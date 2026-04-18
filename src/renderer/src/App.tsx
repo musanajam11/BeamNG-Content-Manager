@@ -21,6 +21,7 @@ import { SetupWizard } from './pages/SetupWizard'
 import { VoiceChatPanel } from './components/VoiceChatPanel'
 import { useAppStore } from './stores/useAppStore'
 import { useServerStore } from './stores/useServerStore'
+import { useVoiceChatStore } from './stores/useVoiceChatStore'
 import { useThemeStore, resolveColorMode, applyTheme } from './stores/useThemeStore'
 import i18n from './i18n'
 
@@ -163,6 +164,49 @@ function App(): React.JSX.Element {
       }
     })
     return () => { unsub(); stopVehiclePoller() }
+  }, [])
+
+  // Voice chat bootstrap — ALWAYS active at app level so signals are never dropped
+  // and so we can auto-enable when the user joins a server. Without this, the
+  // renderer's WebRTC stack would only initialise when the user manually toggles
+  // voice in the Voice Chat settings page, leaving server-side enable orphaned.
+  useEffect(() => {
+    // Always-on subscriptions to incoming WebRTC signalling events from main.
+    const unsubPeerJoined = window.api.onVoicePeerJoined((data) => {
+      console.log('[VoiceChat][App] peerJoined', data)
+      useVoiceChatStore.getState().handlePeerJoined(data.playerId, data.playerName, data.polite)
+    })
+    const unsubPeerLeft = window.api.onVoicePeerLeft((data) => {
+      console.log('[VoiceChat][App] peerLeft', data)
+      useVoiceChatStore.getState().handlePeerLeft(data.playerId)
+    })
+    const unsubSignal = window.api.onVoiceSignal((data) => {
+      useVoiceChatStore.getState().handleSignal(data.fromId, data.payload)
+    })
+
+    // Auto-enable / disable when joining or leaving a server
+    const unsubRelay = window.api.onVoiceRelayState(({ inRelay }) => {
+      const cfg = useAppStore.getState().config
+      if (!cfg?.voiceChat?.enabled) {
+        console.log('[VoiceChat][App] relayState change but voice disabled in settings — ignoring')
+        return
+      }
+      const store = useVoiceChatStore.getState()
+      if (inRelay && !store.enabled) {
+        console.log('[VoiceChat][App] joined server — auto-enabling voice')
+        store.enable().catch((err) => console.error('[VoiceChat][App] auto-enable failed', err))
+      } else if (!inRelay && store.enabled) {
+        console.log('[VoiceChat][App] left server — auto-disabling voice')
+        store.disable()
+      }
+    })
+
+    return () => {
+      unsubPeerJoined()
+      unsubPeerLeft()
+      unsubSignal()
+      unsubRelay()
+    }
   }, [])
 
   // Apply appearance settings and language once config is loaded

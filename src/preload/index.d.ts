@@ -478,6 +478,7 @@ interface AppAPI {
   onVoicePeerJoined(callback: (data: { playerId: number; playerName: string; polite?: boolean }) => void): () => void
   onVoicePeerLeft(callback: (data: { playerId: number }) => void): () => void
   onVoiceSignal(callback: (data: { fromId: number; payload: string }) => void): () => void
+  onVoiceRelayState(callback: (data: { inRelay: boolean }) => void): () => void
 
   // Livery Editor
   liveryGetUVTemplate(vehicleName: string): Promise<{ template: string | null; width: number; height: number }>

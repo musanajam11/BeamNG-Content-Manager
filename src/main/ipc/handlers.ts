@@ -108,13 +108,13 @@ export function initializeServices(): {
       if (!voiceChatService.isDeployed()) {
         voiceChatService.deployBridge(userDir)
       }
-      voiceChatService.enable().catch((err) =>
-        console.error('[VoiceChat] Auto-enable failed:', err)
-      )
-    } else {
-      voiceChatService.disable().catch((err) =>
-        console.error('[VoiceChat] Auto-disable failed:', err)
-      )
+    }
+    // Notify renderer so it can auto-init/teardown WebRTC stack.
+    // The renderer will then call window.api.voiceEnable() which starts the
+    // main-side service (file-based bridge), keeping both sides in lock-step.
+    const wins = BrowserWindow.getAllWindows()
+    for (const win of wins) {
+      try { win.webContents.send('voice:relayState', { inRelay }) } catch { /* ignore */ }
     }
   })
 

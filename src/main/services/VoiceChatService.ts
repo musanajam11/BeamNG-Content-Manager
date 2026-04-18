@@ -16,7 +16,7 @@ local M = {}
 
 local incomingFile = "settings/BeamCM/vc_incoming.json"
 local outgoingFile = "settings/BeamCM/vc_outgoing.json"
-local pollInterval = 0.25
+local pollInterval = 0.1
 local timer = 0
 local registered = false
 local pollCount = 0
@@ -290,7 +290,9 @@ function vcOnEnable(player_id, data)
     MP.TriggerClientEvent(player_id, "vc_peers_list", table.concat(peerList, ","))
     print(TAG .. "Sent peers list to " .. name .. ": " .. #peerList .. " peer(s)")
   else
-    print(TAG .. name .. " is the first voice peer (no existing peers to send)")
+    -- Always acknowledge so the client's retry loop stops, even if alone
+    MP.TriggerClientEvent(player_id, "vc_peers_list", "")
+    print(TAG .. name .. " is the first voice peer (sent empty peers list as ack)")
   end
 end
 

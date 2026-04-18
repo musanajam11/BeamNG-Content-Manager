@@ -14,9 +14,6 @@ export function VoiceChatPanel(): React.JSX.Element | null {
   const pttActive = useVoiceChatStore((s) => s.pttActive)
   const settings = useVoiceChatStore((s) => s.settings)
   const setPttActive = useVoiceChatStore((s) => s.setPttActive)
-  const handlePeerJoined = useVoiceChatStore((s) => s.handlePeerJoined)
-  const handlePeerLeft = useVoiceChatStore((s) => s.handlePeerLeft)
-  const handleSignal = useVoiceChatStore((s) => s.handleSignal)
   const updateSpatialAudio = useVoiceChatStore((s) => s.updateSpatialAudio)
   const peersMap = useVoiceChatStore((s) => s.peers)
   const config = useAppStore((s) => s.config)
@@ -58,32 +55,11 @@ export function VoiceChatPanel(): React.JSX.Element | null {
     }
   }, [enabled, onKeyDown, onKeyUp])
 
-  // Listen for voice events from main process
-  useEffect(() => {
-    if (!enabled) return
-
-    const unsubPeerJoined = window.api.onVoicePeerJoined(
-      (data: { playerId: number; playerName: string; polite?: boolean }) => {
-        handlePeerJoined(data.playerId, data.playerName, data.polite)
-      }
-    )
-    const unsubPeerLeft = window.api.onVoicePeerLeft(
-      (data: { playerId: number }) => {
-        handlePeerLeft(data.playerId)
-      }
-    )
-    const unsubSignal = window.api.onVoiceSignal(
-      (data: { fromId: number; payload: string }) => {
-        handleSignal(data.fromId, data.payload)
-      }
-    )
-
-    return () => {
-      unsubPeerJoined()
-      unsubPeerLeft()
-      unsubSignal()
-    }
-  }, [enabled, handlePeerJoined, handlePeerLeft, handleSignal])
+  // NOTE: Voice IPC event subscriptions (peerJoined/peerLeft/signal) and the
+  // auto-enable-on-server-join logic are mounted at the App level (see App.tsx).
+  // They MUST be active independent of `enabled` so that:
+  //   1) Incoming WebRTC signals are never dropped before the renderer enables.
+  //   2) Auto-enable can fire when the user joins a server.
 
   // Spatial audio updates from GPS telemetry
   useEffect(() => {

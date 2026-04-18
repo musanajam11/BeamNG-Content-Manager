@@ -628,6 +628,11 @@ const api = {
     ipcRenderer.on('voice:signal', handler)
     return () => { ipcRenderer.removeListener('voice:signal', handler) }
   },
+  onVoiceRelayState: (callback: (data: { inRelay: boolean }) => void) => {
+    const handler = (_event: unknown, data: { inRelay: boolean }): void => callback(data)
+    ipcRenderer.on('voice:relayState', handler)
+    return () => { ipcRenderer.removeListener('voice:relayState', handler) }
+  },
 
   // Livery Editor
   liveryGetUVTemplate: (vehicleName: string) =>
