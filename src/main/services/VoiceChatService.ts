@@ -372,12 +372,9 @@ export class VoiceChatService {
     const pluginDir = join(serverDir, resourceFolder, 'Server', 'BeamMPCMVoice')
     if (!existsSync(pluginDir)) await mkdir(pluginDir, { recursive: true })
     const pluginPath = join(pluginDir, 'main.lua')
-    if (!existsSync(pluginPath)) {
-      await writeFile(pluginPath, VOICE_SERVER_PLUGIN, 'utf-8')
-      this.log('Server voice plugin deployed to ' + pluginPath)
-    } else {
-      this.log('Server voice plugin already exists at ' + pluginPath)
-    }
+    // Always overwrite so embedded plugin updates propagate
+    await writeFile(pluginPath, VOICE_SERVER_PLUGIN, 'utf-8')
+    this.log('Server voice plugin deployed to ' + pluginPath)
   }
 
   /* ── Signal File Poller ── */
@@ -543,7 +540,7 @@ export class VoiceChatService {
 
   async enable(): Promise<void> {
     this.enabled = true
-    await this.sendSignal('vc_enable', '')
+    await this.sendSignal('vc_enable', 'enable')
     this.log('Voice chat enabled — vc_enable signal queued for server')
   }
 
@@ -551,7 +548,7 @@ export class VoiceChatService {
     const peerCount = this.peers.length
     this.enabled = false
     this.peers = []
-    await this.sendSignal('vc_disable', '')
+    await this.sendSignal('vc_disable', 'disable')
     this.log(`Voice chat disabled — vc_disable signal queued (had ${peerCount} peer(s))`)
   }
 

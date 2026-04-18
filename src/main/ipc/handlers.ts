@@ -919,6 +919,16 @@ export function registerIpcHandlers(): void {
       const result = voiceChatService.deployBridge(userDir)
       if (!result.success) return result
     }
+    // Auto-deploy voice server plugin to all hosted servers
+    try {
+      const servers = await serverManagerService.listServers()
+      for (const s of servers) {
+        const serverDir = serverManagerService.getServerDir(s.config.id)
+        await voiceChatService.deployServerPlugin(serverDir, s.config.resourceFolder)
+      }
+    } catch (err) {
+      console.warn('[VoiceChat] Failed to auto-deploy server plugin:', err)
+    }
     await voiceChatService.enable()
     return { success: true }
   })
