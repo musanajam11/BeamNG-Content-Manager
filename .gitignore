@@ -28,3 +28,7 @@ Docs/*
 
 # TypeScript build info
 *.tsbuildinfo
+
+# Local debug dumps
+asar_list.txt
+lint_output.txt

@@ -99,6 +99,13 @@ export class AudioCapture {
   private gain: number
   private stream: MediaStream
   private started = false
+  /** When non-null, frames below this RMS level are dropped (input-side VAD). */
+  private vadThreshold: number | null = null
+  /** Hold-open window (ms) after the last frame that crossed threshold. */
+  private vadHangoverMs = 250
+  private lastVoiceTs = 0
+  /** Smoothed RMS for UI / debugging. */
+  private currentLevel = 0
 
   constructor(opts: AudioCaptureOptions) {
     this.stream = opts.stream
@@ -117,6 +124,22 @@ export class AudioCapture {
 
   setMuted(muted: boolean): void {
     this.muted = muted
+  }
+
+  /**
+   * Enable input-side voice-activity gating. Pass `null` to disable (e.g.
+   * when switching to PTT mode where the gate is the muted flag).
+   * Threshold is compared against per-frame RMS in the same scale as
+   * `isPeerSpeaking` (0.0 – 1.0 nominal).
+   */
+  setVadGate(threshold: number | null, hangoverMs = 250): void {
+    this.vadThreshold = threshold
+    this.vadHangoverMs = Math.max(0, hangoverMs)
+  }
+
+  /** Last computed input RMS (0..1). */
+  getInputLevel(): number {
+    return this.currentLevel
   }
 
   async start(): Promise<void> {
@@ -152,7 +175,26 @@ export class AudioCapture {
 
     this.worklet.port.onmessage = (ev: MessageEvent<Float32Array>): void => {
       if (this.muted || !this.encoder) return
-      this.encoder.encode(ev.data)
+      const pcm = ev.data
+      // Compute frame RMS for VAD gating + level meter. Cheap: ~2880 muls.
+      let sumSq = 0
+      for (let i = 0; i < pcm.length; i++) {
+        const s = pcm[i]
+        sumSq += s * s
+      }
+      const rms = Math.sqrt(sumSq / pcm.length)
+      // Light smoothing for UI; gate uses raw RMS for snappier response.
+      this.currentLevel = this.currentLevel * 0.7 + rms * 0.3
+      if (this.vadThreshold !== null) {
+        const now = performance.now()
+        if (rms >= this.vadThreshold) {
+          this.lastVoiceTs = now
+        } else if (now - this.lastVoiceTs > this.vadHangoverMs) {
+          // Below threshold and past hangover → silence, skip encode.
+          return
+        }
+      }
+      this.encoder.encode(pcm)
     }
 
     this.source.connect(this.gainNode).connect(this.worklet)

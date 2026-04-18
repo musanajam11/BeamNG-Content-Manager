@@ -15,9 +15,12 @@ import {
 import { AudioCapture } from '../voice/audio/AudioCapture'
 import { JitterBuffer } from '../voice/audio/JitterBuffer'
 import { probeOpusSupport } from '../voice/audio/OpusCodec'
+import { OpusFrameEncoder } from '../voice/audio/OpusCodec'
+import { VOICE_CODEC } from '../voice/transports/types'
 import { MeshOrchestrator, MeshSignalEnvelope } from '../voice/MeshElection'
 import { VoiceTransportRouter } from '../voice/VoiceTransportRouter'
 import { broadcastTier3 } from '../voice/transports/BeamMpRelayTransport'
+import { startVoiceLoopback, type LoopbackHandle } from '../voice/loopback'
 import {
   OpusFrame,
   TIER_BADGE,
@@ -67,7 +70,8 @@ interface VoiceChatStore {
   setPttActive: (active: boolean) => void
   setSelfMuted: (muted: boolean) => void
   togglePeerMute: (peerId: number) => void
-  testTransmit: () => void
+  testTransmit: () => Promise<void>
+  testTransmitToPeers: () => Promise<void>
   getPeerList: () => VoicePeerInfo[]
   cleanup: () => void
 }
@@ -110,6 +114,20 @@ let audioCapture: AudioCapture | null = null
 let captureMuted = false
 let meshOrchestrator: MeshOrchestrator | null = null
 let selfPlayerId: number | null = null
+let activeLoopback: LoopbackHandle | null = null
+let activeTonePeerTest: { stop: () => void } | null = null
+/** Global PTT key listeners installed in enable(), torn down in disable(). */
+let pttKeyDownHandler: ((e: KeyboardEvent) => void) | null = null
+let pttKeyUpHandler: ((e: KeyboardEvent) => void) | null = null
+
+/** True when a key event originates from a text input / editable surface. */
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  const tag = target.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
+  if (target.isContentEditable) return true
+  return false
+}
 
 function routerStateToConn(s: VoiceTransportState): RTCPeerConnectionState {
   switch (s) {
@@ -126,7 +144,17 @@ function routerStateToConn(s: VoiceTransportState): RTCPeerConnectionState {
   }
 }
 
-/** Fan an outgoing Opus frame to every peer's transport. */
+/**
+ * Fan an outgoing Opus frame to every peer's transport.
+ *
+ * Proximity attenuation is intentionally applied on the *receive* side via
+ * spatialAudio.setPeerVolume — it tapers gain to 0 at proximityRange and
+ * fully mutes beyond. We don't gate on the send side because:
+ *   - the renderer's distance estimate depends on GPS telemetry being live
+ *     and player-name matching, which can fail silently and would then
+ *     hard-mute peers that should be audible;
+ *   - WebRTC bandwidth for one Opus stream is trivial.
+ */
 function fanoutFrame(peers: Map<number, PeerConnection>, frame: OpusFrame): void {
   let anyTier3 = false
   for (const peer of peers.values()) {
@@ -213,7 +241,11 @@ export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
       source.connect(gainNode).connect(dest)
 
       // Hybrid audio capture â†’ Opus â†’ fan-out to all peer routers.
+      // PTT mode starts muted by default — the mic only opens while the
+      // PTT key is held. VAD mode uses an input-side level gate.
+      captureMuted = settings.mode === 'ptt'
       audioCapture = new AudioCapture({ stream, gain: settings.inputGain, muted: captureMuted })
+      audioCapture.setVadGate(settings.mode === 'vad' ? settings.vadThreshold : null)
       audioCapture.on('frame', (frame) => fanoutFrame(get().peers, frame))
       audioCapture.on('error', (e) => {
         console.error('[VoiceChat] capture error', e)
@@ -252,7 +284,29 @@ export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
         available: true,
         localStream: dest.stream,
         transmitGainNode: gainNode,
+        pttActive: false,
       })
+
+      // Global PTT key listeners — must survive panel mount/unmount so the
+      // mic stays gated when the overlay isn't visible. Skip when the user
+      // is typing in an editable element so PTT keys (often letter keys)
+      // don't open the mic during chat / search / form input.
+      if (pttKeyDownHandler) window.removeEventListener('keydown', pttKeyDownHandler)
+      if (pttKeyUpHandler) window.removeEventListener('keyup', pttKeyUpHandler)
+      pttKeyDownHandler = (e: KeyboardEvent): void => {
+        const s = get().settings
+        if (s.mode !== 'ptt' || e.code !== s.pttKey || e.repeat) return
+        if (isEditableTarget(e.target)) return
+        get().setPttActive(true)
+      }
+      pttKeyUpHandler = (e: KeyboardEvent): void => {
+        const s = get().settings
+        if (s.mode !== 'ptt' || e.code !== s.pttKey) return
+        if (isEditableTarget(e.target)) return
+        get().setPttActive(false)
+      }
+      window.addEventListener('keydown', pttKeyDownHandler)
+      window.addEventListener('keyup', pttKeyUpHandler)
 
       // VAD speaking detection on remote peers.
       speakingInterval = setInterval(() => {
@@ -298,6 +352,15 @@ export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
       void audioCapture.stop()
       audioCapture = null
     }
+    captureMuted = false
+    if (pttKeyDownHandler) {
+      window.removeEventListener('keydown', pttKeyDownHandler)
+      pttKeyDownHandler = null
+    }
+    if (pttKeyUpHandler) {
+      window.removeEventListener('keyup', pttKeyUpHandler)
+      pttKeyUpHandler = null
+    }
     if (meshOrchestrator) {
       meshOrchestrator.stop()
       meshOrchestrator = null
@@ -305,7 +368,7 @@ export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
     if (localStream) localStream.getTracks().forEach((t) => t.stop())
 
     closeAudioContext()
-    set({ enabled: false, localStream: null, transmitGainNode: null, peers: new Map() })
+    set({ enabled: false, localStream: null, transmitGainNode: null, peers: new Map(), pttActive: false })
     window.api.voiceDisable().catch(() => undefined)
   },
 
@@ -319,6 +382,21 @@ export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
     }
     if (partial.outputDeviceId !== undefined) {
       setOutputDevice(partial.outputDeviceId).catch(() => undefined)
+    }
+    // React to transmit-gating settings live so the user doesn't have to
+    // toggle voice chat off and on after changing mode or threshold.
+    if (audioCapture && (partial.mode !== undefined || partial.vadThreshold !== undefined)) {
+      audioCapture.setVadGate(updated.mode === 'vad' ? updated.vadThreshold : null)
+      if (updated.mode === 'ptt') {
+        // Switching into PTT — close the mic until the key is held.
+        captureMuted = true
+        audioCapture.setMuted(captureMuted || get().selfMuted)
+        set({ pttActive: false })
+      } else {
+        // Switching into VAD — unmute (gate is now level-based).
+        captureMuted = false
+        audioCapture.setMuted(get().selfMuted)
+      }
     }
     window.api.voiceUpdateSettings(updated).catch(() => undefined)
   },
@@ -377,17 +455,22 @@ export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
           `[VoiceChat] First inbound frame from peer ${playerId} — jitter buffer + audio chain created (ctx.sampleRate=${ctx.sampleRate}, ctx.state=${ctx.state})`,
         )
         // Periodic stats so we can see whether decode + playback is keeping up.
-        const statsTimer = setInterval(() => {
-          const p = get().peers.get(playerId)
-          if (!p?.jitter) {
-            clearInterval(statsTimer)
-            return
-          }
-          const s = p.jitter.getStats()
-          console.log(
-            `[VoiceChat] peer ${playerId} jitter: played=${s.played} dropped=${s.dropped} lost=${s.lost} buffered=${s.buffered} playing=${s.playing}`,
-          )
-        }, 5000)
+        // Dev-only: in production this would accumulate console history
+        // forever (one line per peer every 5 s ≈ 100 lines/min with 8 peers),
+        // bloating the renderer process over multi-hour sessions.
+        if (import.meta.env.DEV) {
+          const statsTimer = setInterval(() => {
+            const p = get().peers.get(playerId)
+            if (!p?.jitter) {
+              clearInterval(statsTimer)
+              return
+            }
+            const s = p.jitter.getStats()
+            console.log(
+              `[VoiceChat] peer ${playerId} jitter: played=${s.played} dropped=${s.dropped} lost=${s.lost} buffered=${s.buffered} playing=${s.playing}`,
+            )
+          }, 5000)
+        }
       }
       cur.jitter.push(frame)
     })
@@ -523,33 +606,129 @@ export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
     }
   },
 
-  testTransmit: () => {
-    // Beep through the local speakers using a fresh AudioContext so this
-    // works even when the voice-chat audio pipeline failed to initialise
-    // (e.g. mic denied). Always going through the same shared context as
-    // the live transmit chain previously meant a silent failure here was
-    // indistinguishable from broken speakers; now the user gets audible
-    // feedback that their output stack is healthy.
-    const ctx = getAudioContext()
-    const tones = [440, 554, 659]
-    const duration = 0.25
-    const gap = 0.1
-    for (let i = 0; i < tones.length; i++) {
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.type = 'sine'
-      osc.frequency.value = tones[i]
-      gain.gain.value = 0.5
-      gain.gain.setTargetAtTime(0, ctx.currentTime + i * (duration + gap) + duration - 0.05, 0.02)
-      osc.connect(gain)
-      const { transmitGainNode } = get()
-      if (transmitGainNode) gain.connect(transmitGainNode)
-      gain.connect(ctx.destination)
-      const start = ctx.currentTime + i * (duration + gap)
-      osc.start(start)
-      osc.stop(start + duration)
+  testTransmit: async () => {
+    // Toggleable end-to-end loopback test. Routes mic through the FULL
+    // audio pipeline (capture → Opus encode → jitter buffer → Opus decode
+    // → spatial gain → speakers) so the user can audibly verify every
+    // stage of the receive path without needing a second player. The
+    // previous implementation was a 3-tone sine sweep on a fresh
+    // AudioContext that bypassed every component that ever fails in
+    // practice — it would happily "pass" while real peer audio was
+    // completely silent.
+    const cur = activeLoopback
+    if (cur) {
+      activeLoopback = null
+      try { await cur.stop() } catch (e) { console.warn('[VoiceChat] loopback stop error', e) }
+      try { window.dispatchEvent(new CustomEvent('voicechat:loopback-state', { detail: false })) } catch { /* ignore */ }
+      console.log('[VoiceChat] Loopback test stopped')
+      return
     }
-    console.log('[VoiceChat] testTransmit: scheduled 3 tones (transmitGainNode=' + (get().transmitGainNode ? 'present' : 'null') + ')')
+    try {
+      const handle = await startVoiceLoopback()
+      activeLoopback = handle
+      try { window.dispatchEvent(new CustomEvent('voicechat:loopback-state', { detail: true })) } catch { /* ignore */ }
+      console.log('[VoiceChat] Loopback test started — speak; expect ~180ms delay')
+      // Periodic stats so devs can confirm frames are flowing.
+      const statsTimer = setInterval(() => {
+        if (activeLoopback !== handle) {
+          clearInterval(statsTimer)
+          return
+        }
+        const s = handle.getStats()
+        console.log(
+          `[VoiceChat] loopback stats: sent=${s.sent} received=${s.received} jitter=played:${s.jitter.played} dropped:${s.jitter.dropped} lost:${s.jitter.lost} buffered:${s.jitter.buffered} playing:${s.jitter.playing}`,
+        )
+      }, 2000)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error('[VoiceChat] Loopback test failed to start:', msg)
+      try { window.dispatchEvent(new CustomEvent('voicechat:audio-error', { detail: 'Loopback test failed: ' + msg })) } catch { /* ignore */ }
+    }
+  },
+
+  testTransmitToPeers: async () => {
+    // Generate a 440 Hz sine tone, encode it through Opus, and fan it out
+    // to peers via the live transmit chain (per-peer router.send + tier-3
+    // broadcast). This is the inverse of the loopback test: it bypasses
+    // the mic + capture stack and exercises only the outbound encode +
+    // transport path so peers can confirm whether they receive anything
+    // from us at all. Toggleable; auto-stops after 5 s.
+    if (activeTonePeerTest) {
+      activeTonePeerTest.stop()
+      return
+    }
+    const { peers, enabled } = get()
+    if (!enabled) {
+      const msg = 'Voice chat must be enabled to send a tone to peers.'
+      console.warn('[VoiceChat] testTransmitToPeers: ' + msg)
+      try { window.dispatchEvent(new CustomEvent('voicechat:audio-error', { detail: msg })) } catch { /* ignore */ }
+      return
+    }
+    if (peers.size === 0) {
+      const msg = 'No peers connected — nobody to transmit to.'
+      console.warn('[VoiceChat] testTransmitToPeers: ' + msg)
+      try { window.dispatchEvent(new CustomEvent('voicechat:audio-error', { detail: msg })) } catch { /* ignore */ }
+      return
+    }
+
+    const support = await probeOpusSupport()
+    if (!support.encoder) {
+      const msg = 'Opus encoder unavailable: ' + (support.reason ?? 'unknown')
+      console.error('[VoiceChat] testTransmitToPeers: ' + msg)
+      try { window.dispatchEvent(new CustomEvent('voicechat:audio-error', { detail: msg })) } catch { /* ignore */ }
+      return
+    }
+
+    const encoder = new OpusFrameEncoder()
+    let sentFrames = 0
+    encoder.on('frame', (frame) => {
+      const cur = get()
+      fanoutFrame(cur.peers, frame)
+      sentFrames++
+    })
+    encoder.on('error', (e) => console.error('[VoiceChat] testTransmitToPeers encoder error', e))
+    await encoder.start()
+
+    const sampleRate = VOICE_CODEC.sampleRate
+    const samplesPerFrame = VOICE_CODEC.samplesPerFrame
+    const frameMs = (samplesPerFrame / sampleRate) * 1000
+    const freq = 440
+    const amplitude = 0.3
+    let phase = 0
+    const phaseInc = (2 * Math.PI * freq) / sampleRate
+
+    const totalDurationMs = 5000
+    const totalFrames = Math.ceil(totalDurationMs / frameMs)
+    let framesQueued = 0
+
+    console.log(`[VoiceChat] testTransmitToPeers: sending ${freq}Hz tone to ${peers.size} peer(s) for ${totalDurationMs}ms`)
+    try { window.dispatchEvent(new CustomEvent('voicechat:tone-state', { detail: true })) } catch { /* ignore */ }
+
+    const interval = setInterval(() => {
+      if (framesQueued >= totalFrames) {
+        stop()
+        return
+      }
+      const pcm = new Float32Array(samplesPerFrame)
+      for (let i = 0; i < samplesPerFrame; i++) {
+        pcm[i] = Math.sin(phase) * amplitude
+        phase += phaseInc
+        if (phase > 2 * Math.PI) phase -= 2 * Math.PI
+      }
+      encoder.encode(pcm)
+      framesQueued++
+    }, frameMs)
+
+    function stop(): void {
+      if (activeTonePeerTest?.stop !== handleStop) return // already stopped
+      clearInterval(interval)
+      try { encoder.close() } catch { /* ignore */ }
+      activeTonePeerTest = null
+      try { window.dispatchEvent(new CustomEvent('voicechat:tone-state', { detail: false })) } catch { /* ignore */ }
+      console.log(`[VoiceChat] testTransmitToPeers: stopped (queued=${framesQueued} sent=${sentFrames})`)
+    }
+    const handleStop = stop
+    activeTonePeerTest = { stop: handleStop }
   },
 
   getPeerList: () => {

@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Mic, MicOff, Radio } from 'lucide-react'
 import { useVoiceChatStore } from '../stores/useVoiceChatStore'
@@ -14,7 +14,6 @@ export function VoiceChatPanel(): React.JSX.Element | null {
   const enabled = useVoiceChatStore((s) => s.enabled)
   const pttActive = useVoiceChatStore((s) => s.pttActive)
   const settings = useVoiceChatStore((s) => s.settings)
-  const setPttActive = useVoiceChatStore((s) => s.setPttActive)
   const updateSpatialAudio = useVoiceChatStore((s) => s.updateSpatialAudio)
   const peersMap = useVoiceChatStore((s) => s.peers)
   const config = useAppStore((s) => s.config)
@@ -33,34 +32,9 @@ export function VoiceChatPanel(): React.JSX.Element | null {
     return list
   }, [peersMap])
 
-  // PTT key handler
-  const onKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if (settings.mode === 'ptt' && e.code === settings.pttKey && !e.repeat) {
-        setPttActive(true)
-      }
-    },
-    [settings.mode, settings.pttKey, setPttActive]
-  )
-
-  const onKeyUp = useCallback(
-    (e: KeyboardEvent) => {
-      if (settings.mode === 'ptt' && e.code === settings.pttKey) {
-        setPttActive(false)
-      }
-    },
-    [settings.mode, settings.pttKey, setPttActive]
-  )
-
-  useEffect(() => {
-    if (!enabled) return
-    window.addEventListener('keydown', onKeyDown)
-    window.addEventListener('keyup', onKeyUp)
-    return () => {
-      window.removeEventListener('keydown', onKeyDown)
-      window.removeEventListener('keyup', onKeyUp)
-    }
-  }, [enabled, onKeyDown, onKeyUp])
+  // PTT keyboard listeners are installed globally in useVoiceChatStore.enable()
+  // so the mic stays gated even when the panel is unmounted (e.g. while the
+  // user is on a different route).
 
   // NOTE: Voice IPC event subscriptions (peerJoined/peerLeft/signal) and the
   // auto-enable-on-server-join logic are mounted at the App level (see App.tsx).

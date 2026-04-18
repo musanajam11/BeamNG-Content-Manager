@@ -1455,8 +1455,10 @@ export class GameLauncherService {
     if (!data.length) return
     const code = data[0]
 
-    // Log relay messages from server (skip p ping and high-frequency E/O/V/W traffic)
-    if (code !== 'p' && code !== 'E' && code !== 'O' && code !== 'V' && code !== 'W') {
+    // Only log state-significant relay codes — M (map cached), K (kick), U (magic auth).
+    // Everything else (p ping, E/O/V/W/N/C/T/Y/Z position sync, chat, server-side mod
+    // events, etc.) is per-packet traffic that would flood the launcher log.
+    if (code === 'M' || code === 'K' || code === 'U') {
       this.log(`Relay ← Server: ${code} (${data.length} bytes)${data.length < 120 ? ' → ' + data.substring(0, 120) : ''}`)
     }
 

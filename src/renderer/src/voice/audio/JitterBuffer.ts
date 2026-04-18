@@ -94,6 +94,16 @@ export class JitterBuffer {
     // `pendingSeq` field which was overwritten by every push() before the
     // prior decode finished — almost every frame ended up stamped with the
     // wrong seq, producing the "broken / unusable audio" symptom.
+    //
+    // Cap the queue so a stalled decoder (e.g. tab backgrounded long
+    // enough to throttle the worker) can't grow unboundedly and leak
+    // memory over a long session. If we overflow, drop the oldest pending
+    // seq — the corresponding PCM (whenever it arrives) will be
+    // recognised as past-due and discarded by onDecoded.
+    if (this.pendingSeqs.length > this.maxDepth * 4) {
+      this.pendingSeqs.shift()
+      this.framesDropped++
+    }
     this.pendingSeqs.push(frame.seq)
     this.decoder.decode(frame)
   }

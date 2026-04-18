@@ -30,6 +30,7 @@ export function VoiceChatPage(): React.JSX.Element {
   const enable = useVoiceChatStore((s) => s.enable)
   const disable = useVoiceChatStore((s) => s.disable)
   const testTransmit = useVoiceChatStore((s) => s.testTransmit)
+  const testTransmitToPeers = useVoiceChatStore((s) => s.testTransmitToPeers)
   const peersMap = useVoiceChatStore((s) => s.peers)
   const gameRunning = useGameStore((s) => s.gameStatus.running)
 
@@ -50,6 +51,26 @@ export function VoiceChatPage(): React.JSX.Element {
   const [testingSpeaker, setTestingSpeaker] = useState(false)
   const [speakerTestCtx, setSpeakerTestCtx] = useState<AudioContext | null>(null)
   const [audioError, setAudioError] = useState<string | null>(null)
+  const [loopbackActive, setLoopbackActive] = useState(false)
+  const [toneActive, setToneActive] = useState(false)
+
+  // Track loopback test on/off state for the toggle button label.
+  useEffect(() => {
+    function onLoopback(ev: Event): void {
+      const detail = (ev as CustomEvent<boolean>).detail
+      setLoopbackActive(!!detail)
+    }
+    function onTone(ev: Event): void {
+      const detail = (ev as CustomEvent<boolean>).detail
+      setToneActive(!!detail)
+    }
+    window.addEventListener('voicechat:loopback-state', onLoopback as EventListener)
+    window.addEventListener('voicechat:tone-state', onTone as EventListener)
+    return () => {
+      window.removeEventListener('voicechat:loopback-state', onLoopback as EventListener)
+      window.removeEventListener('voicechat:tone-state', onTone as EventListener)
+    }
+  }, [])
 
   // Surface audio init failures from the voice chat store (mic denied,
   // codec unavailable, capture pipeline crash, etc.) so the user knows
@@ -395,18 +416,43 @@ export function VoiceChatPage(): React.JSX.Element {
               )}
             </div>
 
-            {/* Transmit test — sends a test tone to connected peers */}
+            {/* End-to-end loopback test — routes mic through the full audio
+                pipeline (capture → Opus encode → jitter → decode → speakers). */}
             <div className="flex items-center gap-3">
               <button
-                onClick={testTransmit}
-                disabled={!enabled}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors bg-[var(--color-surface)] text-[var(--color-text-muted)] border border-[var(--color-border)] hover:bg-[var(--color-surface)] disabled:opacity-40 disabled:cursor-not-allowed"
+                onClick={() => { void testTransmit() }}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
+                  loopbackActive
+                    ? 'bg-red-500/20 text-red-400 border-red-500/40 hover:bg-red-500/30'
+                    : 'bg-[var(--color-surface)] text-[var(--color-text-muted)] border-[var(--color-border)] hover:bg-[var(--color-surface)]'
+                }`}
               >
-                <Send size={14} />
-                {t('voiceChat.testTransmit')}
+                {loopbackActive ? <Square size={14} /> : <Send size={14} />}
+                {loopbackActive ? t('voiceChat.stopLoopback') : t('voiceChat.testTransmit')}
               </button>
               <span className="text-[11px] text-[var(--color-text-muted)]">
                 {t('voiceChat.testTransmitHint')}
+              </span>
+            </div>
+
+            {/* Send Tone to Peers — emits a synthetic 440 Hz tone through
+                the live transmit chain so peers can confirm whether they
+                hear anything from us. Bypasses mic capture entirely. */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => { void testTransmitToPeers() }}
+                disabled={!enabled}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
+                  toneActive
+                    ? 'bg-red-500/20 text-red-400 border-red-500/40 hover:bg-red-500/30'
+                    : 'bg-[var(--color-surface)] text-[var(--color-text-muted)] border-[var(--color-border)] hover:bg-[var(--color-surface)]'
+                } disabled:opacity-40 disabled:cursor-not-allowed`}
+              >
+                {toneActive ? <Square size={14} /> : <Radio size={14} />}
+                {toneActive ? t('voiceChat.stopTone') : t('voiceChat.sendToneToPeers')}
+              </button>
+              <span className="text-[11px] text-[var(--color-text-muted)]">
+                {t('voiceChat.sendToneToPeersHint')}
               </span>
             </div>
           </div>
