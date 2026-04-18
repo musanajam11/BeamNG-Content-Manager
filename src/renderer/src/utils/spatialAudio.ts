@@ -1,18 +1,31 @@
 /**
- * Spatial audio engine for proximity voice chat.
- * Creates and manages per-peer 3D audio chains using Web Audio API.
+ * Proximity audio engine for voice chat.
  *
- * Audio chain per peer:
- *   MediaStreamSource → GainNode (volume/mute/muffling) → PannerNode (3D) → destination
+ * Simple distance-attenuated playback (no HRTF, no muffling). Each peer has:
+ *   MediaStreamSource → GainNode (volume × distance falloff) → ctx.destination
+ *
+ * Distance falloff: 1.0 at <= refDistance (2 m), linear taper to 0.0 at
+ * proximityRange. Beyond proximityRange the peer is muted.
  */
+
+const REF_DISTANCE = 2
 
 export interface SpatialPeerAudio {
   sourceNode: MediaStreamAudioSourceNode
   gainNode: GainNode
-  pannerNode: PannerNode
   analyser: AnalyserNode
-  muffleGain: number // current muffle factor (1 = clear, 0.35 = muffled)
+  /** Latest cached listener→peer distance (m). Updated via updatePeerPosition. */
+  distance: number
+  /** Last absolute peer position (m). */
+  px: number
+  py: number
+  pz: number
 }
+
+/** Latest listener position cached so updatePeerPosition can recompute distance. */
+let listenerX = 0
+let listenerY = 0
+let listenerZ = 0
 
 let audioCtx: AudioContext | null = null
 
@@ -46,7 +59,9 @@ export async function setOutputDevice(deviceId: string | null): Promise<void> {
 }
 
 /**
- * Create a spatial audio chain for a remote peer's audio stream.
+ * Create a proximity audio chain for a remote peer's audio stream.
+ * The peer plays at full volume by default; call updatePeerPosition +
+ * setPeerVolume to apply distance-based attenuation.
  */
 export function createPeerAudio(
   stream: MediaStream,
@@ -56,102 +71,95 @@ export function createPeerAudio(
 
   const sourceNode = ctx.createMediaStreamSource(stream)
   const gainNode = ctx.createGain()
-  const pannerNode = ctx.createPanner()
   const analyser = ctx.createAnalyser()
 
-  // Configure panner for HRTF spatial audio
-  pannerNode.panningModel = 'HRTF'
-  pannerNode.distanceModel = 'inverse'
-  pannerNode.refDistance = 2
-  pannerNode.maxDistance = proximityRange
-  pannerNode.rolloffFactor = 2
-  pannerNode.coneInnerAngle = 360
-  pannerNode.coneOuterAngle = 360
-  pannerNode.coneOuterGain = 1
+  // Default to full volume so audio is audible even before any telemetry
+  // arrives (telemetry from BeamNG isn't always wired up).
+  gainNode.gain.value = 1.0
 
-  // Analyser for voice activity detection
   analyser.fftSize = 256
   analyser.smoothingTimeConstant = 0.8
 
-  // Chain: source → gain → panner → destination
-  //        source → analyser (tapped for VAD)
+  // Chain: source → gain → destination ; source → analyser (tap for VAD)
   sourceNode.connect(gainNode)
-  gainNode.connect(pannerNode)
-  pannerNode.connect(ctx.destination)
+  gainNode.connect(ctx.destination)
   sourceNode.connect(analyser)
 
-  return { sourceNode, gainNode, pannerNode, analyser, muffleGain: 1 }
+  void proximityRange // accepted for API compat; consumed in setPeerVolume
+  return {
+    sourceNode,
+    gainNode,
+    analyser,
+    distance: 0,
+    px: 0,
+    py: 0,
+    pz: 0,
+  }
 }
 
-/**
- * Destroy a peer's spatial audio chain.
- */
+/** Destroy a peer's audio chain. */
 export function destroyPeerAudio(peer: SpatialPeerAudio): void {
   try { peer.sourceNode.disconnect() } catch { /* ignore */ }
   try { peer.gainNode.disconnect() } catch { /* ignore */ }
-  try { peer.pannerNode.disconnect() } catch { /* ignore */ }
   try { peer.analyser.disconnect() } catch { /* ignore */ }
 }
 
-/**
- * Update the 3D position of a peer's audio source.
- */
+/** Cache peer's world position; recomputes distance against listener. */
 export function updatePeerPosition(
   peer: SpatialPeerAudio,
   x: number,
   y: number,
   z: number
 ): void {
-  peer.pannerNode.positionX.value = x
-  peer.pannerNode.positionY.value = y
-  peer.pannerNode.positionZ.value = z
+  peer.px = x
+  peer.py = y
+  peer.pz = z
+  const dx = x - listenerX
+  const dy = y - listenerY
+  const dz = z - listenerZ
+  peer.distance = Math.sqrt(dx * dx + dy * dy + dz * dz)
 }
 
-/**
- * Update the listener (local player) position and orientation.
- */
+/** Update the listener (local player) position. Orientation is ignored. */
 export function updateListenerPosition(
   x: number,
   y: number,
   z: number,
-  forwardX: number,
-  forwardY: number,
-  forwardZ: number
+  _forwardX: number,
+  _forwardY: number,
+  _forwardZ: number
 ): void {
-  const ctx = getAudioContext()
-  const listener = ctx.listener
-
-  if (listener.positionX) {
-    listener.positionX.value = x
-    listener.positionY.value = y
-    listener.positionZ.value = z
-    listener.forwardX.value = forwardX
-    listener.forwardY.value = forwardY
-    listener.forwardZ.value = forwardZ
-    listener.upX.value = 0
-    listener.upY.value = 0
-    listener.upZ.value = 1
-  } else {
-    listener.setPosition(x, y, z)
-    listener.setOrientation(forwardX, forwardY, forwardZ, 0, 0, 1)
-  }
+  listenerX = x
+  listenerY = y
+  listenerZ = z
 }
 
 /**
- * Set the volume for a peer (combines output volume, distance, and muffle).
+ * Compute distance falloff factor: 1.0 at <= refDistance, linear taper to
+ * 0.0 at proximityRange, 0 beyond. Returns 1 if distance is unknown (0).
+ */
+function distanceAttenuation(distance: number, proximityRange: number): number {
+  if (distance <= REF_DISTANCE) return 1
+  if (distance >= proximityRange) return 0
+  const t = (distance - REF_DISTANCE) / Math.max(1, proximityRange - REF_DISTANCE)
+  return Math.max(0, 1 - t)
+}
+
+/**
+ * Set effective playback volume for a peer:
+ *   gain = outputVolume × distanceAttenuation(distance, proximityRange)
+ * Pass `outputVolume = 0` to mute the peer regardless of distance.
  */
 export function setPeerVolume(
   peer: SpatialPeerAudio,
   outputVolume: number,
-  muffleFactor: number
+  proximityRange: number
 ): void {
-  peer.muffleGain = muffleFactor
-  peer.gainNode.gain.value = outputVolume * muffleFactor
+  const atten = distanceAttenuation(peer.distance, proximityRange)
+  peer.gainNode.gain.value = outputVolume * atten
 }
 
-/**
- * Detect if a peer is currently speaking based on audio level.
- */
+/** Detect if a peer is currently speaking based on audio level. */
 export function isPeerSpeaking(peer: SpatialPeerAudio, threshold: number): boolean {
   const data = new Uint8Array(peer.analyser.frequencyBinCount)
   peer.analyser.getByteFrequencyData(data)

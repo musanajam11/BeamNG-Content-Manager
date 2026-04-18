@@ -71,7 +71,6 @@ const DEFAULT_CONFIG: AppConfig = {
     pttKey: 'KeyV',
     vadThreshold: 0.02,
     proximityRange: 50,
-    doorMuffling: true,
     turnServerUrl: null,
     turnUsername: null,
     turnCredential: null

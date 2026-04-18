@@ -98,7 +98,6 @@ const DEFAULT_SETTINGS: VoiceChatSettings = {
   pttKey: 'KeyV',
   vadThreshold: 0.02,
   proximityRange: 50,
-  doorMuffling: true,
   turnServerUrl: null,
   turnUsername: null,
   turnCredential: null,
@@ -140,23 +139,6 @@ function fanoutFrame(peers: Map<number, PeerConnection>, frame: OpusFrame): void
   // One broadcast covers every tier-3 peer at once (the BeamMP server
   // fans out for us). Skip if no tier-3 peer is currently active.
   if (anyTier3) broadcastTier3(frame)
-}
-
-/**
- * Reduce per-peer tiers into a single overlay badge. Worst-case wins so the
- * user sees the weakest path active in their mesh (Server > Mesh > Direct).
- */
-function aggregateTier(peers: Map<number, PeerConnection>): 'p2p' | 'relay' | 'server' | 'unknown' {
-  if (peers.size === 0) return 'unknown'
-  let worst: VoiceTier | null = null
-  for (const p of peers.values()) {
-    if (p.tier == null) continue
-    if (worst == null || p.tier > worst) worst = p.tier
-  }
-  if (worst == null) return 'unknown'
-  if (worst === VoiceTier.Direct) return 'p2p'
-  if (worst === VoiceTier.Mesh) return 'relay'
-  return 'server'
 }
 
 export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
@@ -277,7 +259,6 @@ export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
         const { peers, settings: s } = get()
         let changed = false
         const updated = new Map(peers)
-        const speakingIds: number[] = []
         for (const [, p] of updated) {
           if (p.audio) {
             const speaking = isPeerSpeaking(p.audio, s.vadThreshold)
@@ -285,21 +266,9 @@ export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
               p.speaking = speaking
               changed = true
             }
-            if (speaking) speakingIds.push(p.playerId)
           }
         }
         if (changed) set({ peers: updated })
-        // Push the rolling set + aggregate tier to main so the in-game overlay
-        // sees who is talking and what mesh tier we're on.
-        const tier = aggregateTier(get().peers)
-        window.api
-          .voiceSetOverlayState({
-            speakingPeerIds: speakingIds,
-            tier,
-            selfMuted: get().selfMuted,
-            mutedPeerIds: Array.from(get().mutedPeerIds)
-          })
-          .catch(() => undefined)
       }, 100)
     } catch (err) {
       console.error('[VoiceChat] Failed to enable audio (signal-only mode active):', err)
@@ -505,8 +474,8 @@ export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
       const other = telemetry.otherPlayers.find((o) => o.name === peer.playerName)
       if (other) {
         updatePeerPosition(peer.audio, other.x, other.y, other.z)
-        const muffleFactor = 1.0
-        setPeerVolume(peer.audio, settings.outputVolume, muffleFactor)
+        const vol = get().mutedPeerIds.has(peer.playerId) ? 0 : settings.outputVolume
+        setPeerVolume(peer.audio, vol, settings.proximityRange)
       }
     }
   },
@@ -525,9 +494,6 @@ export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
     // and OR with self-mute so toggling mute while PTT key is up still mutes.
     const effective = muted || captureMuted
     if (audioCapture) audioCapture.setMuted(effective)
-    window.api
-      .voiceSetOverlayState({ selfMuted: muted, mutedPeerIds: Array.from(get().mutedPeerIds) })
-      .catch(() => undefined)
   },
 
   togglePeerMute: (peerId) => {
@@ -535,14 +501,11 @@ export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
     if (next.has(peerId)) next.delete(peerId)
     else next.add(peerId)
     set({ mutedPeerIds: next })
-    // Apply on the spatial audio side: mute = volume 0.
     const peer = get().peers.get(peerId)
     if (peer?.audio) {
-      setPeerVolume(peer.audio, next.has(peerId) ? 0 : get().settings.outputVolume, 1.0)
+      const vol = next.has(peerId) ? 0 : get().settings.outputVolume
+      setPeerVolume(peer.audio, vol, get().settings.proximityRange)
     }
-    window.api
-      .voiceSetOverlayState({ mutedPeerIds: Array.from(next), selfMuted: get().selfMuted })
-      .catch(() => undefined)
   },
 
   testTransmit: () => {

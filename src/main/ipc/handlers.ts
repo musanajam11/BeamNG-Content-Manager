@@ -145,16 +145,11 @@ export function initializeServices(): {
   //      (without this a CM update can leave the previous build's bridge in
   //       place — the game then runs an old extension lacking _G.BeamCMVoice,
   //       worldReady gating, vc_audio handler, etc.; vc_enable never reaches
-  //       the server and the in-game overlay shows "app not found").
-  //   2. Server plugin + client overlay zip at every managed hosted server
-  //      (<serverDir>/<resourceFolder>/Server/BeamMPCMVoice/main.lua and
-  //       <serverDir>/<resourceFolder>/Client/beamcm-voice-overlay.zip).
-  //   3. Restore the deployOverlay setting from saved config so a value of
-  //      `false` survives restarts (otherwise it always reverts to true).
+  //       the server and signals are silently dropped).
+  //   2. Server plugin at every managed hosted server.
   try {
     const cfg = configService.get()
     if (cfg.voiceChat?.enabled) {
-      voiceChatService.setDeployOverlay(cfg.voiceChat.deployOverlay !== false)
       if (cfg.gamePaths?.userDir) {
         const r = voiceChatService.deployBridge(cfg.gamePaths.userDir)
         if (!r.success) console.warn('[VoiceChat] Startup bridge refresh failed:', r.error)
@@ -1002,22 +997,6 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('voice:updateSettings', async (_event, settings: import('../../shared/types').VoiceChatSettings) => {
     await configService.update({ voiceChat: settings })
-    voiceChatService.setDeployOverlay(settings.deployOverlay !== false)
-  })
-
-  ipcMain.handle('voice:setOverlayState', async (
-    _event,
-    state: {
-      selfMuted?: boolean
-      tier?: 'p2p' | 'relay' | 'server' | 'unknown'
-      mutedPeerIds?: number[]
-      speakingPeerIds?: number[]
-    }
-  ) => {
-    if (Array.isArray(state.speakingPeerIds)) {
-      voiceChatService.setSpeakingPeers(state.speakingPeerIds)
-    }
-    voiceChatService.setOverlayState(state)
   })
 
   ipcMain.handle('voice:deployBridge', async () => {

@@ -833,16 +833,12 @@ export interface VoiceChatSettings {
   vadThreshold: number
   /** Proximity range in meters (distance beyond which audio is silent) */
   proximityRange: number
-  /** Enable door muffling (voice muffled through closed car doors) */
-  doorMuffling: boolean
   /** Optional TURN server URL for users behind symmetric NATs (e.g. 'turn:my.turn.server:3478') */
   turnServerUrl: string | null
   /** TURN server username (if required) */
   turnUsername: string | null
   /** TURN server credential (if required) */
   turnCredential: string | null
-  /** Auto-deploy the in-game voice overlay UI app to hosted servers (default: true). */
-  deployOverlay?: boolean
 }
 
 export interface VoiceSignalMessage {

@@ -7,7 +7,6 @@ import {
   Radio,
   Keyboard,
   Gauge,
-  DoorOpen,
   ToggleLeft,
   ToggleRight,
   AlertCircle,
@@ -540,24 +539,6 @@ export function VoiceChatPage(): React.JSX.Element {
                 {t('voiceChat.proximityRangeHint')}
               </p>
             </div>
-
-            <ToggleSetting
-              label={t('voiceChat.doorMuffling')}
-              description={t('voiceChat.doorMufflingDesc')}
-              icon={DoorOpen}
-              enabled={voiceSettings.doorMuffling}
-              onToggle={() => updateSetting('doorMuffling', !voiceSettings.doorMuffling)}
-            />
-
-            <ToggleSetting
-              label={t('voiceChat.deployOverlay')}
-              description={t('voiceChat.deployOverlayDesc')}
-              icon={DoorOpen}
-              enabled={voiceSettings.deployOverlay !== false}
-              onToggle={() =>
-                updateSetting('deployOverlay', voiceSettings.deployOverlay === false ? true : false)
-              }
-            />
           </div>
         </Section>
 
@@ -672,42 +653,4 @@ function ModeButton({
   )
 }
 
-function ToggleSetting({
-  label,
-  description,
-  icon: Icon,
-  enabled,
-  onToggle
-}: {
-  label: string
-  description: string
-  icon: React.ComponentType<{ size?: number; className?: string }>
-  enabled: boolean
-  onToggle: () => void
-}): React.JSX.Element {
-  return (
-    <div className="flex items-center justify-between gap-4 py-2">
-      <div className="flex items-start gap-3">
-        <Icon size={16} className="text-[var(--color-text-muted)] mt-0.5" />
-        <div>
-          <div className="text-[13px] text-[var(--color-text-primary)]">{label}</div>
-          <div className="text-[11px] text-[var(--color-text-muted)]">{description}</div>
-        </div>
-      </div>
-      <button
-        onClick={onToggle}
-        className={`shrink-0 w-10 h-5 rounded-full transition-colors relative ${
-          enabled
-            ? 'bg-[var(--color-accent)]'
-            : 'bg-[var(--color-surface)] border border-[var(--color-border)]'
-        }`}
-      >
-        <div
-          className={`absolute top-0.5 w-4 h-4 rounded-full bg-[var(--color-text-primary)] shadow transition-transform ${
-            enabled ? 'translate-x-5' : 'translate-x-0.5'
-          }`}
-        />
-      </button>
-    </div>
-  )
-}
+

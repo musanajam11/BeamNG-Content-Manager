@@ -3,7 +3,6 @@ import { existsSync, writeFileSync, mkdirSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { BrowserWindow } from 'electron'
 import type { VoiceSignalMessage, VoiceChatState, VoicePeerInfo } from '../../shared/types'
-import { buildVoiceOverlayZip } from './VoiceOverlayMod'
 
 /* ── Embedded Lua: Voice Chat Bridge (client-side, deployed to BeamNG) ── */
 
@@ -17,8 +16,6 @@ local M = {}
 
 local incomingFile = "settings/BeamCM/vc_incoming.json"
 local outgoingFile = "settings/BeamCM/vc_outgoing.json"
-local statusFile = "settings/BeamCM/vc_status.json"
-local commandFile = "settings/BeamCM/vc_command.json"
 local pollInterval = 0.05
 local timer = 0
 local registered = false
@@ -104,24 +101,13 @@ local function trySendServerEvent(event, data)
   end
 end
 
--- Public API consumed by the in-game BeamCM Voice overlay app.
--- The overlay is shipped as a BeamMP-distributed Client mod and runs for ALL
--- players on the server, including those without the Manager. We expose these
--- helpers via _G so the overlay can call them with bngApi.engineLua().
+-- Public API. The in-game overlay app has been removed; the global stays as
+-- a no-op stub so any leftover overlay zips on disk don't error out.
 _G.BeamCMVoice = _G.BeamCMVoice or {}
 function _G.BeamCMVoice.getStatus()
-  local ok, content = pcall(jsonReadFile, statusFile)
-  if ok and type(content) == "table" then
-    local okEnc, encoded = pcall(jsonEncode, content)
-    if okEnc and type(encoded) == "string" then return encoded end
-  end
   return jsonEncode({ available = false, enabled = false, connected = false, peers = {} })
 end
-function _G.BeamCMVoice.sendCommand(action)
-  if type(action) ~= "string" then return end
-  if action ~= "enable" and action ~= "disable" and action ~= "mute" and action ~= "unmute" then return end
-  pcall(jsonWriteFile, commandFile, { action = action, ts = os.time() })
-end
+function _G.BeamCMVoice.sendCommand(_) end
 
 local function onExtensionLoaded()
   if setExtensionUnloadMode then
@@ -131,7 +117,6 @@ local function onExtensionLoaded()
   log('I', 'beamcmVoice', 'BeamCM Voice Chat bridge loaded')
   log('I', 'beamcmVoice', 'Outgoing: ' .. outgoingFile .. ', Incoming: ' .. incomingFile)
   log('I', 'beamcmVoice', 'Poll: ' .. tostring(pollInterval) .. 's, retry: ' .. tostring(enableRetryInterval) .. 's')
-  log('I', 'beamcmVoice', 'BeamCMVoice global API exposed for in-game overlay')
   tryRegister()
 end
 
@@ -501,24 +486,6 @@ export class VoiceChatService {
   // State
   private enabled = false
   private peers: VoicePeerInfo[] = []
-  private selfId: number | null = null
-  private gameReady = true
-
-  // Overlay state pushed by renderer (rich UI signals)
-  private selfMuted = false
-  private tier: 'p2p' | 'relay' | 'server' | 'unknown' = 'unknown'
-  private mutedPeerIds: Set<number> = new Set()
-  private speakingPeerIds: Set<number> = new Set()
-  private deployOverlay = true
-
-  // Status file write throttle
-  private statusWriteTimer: ReturnType<typeof setTimeout> | null = null
-  private lastStatusWriteAt = 0
-  private static readonly STATUS_MIN_INTERVAL_MS = 200
-
-  // Command file polling cadence (overlay → manager)
-  private commandPoller: ReturnType<typeof setInterval> | null = null
-  private lastCommandTs = 0
 
   /** Get the main BrowserWindow dynamically (avoids init-order issues) */
   private getWindow(): BrowserWindow | null {
@@ -546,14 +513,6 @@ export class VoiceChatService {
     return join(this.userDir!, 'lua', 'ge', 'extensions', 'beamcmVoice.lua')
   }
 
-  private get statusFilePath(): string {
-    return join(this.signalDir, 'vc_status.json')
-  }
-
-  private get commandFilePath(): string {
-    return join(this.signalDir, 'vc_command.json')
-  }
-
   /* ── Deploy / Undeploy ── */
 
   deployBridge(userDir: string): { success: boolean; error?: string } {
@@ -576,8 +535,6 @@ export class VoiceChatService {
       this.deployed = true
       this.log('Bridge deployed to ' + this.extensionPath)
       this.startSignalPoller()
-      this.startCommandPoller()
-      this.writeStatusFileNow()
       return { success: true }
     } catch (err) {
       return { success: false, error: `Failed to deploy voice bridge: ${err}` }
@@ -587,14 +544,18 @@ export class VoiceChatService {
   undeployBridge(): { success: boolean; error?: string } {
     try {
       this.stopSignalPoller()
-      this.stopCommandPoller()
 
       if (this.userDir && existsSync(this.extensionPath)) {
         unlinkSync(this.extensionPath)
       }
-      // Clean up signal files
+      // Clean up signal files (incl. legacy status/command files)
       if (this.userDir) {
-        for (const f of [this.incomingPath, this.outgoingPath, this.statusFilePath, this.commandFilePath]) {
+        for (const f of [
+          this.incomingPath,
+          this.outgoingPath,
+          join(this.signalDir, 'vc_status.json'),
+          join(this.signalDir, 'vc_command.json'),
+        ]) {
           if (existsSync(f)) unlinkSync(f)
         }
       }
@@ -602,7 +563,6 @@ export class VoiceChatService {
       this.deployed = false
       this.enabled = false
       this.peers = []
-      this.selfId = null
       this.log('Bridge undeployed')
       return { success: true }
     } catch (err) {
@@ -624,36 +584,17 @@ export class VoiceChatService {
     await writeFile(pluginPath, VOICE_SERVER_PLUGIN, 'utf-8')
     this.log('Server voice plugin deployed to ' + pluginPath)
 
-    // Deploy the BeamMP-distributed Client overlay mod alongside. BeamMP
-    // automatically pushes Resources/Client/*.zip to every joining player,
-    // so the in-game voice status overlay lights up for the whole lobby.
+    // Sweep any previously-deployed in-game overlay zip; the overlay system
+    // has been removed entirely.
     const overlayZipPath = join(serverDir, resourceFolder, 'Client', 'beamcm-voice-overlay.zip')
-    if (this.deployOverlay) {
-      try {
-        const clientDir = join(serverDir, resourceFolder, 'Client')
-        if (!existsSync(clientDir)) await mkdir(clientDir, { recursive: true })
-        await buildVoiceOverlayZip(overlayZipPath)
-        this.log('Client voice overlay deployed to ' + overlayZipPath)
-      } catch (err) {
-        this.log('WARNING: Failed to deploy client voice overlay: ' + String(err))
+    try {
+      if (existsSync(overlayZipPath)) {
+        unlinkSync(overlayZipPath)
+        this.log('Removed legacy overlay zip ' + overlayZipPath)
       }
-    } else {
-      // User opted out — remove any previously deployed overlay so it stops
-      // shipping to new joiners.
-      try {
-        if (existsSync(overlayZipPath)) {
-          unlinkSync(overlayZipPath)
-          this.log('Removed previously deployed overlay (deployOverlay=false)')
-        }
-      } catch {
-        /* noop */
-      }
+    } catch {
+      /* noop */
     }
-  }
-
-  /** Toggle whether the in-game overlay mod is included with new server plugin deployments. */
-  setDeployOverlay(value: boolean): void {
-    this.deployOverlay = !!value
   }
 
   /* ── Signal File Poller ── */
@@ -710,7 +651,6 @@ export class VoiceChatService {
           // We are the existing peer being notified → impolite (our offer wins)
           win.webContents.send('voice:peerJoined', { playerId, playerName, polite: false })
           this.log(`Peer joined: ${playerName} (pid=${playerId})`)
-          this.scheduleStatusWrite()
         }
         break
       }
@@ -720,7 +660,6 @@ export class VoiceChatService {
         if (!isNaN(playerId)) {
           this.peers = this.peers.filter((p) => p.playerId !== playerId)
           win.webContents.send('voice:peerLeft', { playerId })
-          this.scheduleStatusWrite()
         }
         break
       }
@@ -747,13 +686,11 @@ export class VoiceChatService {
           const selfId = parseInt(selfIdRaw, 10)
           listPart = (msg.data as string).substring(pipeIdx + 1)
           if (!isNaN(selfId)) {
-            this.selfId = selfId
             win.webContents.send('voice:selfId', { selfId })
             this.log(`Self player id from server: ${selfId}`)
           }
         }
         if (!listPart) {
-          this.scheduleStatusWrite()
           break
         }
         const entries = listPart.split(',')
@@ -771,7 +708,6 @@ export class VoiceChatService {
             this.log(`Peers list: added ${name} (pid=${playerId})`)
           }
         }
-        this.scheduleStatusWrite()
         break
       }
       case 'vc_audio': {
@@ -870,7 +806,6 @@ export class VoiceChatService {
   async enable(): Promise<void> {
     this.enabled = true
     await this.sendSignal('vc_enable', 'enable')
-    this.scheduleStatusWrite()
     this.log('Voice chat enabled — vc_enable signal queued for server')
   }
 
@@ -878,59 +813,8 @@ export class VoiceChatService {
     const peerCount = this.peers.length
     this.enabled = false
     this.peers = []
-    this.selfId = null
     await this.sendSignal('vc_disable', 'disable')
-    this.scheduleStatusWrite()
     this.log(`Voice chat disabled — vc_disable signal queued (had ${peerCount} peer(s))`)
-  }
-
-  /** Renderer can push richer state (e.g. game-running gate) into the overlay. */
-  setGameReady(ready: boolean): void {
-    if (this.gameReady === ready) return
-    this.gameReady = ready
-    this.scheduleStatusWrite()
-  }
-
-  /** Renderer can push live speaking flags so the overlay highlights talkers. */
-  setSpeakingPeers(speakingPeerIds: number[]): void {
-    let changed = false
-    const speakingSet = new Set(speakingPeerIds)
-    for (const p of this.peers) {
-      const next = speakingSet.has(p.playerId)
-      if (p.speaking !== next) {
-        p.speaking = next
-        changed = true
-      }
-    }
-    // Cache the set so writeStatusFileNow can also mark peers we don't yet have rows for
-    if (this.speakingPeerIds.size !== speakingSet.size) changed = true
-    this.speakingPeerIds = speakingSet
-    if (changed) this.scheduleStatusWrite()
-  }
-
-  /** Renderer pushes consolidated overlay state (self-mute, mesh tier, per-peer mute set). */
-  setOverlayState(state: {
-    selfMuted?: boolean
-    tier?: 'p2p' | 'relay' | 'server' | 'unknown'
-    mutedPeerIds?: number[]
-  }): void {
-    let changed = false
-    if (typeof state.selfMuted === 'boolean' && state.selfMuted !== this.selfMuted) {
-      this.selfMuted = state.selfMuted
-      changed = true
-    }
-    if (state.tier && state.tier !== this.tier) {
-      this.tier = state.tier
-      changed = true
-    }
-    if (Array.isArray(state.mutedPeerIds)) {
-      const next = new Set(state.mutedPeerIds)
-      if (next.size !== this.mutedPeerIds.size || [...next].some((id) => !this.mutedPeerIds.has(id))) {
-        this.mutedPeerIds = next
-        changed = true
-      }
-    }
-    if (changed) this.scheduleStatusWrite()
   }
 
   /* ── State Query ── */
@@ -941,122 +825,6 @@ export class VoiceChatService {
       enabled: this.enabled,
       connected: this.deployed && this.enabled,
       peers: [...this.peers]
-    }
-  }
-
-  /* ── Overlay status file writer (throttled) ── */
-
-  /**
-   * Write a snapshot of voice state to vc_status.json so the in-game overlay
-   * can read it via the BeamCMVoice Lua global. Throttled to MIN_INTERVAL to
-   * avoid hammering the disk on every speaking/peer event.
-   */
-  private scheduleStatusWrite(): void {
-    if (!this.deployed || !this.userDir) return
-    if (this.statusWriteTimer) return
-    const sinceLast = Date.now() - this.lastStatusWriteAt
-    const delay = Math.max(0, VoiceChatService.STATUS_MIN_INTERVAL_MS - sinceLast)
-    this.statusWriteTimer = setTimeout(() => {
-      this.statusWriteTimer = null
-      this.writeStatusFileNow()
-    }, delay)
-  }
-
-  private writeStatusFileNow(): void {
-    if (!this.deployed || !this.userDir) return
-    try {
-      if (!existsSync(this.signalDir)) mkdirSync(this.signalDir, { recursive: true })
-      const status = {
-        available: this.deployed,
-        enabled: this.enabled,
-        connected: this.deployed && this.enabled,
-        gameReady: this.gameReady,
-        selfId: this.selfId,
-        speaking: this.peers.some((p) => p.speaking) || false,
-        muted: this.selfMuted,
-        tier: this.tier,
-        peers: this.peers.map((p) => ({
-          id: p.playerId,
-          name: p.playerName,
-          speaking: !!p.speaking,
-          muted: this.mutedPeerIds.has(p.playerId)
-        })),
-        ts: Date.now()
-      }
-      writeFileSync(this.statusFilePath, JSON.stringify(status), 'utf-8')
-      this.lastStatusWriteAt = Date.now()
-    } catch (err) {
-      this.log('WARNING: failed to write status file: ' + String(err))
-    }
-  }
-
-  /* ── Overlay command poller (overlay button → enable/disable) ── */
-
-  private startCommandPoller(): void {
-    if (this.commandPoller) return
-    this.commandPoller = setInterval(() => this.pollOverlayCommand(), 250)
-  }
-
-  private stopCommandPoller(): void {
-    if (this.commandPoller) {
-      clearInterval(this.commandPoller)
-      this.commandPoller = null
-    }
-  }
-
-  private async pollOverlayCommand(): Promise<void> {
-    if (!this.userDir || !existsSync(this.commandFilePath)) return
-    try {
-      const raw = await readFile(this.commandFilePath, 'utf-8')
-      // Consume by deleting first so concurrent writes from Lua don't double-fire
-      try { unlinkSync(this.commandFilePath) } catch { /* noop */ }
-      const cmd = JSON.parse(raw) as { action?: string; ts?: number }
-      if (!cmd || typeof cmd.action !== 'string') return
-      // De-dupe via timestamp in case Lua re-wrote the same command rapidly
-      if (typeof cmd.ts === 'number' && cmd.ts === this.lastCommandTs) return
-      if (typeof cmd.ts === 'number') this.lastCommandTs = cmd.ts
-      if (cmd.action === 'enable' && !this.enabled) {
-        const win = this.getWindow()
-        if (win && !win.isDestroyed()) {
-          // Route through the renderer so the game-running gate + permissions
-          // checks fire identically to clicking the in-app toggle button.
-          win.webContents.send('voice:overlayCommand', { action: 'enable' })
-        } else {
-          await this.enable()
-        }
-        this.log('Overlay requested ENABLE')
-      } else if (cmd.action === 'disable' && this.enabled) {
-        const win = this.getWindow()
-        if (win && !win.isDestroyed()) {
-          win.webContents.send('voice:overlayCommand', { action: 'disable' })
-        } else {
-          await this.disable()
-        }
-        this.log('Overlay requested DISABLE')
-      } else if (cmd.action === 'mute' || cmd.action === 'unmute') {
-        const win = this.getWindow()
-        if (win && !win.isDestroyed()) {
-          win.webContents.send('voice:overlayCommand', { action: cmd.action })
-        }
-      } else if (typeof cmd.action === 'string' && cmd.action.startsWith('mute_peer:')) {
-        const id = parseInt(cmd.action.slice('mute_peer:'.length), 10)
-        if (!isNaN(id)) {
-          const win = this.getWindow()
-          if (win && !win.isDestroyed()) {
-            win.webContents.send('voice:overlayCommand', { action: 'mute_peer', peerId: id })
-          }
-        }
-      } else if (typeof cmd.action === 'string' && cmd.action.startsWith('unmute_peer:')) {
-        const id = parseInt(cmd.action.slice('unmute_peer:'.length), 10)
-        if (!isNaN(id)) {
-          const win = this.getWindow()
-          if (win && !win.isDestroyed()) {
-            win.webContents.send('voice:overlayCommand', { action: 'unmute_peer', peerId: id })
-          }
-        }
-      }
-    } catch {
-      /* ignore — file might be partially written */
     }
   }
 }

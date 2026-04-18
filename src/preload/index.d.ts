@@ -485,12 +485,6 @@ interface AppAPI {
   voiceSendAudio(payload: { seq: number; data: string }): Promise<void>
   voiceGetState(): Promise<import('../shared/types').VoiceChatState>
   voiceUpdateSettings(settings: import('../shared/types').VoiceChatSettings): Promise<void>
-  voiceSetOverlayState(state: {
-    selfMuted?: boolean
-    tier?: 'p2p' | 'relay' | 'server' | 'unknown'
-    mutedPeerIds?: number[]
-    speakingPeerIds?: number[]
-  }): Promise<void>
   voiceDeployBridge(): Promise<{ success: boolean; error?: string }>
   voiceUndeployBridge(): Promise<{ success: boolean; error?: string }>
   onVoicePeerJoined(callback: (data: { playerId: number; playerName: string; polite?: boolean }) => void): () => void
@@ -499,13 +493,6 @@ interface AppAPI {
   onVoiceAudio(callback: (data: { fromId: number; seq: number; data: string }) => void): () => void
   onVoiceRelayState(callback: (data: { inRelay: boolean }) => void): () => void
   onVoiceSelfId(callback: (data: { selfId: number }) => void): () => void
-  onVoiceOverlayCommand(callback: (data: {
-    action: 'enable' | 'disable' | 'mute' | 'unmute' | 'mute_peer' | 'unmute_peer'
-    peerId?: number
- 
-    action: 'enable' | 'disable' | 'mute' | 'unmute' | 'mute_peer' | 'unmute_peer'
-    peerId?: number
-  }) => void): () => void
 
   // Voice mesh tier
   voiceMeshListen(): Promise<{ port: number }>

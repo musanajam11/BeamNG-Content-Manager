@@ -639,12 +639,6 @@ const api = {
     ipcRenderer.invoke('voice:getState') as Promise<import('../shared/types').VoiceChatState>,
   voiceUpdateSettings: (settings: import('../shared/types').VoiceChatSettings) =>
     ipcRenderer.invoke('voice:updateSettings', settings),
-  voiceSetOverlayState: (state: {
-    selfMuted?: boolean
-    tier?: 'p2p' | 'relay' | 'server' | 'unknown'
-    mutedPeerIds?: number[]
-    speakingPeerIds?: number[]
-  }) => ipcRenderer.invoke('voice:setOverlayState', state),
   voiceDeployBridge: () =>
     ipcRenderer.invoke('voice:deployBridge') as Promise<{ success: boolean; error?: string }>,
   voiceUndeployBridge: () =>
@@ -678,20 +672,6 @@ const api = {
     const handler = (_event: unknown, data: { selfId: number }): void => callback(data)
     ipcRenderer.on('voice:selfId', handler)
     return () => { ipcRenderer.removeListener('voice:selfId', handler) }
-  },
-  onVoiceOverlayCommand: (callback: (data: {
-    action: 'enable' | 'disable' | 'mute' | 'unmute' | 'mute_peer' | 'unmute_peer'
-    peerId?: number
-  }) => void) => {
-    const handler = (
-      _event: unknown,
-      data: {
-        action: 'enable' | 'disable' | 'mute' | 'unmute' | 'mute_peer' | 'unmute_peer'
-        peerId?: number
-      }
-    ): void => callback(data)
-    ipcRenderer.on('voice:overlayCommand', handler)
-    return () => { ipcRenderer.removeListener('voice:overlayCommand', handler) }
   },
 
   // Voice mesh tier (Tier 2 — TCP P2P sockets bridged through main)
