@@ -23,6 +23,16 @@ local pollCount = 0
 local signalsSent = 0
 local signalsReceived = 0
 
+-- vc_enable retry state: the server connection may not be ready when CM first
+-- requests enable, so we retry periodically until the server acknowledges.
+local enableRequested = false   -- CM asked us to enable voice
+local enableConfirmed = false   -- server has responded (peers_list or peer_joined)
+local enableRetryTimer = 0
+local enableRetryInterval = 3   -- seconds between retries
+local enableRetryCount = 0
+local enableMaxRetries = 20     -- give up after ~60s
+local startupElapsed = 0        -- time since extension loaded
+
 -- Append a message to the incoming JSON file for CM to read
 local function appendIncoming(msg)
   local existing = {}
@@ -34,8 +44,8 @@ local function appendIncoming(msg)
 end
 
 -- Event handlers (called by BeamMP event system via function reference)
--- With function references, handlers receive a single data argument.
 local function onPeerJoined(data)
+  enableConfirmed = true
   log('I', 'beamcmVoice', 'Peer joined event from server: data=' .. tostring(data))
   appendIncoming({ event = "vc_peer_joined", data = tostring(data) })
 end
@@ -50,6 +60,7 @@ local function onSignal(data)
 end
 
 local function onPeersList(data)
+  enableConfirmed = true
   log('I', 'beamcmVoice', 'Peers list from server: ' .. tostring(data))
   appendIncoming({ event = "vc_peers_list", data = tostring(data) })
 end
@@ -67,8 +78,19 @@ local function tryRegister()
   log('I', 'beamcmVoice', 'Registered BeamMP event handlers (AddEventHandler available)')
 end
 
+local function trySendServerEvent(event, data)
+  if type(TriggerServerEvent) ~= "function" then return false end
+  local ok, err = pcall(function() TriggerServerEvent(event, data) end)
+  if ok then
+    signalsSent = signalsSent + 1
+    return true
+  else
+    log('W', 'beamcmVoice', 'TriggerServerEvent("' .. event .. '") failed: ' .. tostring(err))
+    return false
+  end
+end
+
 local function onExtensionLoaded()
-  -- Survive level transitions so voice chat stays active across map loads
   if setExtensionUnloadMode then
     setExtensionUnloadMode('beamcmVoice', 'manual')
     log('I', 'beamcmVoice', 'Set unload mode to manual (survives level transitions)')
@@ -76,12 +98,13 @@ local function onExtensionLoaded()
   log('I', 'beamcmVoice', 'BeamCM Voice Chat bridge loaded')
   log('I', 'beamcmVoice', 'Outgoing file: ' .. outgoingFile)
   log('I', 'beamcmVoice', 'Incoming file: ' .. incomingFile)
-  log('I', 'beamcmVoice', 'Poll interval: ' .. tostring(pollInterval) .. 's')
+  log('I', 'beamcmVoice', 'Poll interval: ' .. tostring(pollInterval) .. 's, enable retry interval: ' .. tostring(enableRetryInterval) .. 's')
   tryRegister()
 end
 
 local function onUpdate(dt)
   if not registered then tryRegister() end
+  startupElapsed = startupElapsed + dt
   timer = timer + dt
   if timer < pollInterval then return end
   timer = 0
@@ -94,32 +117,66 @@ local function onUpdate(dt)
     local skipped = 0
     for _, msg in ipairs(content) do
       if msg.event and msg.data then
-        if type(TriggerServerEvent) == "function" then
-          local sendOk, sendErr = pcall(function() TriggerServerEvent(msg.event, msg.data) end)
-          if sendOk then
+        if msg.event == "vc_enable" then
+          -- Don't send immediately; store the request and let the retry loop handle it
+          enableRequested = true
+          enableConfirmed = false
+          enableRetryCount = 0
+          enableRetryTimer = 0
+          log('I', 'beamcmVoice', 'Voice enable requested by CM (will send when server connection is ready)')
+        elseif msg.event == "vc_disable" then
+          enableRequested = false
+          enableConfirmed = false
+          if trySendServerEvent("vc_disable", msg.data) then
             sent = sent + 1
-            signalsSent = signalsSent + 1
-          else
-            log('W', 'beamcmVoice', 'TriggerServerEvent failed: ' .. tostring(sendErr))
           end
         else
-          skipped = skipped + 1
+          if trySendServerEvent(msg.event, msg.data) then
+            sent = sent + 1
+          else
+            skipped = skipped + 1
+          end
         end
       end
     end
-    -- Clear the file after processing
     jsonWriteFile(outgoingFile, {})
     if sent > 0 then
       log('I', 'beamcmVoice', 'Sent ' .. sent .. ' signal(s) to server (total: ' .. signalsSent .. ')')
     end
     if skipped > 0 then
-      log('W', 'beamcmVoice', 'Skipped ' .. skipped .. ' signal(s) — TriggerServerEvent not available (not in multiplayer?)')
+      log('W', 'beamcmVoice', 'Skipped ' .. skipped .. ' signal(s) — TriggerServerEvent not available')
     end
   end
 
-  -- Periodic status log every 60s (240 polls at 0.25s)
-  if pollCount % 240 == 0 then
-    log('I', 'beamcmVoice', 'Status: registered=' .. tostring(registered) .. ', sent=' .. signalsSent .. ', received=' .. signalsReceived .. ', TriggerServerEvent=' .. tostring(type(TriggerServerEvent) == "function"))
+  -- vc_enable retry loop: keep sending until server acknowledges
+  if enableRequested and not enableConfirmed then
+    enableRetryTimer = enableRetryTimer + pollInterval
+    if enableRetryTimer >= enableRetryInterval then
+      enableRetryTimer = 0
+      enableRetryCount = enableRetryCount + 1
+      if enableRetryCount > enableMaxRetries then
+        log('E', 'beamcmVoice', 'vc_enable failed after ' .. enableMaxRetries .. ' retries — server may not have voice plugin')
+        enableRequested = false
+      elseif type(TriggerServerEvent) ~= "function" then
+        log('W', 'beamcmVoice', 'vc_enable retry #' .. enableRetryCount .. ' — TriggerServerEvent not available yet (not in MP?)')
+      else
+        local ok = trySendServerEvent("vc_enable", "enable")
+        if ok then
+          log('I', 'beamcmVoice', 'vc_enable retry #' .. enableRetryCount .. ' sent (startup +' .. string.format("%.1f", startupElapsed) .. 's)')
+        end
+      end
+    end
+  end
+
+  -- Periodic status log every 30s (120 polls at 0.25s)
+  if pollCount % 120 == 0 then
+    log('I', 'beamcmVoice', 'Status: registered=' .. tostring(registered)
+      .. ', enableReq=' .. tostring(enableRequested)
+      .. ', enableConf=' .. tostring(enableConfirmed)
+      .. ', sent=' .. signalsSent
+      .. ', received=' .. signalsReceived
+      .. ', uptime=' .. string.format("%.0f", startupElapsed) .. 's'
+      .. ', TriggerServerEvent=' .. tostring(type(TriggerServerEvent) == "function"))
   end
 end
 
