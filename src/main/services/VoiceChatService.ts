@@ -23,15 +23,19 @@ local pollCount = 0
 local signalsSent = 0
 local signalsReceived = 0
 
--- vc_enable retry state: the server connection may not be ready when CM first
--- requests enable, so we retry periodically until the server acknowledges.
+-- Multiplayer readiness: TriggerServerEvent exists early but events only
+-- reach the server after the world is fully loaded (onWorldReadyState == 2).
+local worldReady = false
+
+-- vc_enable retry: server may not have the plugin, or events may silently
+-- drop if the network isn't fully up yet. Retry until server acknowledges.
 local enableRequested = false   -- CM asked us to enable voice
-local enableConfirmed = false   -- server has responded (peers_list or peer_joined)
+local enableConfirmed = false   -- server responded (peers_list or peer_joined)
 local enableRetryTimer = 0
-local enableRetryInterval = 3   -- seconds between retries
+local enableRetryInterval = 2   -- seconds between retries
 local enableRetryCount = 0
-local enableMaxRetries = 20     -- give up after ~60s
-local startupElapsed = 0        -- time since extension loaded
+local enableMaxRetries = 30     -- give up after ~60s
+local startupElapsed = 0
 
 -- Append a message to the incoming JSON file for CM to read
 local function appendIncoming(msg)
@@ -43,7 +47,7 @@ local function appendIncoming(msg)
   signalsReceived = signalsReceived + 1
 end
 
--- Event handlers (called by BeamMP event system via function reference)
+-- Event handlers (called by BeamMP event system)
 local function onPeerJoined(data)
   enableConfirmed = true
   log('I', 'beamcmVoice', 'Peer joined event from server: data=' .. tostring(data))
@@ -79,6 +83,7 @@ local function tryRegister()
 end
 
 local function trySendServerEvent(event, data)
+  if not worldReady then return false end
   if type(TriggerServerEvent) ~= "function" then return false end
   local ok, err = pcall(function() TriggerServerEvent(event, data) end)
   if ok then
@@ -96,10 +101,27 @@ local function onExtensionLoaded()
     log('I', 'beamcmVoice', 'Set unload mode to manual (survives level transitions)')
   end
   log('I', 'beamcmVoice', 'BeamCM Voice Chat bridge loaded')
-  log('I', 'beamcmVoice', 'Outgoing file: ' .. outgoingFile)
-  log('I', 'beamcmVoice', 'Incoming file: ' .. incomingFile)
-  log('I', 'beamcmVoice', 'Poll interval: ' .. tostring(pollInterval) .. 's, enable retry interval: ' .. tostring(enableRetryInterval) .. 's')
+  log('I', 'beamcmVoice', 'Outgoing: ' .. outgoingFile .. ', Incoming: ' .. incomingFile)
+  log('I', 'beamcmVoice', 'Poll: ' .. tostring(pollInterval) .. 's, retry: ' .. tostring(enableRetryInterval) .. 's')
   tryRegister()
+end
+
+-- BeamNG calls this when the multiplayer world state changes.
+-- state 2 = world fully loaded and game ready for multiplayer interaction.
+local function onWorldReadyState(state)
+  log('I', 'beamcmVoice', 'onWorldReadyState(' .. tostring(state) .. ') — worldReady was ' .. tostring(worldReady))
+  if state == 2 then
+    worldReady = true
+    log('I', 'beamcmVoice', 'World is READY — multiplayer events will now be sent to server')
+    -- If we have a pending enable, send it now
+    if enableRequested and not enableConfirmed then
+      log('I', 'beamcmVoice', 'Sending deferred vc_enable now that world is ready')
+      trySendServerEvent("vc_enable", "enable")
+    end
+  elseif state == 0 then
+    worldReady = false
+    log('I', 'beamcmVoice', 'World state reset to 0 — pausing server events')
+  end
 end
 
 local function onUpdate(dt)
@@ -114,16 +136,26 @@ local function onUpdate(dt)
   local ok, content = pcall(jsonReadFile, outgoingFile)
   if ok and type(content) == "table" and #content > 0 then
     local sent = 0
+    local deferred = 0
     local skipped = 0
     for _, msg in ipairs(content) do
       if msg.event and msg.data then
         if msg.event == "vc_enable" then
-          -- Don't send immediately; store the request and let the retry loop handle it
+          -- Store request; retry loop sends when server is reachable
           enableRequested = true
           enableConfirmed = false
           enableRetryCount = 0
           enableRetryTimer = 0
-          log('I', 'beamcmVoice', 'Voice enable requested by CM (will send when server connection is ready)')
+          log('I', 'beamcmVoice', 'vc_enable requested by CM (worldReady=' .. tostring(worldReady) .. ')')
+          if worldReady then
+            if trySendServerEvent("vc_enable", "enable") then
+              sent = sent + 1
+              log('I', 'beamcmVoice', 'vc_enable sent immediately (world was ready)')
+            end
+          else
+            deferred = deferred + 1
+            log('I', 'beamcmVoice', 'vc_enable deferred — waiting for world ready')
+          end
         elseif msg.event == "vc_disable" then
           enableRequested = false
           enableConfirmed = false
@@ -131,8 +163,13 @@ local function onUpdate(dt)
             sent = sent + 1
           end
         else
-          if trySendServerEvent(msg.event, msg.data) then
-            sent = sent + 1
+          -- vc_signal and others: only send if world is ready
+          if worldReady then
+            if trySendServerEvent(msg.event, msg.data) then
+              sent = sent + 1
+            else
+              skipped = skipped + 1
+            end
           else
             skipped = skipped + 1
           end
@@ -143,49 +180,49 @@ local function onUpdate(dt)
     if sent > 0 then
       log('I', 'beamcmVoice', 'Sent ' .. sent .. ' signal(s) to server (total: ' .. signalsSent .. ')')
     end
+    if deferred > 0 then
+      log('I', 'beamcmVoice', 'Deferred ' .. deferred .. ' signal(s) — world not ready')
+    end
     if skipped > 0 then
-      log('W', 'beamcmVoice', 'Skipped ' .. skipped .. ' signal(s) — TriggerServerEvent not available')
+      log('W', 'beamcmVoice', 'Skipped ' .. skipped .. ' signal(s)')
     end
   end
 
-  -- vc_enable retry loop: keep sending until server acknowledges
-  if enableRequested and not enableConfirmed then
+  -- vc_enable retry loop: keep retrying until server acknowledges
+  if enableRequested and not enableConfirmed and worldReady then
     enableRetryTimer = enableRetryTimer + pollInterval
     if enableRetryTimer >= enableRetryInterval then
       enableRetryTimer = 0
       enableRetryCount = enableRetryCount + 1
       if enableRetryCount > enableMaxRetries then
-        log('E', 'beamcmVoice', 'vc_enable failed after ' .. enableMaxRetries .. ' retries — server may not have voice plugin')
+        log('E', 'beamcmVoice', 'vc_enable: no server response after ' .. enableMaxRetries .. ' retries — server plugin may not be installed')
         enableRequested = false
-      elseif type(TriggerServerEvent) ~= "function" then
-        log('W', 'beamcmVoice', 'vc_enable retry #' .. enableRetryCount .. ' — TriggerServerEvent not available yet (not in MP?)')
       else
-        local ok = trySendServerEvent("vc_enable", "enable")
-        if ok then
-          log('I', 'beamcmVoice', 'vc_enable retry #' .. enableRetryCount .. ' sent (startup +' .. string.format("%.1f", startupElapsed) .. 's)')
-        end
+        trySendServerEvent("vc_enable", "enable")
+        log('I', 'beamcmVoice', 'vc_enable retry #' .. enableRetryCount .. ' (uptime=' .. string.format("%.0f", startupElapsed) .. 's)')
       end
     end
   end
 
-  -- Periodic status log every 30s (120 polls at 0.25s)
+  -- Status log every 30s
   if pollCount % 120 == 0 then
-    log('I', 'beamcmVoice', 'Status: registered=' .. tostring(registered)
+    log('I', 'beamcmVoice', 'Status: worldReady=' .. tostring(worldReady)
+      .. ', registered=' .. tostring(registered)
       .. ', enableReq=' .. tostring(enableRequested)
       .. ', enableConf=' .. tostring(enableConfirmed)
       .. ', sent=' .. signalsSent
-      .. ', received=' .. signalsReceived
-      .. ', uptime=' .. string.format("%.0f", startupElapsed) .. 's'
-      .. ', TriggerServerEvent=' .. tostring(type(TriggerServerEvent) == "function"))
+      .. ', recv=' .. signalsReceived
+      .. ', uptime=' .. string.format("%.0f", startupElapsed) .. 's')
   end
 end
 
 local function onExtensionUnloaded()
-  log('I', 'beamcmVoice', 'BeamCM Voice Chat bridge unloaded (sent=' .. signalsSent .. ', received=' .. signalsReceived .. ')')
+  log('I', 'beamcmVoice', 'BeamCM Voice Chat bridge unloaded (sent=' .. signalsSent .. ', recv=' .. signalsReceived .. ')')
 end
 
 M.onExtensionLoaded = onExtensionLoaded
 M.onExtensionUnloaded = onExtensionUnloaded
+M.onWorldReadyState = onWorldReadyState
 M.onUpdate = onUpdate
 return M
 `
