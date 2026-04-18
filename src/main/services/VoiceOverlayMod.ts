@@ -398,54 +398,68 @@ interface OverlayFile {
   content: string
 }
 
-// Tiny BeamNG GE extension shipped inside the client mod. Its job is to
-// auto-pin the BeamCMVoice app onto the player's UI on first load so they
-// see the overlay without having to dig through the App library.
-const AUTOPIN_LUA = `local M = {}
-local pinned = false
+// modScript.lua — BeamNG auto-executes any `/scripts/**/modScript.lua` file
+// inside a mod archive on load (see `core/modmanager.lua` `initDB`). This is
+// our entry point: it injects the BeamCMVoice app into the user's multiplayer
+// UI layout exactly once, so the overlay shows up when they drive on a
+// server that distributes this mod — no manual pinning required.
+const AUTOPIN_LUA = `-- BeamCM Voice Overlay: auto-pin the BeamCMVoice app into the multiplayer
+-- UI layout (and freeroam, as a safety net) if it is not already placed.
+-- Runs once per mod-load via BeamNG's modScript.lua mechanism.
 
-local function tryPin()
-  if pinned then return end
-  local ok, ui_apps = pcall(require, 'ui_apps')
-  if not ok or not ui_apps then return end
-  if type(ui_apps.addAppToLayout) ~= 'function' then return end
-  -- Pin only if the user does not already have it placed somewhere.
-  local layouts = ui_apps.getCurrentAppLayouts and ui_apps.getCurrentAppLayouts() or nil
-  if type(layouts) == 'table' then
-    for _, layout in pairs(layouts) do
-      if type(layout) == 'table' then
-        for _, app in pairs(layout) do
-          if type(app) == 'table' and app.appName == 'BeamCMVoice' then
-            pinned = true
-            return
-          end
+local function pinApp()
+  local ok, ui_apps = pcall(require, 'ui/apps')
+  if not ok or not ui_apps or type(ui_apps.getAvailableLayouts) ~= 'function' then
+    -- Fall back to extensions registry
+    if extensions and extensions.ui_apps and extensions.ui_apps.getAvailableLayouts then
+      ui_apps = extensions.ui_apps
+    else
+      log('W', 'beamcmVoiceOverlay', 'ui_apps module not available; cannot auto-pin overlay')
+      return
+    end
+  end
+
+  local layouts = ui_apps.getAvailableLayouts()
+  if type(layouts) ~= 'table' then return end
+
+  local appDescriptor = {
+    appName = 'BeamCMVoice',
+    placement = {
+      position = 'absolute',
+      top = '60px',
+      right = '20px',
+      width = '260px',
+      height = '190px'
+    }
+  }
+
+  for _, layout in ipairs(layouts) do
+    if type(layout) == 'table' and (layout.type == 'multiplayer' or layout.type == 'freeroam') then
+      local already = false
+      layout.apps = layout.apps or {}
+      for _, app in ipairs(layout.apps) do
+        if type(app) == 'table' and app.appName == 'BeamCMVoice' then
+          already = true
+          break
+        end
+      end
+      if not already and layout.filename then
+        table.insert(layout.apps, appDescriptor)
+        local ok2, err = pcall(ui_apps.saveLayout, layout)
+        if ok2 then
+          log('I', 'beamcmVoiceOverlay', 'Pinned BeamCMVoice to ' .. tostring(layout.type) .. ' layout: ' .. tostring(layout.filename))
+        else
+          log('E', 'beamcmVoiceOverlay', 'saveLayout failed: ' .. tostring(err))
         end
       end
     end
   end
-  -- Default placement: top-right corner, small footprint.
-  pcall(ui_apps.addAppToLayout, 'BeamCMVoice', { x = 0.78, y = 0.02, width = 0.20, height = 0.20 })
-  pinned = true
-  log('I', 'beamcmVoiceOverlay', 'Auto-pinned BeamCMVoice overlay to UI')
 end
 
-local function onExtensionLoaded()
-  log('I', 'beamcmVoiceOverlay', 'BeamCM Voice overlay client mod loaded')
-  tryPin()
+local ok, err = pcall(pinApp)
+if not ok then
+  log('E', 'beamcmVoiceOverlay', 'auto-pin crashed: ' .. tostring(err))
 end
-
-local function onClientStartMission(mission)
-  tryPin()
-end
-
-local function onUiReady()
-  tryPin()
-end
-
-M.onExtensionLoaded = onExtensionLoaded
-M.onClientStartMission = onClientStartMission
-M.onUiReady = onUiReady
-return M
 `
 
 const MOD_INFO_JSON = JSON.stringify(
@@ -465,7 +479,7 @@ const OVERLAY_FILES: OverlayFile[] = [
   { path: 'ui/modules/apps/BeamCMVoice/app.html', content: APP_HTML },
   { path: 'ui/modules/apps/BeamCMVoice/app.css', content: APP_CSS },
   { path: 'ui/modules/apps/BeamCMVoice/app.js', content: APP_JS },
-  { path: 'lua/ge/extensions/beamcmVoiceOverlay.lua', content: AUTOPIN_LUA },
+  { path: 'scripts/beamcm-voice-overlay/modScript.lua', content: AUTOPIN_LUA },
   { path: 'mod_info.json', content: MOD_INFO_JSON }
 ]
 
