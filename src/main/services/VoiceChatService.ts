@@ -246,7 +246,7 @@ const VOICE_SERVER_PLUGIN = `-- BeamCM Voice Chat Server Plugin
 -- Auto-deployed by BeamMP Content Manager
 -- Relays WebRTC signaling between voice-chat-enabled players.
 
-const TAG = "[BeamCM-Voice] "
+local TAG = "[BeamCM-Voice] "
 local voicePeers = {}  -- [playerId] = { name = "...", joinedAt = os.time(), signalsIn=0, signalsOut=0, audioIn=0, audioOut=0, lastSeenAt=os.time() }
 local signalCount = 0
 local audioFrameCount = 0
