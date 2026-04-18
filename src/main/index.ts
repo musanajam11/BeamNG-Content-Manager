@@ -97,6 +97,20 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
+  // Always allow F12 / Ctrl+Shift+I to toggle DevTools, even in production
+  // builds. `optimizer.watchWindowShortcuts` only enables this in dev mode,
+  // which leaves end-users unable to capture renderer logs when something
+  // breaks (voice chat audio init, IPC errors, etc.).
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    if (input.type !== 'keyDown') return
+    const isF12 = input.key === 'F12'
+    const isCtrlShiftI =
+      (input.control || input.meta) && input.shift && (input.key === 'I' || input.key === 'i')
+    if (isF12 || isCtrlShiftI) {
+      mainWindow?.webContents.toggleDevTools()
+    }
+  })
+
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {

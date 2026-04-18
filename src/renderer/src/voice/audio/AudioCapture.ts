@@ -10,10 +10,66 @@
 import { OpusFrameEncoder } from './OpusCodec'
 import { OpusFrame, VOICE_CODEC } from '../transports/types'
 
-// Vite serves the worklet file as a static URL. The `?url` suffix is the
-// Vite-supported way to import an asset path; electron-vite (web project)
-// inherits this behaviour.
-import frameChunkerUrl from './frame-chunker.worklet.js?url'
+// The AudioWorklet is inlined as a Blob URL rather than imported via
+// Vite's `?url` suffix. The `?url` approach silently fails in packaged
+// Electron builds because (a) Vite does not emit `.worklet.js` files as
+// assets unless they're in `public/`, and (b) even when emitted, the
+// resulting `file://` URL fails `audioWorklet.addModule()` with
+// `AbortError: Unable to load a worklet's module.` Inlining keeps the
+// processor source colocated with its only consumer and works in dev,
+// production, and tests without any build configuration.
+const FRAME_CHUNKER_WORKLET_SRC = `
+class FrameChunkerProcessor extends AudioWorkletProcessor {
+  constructor(options) {
+    super()
+    const frameSize = (options && options.processorOptions && options.processorOptions.frameSize) || 2880
+    this._frameSize = frameSize
+    this._buffer = new Float32Array(frameSize)
+    this._writeIndex = 0
+  }
+  process(inputs) {
+    const input = inputs[0]
+    if (!input || input.length === 0) return true
+    const channel0 = input[0]
+    const channel1 = input.length > 1 ? input[1] : null
+    if (!channel0) return true
+    const inLen = channel0.length
+    let inIdx = 0
+    while (inIdx < inLen) {
+      const space = this._frameSize - this._writeIndex
+      const copyLen = Math.min(space, inLen - inIdx)
+      if (channel1) {
+        for (let i = 0; i < copyLen; i++) {
+          this._buffer[this._writeIndex + i] = (channel0[inIdx + i] + channel1[inIdx + i]) * 0.5
+        }
+      } else {
+        for (let i = 0; i < copyLen; i++) {
+          this._buffer[this._writeIndex + i] = channel0[inIdx + i]
+        }
+      }
+      this._writeIndex += copyLen
+      inIdx += copyLen
+      if (this._writeIndex >= this._frameSize) {
+        const out = new Float32Array(this._frameSize)
+        out.set(this._buffer)
+        this.port.postMessage(out, [out.buffer])
+        this._writeIndex = 0
+      }
+    }
+    return true
+  }
+}
+registerProcessor('frame-chunker', FrameChunkerProcessor)
+`
+
+let frameChunkerBlobUrl: string | null = null
+function getFrameChunkerUrl(): string {
+  if (!frameChunkerBlobUrl) {
+    const blob = new Blob([FRAME_CHUNKER_WORKLET_SRC], { type: 'application/javascript' })
+    frameChunkerBlobUrl = URL.createObjectURL(blob)
+  }
+  return frameChunkerBlobUrl
+}
 
 export interface AudioCaptureEvents {
   frame: (frame: OpusFrame) => void
@@ -77,7 +133,7 @@ export class AudioCapture {
       )
     }
 
-    await this.ctx.audioWorklet.addModule(frameChunkerUrl)
+    await this.ctx.audioWorklet.addModule(getFrameChunkerUrl())
 
     this.source = this.ctx.createMediaStreamSource(this.stream)
     this.gainNode = this.ctx.createGain()

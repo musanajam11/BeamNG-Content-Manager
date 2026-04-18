@@ -50,6 +50,25 @@ export function VoiceChatPage(): React.JSX.Element {
   const [testStream, setTestStream] = useState<MediaStream | null>(null)
   const [testingSpeaker, setTestingSpeaker] = useState(false)
   const [speakerTestCtx, setSpeakerTestCtx] = useState<AudioContext | null>(null)
+  const [audioError, setAudioError] = useState<string | null>(null)
+
+  // Surface audio init failures from the voice chat store (mic denied,
+  // codec unavailable, capture pipeline crash, etc.) so the user knows
+  // why no audio is flowing despite voice chat being "enabled".
+  useEffect(() => {
+    function onAudioError(ev: Event): void {
+      const detail = (ev as CustomEvent<string>).detail
+      setAudioError(typeof detail === 'string' ? detail : 'Unknown audio error')
+    }
+    window.addEventListener('voicechat:audio-error', onAudioError)
+    return () => window.removeEventListener('voicechat:audio-error', onAudioError)
+  }, [])
+
+  // Clear the error once the user toggles voice chat off so a retry
+  // starts from a clean slate.
+  useEffect(() => {
+    if (!enabled) setAudioError(null)
+  }, [enabled])
 
   // Load audio devices
   function refreshDevices(): void {
@@ -277,6 +296,27 @@ export function VoiceChatPage(): React.JSX.Element {
           </button>
         </div>
       </div>
+
+      {audioError && (
+        <div className="flex items-start gap-2 px-5 py-3 bg-red-500/10 border-b border-red-500/30 text-sm text-red-300">
+          <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+          <div className="flex-1">
+            <div className="font-medium">Voice chat audio failed to initialise</div>
+            <div className="text-xs opacity-90 mt-0.5">{audioError}</div>
+            <div className="text-xs opacity-70 mt-1">
+              You are still registered with the server (signal-only) but cannot send or receive
+              audio. Check your Windows microphone privacy settings, then toggle voice chat off and
+              on again.
+            </div>
+          </div>
+          <button
+            onClick={() => setAudioError(null)}
+            className="text-xs underline opacity-80 hover:opacity-100"
+          >
+            dismiss
+          </button>
+        </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-6 space-y-8">

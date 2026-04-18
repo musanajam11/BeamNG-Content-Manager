@@ -191,8 +191,12 @@ export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
       const support = await probeOpusSupport()
       if (!support.encoder || !support.decoder) {
         console.error('[VoiceChat] Opus unavailable — staying signal-only:', support.reason)
+        try {
+          window.dispatchEvent(new CustomEvent('voicechat:audio-error', { detail: 'Opus codec unavailable: ' + (support.reason ?? 'unknown') }))
+        } catch { /* ignore */ }
         return
       }
+      console.log('[VoiceChat] Opus support OK', support)
 
       const constraints: MediaStreamConstraints = {
         audio: {
@@ -202,7 +206,17 @@ export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
           ...(settings.inputDeviceId ? { deviceId: { exact: settings.inputDeviceId } } : {}),
         },
       }
-      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      let stream: MediaStream
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints)
+      } catch (mediaErr) {
+        const msg = mediaErr instanceof Error ? mediaErr.message : String(mediaErr)
+        console.error('[VoiceChat] getUserMedia failed:', msg)
+        try {
+          window.dispatchEvent(new CustomEvent('voicechat:audio-error', { detail: 'Microphone access denied or unavailable: ' + msg }))
+        } catch { /* ignore */ }
+        throw mediaErr
+      }
       console.log(`[VoiceChat] Got mic stream: ${stream.getAudioTracks().length} track(s), id=${stream.id}`)
 
       const ctx = getAudioContext()
@@ -219,8 +233,23 @@ export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
       // Hybrid audio capture â†’ Opus â†’ fan-out to all peer routers.
       audioCapture = new AudioCapture({ stream, gain: settings.inputGain, muted: captureMuted })
       audioCapture.on('frame', (frame) => fanoutFrame(get().peers, frame))
-      audioCapture.on('error', (e) => console.error('[VoiceChat] capture error', e))
-      await audioCapture.start()
+      audioCapture.on('error', (e) => {
+        console.error('[VoiceChat] capture error', e)
+        try {
+          window.dispatchEvent(new CustomEvent('voicechat:audio-error', { detail: 'Audio capture error: ' + (e?.message ?? String(e)) }))
+        } catch { /* ignore */ }
+      })
+      try {
+        await audioCapture.start()
+        console.log('[VoiceChat] AudioCapture started — Opus frames will now be sent to peers')
+      } catch (capErr) {
+        const msg = capErr instanceof Error ? capErr.message : String(capErr)
+        console.error('[VoiceChat] AudioCapture.start() failed:', msg)
+        try {
+          window.dispatchEvent(new CustomEvent('voicechat:audio-error', { detail: 'Audio capture failed to start: ' + msg }))
+        } catch { /* ignore */ }
+        throw capErr
+      }
 
       // Mesh tier orchestrator. selfPlayerId is set lazily on first peer
       // join (see handlePeerJoined) because we don't yet have a clean way
@@ -517,9 +546,13 @@ export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
   },
 
   testTransmit: () => {
-    const { transmitGainNode } = get()
-    if (!transmitGainNode) return
-    const ctx = transmitGainNode.context
+    // Beep through the local speakers using a fresh AudioContext so this
+    // works even when the voice-chat audio pipeline failed to initialise
+    // (e.g. mic denied). Always going through the same shared context as
+    // the live transmit chain previously meant a silent failure here was
+    // indistinguishable from broken speakers; now the user gets audible
+    // feedback that their output stack is healthy.
+    const ctx = getAudioContext()
     const tones = [440, 554, 659]
     const duration = 0.25
     const gap = 0.1
@@ -531,12 +564,14 @@ export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
       gain.gain.value = 0.5
       gain.gain.setTargetAtTime(0, ctx.currentTime + i * (duration + gap) + duration - 0.05, 0.02)
       osc.connect(gain)
-      gain.connect(transmitGainNode)
+      const { transmitGainNode } = get()
+      if (transmitGainNode) gain.connect(transmitGainNode)
       gain.connect(ctx.destination)
       const start = ctx.currentTime + i * (duration + gap)
       osc.start(start)
       osc.stop(start + duration)
     }
+    console.log('[VoiceChat] testTransmit: scheduled 3 tones (transmitGainNode=' + (get().transmitGainNode ? 'present' : 'null') + ')')
   },
 
   getPeerList: () => {
