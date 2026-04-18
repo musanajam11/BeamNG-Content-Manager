@@ -350,9 +350,21 @@ export function CareerPage(): React.JSX.Element {
       ])
       setCmpReleases(cmp)
       setRlsReleases(rls)
-      if (cmp.length > 0 && !cmpSelectedVersion) setCmpSelectedVersion(cmp[0].version)
-      if (rls.length > 0 && !rlsSelectedVersion) setRlsSelectedVersion(rls[0].version)
-      if (cmp.length > 0 && !rlsCmpVersion) setRlsCmpVersion(cmp[0].version)
+      // Auto-select the latest release on first load AND whenever the
+      // currently-selected version is no longer present in the fetched list
+      // (e.g. it was a stale default or the cached selection points at a
+      // version that's been yanked / superseded). This ensures users see
+      // newly-published versions on refresh instead of being stuck on an
+      // older pin.
+      if (cmp.length > 0 && (!cmpSelectedVersion || !cmp.some((r) => r.version === cmpSelectedVersion))) {
+        setCmpSelectedVersion(cmp[0].version)
+      }
+      if (rls.length > 0 && (!rlsSelectedVersion || !rls.some((r) => r.version === rlsSelectedVersion))) {
+        setRlsSelectedVersion(rls[0].version)
+      }
+      if (cmp.length > 0 && (!rlsCmpVersion || !cmp.some((r) => r.version === rlsCmpVersion))) {
+        setRlsCmpVersion(cmp[0].version)
+      }
     } catch (err) {
       setModError(String(err))
     } finally {
@@ -1443,9 +1455,19 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
     <div className="flex-1 overflow-y-auto p-6 space-y-6">
       {/* Server target selector */}
       <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
-        <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
-          <Server size={16} /> {t('career.mod.selectServer')}
-        </h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
+            <Server size={16} /> {t('career.mod.selectServer')}
+          </h3>
+          <button
+            onClick={loadModReleases}
+            disabled={modLoading}
+            title={t('common.refresh')}
+            className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg bg-[var(--color-surface)] hover:bg-[var(--color-surface-active)] border border-[var(--color-border)] transition-colors disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={modLoading ? 'animate-spin' : ''} /> {t('common.refresh')}
+          </button>
+        </div>
         <div className="flex items-center gap-2">
           <select
             value={selectedServerId}
