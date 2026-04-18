@@ -367,12 +367,27 @@ export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
       if (!cur.jitter) {
         const jb = new JitterBuffer({ audioContext: ctx })
         void jb.start()
-        const spatial = createPeerAudio(jb.outputStream, get().settings.proximityRange)
+        const spatial = createPeerAudio(jb.outputNode, get().settings.proximityRange)
         cur.jitter = jb
         cur.audio = spatial
         const next = new Map(get().peers)
         next.set(playerId, cur)
         set({ peers: next })
+        console.log(
+          `[VoiceChat] First inbound frame from peer ${playerId} — jitter buffer + audio chain created (ctx.sampleRate=${ctx.sampleRate}, ctx.state=${ctx.state})`,
+        )
+        // Periodic stats so we can see whether decode + playback is keeping up.
+        const statsTimer = setInterval(() => {
+          const p = get().peers.get(playerId)
+          if (!p?.jitter) {
+            clearInterval(statsTimer)
+            return
+          }
+          const s = p.jitter.getStats()
+          console.log(
+            `[VoiceChat] peer ${playerId} jitter: played=${s.played} dropped=${s.dropped} lost=${s.lost} buffered=${s.buffered} playing=${s.playing}`,
+          )
+        }, 5000)
       }
       cur.jitter.push(frame)
     })

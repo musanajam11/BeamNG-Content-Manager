@@ -59,16 +59,14 @@ export async function startVoiceLoopback(): Promise<LoopbackHandle> {
 
   await capture.start()
 
-  // Route the jitter buffer's MediaStream through a simple gain → output.
-  const src = ctx.createMediaStreamSource(jitter.outputStream)
+  // Route the jitter buffer's output node through a simple gain → output.
   const gain = ctx.createGain()
   gain.gain.value = 1.0
-  src.connect(gain).connect(ctx.destination)
+  jitter.outputNode.connect(gain).connect(ctx.destination)
 
   return {
     async stop(): Promise<void> {
       try {
-        src.disconnect()
         gain.disconnect()
       } catch {
         /* ignore */

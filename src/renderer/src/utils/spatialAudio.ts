@@ -11,7 +11,8 @@
 const REF_DISTANCE = 2
 
 export interface SpatialPeerAudio {
-  sourceNode: MediaStreamAudioSourceNode
+  /** Upstream PCM source (e.g. JitterBuffer.outputNode). */
+  sourceNode: AudioNode
   gainNode: GainNode
   analyser: AnalyserNode
   /** Latest cached listener→peer distance (m). Updated via updatePeerPosition. */
@@ -63,17 +64,23 @@ export async function setOutputDevice(deviceId: string | null): Promise<void> {
 }
 
 /**
- * Create a proximity audio chain for a remote peer's audio stream.
- * The peer plays at full volume by default; call updatePeerPosition +
- * setPeerVolume to apply distance-based attenuation.
+ * Create a proximity audio chain for a remote peer.
+ *
+ * The `source` is typically a JitterBuffer's `outputNode`. We connect:
+ *   source → gain (volume × distance falloff) → ctx.destination
+ *   source → analyser (tap for VAD; does not contribute to output)
+ *
+ * Avoiding a MediaStream round-trip (BufferSource → MediaStreamDestination
+ * → MediaStreamSource → ...) keeps the entire pipeline in the same audio
+ * thread and avoids an extra resample/buffer stage that was a known
+ * source of dropouts and silence under burst delivery.
  */
 export function createPeerAudio(
-  stream: MediaStream,
+  source: AudioNode,
   proximityRange: number
 ): SpatialPeerAudio {
   const ctx = getAudioContext()
 
-  const sourceNode = ctx.createMediaStreamSource(stream)
   const gainNode = ctx.createGain()
   const analyser = ctx.createAnalyser()
 
@@ -85,13 +92,13 @@ export function createPeerAudio(
   analyser.smoothingTimeConstant = 0.8
 
   // Chain: source → gain → destination ; source → analyser (tap for VAD)
-  sourceNode.connect(gainNode)
+  source.connect(gainNode)
   gainNode.connect(ctx.destination)
-  sourceNode.connect(analyser)
+  source.connect(analyser)
 
   void proximityRange // accepted for API compat; consumed in setPeerVolume
   return {
-    sourceNode,
+    sourceNode: source,
     gainNode,
     analyser,
     distance: 0,
@@ -101,11 +108,14 @@ export function createPeerAudio(
   }
 }
 
-/** Destroy a peer's audio chain. */
+/** Destroy a peer's audio chain. Disconnects the gain/analyser; the upstream
+ *  source node is owned by the caller (JitterBuffer) and not touched. */
 export function destroyPeerAudio(peer: SpatialPeerAudio): void {
-  try { peer.sourceNode.disconnect() } catch { /* ignore */ }
   try { peer.gainNode.disconnect() } catch { /* ignore */ }
   try { peer.analyser.disconnect() } catch { /* ignore */ }
+  // Disconnect the source's edges into our gain/analyser. We can't safely
+  // call peer.sourceNode.disconnect() here because that would also tear
+  // down any *other* consumers wired to the same upstream node.
 }
 
 /** Cache peer's world position; recomputes distance against listener. */

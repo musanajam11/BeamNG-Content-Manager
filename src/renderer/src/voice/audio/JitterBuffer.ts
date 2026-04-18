@@ -2,9 +2,10 @@
  * JitterBuffer + scheduled playback.
  *
  * Receives OpusFrames from any VoiceTransport, decodes them, and plays
- * the PCM through a MediaStreamAudioDestinationNode so the existing
- * spatial audio chain (`createPeerAudio` in `utils/spatialAudio.ts`) can
- * consume the resulting MediaStream unchanged.
+ * the PCM through a GainNode (`outputNode`) so the existing spatial audio
+ * chain (`createPeerAudio` in `utils/spatialAudio.ts`) can connect to it
+ * directly without going through a MediaStream round-trip (which adds
+ * latency and an extra buffering / resampling stage prone to dropouts).
  *
  * Design:
  * - Decode is eager (decoder is fast; latency comes from playback queue).
@@ -37,9 +38,9 @@ function seqDelta(a: number, b: number): number {
 }
 
 export class JitterBuffer {
-  readonly outputStream: MediaStream
+  /** Output node — connect this to a GainNode / destination chain. */
+  readonly outputNode: GainNode
   private readonly ctx: AudioContext
-  private readonly destNode: MediaStreamAudioDestinationNode
   private readonly decoder: OpusFrameDecoder
   private readonly targetDepth: number
   private readonly maxDepth: number
@@ -63,8 +64,11 @@ export class JitterBuffer {
     this.ctx = opts.audioContext
     this.targetDepth = opts.targetDepth ?? 3
     this.maxDepth = opts.maxDepth ?? 10
-    this.destNode = this.ctx.createMediaStreamDestination()
-    this.outputStream = this.destNode.stream
+    // Unity-gain node — the spatial audio chain attaches here. Using a
+    // GainNode (vs raw destination) gives us a stable connect target even
+    // before any BufferSource has been scheduled.
+    this.outputNode = this.ctx.createGain()
+    this.outputNode.gain.value = 1.0
     this.decoder = new OpusFrameDecoder()
   }
 
@@ -131,18 +135,39 @@ export class JitterBuffer {
       this.nextStartTime = this.ctx.currentTime + 0.02 // tiny lead
     }
 
-    const seq = this.nextSeq
-    let pcm = this.buffer.get(seq)
-    if (pcm) {
-      this.buffer.delete(seq)
-    } else {
-      // Concealment: insert silence for the missing frame.
-      pcm = new Float32Array(VOICE_CODEC.samplesPerFrame)
-      this.framesLost++
+    // Schedule frames until our next-start cursor is at least
+    // (targetDepth * frameMs) ahead of real time. This keeps the audio
+    // graph fed even if setInterval(frameMs) drifts to 70-100 ms under
+    // load, which would otherwise starve the queue and cause dropouts.
+    // Cap at a sane upper bound per tick so a long pause doesn't try to
+    // catch up by scheduling hundreds of frames.
+    const frameSec = VOICE_CODEC.frameMs / 1000
+    const targetLeadSec = this.targetDepth * frameSec
+    let scheduled = 0
+    const maxPerTick = this.maxDepth + 2
+    while (
+      scheduled < maxPerTick &&
+      this.nextStartTime - this.ctx.currentTime < targetLeadSec
+    ) {
+      const seq = this.nextSeq
+      let pcm = this.buffer.get(seq)
+      if (pcm) {
+        this.buffer.delete(seq)
+      } else {
+        // No PCM yet for this seq. If we still have plenty of audio
+        // already queued in the future, prefer to wait one tick rather
+        // than emitting silence — a late-arriving frame can still land
+        // in time. Only emit concealment once the queue is dangerously
+        // close to underrun (less than one frame of lead).
+        if (this.nextStartTime - this.ctx.currentTime > frameSec) break
+        pcm = new Float32Array(VOICE_CODEC.samplesPerFrame)
+        this.framesLost++
+      }
+      this.scheduleFrame(pcm)
+      this.nextSeq = (seq + 1) & 0xffff
+      this.framesPlayed++
+      scheduled++
     }
-    this.scheduleFrame(pcm)
-    this.nextSeq = (seq + 1) & 0xffff
-    this.framesPlayed++
   }
 
   private scheduleFrame(pcm: Float32Array): void {
@@ -158,7 +183,7 @@ export class JitterBuffer {
     buf.copyToChannel(safe, 0)
     const src = this.ctx.createBufferSource()
     src.buffer = buf
-    src.connect(this.destNode)
+    src.connect(this.outputNode)
     // If we've fallen behind real time, jump forward to avoid pile-up.
     const now = this.ctx.currentTime
     if (this.nextStartTime < now) this.nextStartTime = now + 0.005
@@ -191,7 +216,7 @@ export class JitterBuffer {
     this.buffer.clear()
     this.decoder.close()
     try {
-      this.destNode.disconnect()
+      this.outputNode.disconnect()
     } catch {
       /* ignore */
     }
