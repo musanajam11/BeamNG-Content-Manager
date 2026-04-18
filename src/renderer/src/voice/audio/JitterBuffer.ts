@@ -84,18 +84,27 @@ export class JitterBuffer {
       this.framesDropped++
       return
     }
-    // Stash the seq so the decoder callback can route it. We're decoding
-    // sequentially (one outstanding decode at a time per frame) so this
-    // simple side-channel is fine.
-    this.pendingSeq = frame.seq
+    // WebCodecs AudioDecoder is async but preserves input/output order for
+    // Opus. Queue this seq so onDecoded can pull the matching one when the
+    // PCM eventually arrives. Previously we used a single shared
+    // `pendingSeq` field which was overwritten by every push() before the
+    // prior decode finished — almost every frame ended up stamped with the
+    // wrong seq, producing the "broken / unusable audio" symptom.
+    this.pendingSeqs.push(frame.seq)
     this.decoder.decode(frame)
   }
 
-  private pendingSeq = 0
+  private pendingSeqs: number[] = []
 
   private onDecoded(pcm: Float32Array): void {
-    const seq = this.pendingSeq
+    const seq = this.pendingSeqs.shift()
+    if (seq === undefined) return
     if (this.nextSeq === null) this.nextSeq = seq
+    // If the decoded frame is already in the past, drop it.
+    if (seqDelta(this.nextSeq, seq) < 0) {
+      this.framesDropped++
+      return
+    }
     this.buffer.set(seq, pcm)
     // Trim if over capacity.
     if (this.buffer.size > this.maxDepth) {

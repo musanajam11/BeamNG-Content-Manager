@@ -31,7 +31,11 @@ let audioCtx: AudioContext | null = null
 
 export function getAudioContext(): AudioContext {
   if (!audioCtx || audioCtx.state === 'closed') {
-    audioCtx = new AudioContext()
+    // Force 48 kHz to match the Opus codec output. If the OS default is
+    // 44.1 kHz, Web Audio would resample every decoded frame, which is
+    // both wasteful and a common source of clicks/garbled audio when the
+    // input is short (60 ms) per-frame buffers.
+    audioCtx = new AudioContext({ sampleRate: 48000, latencyHint: 'interactive' })
   }
   if (audioCtx.state === 'suspended') {
     audioCtx.resume()
