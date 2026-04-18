@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { useAppStore } from '../stores/useAppStore'
 import { useVoiceChatStore } from '../stores/useVoiceChatStore'
+import { useGameStore } from '../stores/useGameStore'
 import type { VoiceChatSettings, VoiceChatMode } from '../../../shared/types'
 
 export function VoiceChatPage(): React.JSX.Element {
@@ -31,6 +32,7 @@ export function VoiceChatPage(): React.JSX.Element {
   const disable = useVoiceChatStore((s) => s.disable)
   const testTransmit = useVoiceChatStore((s) => s.testTransmit)
   const peersMap = useVoiceChatStore((s) => s.peers)
+  const gameRunning = useGameStore((s) => s.gameStatus.running)
 
   const peers = useMemo(() => {
     const list: { playerId: number; playerName: string; speaking: boolean }[] = []
@@ -217,6 +219,13 @@ export function VoiceChatPage(): React.JSX.Element {
 
   const handleToggleEnable = async (): Promise<void> => {
     const newEnabled = !voiceSettings?.enabled
+    // Block manual enable when BeamNG isn't running. The auto-enable hook in
+    // App.tsx fires on server-join, but only if voice was already turned on
+    // *while in-game* — which is exactly what this gate enforces.
+    if (newEnabled && !gameRunning) {
+      console.log('[VoiceChat] enable blocked: game not running')
+      return
+    }
     await updateSetting('enabled', newEnabled)
     if (newEnabled && !enabled) {
       await enable()
@@ -242,10 +251,18 @@ export function VoiceChatPage(): React.JSX.Element {
           )}
           <button
             onClick={handleToggleEnable}
+            disabled={!voiceSettings.enabled && !gameRunning}
+            title={
+              !voiceSettings.enabled && !gameRunning
+                ? t('voiceChat.gameNotRunningHint')
+                : undefined
+            }
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               voiceSettings.enabled
                 ? 'bg-green-500/15 text-green-400 border border-green-500/30 hover:bg-green-500/25'
-                : 'bg-[var(--color-surface)] text-[var(--color-text-muted)] border border-[var(--color-border)] hover:bg-[var(--color-surface)]'
+                : !gameRunning
+                  ? 'bg-[var(--color-surface)] text-[var(--color-text-muted)] border border-[var(--color-border)] opacity-50 cursor-not-allowed'
+                  : 'bg-[var(--color-surface)] text-[var(--color-text-muted)] border border-[var(--color-border)] hover:bg-[var(--color-surface)]'
             }`}
           >
             {voiceSettings.enabled ? (
@@ -270,6 +287,16 @@ export function VoiceChatPage(): React.JSX.Element {
             {t('voiceChat.infoBanner')}
           </div>
         </div>
+
+        {/* Game-not-running banner: explain why the toggle is disabled. */}
+        {!voiceSettings.enabled && !gameRunning && (
+          <div className="flex items-start gap-3 p-4 rounded-lg bg-amber-500/5 border border-amber-500/20">
+            <AlertCircle size={16} className="text-amber-400 mt-0.5 shrink-0" />
+            <div className="text-[13px] text-[var(--color-text-secondary)] leading-relaxed">
+              {t('voiceChat.gameNotRunningHint')}
+            </div>
+          </div>
+        )}
 
         {/* ── Input Device ── */}
         <Section title={t('voiceChat.microphone')} icon={Mic}>

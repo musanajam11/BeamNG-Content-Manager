@@ -16,7 +16,7 @@ local M = {}
 
 local incomingFile = "settings/BeamCM/vc_incoming.json"
 local outgoingFile = "settings/BeamCM/vc_outgoing.json"
-local pollInterval = 0.1
+local pollInterval = 0.05
 local timer = 0
 local registered = false
 local pollCount = 0
@@ -69,6 +69,11 @@ local function onPeersList(data)
   appendIncoming({ event = "vc_peers_list", data = tostring(data) })
 end
 
+-- vc_audio is high-volume (~17 frames/sec/talker). Don't log each one.
+local function onAudio(data)
+  appendIncoming({ event = "vc_audio", data = tostring(data) })
+end
+
 local function tryRegister()
   if registered then return end
   if type(AddEventHandler) ~= "function" then return end
@@ -77,6 +82,7 @@ local function tryRegister()
     AddEventHandler("vc_peer_left", onPeerLeft)
     AddEventHandler("vc_signal", onSignal)
     AddEventHandler("vc_peers_list", onPeersList)
+    AddEventHandler("vc_audio", onAudio)
   end)
   registered = true
   log('I', 'beamcmVoice', 'Registered BeamMP event handlers (AddEventHandler available)')
@@ -111,11 +117,18 @@ end
 local function onWorldReadyState(state)
   log('I', 'beamcmVoice', 'onWorldReadyState(' .. tostring(state) .. ') — worldReady was ' .. tostring(worldReady))
   if state == 2 then
+    local wasReady = worldReady
     worldReady = true
     log('I', 'beamcmVoice', 'World is READY — multiplayer events will now be sent to server')
-    -- If we have a pending enable, send it now
-    if enableRequested and not enableConfirmed then
-      log('I', 'beamcmVoice', 'Sending deferred vc_enable now that world is ready')
+    -- Re-arm enable on every world-ready transition so map changes / level
+    -- reloads automatically re-register us on the server. The server's
+    -- vc_enable handler is idempotent (replaces the entry, sends fresh
+    -- peers_list).
+    if enableRequested then
+      enableConfirmed = false
+      enableRetryCount = 0
+      enableRetryTimer = 0
+      log('I', 'beamcmVoice', 'Re-sending vc_enable on world ready (wasReady=' .. tostring(wasReady) .. ')')
       trySendServerEvent("vc_enable", "enable")
     end
   elseif state == 0 then
@@ -233,19 +246,31 @@ const VOICE_SERVER_PLUGIN = `-- BeamCM Voice Chat Server Plugin
 -- Auto-deployed by BeamMP Content Manager
 -- Relays WebRTC signaling between voice-chat-enabled players.
 
-local TAG = "[BeamCM-Voice] "
-local voicePeers = {}  -- [playerId] = { name = "...", joinedAt = os.time() }
+const TAG = "[BeamCM-Voice] "
+local voicePeers = {}  -- [playerId] = { name = "...", joinedAt = os.time(), signalsIn=0, signalsOut=0, audioIn=0, audioOut=0, lastSeenAt=os.time() }
 local signalCount = 0
+local audioFrameCount = 0
+local pluginStartedAt = os.time()
+local lastStatsDump = os.time()
+local STATS_INTERVAL = 60  -- seconds between detailed stats dumps
 
+print(string.rep("=", 60))
 print(TAG .. "Voice chat server plugin loading...")
+print(TAG .. "Build: BeamCM Voice v1")
+print(TAG .. "Started at: " .. os.date("%Y-%m-%d %H:%M:%S"))
+print(string.rep("=", 60))
 
 MP.RegisterEvent("vc_enable", "vcOnEnable")
 MP.RegisterEvent("vc_disable", "vcOnDisable")
 MP.RegisterEvent("vc_signal", "vcOnSignal")
+MP.RegisterEvent("vc_audio", "vcOnAudio")
 MP.RegisterEvent("onPlayerDisconnect", "vcOnDisconnect")
 MP.RegisterEvent("onPlayerJoin", "vcOnPlayerJoin")
+-- Periodic stats tick (every 1s; we throttle the actual dump internally).
+MP.CreateEventTimer("vcStatsTick", 1000)
+MP.RegisterEvent("vcStatsTick", "vcOnStatsTick")
 
-print(TAG .. "Events registered: vc_enable, vc_disable, vc_signal, onPlayerDisconnect, onPlayerJoin")
+print(TAG .. "Events registered: vc_enable, vc_disable, vc_signal, vc_audio, onPlayerDisconnect, onPlayerJoin, vcStatsTick(1s)")
 
 local function getPeerCount()
   local count = 0
@@ -264,7 +289,15 @@ end
 function vcOnEnable(player_id, data)
   local name = MP.GetPlayerName(player_id) or ""
   if name == "" then name = "Player_" .. tostring(player_id) end
-  voicePeers[player_id] = { name = name, joinedAt = os.time() }
+  voicePeers[player_id] = {
+    name = name,
+    joinedAt = os.time(),
+    signalsIn = 0,
+    signalsOut = 0,
+    audioIn = 0,
+    audioOut = 0,
+    lastSeenAt = os.time(),
+  }
   local peerCount = getPeerCount()
   print(TAG .. "ENABLED: " .. name .. " (pid=" .. tostring(player_id) .. ") joined voice chat")
   print(TAG .. "Active voice peers: " .. peerCount .. " [" .. getPeerNames() .. "]")
@@ -287,22 +320,26 @@ function vcOnEnable(player_id, data)
     end
   end
   if #peerList > 0 then
-    MP.TriggerClientEvent(player_id, "vc_peers_list", table.concat(peerList, ","))
+    MP.TriggerClientEvent(player_id, "vc_peers_list", tostring(player_id) .. "|" .. table.concat(peerList, ","))
     print(TAG .. "Sent peers list to " .. name .. ": " .. #peerList .. " peer(s)")
   else
     -- Always acknowledge so the client's retry loop stops, even if alone
-    MP.TriggerClientEvent(player_id, "vc_peers_list", "")
+    MP.TriggerClientEvent(player_id, "vc_peers_list", tostring(player_id) .. "|")
     print(TAG .. name .. " is the first voice peer (sent empty peers list as ack)")
   end
 end
 
 function vcOnDisable(player_id, data)
   if voicePeers[player_id] then
-    local name = voicePeers[player_id].name
-    local duration = os.time() - (voicePeers[player_id].joinedAt or os.time())
+    local info = voicePeers[player_id]
+    local name = info.name
+    local duration = os.time() - (info.joinedAt or os.time())
+    print(string.format(
+      "%sDISABLED: %s (pid=%d) left voice chat — active=%ds, sigOut=%d sigIn=%d audOut=%d audIn=%d",
+      TAG, name, player_id, duration, info.signalsOut, info.signalsIn, info.audioOut, info.audioIn
+    ))
     voicePeers[player_id] = nil
     local remaining = getPeerCount()
-    print(TAG .. "DISABLED: " .. name .. " (pid=" .. tostring(player_id) .. ") left voice chat (was active " .. duration .. "s)")
     -- Notify all remaining voice peers
     local notified = 0
     for pid, _ in pairs(voicePeers) do
@@ -322,18 +359,25 @@ function vcOnSignal(player_id, data)
   -- data format: "targetId|jsonPayload"
   local sep = string.find(data, "|", 1, true)
   if not sep then
-    print(TAG .. "WARNING: Malformed signal from pid=" .. tostring(player_id) .. " (no separator)")
+    print(TAG .. "WARNING: Malformed signal from pid=" .. tostring(player_id) .. " (no separator, len=" .. tostring(#data) .. ")")
     return
   end
   local targetId = tonumber(string.sub(data, 1, sep - 1))
   local payload = string.sub(data, sep + 1)
   if not targetId then
-    print(TAG .. "WARNING: Invalid target ID in signal from pid=" .. tostring(player_id))
+    print(TAG .. "WARNING: Invalid target ID in signal from pid=" .. tostring(player_id) .. " (raw='" .. tostring(string.sub(data, 1, sep - 1)) .. "')")
+    return
+  end
+  if not voicePeers[player_id] then
+    print(TAG .. "WARNING: Signal from pid=" .. tostring(player_id) .. " who has not enabled voice chat (rogue client?)")
     return
   end
   if voicePeers[targetId] then
     MP.TriggerClientEvent(targetId, "vc_signal", player_id .. "|" .. payload)
     signalCount = signalCount + 1
+    voicePeers[player_id].signalsOut = voicePeers[player_id].signalsOut + 1
+    voicePeers[player_id].lastSeenAt = os.time()
+    voicePeers[targetId].signalsIn = voicePeers[targetId].signalsIn + 1
     -- Log signal relay activity periodically (every 50 signals)
     if signalCount % 50 == 0 then
       print(TAG .. "Relayed " .. signalCount .. " total signals (" .. getPeerCount() .. " active peers)")
@@ -345,11 +389,15 @@ end
 
 function vcOnDisconnect(player_id)
   if voicePeers[player_id] then
-    local name = voicePeers[player_id].name
-    local duration = os.time() - (voicePeers[player_id].joinedAt or os.time())
+    local info = voicePeers[player_id]
+    local name = info.name
+    local duration = os.time() - (info.joinedAt or os.time())
+    print(string.format(
+      "%sDISCONNECT: %s (pid=%d) left server — was in voice %ds, sigOut=%d sigIn=%d audOut=%d audIn=%d",
+      TAG, name, player_id, duration, info.signalsOut, info.signalsIn, info.audioOut, info.audioIn
+    ))
     voicePeers[player_id] = nil
     local remaining = getPeerCount()
-    print(TAG .. "DISCONNECT: " .. name .. " (pid=" .. tostring(player_id) .. ") left server (was in voice " .. duration .. "s)")
     local notified = 0
     for pid, _ in pairs(voicePeers) do
       MP.TriggerClientEvent(pid, "vc_peer_left", tostring(player_id))
@@ -363,6 +411,57 @@ function vcOnPlayerJoin(player_id)
   local name = MP.GetPlayerName(player_id) or ""
   if name == "" then name = "Player_" .. tostring(player_id) end
   print(TAG .. "Player joined server: " .. name .. " (pid=" .. tostring(player_id) .. ") — voice not yet enabled")
+end
+
+-- Tier 3 audio relay. Data format from sender: "<seq>|<base64opus>".
+-- We rebroadcast as "<senderId>|<seq>|<base64opus>" to all other voice peers.
+-- High-volume (~17 frames/sec/talker) — no per-frame logging.
+function vcOnAudio(player_id, data)
+  if not voicePeers[player_id] then return end
+  audioFrameCount = audioFrameCount + 1
+  voicePeers[player_id].audioOut = voicePeers[player_id].audioOut + 1
+  voicePeers[player_id].lastSeenAt = os.time()
+  local relayed = player_id .. "|" .. data
+  local fanOut = 0
+  for pid, info in pairs(voicePeers) do
+    if pid ~= player_id then
+      MP.TriggerClientEvent(pid, "vc_audio", relayed)
+      info.audioIn = info.audioIn + 1
+      fanOut = fanOut + 1
+    end
+  end
+  if audioFrameCount % 500 == 0 then
+    print(TAG .. "Relayed " .. audioFrameCount .. " audio frames (last fan-out=" .. fanOut .. ", " .. getPeerCount() .. " active peers)")
+  end
+end
+
+-- Periodic detailed stats dump. Throttled to STATS_INTERVAL seconds and only
+-- emitted when at least one peer is active, so an idle server stays quiet.
+function vcOnStatsTick()
+  local now = os.time()
+  if now - lastStatsDump < STATS_INTERVAL then return end
+  local count = getPeerCount()
+  if count == 0 then
+    lastStatsDump = now
+    return
+  end
+  lastStatsDump = now
+  local uptime = now - pluginStartedAt
+  print(string.rep("-", 60))
+  print(TAG .. "=== Stats dump @ " .. os.date("%H:%M:%S") .. " (uptime " .. uptime .. "s) ===")
+  print(TAG .. "Active voice peers: " .. count)
+  print(TAG .. "Cumulative signals relayed: " .. signalCount)
+  print(TAG .. "Cumulative audio frames relayed: " .. audioFrameCount)
+  for pid, info in pairs(voicePeers) do
+    local active = now - info.joinedAt
+    local idle = now - info.lastSeenAt
+    print(string.format(
+      "%s  - pid=%d  name=%-20s  active=%4ds  idle=%3ds  sigOut=%5d sigIn=%5d audOut=%6d audIn=%6d",
+      TAG, pid, info.name, active, idle,
+      info.signalsOut, info.signalsIn, info.audioOut, info.audioIn
+    ))
+  end
+  print(string.rep("-", 60))
 end
 
 print(TAG .. "Plugin loaded successfully — waiting for players to enable voice chat")
@@ -477,8 +576,8 @@ export class VoiceChatService {
 
   private startSignalPoller(): void {
     if (this.signalPoller) return
-    this.signalPoller = setInterval(() => this.pollIncomingSignals(), 100)
-    this.log('Signal poller started (100ms)')
+    this.signalPoller = setInterval(() => this.pollIncomingSignals(), 50)
+    this.log('Signal poller started (50ms)')
   }
 
   private stopSignalPoller(): void {
@@ -551,9 +650,23 @@ export class VoiceChatService {
         break
       }
       case 'vc_peers_list': {
-        // data: "id1:name1,id2:name2,..."
-        if (!msg.data) break
-        const entries = msg.data.split(',')
+        // data: "<recipientSelfId>|id1:name1,id2:name2,..."
+        // The leading recipientId is the player id the server assigned to US.
+        // It allows the renderer's mesh tier to elect supernodes correctly.
+        if (msg.data === undefined || msg.data === null) break
+        const pipeIdx = (msg.data as string).indexOf('|')
+        let listPart = msg.data as string
+        if (pipeIdx >= 0) {
+          const selfIdRaw = (msg.data as string).substring(0, pipeIdx)
+          const selfId = parseInt(selfIdRaw, 10)
+          listPart = (msg.data as string).substring(pipeIdx + 1)
+          if (!isNaN(selfId)) {
+            win.webContents.send('voice:selfId', { selfId })
+            this.log(`Self player id from server: ${selfId}`)
+          }
+        }
+        if (!listPart) break
+        const entries = listPart.split(',')
         for (const entry of entries) {
           const colonIdx = entry.indexOf(':')
           if (colonIdx < 0) continue
@@ -570,6 +683,21 @@ export class VoiceChatService {
         }
         break
       }
+      case 'vc_audio': {
+        // data: "<senderId>|<seq>|<base64opus>" — Tier 3 (server relay) audio frame.
+        // High-volume (~17/s/talker); no per-frame log.
+        const first = msg.data.indexOf('|')
+        if (first < 0) break
+        const second = msg.data.indexOf('|', first + 1)
+        if (second < 0) break
+        const fromId = parseInt(msg.data.substring(0, first), 10)
+        const seq = parseInt(msg.data.substring(first + 1, second), 10)
+        const b64 = msg.data.substring(second + 1)
+        if (!isNaN(fromId) && !isNaN(seq) && b64) {
+          win.webContents.send('voice:audio', { fromId, seq, data: b64 })
+        }
+        break
+      }
     }
   }
 
@@ -583,6 +711,20 @@ export class VoiceChatService {
     // Queue the signal and schedule a batched flush to avoid read-modify-write
     // races when multiple signals (offer + ICE candidates) fire in rapid succession.
     this.outgoingQueue.push({ event, data })
+    if (!this.flushScheduled) {
+      this.flushScheduled = true
+      queueMicrotask(() => this.flushOutgoingQueue())
+    }
+  }
+
+  /**
+   * Tier 3 outbound audio frame. Same queue as sendSignal; the Lua bridge
+   * forwards `vc_audio` events to the server which broadcasts to all other
+   * voice peers. Wire format: data = "<seq>|<base64opus>".
+   */
+  async sendAudio(seq: number, base64Opus: string): Promise<void> {
+    if (!this.userDir || !this.enabled) return
+    this.outgoingQueue.push({ event: 'vc_audio', data: `${seq}|${base64Opus}` })
     if (!this.flushScheduled) {
       this.flushScheduled = true
       queueMicrotask(() => this.flushOutgoingQueue())

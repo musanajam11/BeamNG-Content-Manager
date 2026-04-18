@@ -1,0 +1,190 @@
+/**
+ * JitterBuffer + scheduled playback.
+ *
+ * Receives OpusFrames from any VoiceTransport, decodes them, and plays
+ * the PCM through a MediaStreamAudioDestinationNode so the existing
+ * spatial audio chain (`createPeerAudio` in `utils/spatialAudio.ts`) can
+ * consume the resulting MediaStream unchanged.
+ *
+ * Design:
+ * - Decode is eager (decoder is fast; latency comes from playback queue).
+ * - Decoded PCM is keyed by seq into a small ring window so out-of-order
+ *   arrivals can be reordered.
+ * - A `tick` runs every frameMs and dequeues the next-expected seq. If
+ *   missing and the slot deadline has passed, silence is inserted (PLC
+ *   substitute) and the seq is advanced.
+ * - Initial fill: wait until `targetDepth` frames buffered before first
+ *   playout.
+ */
+
+import { OpusFrameDecoder } from './OpusCodec'
+import { OpusFrame, VOICE_CODEC } from '../transports/types'
+
+export interface JitterBufferOptions {
+  /** AudioContext to schedule playback in. Pass the spatial-audio shared one. */
+  audioContext: AudioContext
+  /** How many frames to buffer before starting playout (default 3 → 180 ms). */
+  targetDepth?: number
+  /** Hard cap on buffered frames; oldest dropped above this (default 10). */
+  maxDepth?: number
+}
+
+/** Modular distance between two 16-bit sequence numbers (a → b). */
+function seqDelta(a: number, b: number): number {
+  let d = (b - a) & 0xffff
+  if (d > 0x7fff) d -= 0x10000
+  return d
+}
+
+export class JitterBuffer {
+  readonly outputStream: MediaStream
+  private readonly ctx: AudioContext
+  private readonly destNode: MediaStreamAudioDestinationNode
+  private readonly decoder: OpusFrameDecoder
+  private readonly targetDepth: number
+  private readonly maxDepth: number
+
+  /** seq → decoded PCM (Float32Array of samplesPerFrame). */
+  private buffer = new Map<number, Float32Array>()
+  /** Seq we expect to play next. Set on first decoded frame. */
+  private nextSeq: number | null = null
+  /** AudioContext.currentTime at which the next frame should start. */
+  private nextStartTime = 0
+  /** Whether the warm-up phase (fill to targetDepth) has finished. */
+  private playing = false
+  /** Periodic tick handle. */
+  private tickHandle: ReturnType<typeof setInterval> | null = null
+  private closed = false
+  private framesPlayed = 0
+  private framesDropped = 0
+  private framesLost = 0
+
+  constructor(opts: JitterBufferOptions) {
+    this.ctx = opts.audioContext
+    this.targetDepth = opts.targetDepth ?? 3
+    this.maxDepth = opts.maxDepth ?? 10
+    this.destNode = this.ctx.createMediaStreamDestination()
+    this.outputStream = this.destNode.stream
+    this.decoder = new OpusFrameDecoder()
+  }
+
+  async start(): Promise<void> {
+    await this.decoder.start()
+    this.decoder.on('pcm', (pcm, _ts) => this.onDecoded(pcm))
+    this.decoder.on('error', (e) => console.warn('[JitterBuffer] decode error', e))
+    // Tick at frame cadence to drain the buffer.
+    this.tickHandle = setInterval(() => this.tick(), VOICE_CODEC.frameMs)
+  }
+
+  /** Push an inbound OpusFrame from the transport. */
+  push(frame: OpusFrame): void {
+    if (this.closed) return
+    // Drop frames already in the past.
+    if (this.nextSeq !== null && seqDelta(this.nextSeq, frame.seq) < 0) {
+      this.framesDropped++
+      return
+    }
+    // Stash the seq so the decoder callback can route it. We're decoding
+    // sequentially (one outstanding decode at a time per frame) so this
+    // simple side-channel is fine.
+    this.pendingSeq = frame.seq
+    this.decoder.decode(frame)
+  }
+
+  private pendingSeq = 0
+
+  private onDecoded(pcm: Float32Array): void {
+    const seq = this.pendingSeq
+    if (this.nextSeq === null) this.nextSeq = seq
+    this.buffer.set(seq, pcm)
+    // Trim if over capacity.
+    if (this.buffer.size > this.maxDepth) {
+      // Drop the oldest by seq distance to nextSeq.
+      let oldest = seq
+      let oldestDelta = 0
+      for (const k of this.buffer.keys()) {
+        const d = seqDelta(this.nextSeq, k)
+        if (d < oldestDelta) {
+          oldestDelta = d
+          oldest = k
+        }
+      }
+      this.buffer.delete(oldest)
+      this.framesDropped++
+    }
+  }
+
+  private tick(): void {
+    if (this.closed || this.nextSeq === null) return
+    if (!this.playing) {
+      if (this.buffer.size < this.targetDepth) return
+      this.playing = true
+      this.nextStartTime = this.ctx.currentTime + 0.02 // tiny lead
+    }
+
+    const seq = this.nextSeq
+    let pcm = this.buffer.get(seq)
+    if (pcm) {
+      this.buffer.delete(seq)
+    } else {
+      // Concealment: insert silence for the missing frame.
+      pcm = new Float32Array(VOICE_CODEC.samplesPerFrame)
+      this.framesLost++
+    }
+    this.scheduleFrame(pcm)
+    this.nextSeq = (seq + 1) & 0xffff
+    this.framesPlayed++
+  }
+
+  private scheduleFrame(pcm: Float32Array): void {
+    const buf = this.ctx.createBuffer(
+      VOICE_CODEC.channels,
+      VOICE_CODEC.samplesPerFrame,
+      VOICE_CODEC.sampleRate,
+    )
+    // copyToChannel under strict TS rejects ArrayBufferLike-backed views; copy
+    // into a fresh ArrayBuffer-backed Float32Array first.
+    const safe = new Float32Array(new ArrayBuffer(pcm.byteLength))
+    safe.set(pcm)
+    buf.copyToChannel(safe, 0)
+    const src = this.ctx.createBufferSource()
+    src.buffer = buf
+    src.connect(this.destNode)
+    // If we've fallen behind real time, jump forward to avoid pile-up.
+    const now = this.ctx.currentTime
+    if (this.nextStartTime < now) this.nextStartTime = now + 0.005
+    src.start(this.nextStartTime)
+    this.nextStartTime += VOICE_CODEC.frameMs / 1000
+  }
+
+  getStats(): {
+    buffered: number
+    played: number
+    dropped: number
+    lost: number
+    playing: boolean
+  } {
+    return {
+      buffered: this.buffer.size,
+      played: this.framesPlayed,
+      dropped: this.framesDropped,
+      lost: this.framesLost,
+      playing: this.playing,
+    }
+  }
+
+  close(): void {
+    this.closed = true
+    if (this.tickHandle) {
+      clearInterval(this.tickHandle)
+      this.tickHandle = null
+    }
+    this.buffer.clear()
+    this.decoder.close()
+    try {
+      this.destNode.disconnect()
+    } catch {
+      /* ignore */
+    }
+  }
+}

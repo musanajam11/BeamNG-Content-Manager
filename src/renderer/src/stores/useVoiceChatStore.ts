@@ -1,4 +1,4 @@
-import { create } from 'zustand'
+﻿import { create } from 'zustand'
 import type { VoiceChatSettings, VoicePeerInfo, GPSTelemetry } from '../../../shared/types'
 import {
   createPeerAudio,
@@ -10,24 +10,42 @@ import {
   getAudioContext,
   closeAudioContext,
   setOutputDevice,
-  type SpatialPeerAudio
+  type SpatialPeerAudio,
 } from '../utils/spatialAudio'
+import { AudioCapture } from '../voice/audio/AudioCapture'
+import { JitterBuffer } from '../voice/audio/JitterBuffer'
+import { probeOpusSupport } from '../voice/audio/OpusCodec'
+import { MeshOrchestrator, MeshSignalEnvelope } from '../voice/MeshElection'
+import { VoiceTransportRouter } from '../voice/VoiceTransportRouter'
+import { broadcastTier3 } from '../voice/transports/BeamMpRelayTransport'
+import {
+  OpusFrame,
+  TIER_BADGE,
+  VoiceTier,
+  VoiceTransportState,
+} from '../voice/transports/types'
+import type { WebRtcSignal } from '../voice/transports/WebRtcTransport'
 
 interface PeerConnection {
   playerId: number
   playerName: string
-  pc: RTCPeerConnection
-  stream: MediaStream | null
+  router: VoiceTransportRouter
+  jitter: JitterBuffer | null
   audio: SpatialPeerAudio | null
   speaking: boolean
-  makingOffer: boolean
   polite: boolean
+  /** UI-friendly state derived from router state. */
+  connState: RTCPeerConnectionState
+  /** Currently active tier per the router. Null while still probing. */
+  tier: VoiceTier | null
 }
 
-interface VoiceChatState {
+interface VoiceChatStore {
   enabled: boolean
   available: boolean
+  /** Original mic stream (kept for PTT mute & input-gain debugging). */
   localStream: MediaStream | null
+  /** Single shared AudioContext gain on the legacy transmit chain (kept for testTransmit). */
   transmitGainNode: GainNode | null
   peers: Map<number, PeerConnection>
   settings: VoiceChatSettings
@@ -40,6 +58,7 @@ interface VoiceChatState {
   handlePeerJoined: (playerId: number, playerName: string, polite?: boolean) => void
   handlePeerLeft: (playerId: number) => void
   handleSignal: (fromId: number, payload: string) => void
+  setSelfId: (selfId: number) => void
   updateSpatialAudio: (telemetry: GPSTelemetry) => void
   setPttActive: (active: boolean) => void
   testTransmit: () => void
@@ -49,7 +68,7 @@ interface VoiceChatState {
 
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' }
+  { urls: 'stun:stun1.l.google.com:19302' },
 ]
 
 function buildIceServers(settings: VoiceChatSettings): RTCIceServer[] {
@@ -76,13 +95,48 @@ const DEFAULT_SETTINGS: VoiceChatSettings = {
   doorMuffling: true,
   turnServerUrl: null,
   turnUsername: null,
-  turnCredential: null
+  turnCredential: null,
 }
 
-// Track speaking detection interval outside store
+// Module-scope mutable resources. Kept outside the store so React's
+// re-render pipeline never wraps them in a Proxy.
 let speakingInterval: ReturnType<typeof setInterval> | null = null
+let audioCapture: AudioCapture | null = null
+let captureMuted = false
+let meshOrchestrator: MeshOrchestrator | null = null
+let selfPlayerId: number | null = null
 
-export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
+function routerStateToConn(s: VoiceTransportState): RTCPeerConnectionState {
+  switch (s) {
+    case 'idle':
+      return 'new'
+    case 'connecting':
+      return 'connecting'
+    case 'connected':
+      return 'connected'
+    case 'failed':
+      return 'failed'
+    case 'closed':
+      return 'closed'
+  }
+}
+
+/** Fan an outgoing Opus frame to every peer's transport. */
+function fanoutFrame(peers: Map<number, PeerConnection>, frame: OpusFrame): void {
+  let anyTier3 = false
+  for (const peer of peers.values()) {
+    if (peer.tier === VoiceTier.Server) {
+      anyTier3 = true
+      continue // tier-3 outbound is a single broadcast, see below
+    }
+    peer.router.send(frame)
+  }
+  // One broadcast covers every tier-3 peer at once (the BeamMP server
+  // fans out for us). Skip if no tier-3 peer is currently active.
+  if (anyTier3) broadcastTier3(frame)
+}
+
+export const useVoiceChatStore = create<VoiceChatStore>((set, get) => ({
   enabled: false,
   available: false,
   localStream: null,
@@ -94,53 +148,78 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
   enable: async () => {
     const { settings } = get()
     try {
+      const support = await probeOpusSupport()
+      if (!support.encoder || !support.decoder) {
+        console.error('[VoiceChat] Opus unavailable:', support.reason)
+        return
+      }
+
       const constraints: MediaStreamConstraints = {
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-          ...(settings.inputDeviceId ? { deviceId: { exact: settings.inputDeviceId } } : {})
-        }
+          ...(settings.inputDeviceId ? { deviceId: { exact: settings.inputDeviceId } } : {}),
+        },
       }
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
-      console.log(`[VoiceChat] Got mic stream: ${stream.getAudioTracks().length} audio track(s), id=${stream.id}`)
+      console.log(`[VoiceChat] Got mic stream: ${stream.getAudioTracks().length} track(s), id=${stream.id}`)
 
-      // Apply input gain via AudioContext
       const ctx = getAudioContext()
+      if (settings.outputDeviceId) await setOutputDevice(settings.outputDeviceId)
 
-      // Route output to selected device
-      if (settings.outputDeviceId) {
-        await setOutputDevice(settings.outputDeviceId)
-      }
-
+      // Legacy testTransmit chain â€” kept so the speaker-test button still
+      // works. Doesn't actually feed any peer transport.
       const source = ctx.createMediaStreamSource(stream)
       const gainNode = ctx.createGain()
       gainNode.gain.value = settings.inputGain
       const dest = ctx.createMediaStreamDestination()
-      source.connect(gainNode)
-      gainNode.connect(dest)
+      source.connect(gainNode).connect(dest)
 
-      set({ enabled: true, available: true, localStream: dest.stream, transmitGainNode: gainNode })
-      console.log(`[VoiceChat] Enabled — transmit stream: ${dest.stream.getAudioTracks().length} track(s), AudioContext state: ${ctx.state}`)
+      // Hybrid audio capture â†’ Opus â†’ fan-out to all peer routers.
+      audioCapture = new AudioCapture({ stream, gain: settings.inputGain, muted: captureMuted })
+      audioCapture.on('frame', (frame) => fanoutFrame(get().peers, frame))
+      audioCapture.on('error', (e) => console.error('[VoiceChat] capture error', e))
+      await audioCapture.start()
 
-      // Enable voice on the server side
+      // Mesh tier orchestrator. selfPlayerId is set lazily on first peer
+      // join (see handlePeerJoined) because we don't yet have a clean way
+      // to know our own BeamMP id at enable time.
+      meshOrchestrator = new MeshOrchestrator({
+        selfId: selfPlayerId,
+        sendSignal: (env: MeshSignalEnvelope) => {
+          const wire = JSON.stringify(env)
+          // Send the mesh envelope as a broadcast voice signal addressed to
+          // pseudo-target id 0 — the receiver demuxes by JSON kind.
+          window.api.voiceSendSignal(`0|${wire}`).catch(() => undefined)
+        },
+      })
+      void meshOrchestrator.start()
+
+      set({
+        enabled: true,
+        available: true,
+        localStream: dest.stream,
+        transmitGainNode: gainNode,
+      })
+
       await window.api.voiceEnable()
 
-      // Start speaking detection
+      // VAD speaking detection on remote peers.
       speakingInterval = setInterval(() => {
         const { peers, settings: s } = get()
         let changed = false
-        const updatedPeers = new Map(peers)
-        for (const [, peer] of updatedPeers) {
-          if (peer.audio) {
-            const speaking = isPeerSpeaking(peer.audio, s.vadThreshold)
-            if (speaking !== peer.speaking) {
-              peer.speaking = speaking
+        const updated = new Map(peers)
+        for (const [, p] of updated) {
+          if (p.audio) {
+            const speaking = isPeerSpeaking(p.audio, s.vadThreshold)
+            if (speaking !== p.speaking) {
+              p.speaking = speaking
               changed = true
             }
           }
         }
-        if (changed) set({ peers: updatedPeers })
+        if (changed) set({ peers: updated })
       }, 100)
     } catch (err) {
       console.error('[VoiceChat] Failed to enable:', err)
@@ -150,129 +229,129 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
   disable: () => {
     const { localStream, peers } = get()
 
-    // Stop speaking detection
     if (speakingInterval) {
       clearInterval(speakingInterval)
       speakingInterval = null
     }
 
-    // Close all peer connections
     for (const [, peer] of peers) {
       if (peer.audio) destroyPeerAudio(peer.audio)
-      peer.pc.close()
+      peer.jitter?.close()
+      peer.router.close('voice disabled')
     }
 
-    // Stop local tracks
-    if (localStream) {
-      localStream.getTracks().forEach((t) => t.stop())
+    if (audioCapture) {
+      void audioCapture.stop()
+      audioCapture = null
     }
+    if (meshOrchestrator) {
+      meshOrchestrator.stop()
+      meshOrchestrator = null
+    }
+    if (localStream) localStream.getTracks().forEach((t) => t.stop())
 
     closeAudioContext()
     set({ enabled: false, localStream: null, transmitGainNode: null, peers: new Map() })
-    window.api.voiceDisable().catch(() => {})
+    window.api.voiceDisable().catch(() => undefined)
   },
 
   updateSettings: (partial) => {
-    const { settings, localStream } = get()
+    const { settings } = get()
     const updated = { ...settings, ...partial }
     set({ settings: updated })
 
-    // Live-update input gain if stream is active
-    if (partial.inputGain !== undefined && localStream) {
-      // Gain is handled at enable time; a re-enable would be needed for device change
+    if (partial.inputGain !== undefined && audioCapture) {
+      audioCapture.setGain(partial.inputGain)
     }
-
-    // Live-update output device
     if (partial.outputDeviceId !== undefined) {
-      setOutputDevice(partial.outputDeviceId).catch(() => {})
+      setOutputDevice(partial.outputDeviceId).catch(() => undefined)
     }
-
-    // Persist
-    window.api.voiceUpdateSettings(updated).catch(() => {})
+    window.api.voiceUpdateSettings(updated).catch(() => undefined)
   },
 
   handlePeerJoined: (playerId, playerName, polite = false) => {
-    const { peers, localStream, settings } = get()
+    const { peers, settings } = get()
     if (peers.has(playerId)) {
       console.log(`[VoiceChat] Peer ${playerId} already known, skipping`)
       return
     }
-    console.log(`[VoiceChat] handlePeerJoined: ${playerName} (id=${playerId}, polite=${polite}, hasLocalStream=${!!localStream})`)
+    console.log(
+      `[VoiceChat] handlePeerJoined: ${playerName} (id=${playerId}, polite=${polite})`,
+    )
 
-    const pc = new RTCPeerConnection({ iceServers: buildIceServers(settings) })
+    const ctx = getAudioContext()
+
+    const router = new VoiceTransportRouter({
+      remotePlayerId: playerId,
+      polite,
+      iceServers: buildIceServers(settings),
+      sendWebRtcSignal: (s: WebRtcSignal) => {
+        const wire = JSON.stringify({ type: s.type, data: s.data })
+        window.api.voiceSendSignal(`${playerId}|${wire}`).catch((err) => {
+          console.error('[VoiceChat] sendSignal failed', err)
+        })
+      },
+      meshFactory: () => meshOrchestrator?.getMeshTransport(playerId) ?? null,
+    })
+
     const peer: PeerConnection = {
       playerId,
       playerName,
-      pc,
-      stream: null,
+      router,
+      jitter: null,
       audio: null,
       speaking: false,
-      makingOffer: false,
-      polite
+      polite,
+      connState: 'new',
+      tier: null,
     }
 
-    // Add local audio track
-    if (localStream) {
-      for (const track of localStream.getAudioTracks()) {
-        pc.addTrack(track, localStream)
+    router.on('frame', (frame) => {
+      const cur = get().peers.get(playerId)
+      if (!cur) return
+      // Lazy-create the jitter buffer + spatial audio chain on first frame.
+      if (!cur.jitter) {
+        const jb = new JitterBuffer({ audioContext: ctx })
+        void jb.start()
+        const spatial = createPeerAudio(jb.outputStream, get().settings.proximityRange)
+        cur.jitter = jb
+        cur.audio = spatial
+        const next = new Map(get().peers)
+        next.set(playerId, cur)
+        set({ peers: next })
       }
-    }
+      cur.jitter.push(frame)
+    })
 
-    // Handle remote audio track
-    pc.ontrack = (event) => {
-      const [remoteStream] = event.streams
-      console.log(`[VoiceChat] ontrack from peer ${playerId}: ${remoteStream?.getTracks().length} track(s)`)
-      if (remoteStream) {
-        peer.stream = remoteStream
-        peer.audio = createPeerAudio(remoteStream, settings.proximityRange)
-        const updatedPeers = new Map(get().peers)
-        updatedPeers.set(playerId, peer)
-        set({ peers: updatedPeers })
+    router.on('state', (s, reason) => {
+      const cur = get().peers.get(playerId)
+      if (!cur) return
+      cur.connState = routerStateToConn(s)
+      const next = new Map(get().peers)
+      next.set(playerId, cur)
+      set({ peers: next })
+      if (s === 'failed') {
+        console.warn(`[VoiceChat] peer ${playerId} state failed: ${reason ?? ''}`)
       }
-    }
+    })
 
-    // ICE candidate exchange
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        console.log(`[VoiceChat] ICE candidate for peer ${playerId}: ${event.candidate.candidate.substring(0, 60)}...`)
-        const signal = JSON.stringify({ type: 'ice', data: event.candidate })
-        window.api.voiceSendSignal(playerId.toString() + '|' + signal).catch((err) => {
-          console.error(`[VoiceChat] Failed to send ICE candidate:`, err)
-        })
-      } else {
-        console.log(`[VoiceChat] ICE gathering complete for peer ${playerId}`)
-      }
-    }
+    router.on('tier', (tier, reason) => {
+      const cur = get().peers.get(playerId)
+      if (!cur) return
+      cur.tier = tier
+      const next = new Map(get().peers)
+      next.set(playerId, cur)
+      set({ peers: next })
+      console.log(
+        `[VoiceChat] peer ${playerId} tier=${TIER_BADGE[tier].emoji} ${TIER_BADGE[tier].label} (${reason ?? ''})`,
+      )
+    })
 
-    pc.onicegatheringstatechange = () => {
-      console.log(`[VoiceChat] ICE gathering state for peer ${playerId}: ${pc.iceGatheringState}`)
-    }
+    router.on('backpressure', (n) => {
+      if (n > 5000) console.warn(`[VoiceChat] peer ${playerId} backpressure ${n}B`)
+    })
 
-    pc.oniceconnectionstatechange = () => {
-      console.log(`[VoiceChat] ICE connection state for peer ${playerId}: ${pc.iceConnectionState}`)
-    }
-
-    // Negotiation
-    pc.onnegotiationneeded = async () => {
-      console.log(`[VoiceChat] onnegotiationneeded for peer ${playerId} (polite=${polite})`)
-      try {
-        peer.makingOffer = true
-        const offer = await pc.createOffer()
-        await pc.setLocalDescription(offer)
-        console.log(`[VoiceChat] Created and set local offer for peer ${playerId}`)
-        const signal = JSON.stringify({ type: 'offer', data: pc.localDescription })
-        await window.api.voiceSendSignal(playerId.toString() + '|' + signal)
-        console.log(`[VoiceChat] Sent offer to peer ${playerId}`)
-      } catch (err) {
-        console.error('[VoiceChat] Negotiation error:', err)
-      } finally {
-        peer.makingOffer = false
-      }
-    }
-
-    pc.onconnectionstatechange = () => {
-      console.log(`[VoiceChat] Peer ${playerId} connection state: ${pc.connectionState}`)
-    }
+    void router.start()
 
     const updatedPeers = new Map(peers)
     updatedPeers.set(playerId, peer)
@@ -283,70 +362,48 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
     const { peers } = get()
     const peer = peers.get(playerId)
     if (!peer) return
-
     if (peer.audio) destroyPeerAudio(peer.audio)
-    peer.pc.close()
-
-    const updatedPeers = new Map(peers)
-    updatedPeers.delete(playerId)
-    set({ peers: updatedPeers })
+    peer.jitter?.close()
+    peer.router.close('peer left')
+    const next = new Map(peers)
+    next.delete(playerId)
+    set({ peers: next })
   },
 
-  handleSignal: async (fromId, payload) => {
-    const { peers } = get()
-    const peer = peers.get(fromId)
+  handleSignal: (fromId, payload) => {
+    // Mesh envelopes are JSON with a `kind: 'mesh:*'` discriminator and arrive
+    // on the same `voice:signal` channel as WebRTC signals. Try mesh first.
+    try {
+      const probe = JSON.parse(payload) as { kind?: string }
+      if (probe && typeof probe.kind === 'string' && probe.kind.startsWith('mesh:')) {
+        meshOrchestrator?.handleSignal(fromId, probe as MeshSignalEnvelope)
+        return
+      }
+    } catch {
+      // not JSON, fall through to WebRTC handling
+    }
+
+    const peer = get().peers.get(fromId)
     if (!peer) {
       console.warn(`[VoiceChat] Signal from unknown peer ${fromId}, ignoring`)
       return
     }
-
     try {
-      const signal = JSON.parse(payload)
-      const { pc } = peer
-      console.log(`[VoiceChat] Received signal type='${signal.type}' from peer ${fromId} (signalingState=${pc.signalingState}, polite=${peer.polite})`)
-
-      if (signal.type === 'offer') {
-        const offerCollision = peer.makingOffer || pc.signalingState !== 'stable'
-        // Perfect Negotiation: polite peer yields on collision, impolite peer ignores
-        if (offerCollision) {
-          console.log(`[VoiceChat] Offer collision! makingOffer=${peer.makingOffer}, signalingState=${pc.signalingState}, polite=${peer.polite}`)
-          if (!peer.polite) {
-            console.log(`[VoiceChat] Impolite peer — ignoring incoming offer`)
-            return
-          }
-          console.log(`[VoiceChat] Polite peer — accepting incoming offer (implicit rollback)`)
-        }
-        await pc.setRemoteDescription(new RTCSessionDescription(signal.data))
-        console.log(`[VoiceChat] Set remote offer from peer ${fromId}`)
-        const answer = await pc.createAnswer()
-        await pc.setLocalDescription(answer)
-        console.log(`[VoiceChat] Created and sent answer to peer ${fromId}`)
-        const answerSignal = JSON.stringify({ type: 'answer', data: pc.localDescription })
-        await window.api.voiceSendSignal(fromId.toString() + '|' + answerSignal)
-      } else if (signal.type === 'answer') {
-        if (pc.signalingState === 'stable') {
-          console.log(`[VoiceChat] Ignoring stale answer (already stable)`)
-          return
-        }
-        await pc.setRemoteDescription(new RTCSessionDescription(signal.data))
-        console.log(`[VoiceChat] Set remote answer from peer ${fromId}`)
-      } else if (signal.type === 'ice') {
-        try {
-          await pc.addIceCandidate(new RTCIceCandidate(signal.data))
-        } catch (iceErr) {
-          console.warn(`[VoiceChat] ICE candidate error from peer ${fromId}:`, iceErr)
-          if (!peer.polite) throw new Error('ICE candidate failed on impolite peer')
-        }
-      }
+      const parsed = JSON.parse(payload) as WebRtcSignal
+      void peer.router.handleWebRtcSignal(parsed)
     } catch (err) {
-      console.error(`[VoiceChat] Signal error from ${fromId}:`, err)
+      console.error(`[VoiceChat] Signal parse error from ${fromId}:`, err)
     }
+  },
+
+  setSelfId: (id) => {
+    selfPlayerId = id
+    meshOrchestrator?.setSelfId(id)
   },
 
   updateSpatialAudio: (telemetry) => {
     const { peers, settings } = get()
 
-    // Update listener position (local player)
     const headingRad = telemetry.heading ?? 0
     updateListenerPosition(
       telemetry.x,
@@ -354,36 +411,26 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
       telemetry.z,
       Math.sin(headingRad),
       Math.cos(headingRad),
-      0
+      0,
     )
 
-    // Update peer positions from telemetry others
     if (!telemetry.otherPlayers) return
-
     for (const [, peer] of peers) {
       if (!peer.audio) continue
-
-      // Match peer by name from telemetry
-      const other = telemetry.otherPlayers.find(
-        (o) => o.name === peer.playerName
-      )
+      const other = telemetry.otherPlayers.find((o) => o.name === peer.playerName)
       if (other) {
         updatePeerPosition(peer.audio, other.x, other.y, other.z)
-
-        // Volume: base output volume * muffle factor
-        const muffleFactor = 1.0 // TODO: door muffling from extended telemetry
+        const muffleFactor = 1.0
         setPeerVolume(peer.audio, settings.outputVolume, muffleFactor)
       }
     }
   },
 
   setPttActive: (active) => {
-    const { localStream, settings } = get()
-    if (settings.mode !== 'ptt' || !localStream) return
-    // Mute/unmute tracks based on PTT state
-    for (const track of localStream.getAudioTracks()) {
-      track.enabled = active
-    }
+    const { settings } = get()
+    if (settings.mode !== 'ptt') return
+    captureMuted = !active
+    if (audioCapture) audioCapture.setMuted(captureMuted)
     set({ pttActive: active })
   },
 
@@ -391,7 +438,6 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
     const { transmitGainNode } = get()
     if (!transmitGainNode) return
     const ctx = transmitGainNode.context
-    // Play a 3-tone ascending beep sequence through the transmit chain (peers hear this)
     const tones = [440, 554, 659]
     const duration = 0.25
     const gap = 0.1
@@ -403,9 +449,7 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
       gain.gain.value = 0.5
       gain.gain.setTargetAtTime(0, ctx.currentTime + i * (duration + gap) + duration - 0.05, 0.02)
       osc.connect(gain)
-      // Route to transmit chain (peers)
       gain.connect(transmitGainNode)
-      // Also route to local speakers as confirmation
       gain.connect(ctx.destination)
       const start = ctx.currentTime + i * (duration + gap)
       osc.start(start)
@@ -420,7 +464,7 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
       list.push({
         playerId: peer.playerId,
         playerName: peer.playerName,
-        speaking: peer.speaking
+        speaking: peer.speaking,
       })
     }
     return list
@@ -428,5 +472,5 @@ export const useVoiceChatStore = create<VoiceChatState>((set, get) => ({
 
   cleanup: () => {
     get().disable()
-  }
+  },
 }))

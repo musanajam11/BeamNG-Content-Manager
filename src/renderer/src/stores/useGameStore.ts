@@ -9,6 +9,7 @@ interface GameState {
   launchGame: () => Promise<void>
   killGame: () => Promise<void>
   refreshStatus: () => Promise<void>
+  setGameStatus: (status: GameStatus) => void
 }
 
 export const useGameStore = create<GameState>((set) => ({
@@ -42,5 +43,7 @@ export const useGameStore = create<GameState>((set) => ({
   refreshStatus: async () => {
     const gameStatus = await window.api.getGameStatus()
     set({ gameStatus })
-  }
+  },
+
+  setGameStatus: (gameStatus) => set({ gameStatus })
 }))

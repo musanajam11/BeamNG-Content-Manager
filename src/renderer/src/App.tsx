@@ -22,6 +22,7 @@ import { VoiceChatPanel } from './components/VoiceChatPanel'
 import { useAppStore } from './stores/useAppStore'
 import { useServerStore } from './stores/useServerStore'
 import { useVoiceChatStore } from './stores/useVoiceChatStore'
+import { useGameStore } from './stores/useGameStore'
 import { useThemeStore, resolveColorMode, applyTheme } from './stores/useThemeStore'
 import i18n from './i18n'
 
@@ -87,6 +88,11 @@ function App(): React.JSX.Element {
 
   // Discord Rich Presence: update when the user joins / leaves a server
   useEffect(() => {
+    // Seed the renderer game-status store immediately so any UI mounted
+    // before the first onGameStatusChange fires (e.g. VoiceChatPage on app
+    // start while the game is already running) sees the right value.
+    useGameStore.getState().refreshStatus().catch(() => { /* best-effort */ })
+
     let vehiclePoller: ReturnType<typeof setInterval> | null = null
     let lastVehicleId = ''
     // Cache the vehicle list so we only fetch it once per session
@@ -137,6 +143,15 @@ function App(): React.JSX.Element {
     }
 
     const unsub = window.api.onGameStatusChange((status) => {
+      // Mirror main-process game status into the renderer store so any UI
+      // (e.g. VoiceChatPage toggle gate) reacts immediately.
+      useGameStore.getState().setGameStatus(status)
+      // If the game stops (or BeamNG was killed), proactively turn voice off
+      // so we don't sit on stale renderer-side WebRTC state until next launch.
+      if (!status.running && useVoiceChatStore.getState().enabled) {
+        console.log('[VoiceChat][App] game stopped — auto-disabling voice')
+        useVoiceChatStore.getState().disable()
+      }
       if (status.connectedServer) {
         const servers = useServerStore.getState().servers
         const server = servers.find(
@@ -183,6 +198,10 @@ function App(): React.JSX.Element {
     const unsubSignal = window.api.onVoiceSignal((data) => {
       useVoiceChatStore.getState().handleSignal(data.fromId, data.payload)
     })
+    const unsubSelfId = window.api.onVoiceSelfId(({ selfId }) => {
+      console.log('[VoiceChat][App] selfId from server:', selfId)
+      useVoiceChatStore.getState().setSelfId(selfId)
+    })
 
     // Auto-enable / disable when joining or leaving a server
     const unsubRelay = window.api.onVoiceRelayState(({ inRelay }) => {
@@ -205,6 +224,7 @@ function App(): React.JSX.Element {
       unsubPeerJoined()
       unsubPeerLeft()
       unsubSignal()
+      unsubSelfId()
       unsubRelay()
     }
   }, [])

@@ -471,6 +471,7 @@ interface AppAPI {
   voiceEnable(): Promise<{ success: boolean; error?: string }>
   voiceDisable(): Promise<{ success: boolean; error?: string }>
   voiceSendSignal(data: string): Promise<void>
+  voiceSendAudio(payload: { seq: number; data: string }): Promise<void>
   voiceGetState(): Promise<import('../shared/types').VoiceChatState>
   voiceUpdateSettings(settings: import('../shared/types').VoiceChatSettings): Promise<void>
   voiceDeployBridge(): Promise<{ success: boolean; error?: string }>
@@ -478,7 +479,18 @@ interface AppAPI {
   onVoicePeerJoined(callback: (data: { playerId: number; playerName: string; polite?: boolean }) => void): () => void
   onVoicePeerLeft(callback: (data: { playerId: number }) => void): () => void
   onVoiceSignal(callback: (data: { fromId: number; payload: string }) => void): () => void
+  onVoiceAudio(callback: (data: { fromId: number; seq: number; data: string }) => void): () => void
   onVoiceRelayState(callback: (data: { inRelay: boolean }) => void): () => void
+  onVoiceSelfId(callback: (data: { selfId: number }) => void): () => void
+
+  // Voice mesh tier
+  voiceMeshListen(): Promise<{ port: number }>
+  voiceMeshStop(): Promise<{ success: boolean }>
+  voiceMeshConnect(payload: { peerId: string; host: string; port: number; selfPeerId: string }): Promise<{ success: boolean; error?: string }>
+  voiceMeshDisconnect(peerId: string): Promise<{ success: boolean }>
+  voiceMeshSend(payload: { peerId: string; data: Uint8Array }): Promise<boolean>
+  onVoiceMeshData(callback: (data: { peerId: string; data: Uint8Array }) => void): () => void
+  onVoiceMeshState(callback: (data: { peerId: string; state: 'connecting' | 'open' | 'closed' | 'error'; reason?: string }) => void): () => void
 
   // Livery Editor
   liveryGetUVTemplate(vehicleName: string): Promise<{ template: string | null; width: number; height: number }>

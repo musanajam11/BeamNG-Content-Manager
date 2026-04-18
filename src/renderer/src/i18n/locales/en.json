@@ -1226,6 +1226,7 @@
     "connectedPeers": "Connected — {{count}} peer",
     "connectedPeers_other": "Connected — {{count}} peers",
     "infoBanner": "Proximity voice chat uses WebRTC for peer-to-peer audio. The server must have the voice chat plugin installed. For CM-hosted servers, the plugin is auto-deployed.",
+    "gameNotRunningHint": "Voice chat can only be enabled while BeamNG.drive is running. Launch the game first, then turn voice chat on \u2014 it will then auto-engage when you connect to a server.",
     "microphone": "Microphone",
     "inputDevice": "Input Device",
     "systemDefault": "System Default",

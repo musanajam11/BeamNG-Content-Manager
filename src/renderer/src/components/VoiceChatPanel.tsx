@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Mic, MicOff, Radio } from 'lucide-react'
 import { useVoiceChatStore } from '../stores/useVoiceChatStore'
 import { useAppStore } from '../stores/useAppStore'
+import { TIER_BADGE, VoiceTier } from '../voice/transports/types'
 
 /**
  * Floating voice chat overlay — shown when voice chat is enabled and connected to a server.
@@ -19,9 +20,15 @@ export function VoiceChatPanel(): React.JSX.Element | null {
   const config = useAppStore((s) => s.config)
 
   const peers = useMemo(() => {
-    const list: { playerId: number; playerName: string; speaking: boolean }[] = []
+    const list: { playerId: number; playerName: string; speaking: boolean; connState: RTCPeerConnectionState; tier: VoiceTier | null }[] = []
     for (const [, peer] of peersMap) {
-      list.push({ playerId: peer.playerId, playerName: peer.playerName, speaking: peer.speaking })
+      list.push({
+        playerId: peer.playerId,
+        playerName: peer.playerName,
+        speaking: peer.speaking,
+        connState: peer.connState,
+        tier: peer.tier,
+      })
     }
     return list
   }, [peersMap])
@@ -117,21 +124,41 @@ export function VoiceChatPanel(): React.JSX.Element | null {
         {/* Nearby speakers */}
         {peers.length > 0 && (
           <div className="flex flex-col gap-1">
-            {peers.map((peer) => (
-              <div
-                key={peer.playerId}
-                className="flex items-center gap-2 px-2 py-1 rounded-md"
-              >
+            {peers.map((peer) => {
+              const connOk = peer.connState === 'connected'
+              const connBad = peer.connState === 'failed' || peer.connState === 'disconnected' || peer.connState === 'closed'
+              const dotColor = peer.speaking
+                ? 'bg-green-400'
+                : connOk
+                  ? 'bg-[var(--color-text-dim)]'
+                  : connBad
+                    ? 'bg-red-500'
+                    : 'bg-yellow-500 animate-pulse'
+              const badge = peer.tier !== null ? TIER_BADGE[peer.tier] : null
+              const tierTitle = badge ? `${badge.label} tier` : 'Probing…'
+              return (
                 <div
-                  className={`w-1.5 h-1.5 rounded-full transition-colors ${
-                    peer.speaking ? 'bg-green-400' : 'bg-[var(--color-text-dim)]'
-                  }`}
-                />
-                <span className="text-[11px] text-[var(--color-text-muted)] truncate">
-                  {peer.playerName}
-                </span>
-              </div>
-            ))}
+                  key={peer.playerId}
+                  className="flex items-center gap-2 px-2 py-1 rounded-md"
+                  title={`${tierTitle} — ${peer.connState}`}
+                >
+                  <div className={`w-1.5 h-1.5 rounded-full transition-colors ${dotColor}`} />
+                  {badge && (
+                    <span className="text-[10px] leading-none" aria-label={badge.label}>
+                      {badge.emoji}
+                    </span>
+                  )}
+                  <span className="text-[11px] text-[var(--color-text-muted)] truncate flex-1">
+                    {peer.playerName}
+                  </span>
+                  {!connOk && (
+                    <span className="text-[9px] uppercase tracking-wider text-[var(--color-text-dim)]">
+                      {peer.connState}
+                    </span>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
 

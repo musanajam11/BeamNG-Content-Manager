@@ -29,6 +29,7 @@ import { LoadOrderService } from '../services/LoadOrderService'
 import { ConflictDetectionService } from '../services/ConflictDetectionService'
 import { InputBindingsService } from '../services/InputBindingsService'
 import { VoiceChatService } from '../services/VoiceChatService'
+import { VoiceMeshService } from '../services/VoiceMeshService'
 import { parseBeamNGJson } from '../utils/parseBeamNGJson'
 import type { AppConfig, GamePaths, ServerInfo, RepoSortOrder, VehicleDetail, VehicleConfigInfo, VehicleConfigData, VehicleEditorData, SlotInfo, VariableInfo, WheelPlacement, ActiveMeshResult, HostedServerConfig, GPSRoute, ScheduledTask, MapRichMetadata } from '../../shared/types'
 import type { RegistrySearchOptions, RegistryRepository, BeamModMetadata, InstalledRegistryMod } from '../../shared/registry-types'
@@ -49,6 +50,7 @@ let loadOrderService: LoadOrderService
 let conflictDetectionService: ConflictDetectionService
 let inputBindingsService: InputBindingsService
 let voiceChatService: VoiceChatService
+let voiceMeshService: VoiceMeshService
 let careerSaveService: CareerSaveService
 
 // ── Server ↔ career-save tracking state ──
@@ -96,6 +98,7 @@ export function initializeServices(): {
   conflictDetectionService = new ConflictDetectionService()
   inputBindingsService = new InputBindingsService()
   voiceChatService = new VoiceChatService()
+  voiceMeshService = new VoiceMeshService()
   registryService.setModManager(modManagerService)
 
   // Auto-deploy/undeploy voice bridge on server join/leave
@@ -942,6 +945,10 @@ export function registerIpcHandlers(): void {
     await voiceChatService.sendSignal('vc_signal', data)
   })
 
+  ipcMain.handle('voice:sendAudio', async (_event, payload: { seq: number; data: string }) => {
+    await voiceChatService.sendAudio(payload.seq, payload.data)
+  })
+
   ipcMain.handle('voice:getState', async () => {
     return voiceChatService.getState()
   })
@@ -958,6 +965,36 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('voice:undeployBridge', async () => {
     return voiceChatService.undeployBridge()
+  })
+
+  // ── Voice mesh tier (Tier 2) ──
+  ipcMain.handle('voiceMesh:listen', async () => {
+    return voiceMeshService.listen()
+  })
+  ipcMain.handle('voiceMesh:stop', async () => {
+    voiceMeshService.stop()
+    return { success: true }
+  })
+  ipcMain.handle(
+    'voiceMesh:connect',
+    async (_event, payload: { peerId: string; host: string; port: number; selfPeerId: string }) => {
+      try {
+        await voiceMeshService.connect(payload.peerId, payload.host, payload.port, payload.selfPeerId)
+        return { success: true }
+      } catch (err) {
+        return { success: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    },
+  )
+  ipcMain.handle('voiceMesh:disconnect', async (_event, peerId: string) => {
+    voiceMeshService.disconnect(peerId)
+    return { success: true }
+  })
+  ipcMain.handle('voiceMesh:send', async (_event, payload: { peerId: string; data: ArrayBuffer | Uint8Array }) => {
+    const buf = Buffer.isBuffer(payload.data)
+      ? payload.data
+      : Buffer.from(payload.data instanceof Uint8Array ? payload.data : new Uint8Array(payload.data))
+    return voiceMeshService.send(payload.peerId, buf)
   })
 
   // ── GPS Map POIs ──

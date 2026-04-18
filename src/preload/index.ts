@@ -605,6 +605,8 @@ const api = {
     ipcRenderer.invoke('voice:disable') as Promise<{ success: boolean; error?: string }>,
   voiceSendSignal: (data: string) =>
     ipcRenderer.invoke('voice:sendSignal', data),
+  voiceSendAudio: (payload: { seq: number; data: string }) =>
+    ipcRenderer.invoke('voice:sendAudio', payload),
   voiceGetState: () =>
     ipcRenderer.invoke('voice:getState') as Promise<import('../shared/types').VoiceChatState>,
   voiceUpdateSettings: (settings: import('../shared/types').VoiceChatSettings) =>
@@ -628,10 +630,45 @@ const api = {
     ipcRenderer.on('voice:signal', handler)
     return () => { ipcRenderer.removeListener('voice:signal', handler) }
   },
+  onVoiceAudio: (callback: (data: { fromId: number; seq: number; data: string }) => void) => {
+    const handler = (_event: unknown, data: { fromId: number; seq: number; data: string }): void => callback(data)
+    ipcRenderer.on('voice:audio', handler)
+    return () => { ipcRenderer.removeListener('voice:audio', handler) }
+  },
   onVoiceRelayState: (callback: (data: { inRelay: boolean }) => void) => {
     const handler = (_event: unknown, data: { inRelay: boolean }): void => callback(data)
     ipcRenderer.on('voice:relayState', handler)
     return () => { ipcRenderer.removeListener('voice:relayState', handler) }
+  },
+  onVoiceSelfId: (callback: (data: { selfId: number }) => void) => {
+    const handler = (_event: unknown, data: { selfId: number }): void => callback(data)
+    ipcRenderer.on('voice:selfId', handler)
+    return () => { ipcRenderer.removeListener('voice:selfId', handler) }
+  },
+
+  // Voice mesh tier (Tier 2 — TCP P2P sockets bridged through main)
+  voiceMeshListen: () =>
+    ipcRenderer.invoke('voiceMesh:listen') as Promise<{ port: number }>,
+  voiceMeshStop: () =>
+    ipcRenderer.invoke('voiceMesh:stop') as Promise<{ success: boolean }>,
+  voiceMeshConnect: (payload: { peerId: string; host: string; port: number; selfPeerId: string }) =>
+    ipcRenderer.invoke('voiceMesh:connect', payload) as Promise<{ success: boolean; error?: string }>,
+  voiceMeshDisconnect: (peerId: string) =>
+    ipcRenderer.invoke('voiceMesh:disconnect', peerId) as Promise<{ success: boolean }>,
+  voiceMeshSend: (payload: { peerId: string; data: Uint8Array }) =>
+    ipcRenderer.invoke('voiceMesh:send', payload) as Promise<boolean>,
+  onVoiceMeshData: (callback: (data: { peerId: string; data: Uint8Array }) => void) => {
+    const handler = (_event: unknown, data: { peerId: string; data: Uint8Array | Buffer }): void => {
+      const u8 = data.data instanceof Uint8Array ? data.data : new Uint8Array(data.data)
+      callback({ peerId: data.peerId, data: u8 })
+    }
+    ipcRenderer.on('voiceMesh:data', handler)
+    return () => { ipcRenderer.removeListener('voiceMesh:data', handler) }
+  },
+  onVoiceMeshState: (callback: (data: { peerId: string; state: 'connecting' | 'open' | 'closed' | 'error'; reason?: string }) => void) => {
+    const handler = (_event: unknown, data: { peerId: string; state: 'connecting' | 'open' | 'closed' | 'error'; reason?: string }): void => callback(data)
+    ipcRenderer.on('voiceMesh:state', handler)
+    return () => { ipcRenderer.removeListener('voiceMesh:state', handler) }
   },
 
   // Livery Editor
