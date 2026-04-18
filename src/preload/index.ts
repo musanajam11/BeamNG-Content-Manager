@@ -689,15 +689,6 @@ const api = {
         action: 'enable' | 'disable' | 'mute' | 'unmute' | 'mute_peer' | 'unmute_peer'
         peerId?: number
       }
-    
-    peerId?: number
-  }) => void) => {
-    const handler = (
-      _event: unknown,
-      data: {
-        action: 'enable' | 'disable' | 'mute' | 'unmute' | 'mute_peer' | 'unmute_peer'
-        peerId?: number
-      }
     ): void => callback(data)
     ipcRenderer.on('voice:overlayCommand', handler)
     return () => { ipcRenderer.removeListener('voice:overlayCommand', handler) }
