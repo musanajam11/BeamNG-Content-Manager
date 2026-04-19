@@ -26,7 +26,7 @@ function validate(draft: Partial<HostedServerConfig>): ValidationError[] {
   if (!draft.port || draft.port < 1024 || draft.port > 65535) errors.push({ field: 'port', message: 'Port must be 1024–65535' })
   if (!draft.authKey?.trim()) errors.push({ field: 'authKey', message: 'Auth key is required' })
   if (!draft.maxPlayers || draft.maxPlayers < 1 || draft.maxPlayers > 200) errors.push({ field: 'maxPlayers', message: 'Max players must be 1–200' })
-  if (!draft.maxCars || draft.maxCars < 1 || draft.maxCars > 20) errors.push({ field: 'maxCars', message: 'Max cars must be 1–20' })
+  if (!draft.maxCars || draft.maxCars < 1 || draft.maxCars > 200) errors.push({ field: 'maxCars', message: 'Max cars must be 1–200' })
   if (!draft.map?.trim()) errors.push({ field: 'map', message: 'Map is required' })
   return errors
 }
