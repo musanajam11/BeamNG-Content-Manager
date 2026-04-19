@@ -1,6 +1,6 @@
 import { get as httpsGet } from 'https'
 import { createWriteStream, existsSync } from 'fs'
-import { mkdir, readFile, writeFile, rm } from 'node:fs/promises'
+import { mkdir, readFile, writeFile, rm, readdir, rmdir } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
 import { app } from 'electron'
 import { open as yauzlOpen, type Entry } from 'yauzl'
@@ -49,8 +49,8 @@ export interface RLSRelease {
 }
 
 export interface InstalledCareerMods {
-  careerMP: { version: string; installedAt: string } | null
-  rls: { version: string; traffic: boolean; installedAt: string } | null
+  careerMP: { version: string; installedAt: string; installedFiles?: string[] } | null
+  rls: { version: string; traffic: boolean; installedAt: string; installedFile?: string } | null
 }
 
 /* ── Service ── */
@@ -135,14 +135,24 @@ export class CareerModService {
       await mkdir(this.tmpDir, { recursive: true })
       const zipPath = join(this.tmpDir, `CareerMP_${version}.zip`)
 
+      // Remove files installed by the previous CareerMP version (if tracked)
+      // before extracting the new one. Without this, files removed/renamed
+      // upstream linger forever and can break the new version at runtime.
+      await this.removePreviouslyInstalledFiles(serverDir, 'careerMP')
+
       // Download
       await this.downloadFile(downloadUrl, zipPath)
 
       // Extract to server root (CareerMP extracts its Resources/ folder to server root)
-      await this.extractZipToDir(zipPath, serverDir)
+      const installedFiles = await this.extractZipToDir(zipPath, serverDir)
 
-      // Track installed version
-      await this.saveInstalledVersion(serverDir, 'careerMP', { version, installedAt: new Date().toISOString() })
+      // Track installed version + the exact files placed by this install so a
+      // future re-install/upgrade can clean them up.
+      await this.saveInstalledVersion(serverDir, 'careerMP', {
+        version,
+        installedAt: new Date().toISOString(),
+        installedFiles
+      })
 
       // Cleanup temp
       await rm(zipPath, { force: true }).catch(() => {})
@@ -168,6 +178,12 @@ export class CareerModService {
       const clientDir = join(serverDir, 'Resources', 'Client')
       await mkdir(clientDir, { recursive: true })
 
+      // Remove every previously-deployed RLS zip in Resources/Client. Match
+      // any RLS_*.zip (and the NoTraffic variant) so switching versions never
+      // leaves the old client zip behind — BeamMP would otherwise serve both
+      // to clients and conflict.
+      await this.removeStaleRlsZips(clientDir)
+
       // Download
       await this.downloadFile(downloadUrl, zipPath)
 
@@ -176,11 +192,13 @@ export class CareerModService {
       const { copyFile } = await import('node:fs/promises')
       await copyFile(zipPath, destPath)
 
-      // Track installed version
+      // Track installed version + the deployed zip path so future installs
+      // can verify cleanup.
       await this.saveInstalledVersion(serverDir, 'rls', {
         version,
         traffic,
-        installedAt: new Date().toISOString()
+        installedAt: new Date().toISOString(),
+        installedFile: destPath
       })
 
       // Cleanup temp
@@ -221,12 +239,12 @@ export class CareerModService {
     await writeFile(metaPath, JSON.stringify(existing, null, 2), 'utf-8')
   }
 
-  private extractZipToDir(zipPath: string, destDir: string): Promise<number> {
+  private extractZipToDir(zipPath: string, destDir: string): Promise<string[]> {
     return new Promise((resolve, reject) => {
       yauzlOpen(zipPath, { lazyEntries: true }, (err, zipFile) => {
         if (err || !zipFile) { reject(err ?? new Error('Failed to open zip')); return }
 
-        let extracted = 0
+        const installedFiles: string[] = []
         zipFile.readEntry()
 
         zipFile.on('entry', (entry: Entry) => {
@@ -248,7 +266,7 @@ export class CareerModService {
                   if (sErr || !stream) { zipFile.readEntry(); return }
                   const ws = createWriteStream(entryPath)
                   stream.pipe(ws)
-                  ws.on('finish', () => { extracted++; zipFile.readEntry() })
+                  ws.on('finish', () => { installedFiles.push(entryPath); zipFile.readEntry() })
                   ws.on('error', () => zipFile.readEntry())
                 })
               })
@@ -256,10 +274,64 @@ export class CareerModService {
           }
         })
 
-        zipFile.on('end', () => { zipFile.close(); resolve(extracted) })
+        zipFile.on('end', () => { zipFile.close(); resolve(installedFiles) })
         zipFile.on('error', (e) => reject(e))
       })
     })
+  }
+
+  /**
+   * Delete every `RLS*.zip` (and `RLS*_NoTraffic.zip`) currently sitting in
+   * the server's `Resources/Client` directory. Called immediately before
+   * deploying a fresh RLS zip so version switches don't leave the previous
+   * version's client zip behind for the BeamMP launcher to also serve.
+   */
+  private async removeStaleRlsZips(clientDir: string): Promise<void> {
+    if (!existsSync(clientDir)) return
+    try {
+      const entries = await readdir(clientDir)
+      for (const name of entries) {
+        if (/^RLS.*\.zip$/i.test(name)) {
+          await rm(join(clientDir, name), { force: true }).catch(() => {})
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  /**
+   * Remove the exact set of files placed by the previous install of `key`
+   * (CareerMP / RLS) as recorded in `career-mods.json`. After deleting files,
+   * walks parent directories bottom-up and removes any that are now empty.
+   * Silently no-ops if no prior install was tracked.
+   */
+  private async removePreviouslyInstalledFiles(
+    serverDir: string,
+    key: 'careerMP' | 'rls'
+  ): Promise<void> {
+    const installed = await this.getInstalledMods(serverDir)
+    const entry = installed[key] as { installedFiles?: string[] } | null
+    const files = entry?.installedFiles
+    if (!files || files.length === 0) return
+    const dirsToCheck = new Set<string>()
+    for (const f of files) {
+      // Path-traversal guard: only delete inside serverDir
+      if (!f.startsWith(serverDir)) continue
+      await rm(f, { force: true }).catch(() => {})
+      dirsToCheck.add(dirname(f))
+    }
+    // Remove now-empty parent directories, deepest first.
+    const sortedDirs = Array.from(dirsToCheck).sort((a, b) => b.length - a.length)
+    for (const dir of sortedDirs) {
+      let cur = dir
+      while (cur.startsWith(serverDir) && cur !== serverDir) {
+        try {
+          const remaining = await readdir(cur)
+          if (remaining.length > 0) break
+          await rmdir(cur)
+          cur = dirname(cur)
+        } catch { break }
+      }
+    }
   }
 
   private fetchJson(url: string): Promise<unknown> {
