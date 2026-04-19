@@ -613,6 +613,21 @@
     "scheduleTab": "Schedule",
     "analyticsTab": "Analytics",
     "modsTab": "Mods",
+    "adminTools": {
+      "title": "Server Admin Tools",
+      "blurb": "Browse and install admin/server-side plugins for this BeamMP server (CobaltEssentials, CEI, ProFilter, etc).",
+      "by": "by {{author}}",
+      "install": "Install",
+      "reinstall": "Reinstall",
+      "uninstall": "Uninstall",
+      "uninstalled": "Uninstalled {{name}}",
+      "uninstallFailed": "Uninstall failed",
+      "installSuccess": "Installed {{name}}",
+      "installFailed": "Install failed",
+      "noReleases": "No releases available",
+      "noResults": "No admin tools available",
+      "noServer": "No server selected"
+    },
     "createServer": "Create Server",
     "startAll": "Start All",
     "stopAll": "Stop All",
@@ -1233,6 +1248,32 @@
       "notInstalled": "Not Installed",
       "installSuccess": "{{name}} installed successfully",
       "installFailed": "Installation failed"
+    },
+    "plugin": {
+      "title": "Plugin Browser",
+      "blurb": "Curated CareerMP / RLS / BeamMP plugins. One-click install to the selected server.",
+      "by": "by {{author}}",
+      "install": "Install",
+      "reinstall": "Reinstall",
+      "uninstall": "Uninstall",
+      "installSuccess": "{{name}} installed",
+      "installFailed": "Plugin install failed",
+      "uninstalled": "{{name}} removed",
+      "uninstallFailed": "Uninstall failed",
+      "noServer": "Select a target server first",
+      "noResults": "No plugins match the current filter",
+      "noReleases": "No releases published yet",
+      "compatCMP": "CareerMP",
+      "compatRLS": "RLS only",
+      "compatBoth": "CareerMP & RLS",
+      "compatBeamMP": "Vanilla BeamMP",
+      "filter": {
+        "all": "All",
+        "careerMP": "CareerMP",
+        "rls": "RLS",
+        "both": "Both",
+        "beamMP": "BeamMP"
+      }
     }
   },
   "gps": {

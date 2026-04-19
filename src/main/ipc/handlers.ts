@@ -25,6 +25,7 @@ import { RoadNetwork } from '../services/RoadNetwork'
 import { TailscaleService } from '../services/TailscaleService'
 import { CareerSaveService } from '../services/CareerSaveService'
 import { CareerModService } from '../services/CareerModService'
+import { CareerPluginService } from '../services/CareerPluginService'
 import { LoadOrderService } from '../services/LoadOrderService'
 import { ConflictDetectionService } from '../services/ConflictDetectionService'
 import { InputBindingsService } from '../services/InputBindingsService'
@@ -5394,6 +5395,57 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('career:getInstalledMods', async (_event, serverDir: string) => {
     return careerModService.getInstalledMods(serverDir)
+  })
+
+  // ── Career Plugin Browser ──
+  const careerPluginService = new CareerPluginService()
+
+  ipcMain.handle('career:listPluginCatalog', async () => {
+    return careerPluginService.listCatalog()
+  })
+
+  ipcMain.handle('career:fetchPluginReleases', async (_event, pluginId: string) => {
+    return careerPluginService.fetchPluginReleases(pluginId)
+  })
+
+  ipcMain.handle('career:installPlugin', async (_event, pluginId: string, version: string, downloadUrl: string, serverDir: string) => {
+    return careerPluginService.installPlugin(pluginId, version, downloadUrl, serverDir)
+  })
+
+  ipcMain.handle('career:uninstallPlugin', async (_event, pluginId: string, serverDir: string) => {
+    return careerPluginService.uninstallPlugin(pluginId, serverDir)
+  })
+
+  ipcMain.handle('career:getInstalledPlugins', async (_event, serverDir: string) => {
+    return careerPluginService.getInstalledPlugins(serverDir)
+  })
+
+  // ── Server Admin Tools (CEI / CobaltEssentials / etc) ──
+  // These reuse CareerPluginService with the 'admin' category and resolve hosted server dirs by id.
+  ipcMain.handle('serverAdmin:listPluginCatalog', async () => {
+    return careerPluginService.listCatalog('admin')
+  })
+
+  ipcMain.handle('serverAdmin:fetchPluginReleases', async (_event, pluginId: string) => {
+    return careerPluginService.fetchPluginReleases(pluginId, 'admin')
+  })
+
+  ipcMain.handle(
+    'serverAdmin:installPlugin',
+    async (_event, pluginId: string, version: string, downloadUrl: string, serverId: string) => {
+      const dir = serverManagerService.getServerDir(serverId)
+      return careerPluginService.installPlugin(pluginId, version, downloadUrl, dir, 'admin')
+    }
+  )
+
+  ipcMain.handle('serverAdmin:uninstallPlugin', async (_event, pluginId: string, serverId: string) => {
+    const dir = serverManagerService.getServerDir(serverId)
+    return careerPluginService.uninstallPlugin(pluginId, dir, 'admin')
+  })
+
+  ipcMain.handle('serverAdmin:getInstalledPlugins', async (_event, serverId: string) => {
+    const dir = serverManagerService.getServerDir(serverId)
+    return careerPluginService.getInstalledPlugins(dir, 'admin')
   })
 
   ipcMain.handle('career:browseServerDir', async () => {

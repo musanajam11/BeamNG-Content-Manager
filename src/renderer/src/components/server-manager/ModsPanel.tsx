@@ -19,6 +19,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { useConfirmDialog } from '../../hooks/useConfirmDialog'
 import { useTranslation } from 'react-i18next'
+import { AdminToolsPanel } from './AdminToolsPanel'
 
 interface ModItem {
   key: string
@@ -311,6 +312,7 @@ export function ModsPanel({ serverId, mods, onRefresh }: ModsPanelProps): React.
         )}
       </div>
       </div>
+      <AdminToolsPanel serverId={serverId} />
       {confirmDialogEl}
     </>
   )

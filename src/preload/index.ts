@@ -582,6 +582,30 @@ const api = {
   careerGetServerDir: (serverId: string) =>
     ipcRenderer.invoke('career:getServerDir', serverId) as Promise<string>,
 
+  // Career Plugin Browser
+  careerListPluginCatalog: () =>
+    ipcRenderer.invoke('career:listPluginCatalog'),
+  careerFetchPluginReleases: (pluginId: string) =>
+    ipcRenderer.invoke('career:fetchPluginReleases', pluginId),
+  careerInstallPlugin: (pluginId: string, version: string, downloadUrl: string, serverDir: string) =>
+    ipcRenderer.invoke('career:installPlugin', pluginId, version, downloadUrl, serverDir) as Promise<{ success: boolean; error?: string }>,
+  careerUninstallPlugin: (pluginId: string, serverDir: string) =>
+    ipcRenderer.invoke('career:uninstallPlugin', pluginId, serverDir) as Promise<{ success: boolean; error?: string }>,
+  careerGetInstalledPlugins: (serverDir: string) =>
+    ipcRenderer.invoke('career:getInstalledPlugins', serverDir),
+
+  // Server Admin Tools Plugin Browser
+  serverAdminListPluginCatalog: () =>
+    ipcRenderer.invoke('serverAdmin:listPluginCatalog'),
+  serverAdminFetchPluginReleases: (pluginId: string) =>
+    ipcRenderer.invoke('serverAdmin:fetchPluginReleases', pluginId),
+  serverAdminInstallPlugin: (pluginId: string, version: string, downloadUrl: string, serverId: string) =>
+    ipcRenderer.invoke('serverAdmin:installPlugin', pluginId, version, downloadUrl, serverId) as Promise<{ success: boolean; error?: string }>,
+  serverAdminUninstallPlugin: (pluginId: string, serverId: string) =>
+    ipcRenderer.invoke('serverAdmin:uninstallPlugin', pluginId, serverId) as Promise<{ success: boolean; error?: string }>,
+  serverAdminGetInstalledPlugins: (serverId: string) =>
+    ipcRenderer.invoke('serverAdmin:getInstalledPlugins', serverId),
+
   // Controls / Input Bindings
   controlsGetDevices: () =>
     ipcRenderer.invoke('controls:getDevices'),

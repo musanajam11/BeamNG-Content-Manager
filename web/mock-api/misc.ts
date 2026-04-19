@@ -147,6 +147,20 @@ export const miscMocks = {
   careerBrowseServerDir: async () => null,
   careerGetServerDir: async () => '',
 
+  // Career Plugin Browser
+  careerListPluginCatalog: async () => [],
+  careerFetchPluginReleases: async () => [],
+  careerInstallPlugin: async () => ({ success: false, error: 'Demo mode' }),
+  careerUninstallPlugin: async () => ({ success: false, error: 'Demo mode' }),
+  careerGetInstalledPlugins: async () => ({}),
+
+  // Server Admin Tools Plugin Browser
+  serverAdminListPluginCatalog: async () => [],
+  serverAdminFetchPluginReleases: async () => [],
+  serverAdminInstallPlugin: async () => ({ success: false, error: 'Demo mode' }),
+  serverAdminUninstallPlugin: async () => ({ success: false, error: 'Demo mode' }),
+  serverAdminGetInstalledPlugins: async () => ({}),
+
   // Controls / Input Bindings
   controlsGetDevices: async () => [],
   controlsGetActions: async () => [],

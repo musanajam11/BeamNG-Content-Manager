@@ -1415,6 +1415,7 @@ export function CareerPage(): React.JSX.Element {
           handleInstallCareerMP={handleInstallCareerMP}
           handleInstallRLS={handleInstallRLS}
           loadModReleases={loadModReleases}
+          getActiveServerDir={getActiveServerDir}
           t={t}
         />
       )}
@@ -1423,7 +1424,7 @@ export function CareerPage(): React.JSX.Element {
 }
 
 /* ── Mod Manager Panel sub-component ── */
-function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSelectedVersion, setCmpSelectedVersion, rlsSelectedVersion, setRlsSelectedVersion, rlsCmpVersion, setRlsCmpVersion, rlsTraffic, setRlsTraffic, cmpInstalling, rlsInstalling, cmpMsg, rlsMsg, servers, selectedServerId, setSelectedServerId, customServerDir, installedMods, handleBrowseServerDir, handleInstallCareerMP, handleInstallRLS, loadModReleases, t }: {
+function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSelectedVersion, setCmpSelectedVersion, rlsSelectedVersion, setRlsSelectedVersion, rlsCmpVersion, setRlsCmpVersion, rlsTraffic, setRlsTraffic, cmpInstalling, rlsInstalling, cmpMsg, rlsMsg, servers, selectedServerId, setSelectedServerId, customServerDir, installedMods, handleBrowseServerDir, handleInstallCareerMP, handleInstallRLS, loadModReleases, getActiveServerDir, t }: {
   modLoading: boolean
   modError: string | null
   cmpReleases: CareerMPRelease[]
@@ -1449,6 +1450,7 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
   handleInstallCareerMP: () => void
   handleInstallRLS: () => void
   loadModReleases: () => void
+  getActiveServerDir: () => Promise<string | null>
   t: (key: string, opts?: Record<string, unknown>) => string
 }): React.JSX.Element {
   return (
@@ -1503,8 +1505,10 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
         </div>
       ) : (
         <>
-          {/* CareerMP section */}
-          <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
+          {/* CareerMP & RLS side-by-side */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* CareerMP section */}
+            <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4 flex flex-col">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
                 <Package size={16} className="text-[var(--color-accent)]" /> {t('career.mod.careerMP')}
@@ -1554,7 +1558,7 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
           </div>
 
           {/* RLS section */}
-          <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4">
+          <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4 flex flex-col">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
                 <Star size={16} className="text-purple-400" /> {t('career.mod.rls')}
@@ -1643,7 +1647,289 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
               <p className={`text-xs mt-2 ${rlsMsg.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{rlsMsg.text}</p>
             )}
           </div>
+          </div>
+
+          {/* Plugin Browser */}
+          <PluginBrowserPanel
+            getActiveServerDir={getActiveServerDir}
+            t={t}
+          />
         </>
+      )}
+    </div>
+  )
+}
+
+/* ── Plugin Browser sub-component ── */
+type PluginCompat = 'careerMP' | 'rls' | 'both' | 'beamMP'
+interface PluginCatalogEntry {
+  id: string
+  name: string
+  description: string
+  author: string
+  repo: string
+  homepage: string
+  compat: PluginCompat
+  installMethod: 'extract-to-root' | 'extract-to-server-plugin' | 'copy-client-zip'
+  serverPluginFolder?: string
+}
+interface PluginRelease {
+  version: string
+  name: string
+  changelog: string
+  prerelease: boolean
+  publishedAt: string
+  downloadUrl: string
+  size: number
+  downloads: number
+}
+interface InstalledPlugin {
+  pluginId: string
+  version: string
+  installedAt: string
+  artifacts: string[]
+}
+
+function compatBadge(compat: PluginCompat, t: (k: string) => string): { label: string; className: string } {
+  switch (compat) {
+    case 'careerMP':
+      return { label: t('career.plugin.compatCMP'), className: 'bg-[var(--color-accent)]/15 text-[var(--color-accent)] border-[var(--color-accent)]/30' }
+    case 'rls':
+      return { label: t('career.plugin.compatRLS'), className: 'bg-purple-500/15 text-purple-300 border-purple-500/30' }
+    case 'both':
+      return { label: t('career.plugin.compatBoth'), className: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' }
+    case 'beamMP':
+    default:
+      return { label: t('career.plugin.compatBeamMP'), className: 'bg-sky-500/15 text-sky-300 border-sky-500/30' }
+  }
+}
+
+function PluginBrowserPanel({ getActiveServerDir, t }: {
+  getActiveServerDir: () => Promise<string | null>
+  t: (key: string, opts?: Record<string, unknown>) => string
+}): React.JSX.Element {
+  const [catalog, setCatalog] = useState<PluginCatalogEntry[]>([])
+  const [releasesByPlugin, setReleasesByPlugin] = useState<Record<string, PluginRelease[]>>({})
+  const [selectedVersionByPlugin, setSelectedVersionByPlugin] = useState<Record<string, string>>({})
+  const [installed, setInstalled] = useState<Record<string, InstalledPlugin>>({})
+  const [busy, setBusy] = useState<Record<string, boolean>>({})
+  const [msg, setMsg] = useState<Record<string, { type: 'success' | 'error'; text: string }>>({})
+  const [filter, setFilter] = useState<'all' | PluginCompat>('all')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const loadCatalog = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const list = await window.api.careerListPluginCatalog()
+      setCatalog(list)
+      // Fetch releases in parallel
+      const results = await Promise.all(
+        list.map(async (p) => {
+          try {
+            const r = await window.api.careerFetchPluginReleases(p.id)
+            return [p.id, r] as const
+          } catch {
+            return [p.id, [] as PluginRelease[]] as const
+          }
+        })
+      )
+      const map: Record<string, PluginRelease[]> = {}
+      const sel: Record<string, string> = {}
+      for (const [id, rels] of results) {
+        map[id] = rels
+        if (rels.length > 0) sel[id] = rels[0].version
+      }
+      setReleasesByPlugin(map)
+      setSelectedVersionByPlugin(sel)
+    } catch (err) {
+      setError(String(err))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const refreshInstalled = useCallback(async () => {
+    const dir = await getActiveServerDir()
+    if (!dir) { setInstalled({}); return }
+    try {
+      const inst = await window.api.careerGetInstalledPlugins(dir)
+      setInstalled(inst)
+    } catch { setInstalled({}) }
+  }, [getActiveServerDir])
+
+  useEffect(() => { loadCatalog() }, [loadCatalog])
+  useEffect(() => { refreshInstalled() }, [refreshInstalled])
+
+  const handleInstall = useCallback(async (entry: PluginCatalogEntry) => {
+    const dir = await getActiveServerDir()
+    if (!dir) {
+      setMsg((m) => ({ ...m, [entry.id]: { type: 'error', text: t('career.plugin.noServer') } }))
+      return
+    }
+    const version = selectedVersionByPlugin[entry.id]
+    const release = (releasesByPlugin[entry.id] || []).find((r) => r.version === version)
+    if (!release) return
+    setBusy((b) => ({ ...b, [entry.id]: true }))
+    setMsg((m) => { const c = { ...m }; delete c[entry.id]; return c })
+    try {
+      const result = await window.api.careerInstallPlugin(entry.id, release.version, release.downloadUrl, dir)
+      if (result.success) {
+        setMsg((m) => ({ ...m, [entry.id]: { type: 'success', text: t('career.plugin.installSuccess', { name: entry.name }) } }))
+        await refreshInstalled()
+      } else {
+        setMsg((m) => ({ ...m, [entry.id]: { type: 'error', text: result.error || t('career.plugin.installFailed') } }))
+      }
+    } catch (err) {
+      setMsg((m) => ({ ...m, [entry.id]: { type: 'error', text: String(err) } }))
+    } finally {
+      setBusy((b) => ({ ...b, [entry.id]: false }))
+    }
+  }, [getActiveServerDir, selectedVersionByPlugin, releasesByPlugin, refreshInstalled, t])
+
+  const handleUninstall = useCallback(async (entry: PluginCatalogEntry) => {
+    const dir = await getActiveServerDir()
+    if (!dir) return
+    setBusy((b) => ({ ...b, [entry.id]: true }))
+    try {
+      const result = await window.api.careerUninstallPlugin(entry.id, dir)
+      if (result.success) {
+        setMsg((m) => ({ ...m, [entry.id]: { type: 'success', text: t('career.plugin.uninstalled', { name: entry.name }) } }))
+        await refreshInstalled()
+      } else {
+        setMsg((m) => ({ ...m, [entry.id]: { type: 'error', text: result.error || t('career.plugin.uninstallFailed') } }))
+      }
+    } catch (err) {
+      setMsg((m) => ({ ...m, [entry.id]: { type: 'error', text: String(err) } }))
+    } finally {
+      setBusy((b) => ({ ...b, [entry.id]: false }))
+    }
+  }, [getActiveServerDir, refreshInstalled, t])
+
+  const filtered = catalog.filter((p) => {
+    if (filter === 'all') return true
+    return p.compat === filter
+  })
+
+  return (
+    <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
+          <Package size={16} className="text-[var(--color-accent)]" /> {t('career.plugin.title')}
+        </h3>
+        <button
+          onClick={() => { loadCatalog(); refreshInstalled() }}
+          disabled={loading}
+          className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg bg-[var(--color-surface)] hover:bg-[var(--color-surface-active)] border border-[var(--color-border)] transition-colors disabled:opacity-50"
+        >
+          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> {t('common.refresh')}
+        </button>
+      </div>
+      <p className="text-xs text-[var(--text-muted)]">{t('career.plugin.blurb')}</p>
+
+      {/* Compat filter */}
+      <div className="flex flex-wrap gap-1.5">
+        {(['all', 'careerMP', 'rls', 'both'] as const).map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+              filter === f
+                ? 'bg-[var(--color-accent)] border-[var(--color-accent)] text-[var(--color-text-primary)]'
+                : 'bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--text-muted)] hover:text-[var(--color-text-primary)]'
+            }`}
+          >
+            {t(`career.plugin.filter.${f}`)}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center h-24">
+          <Loader2 size={24} className="animate-spin text-[var(--color-accent)]" />
+        </div>
+      ) : error ? (
+        <div className="text-center py-6">
+          <AlertTriangle size={28} className="mx-auto mb-2 text-red-400" />
+          <p className="text-red-300 text-sm">{error}</p>
+          <button onClick={loadCatalog} className="mt-2 text-xs text-[var(--color-accent)] hover:underline">{t('common.retry')}</button>
+        </div>
+      ) : filtered.length === 0 ? (
+        <p className="text-xs text-[var(--text-muted)] py-4 text-center">{t('career.plugin.noResults')}</p>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {filtered.map((entry) => {
+            const releases = releasesByPlugin[entry.id] || []
+            const isInstalled = !!installed[entry.id]
+            const installedVer = installed[entry.id]?.version
+            const isBusy = !!busy[entry.id]
+            const m = msg[entry.id]
+            const badge = compatBadge(entry.compat, t)
+            return (
+              <div key={entry.id} className="bg-[var(--color-scrim-20)] rounded-lg border border-[var(--color-border)] p-3 flex flex-col gap-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="text-sm font-semibold text-[var(--color-text-primary)] truncate">{entry.name}</h4>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${badge.className}`}>{badge.label}</span>
+                      {isInstalled && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full border bg-green-500/15 text-green-300 border-green-500/30 flex items-center gap-1">
+                          <Check size={10} /> v{installedVer}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-[var(--text-muted)] mt-0.5">{t('career.plugin.by', { author: entry.author })}</p>
+                  </div>
+                  <a href={entry.homepage} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--text-muted)] hover:text-[var(--color-accent)] flex items-center gap-1 shrink-0">
+                    <ExternalLink size={12} />
+                  </a>
+                </div>
+                <p className="text-xs text-[var(--text-muted)] line-clamp-2">{entry.description}</p>
+
+                {releases.length > 0 ? (
+                  <select
+                    value={selectedVersionByPlugin[entry.id] || ''}
+                    onChange={(e) => setSelectedVersionByPlugin((s) => ({ ...s, [entry.id]: e.target.value }))}
+                    className="w-full px-2 py-1 text-xs bg-[var(--color-scrim-20)] rounded-lg border border-[var(--color-border)] text-[var(--color-text-primary)]"
+                  >
+                    {releases.map((r) => (
+                      <option key={r.version} value={r.version}>
+                        {r.version} {r.prerelease ? '(pre)' : ''} — {(r.size / 1024).toFixed(0)} KB
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-[11px] text-[var(--text-muted)] italic">{t('career.plugin.noReleases')}</p>
+                )}
+
+                <div className="flex items-center gap-2 mt-1">
+                  <button
+                    onClick={() => handleInstall(entry)}
+                    disabled={isBusy || releases.length === 0}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-[var(--color-text-primary)] font-medium transition-colors disabled:opacity-50"
+                  >
+                    {isBusy ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                    {isInstalled ? t('career.plugin.reinstall') : t('career.plugin.install')}
+                  </button>
+                  {isInstalled && (
+                    <button
+                      onClick={() => handleUninstall(entry)}
+                      disabled={isBusy}
+                      title={t('career.plugin.uninstall')}
+                      className="px-2 py-1.5 text-xs rounded-lg bg-red-600/20 hover:bg-red-600/40 border border-red-500/30 text-red-300 transition-colors disabled:opacity-50"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  )}
+                </div>
+                {m && (
+                  <p className={`text-[11px] ${m.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{m.text}</p>
+                )}
+              </div>
+            )
+          })}
+        </div>
       )}
     </div>
   )

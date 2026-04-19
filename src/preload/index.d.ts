@@ -454,6 +454,58 @@ interface AppAPI {
   careerBrowseServerDir(): Promise<string | null>
   careerGetServerDir(serverId: string): Promise<string>
 
+  // Career Plugin Browser
+  careerListPluginCatalog(): Promise<Array<{
+    id: string
+    name: string
+    description: string
+    author: string
+    repo: string
+    homepage: string
+    compat: 'careerMP' | 'rls' | 'both' | 'beamMP'
+    installMethod: 'extract-to-root' | 'extract-to-server-plugin' | 'copy-client-zip'
+    serverPluginFolder?: string
+  }>>
+  careerFetchPluginReleases(pluginId: string): Promise<Array<{
+    version: string
+    name: string
+    changelog: string
+    prerelease: boolean
+    publishedAt: string
+    downloadUrl: string
+    size: number
+    downloads: number
+  }>>
+  careerInstallPlugin(pluginId: string, version: string, downloadUrl: string, serverDir: string): Promise<{ success: boolean; error?: string }>
+  careerUninstallPlugin(pluginId: string, serverDir: string): Promise<{ success: boolean; error?: string }>
+  careerGetInstalledPlugins(serverDir: string): Promise<Record<string, { pluginId: string; version: string; installedAt: string; artifacts: string[] }>>
+
+  // Server Admin Tools Plugin Browser
+  serverAdminListPluginCatalog(): Promise<Array<{
+    id: string
+    name: string
+    description: string
+    author: string
+    repo: string
+    homepage: string
+    compat: 'careerMP' | 'rls' | 'both' | 'beamMP'
+    installMethod: 'extract-to-root' | 'extract-to-server-plugin' | 'copy-client-zip'
+    serverPluginFolder?: string
+  }>>
+  serverAdminFetchPluginReleases(pluginId: string): Promise<Array<{
+    version: string
+    name: string
+    changelog: string
+    prerelease: boolean
+    publishedAt: string
+    downloadUrl: string
+    size: number
+    downloads: number
+  }>>
+  serverAdminInstallPlugin(pluginId: string, version: string, downloadUrl: string, serverId: string): Promise<{ success: boolean; error?: string }>
+  serverAdminUninstallPlugin(pluginId: string, serverId: string): Promise<{ success: boolean; error?: string }>
+  serverAdminGetInstalledPlugins(serverId: string): Promise<Record<string, { pluginId: string; version: string; installedAt: string; artifacts: string[] }>>
+
   // Controls / Input Bindings
   controlsGetDevices(): Promise<import('../shared/types').InputDevice[]>
   controlsGetActions(): Promise<import('../shared/types').InputAction[]>
