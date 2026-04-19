@@ -1,27 +1,35 @@
-import { readFile, writeFile, mkdir } from 'fs/promises'
+import { writeFile, mkdir } from 'fs/promises'
 import { existsSync, writeFileSync, mkdirSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { BrowserWindow } from 'electron'
-import type { VoiceSignalMessage, VoiceChatState, VoicePeerInfo } from '../../shared/types'
+import type { VoiceChatState, VoicePeerInfo } from '../../shared/types'
+import { VoiceBridgeSocket } from './VoiceBridgeSocket'
 
 /* ── Embedded Lua: Voice Chat Bridge (client-side, deployed to BeamNG) ── */
 
 const VOICE_BRIDGE_LUA = `
 -- BeamCM Voice Chat Bridge
 -- Auto-deployed by BeamMP Content Manager
--- Bridges WebRTC signaling between CM (Electron) and BeamMP server events.
--- This extension does NOT handle audio — only signaling messages.
+-- Bridges WebRTC signaling AND audio between CM (Electron) and BeamMP
+-- server events over a local TCP socket. Replaces the previous JSON-file
+-- IPC, which suffered from a read-modify-write race and 50ms+50ms poll
+-- jitter that made audio unusable on the receive path.
 
 local M = {}
 
-local incomingFile = "settings/BeamCM/vc_incoming.json"
-local outgoingFile = "settings/BeamCM/vc_outgoing.json"
-local pollInterval = 0.05
-local timer = 0
+local socket = require("socket")
+local portFile = "settings/BeamCM/vc_port.txt"
+local cmHost = "127.0.0.1"
+local cmPort = nil
+local client = nil
+local clientBuf = ""
+local reconnectTimer = 0
+local reconnectInterval = 1.0  -- seconds
 local registered = false
-local pollCount = 0
 local signalsSent = 0
 local signalsReceived = 0
+local audioOut = 0
+local audioIn = 0
 
 -- Multiplayer readiness: TriggerServerEvent exists early but events only
 -- reach the server after the world is fully loaded (onWorldReadyState == 2).
@@ -37,41 +45,169 @@ local enableRetryCount = 0
 local enableMaxRetries = 30     -- give up after ~60s
 local startupElapsed = 0
 
--- Append a message to the incoming JSON file for CM to read
-local function appendIncoming(msg)
-  local existing = {}
-  local ok, content = pcall(jsonReadFile, incomingFile)
-  if ok and type(content) == "table" then existing = content end
-  table.insert(existing, msg)
-  jsonWriteFile(incomingFile, existing)
-  signalsReceived = signalsReceived + 1
+-- ── TCP bridge to CM ──────────────────────────────────────────────────
+-- CM writes its listening port to settings/BeamCM/vc_port.txt on startup.
+-- We connect, then exchange newline-delimited frames in BOTH directions:
+--   S|event|data            signal (vc_enable, vc_signal, vc_disable, ...)
+--   A|seq|b64               outbound audio (CM → us → vc_audio server event)
+--   R|fromId|seq|b64        inbound audio  (server → us → CM)
+--   H|                      heartbeat from us → CM (idle keepalive)
+local function readPort()
+  local f = io.open(portFile, "r")
+  if not f then return nil end
+  local txt = f:read("*l")
+  f:close()
+  if not txt then return nil end
+  local n = tonumber(txt)
+  if not n or n <= 0 then return nil end
+  return n
 end
 
--- Event handlers (called by BeamMP event system)
+local function tryConnect()
+  if client then return end
+  if not cmPort then
+    cmPort = readPort()
+    if not cmPort then return end
+    log('I', 'beamcmVoice', 'Read CM port from ' .. portFile .. ': ' .. tostring(cmPort))
+  end
+  local sock = socket.tcp()
+  sock:settimeout(0.05)
+  local ok, err = sock:connect(cmHost, cmPort)
+  if not ok and err ~= "already connected" then
+    -- "Operation already in progress" / "timeout" are expected on async connect;
+    -- fall through and let the next reconnect attempt re-poll.
+    sock:close()
+    return
+  end
+  sock:settimeout(0)        -- non-blocking for both send + receive
+  sock:setoption("tcp-nodelay", true)
+  client = sock
+  clientBuf = ""
+  log('I', 'beamcmVoice', 'Connected to CM bridge at 127.0.0.1:' .. tostring(cmPort))
+end
+
+local function disconnectClient(reason)
+  if not client then return end
+  pcall(function() client:close() end)
+  client = nil
+  clientBuf = ""
+  log('W', 'beamcmVoice', 'Disconnected from CM bridge: ' .. tostring(reason))
+end
+
+local function sendLine(line)
+  if not client then return false end
+  local _, err = client:send(line)
+  if err and err ~= "timeout" then
+    disconnectClient(err)
+    return false
+  end
+  return true
+end
+
+-- Drain everything currently readable from the client and dispatch each
+-- complete line. Non-blocking; returns immediately if nothing pending.
+local function pumpClient()
+  if not client then return end
+  while true do
+    local data, err, partial = client:receive(4096)
+    if data then
+      clientBuf = clientBuf .. data
+    elseif partial and #partial > 0 then
+      clientBuf = clientBuf .. partial
+    end
+    if err == "closed" then
+      disconnectClient("peer closed")
+      return
+    end
+    -- Process complete lines from the buffer.
+    while true do
+      local nl = string.find(clientBuf, "\\n", 1, true)
+      if not nl then break end
+      local line = string.sub(clientBuf, 1, nl - 1)
+      clientBuf = string.sub(clientBuf, nl + 1)
+      if #line > 0 then
+        local t = string.sub(line, 1, 1)
+        if t == "S" then
+          -- S|event|data
+          local p1 = string.find(line, "|", 3, true)
+          if p1 then
+            local event = string.sub(line, 3, p1 - 1)
+            local data = string.sub(line, p1 + 1)
+            signalsReceived = signalsReceived + 1
+            if event == "vc_enable" then
+              enableRequested = true
+              enableConfirmed = false
+              enableRetryCount = 0
+              enableRetryTimer = 0
+              if worldReady then
+                pcall(function() TriggerServerEvent("vc_enable", "enable") end)
+                signalsSent = signalsSent + 1
+              end
+            elseif event == "vc_disable" then
+              enableRequested = false
+              enableConfirmed = false
+              if worldReady then
+                pcall(function() TriggerServerEvent("vc_disable", data) end)
+                signalsSent = signalsSent + 1
+              end
+            else
+              if worldReady then
+                pcall(function() TriggerServerEvent(event, data) end)
+                signalsSent = signalsSent + 1
+              end
+            end
+          end
+        elseif t == "A" then
+          -- A|seq|b64 → forward as vc_audio server event
+          if worldReady then
+            local payload = string.sub(line, 3)
+            pcall(function() TriggerServerEvent("vc_audio", payload) end)
+            audioOut = audioOut + 1
+          end
+        end
+      end
+    end
+    -- If there's no more data, stop the loop. (timeout means nothing
+    -- currently available, not an error.)
+    if err == "timeout" or not data then break end
+  end
+end
+
+-- Append to CM via TCP, replacing the old appendIncoming(json) path.
+local function pushSignal(event, data)
+  signalsReceived = signalsReceived + 1   -- "received from server"
+  sendLine("S|" .. event .. "|" .. tostring(data) .. "\\n")
+end
+
+-- BeamMP event handlers
 local function onPeerJoined(data)
   enableConfirmed = true
   log('I', 'beamcmVoice', 'Peer joined event from server: data=' .. tostring(data))
-  appendIncoming({ event = "vc_peer_joined", data = tostring(data) })
+  pushSignal("vc_peer_joined", data)
 end
 
 local function onPeerLeft(data)
   log('I', 'beamcmVoice', 'Peer left event from server: data=' .. tostring(data))
-  appendIncoming({ event = "vc_peer_left", data = tostring(data) })
+  pushSignal("vc_peer_left", data)
 end
 
 local function onSignal(data)
-  appendIncoming({ event = "vc_signal", data = tostring(data) })
+  pushSignal("vc_signal", data)
 end
 
 local function onPeersList(data)
   enableConfirmed = true
   log('I', 'beamcmVoice', 'Peers list from server: ' .. tostring(data))
-  appendIncoming({ event = "vc_peers_list", data = tostring(data) })
+  pushSignal("vc_peers_list", data)
 end
 
--- vc_audio is high-volume (~17 frames/sec/talker). Don't log each one.
+-- vc_audio is high-volume (~17 frames/sec/talker). No per-frame log.
+-- Server forwards "<senderId>|<seq>|<base64opus>"; we relay verbatim as
+-- R|... to CM. The line stays a single line because b64 is single-line.
 local function onAudio(data)
-  appendIncoming({ event = "vc_audio", data = tostring(data) })
+  if not client then return end
+  audioIn = audioIn + 1
+  client:send("R|" .. tostring(data) .. "\\n")
 end
 
 local function tryRegister()
@@ -85,7 +221,7 @@ local function tryRegister()
     AddEventHandler("vc_audio", onAudio)
   end)
   registered = true
-  log('I', 'beamcmVoice', 'Registered BeamMP event handlers (AddEventHandler available)')
+  log('I', 'beamcmVoice', 'Registered BeamMP event handlers')
 end
 
 local function trySendServerEvent(event, data)
@@ -114,9 +250,8 @@ local function onExtensionLoaded()
     setExtensionUnloadMode('beamcmVoice', 'manual')
     log('I', 'beamcmVoice', 'Set unload mode to manual (survives level transitions)')
   end
-  log('I', 'beamcmVoice', 'BeamCM Voice Chat bridge loaded')
-  log('I', 'beamcmVoice', 'Outgoing: ' .. outgoingFile .. ', Incoming: ' .. incomingFile)
-  log('I', 'beamcmVoice', 'Poll: ' .. tostring(pollInterval) .. 's, retry: ' .. tostring(enableRetryInterval) .. 's')
+  log('I', 'beamcmVoice', 'BeamCM Voice Chat bridge loaded (TCP IPC mode)')
+  log('I', 'beamcmVoice', 'Will look for CM port at: ' .. portFile)
   tryRegister()
 end
 
@@ -128,10 +263,6 @@ local function onWorldReadyState(state)
     local wasReady = worldReady
     worldReady = true
     log('I', 'beamcmVoice', 'World is READY — multiplayer events will now be sent to server')
-    -- Re-arm enable on every world-ready transition so map changes / level
-    -- reloads automatically re-register us on the server. The server's
-    -- vc_enable handler is idempotent (replaces the entry, sends fresh
-    -- peers_list).
     if enableRequested then
       enableConfirmed = false
       enableRetryCount = 0
@@ -145,73 +276,25 @@ local function onWorldReadyState(state)
   end
 end
 
+local statsTimer = 0
 local function onUpdate(dt)
   if not registered then tryRegister() end
   startupElapsed = startupElapsed + dt
-  timer = timer + dt
-  if timer < pollInterval then return end
-  timer = 0
-  pollCount = pollCount + 1
 
-  -- Read outgoing signals written by CM and send them as BeamMP events
-  local ok, content = pcall(jsonReadFile, outgoingFile)
-  if ok and type(content) == "table" and #content > 0 then
-    local sent = 0
-    local deferred = 0
-    local skipped = 0
-    for _, msg in ipairs(content) do
-      if msg.event and msg.data then
-        if msg.event == "vc_enable" then
-          -- Store request; retry loop sends when server is reachable
-          enableRequested = true
-          enableConfirmed = false
-          enableRetryCount = 0
-          enableRetryTimer = 0
-          log('I', 'beamcmVoice', 'vc_enable requested by CM (worldReady=' .. tostring(worldReady) .. ')')
-          if worldReady then
-            if trySendServerEvent("vc_enable", "enable") then
-              sent = sent + 1
-              log('I', 'beamcmVoice', 'vc_enable sent immediately (world was ready)')
-            end
-          else
-            deferred = deferred + 1
-            log('I', 'beamcmVoice', 'vc_enable deferred — waiting for world ready')
-          end
-        elseif msg.event == "vc_disable" then
-          enableRequested = false
-          enableConfirmed = false
-          if trySendServerEvent("vc_disable", msg.data) then
-            sent = sent + 1
-          end
-        else
-          -- vc_signal and others: only send if world is ready
-          if worldReady then
-            if trySendServerEvent(msg.event, msg.data) then
-              sent = sent + 1
-            else
-              skipped = skipped + 1
-            end
-          else
-            skipped = skipped + 1
-          end
-        end
-      end
+  -- Reconnect ladder
+  if not client then
+    reconnectTimer = reconnectTimer + dt
+    if reconnectTimer >= reconnectInterval then
+      reconnectTimer = 0
+      tryConnect()
     end
-    jsonWriteFile(outgoingFile, {})
-    if sent > 0 then
-      log('I', 'beamcmVoice', 'Sent ' .. sent .. ' signal(s) to server (total: ' .. signalsSent .. ')')
-    end
-    if deferred > 0 then
-      log('I', 'beamcmVoice', 'Deferred ' .. deferred .. ' signal(s) — world not ready')
-    end
-    if skipped > 0 then
-      log('W', 'beamcmVoice', 'Skipped ' .. skipped .. ' signal(s)')
-    end
+  else
+    pumpClient()
   end
 
-  -- vc_enable retry loop: keep retrying until server acknowledges
+  -- vc_enable retry loop
   if enableRequested and not enableConfirmed and worldReady then
-    enableRetryTimer = enableRetryTimer + pollInterval
+    enableRetryTimer = enableRetryTimer + dt
     if enableRetryTimer >= enableRetryInterval then
       enableRetryTimer = 0
       enableRetryCount = enableRetryCount + 1
@@ -225,20 +308,24 @@ local function onUpdate(dt)
     end
   end
 
-  -- Status log every 30s
-  if pollCount % 120 == 0 then
-    log('I', 'beamcmVoice', 'Status: worldReady=' .. tostring(worldReady)
-      .. ', registered=' .. tostring(registered)
+  -- Periodic stats + heartbeat
+  statsTimer = statsTimer + dt
+  if statsTimer >= 30 then
+    statsTimer = 0
+    log('I', 'beamcmVoice', 'Status: connected=' .. tostring(client ~= nil)
+      .. ', worldReady=' .. tostring(worldReady)
       .. ', enableReq=' .. tostring(enableRequested)
       .. ', enableConf=' .. tostring(enableConfirmed)
-      .. ', sent=' .. signalsSent
-      .. ', recv=' .. signalsReceived
+      .. ', sigSent=' .. signalsSent .. ', sigRecv=' .. signalsReceived
+      .. ', audOut=' .. audioOut .. ', audIn=' .. audioIn
       .. ', uptime=' .. string.format("%.0f", startupElapsed) .. 's')
+    if client then sendLine("H|\\n") end
   end
 end
 
 local function onExtensionUnloaded()
-  log('I', 'beamcmVoice', 'BeamCM Voice Chat bridge unloaded (sent=' .. signalsSent .. ', recv=' .. signalsReceived .. ')')
+  log('I', 'beamcmVoice', 'BeamCM Voice Chat bridge unloaded (sigSent=' .. signalsSent .. ', sigRecv=' .. signalsReceived .. ', audOut=' .. audioOut .. ', audIn=' .. audioIn .. ')')
+  disconnectClient("extension unload")
 end
 
 M.onExtensionLoaded = onExtensionLoaded
@@ -476,12 +563,14 @@ print(TAG .. "Plugin loaded successfully — waiting for players to enable voice
 `
 
 export class VoiceChatService {
-  private signalPoller: ReturnType<typeof setInterval> | null = null
+  private bridge: VoiceBridgeSocket | null = null
   private deployed = false
   private userDir: string | null = null
-  private outgoingQueue: Array<{ event: string; data: string }> = []
-  private flushScheduled = false
-  private flushing = false
+
+  // Buffered outgoing messages while bridge isn't connected yet (e.g. game
+  // not yet launched). Replaces the legacy outgoing-file queue.
+  private outboundBacklog: Array<{ kind: 'S' | 'A'; a: string; b: string }> = []
+  private static readonly OUTBOUND_CAP = 256
 
   // State
   private enabled = false
@@ -501,11 +590,11 @@ export class VoiceChatService {
     return join(this.userDir!, 'settings', 'BeamCM')
   }
 
-  private get incomingPath(): string {
+  /** Legacy paths — only used for cleanup of stale files from older builds. */
+  private get legacyIncomingPath(): string {
     return join(this.signalDir, 'vc_incoming.json')
   }
-
-  private get outgoingPath(): string {
+  private get legacyOutgoingPath(): string {
     return join(this.signalDir, 'vc_outgoing.json')
   }
 
@@ -527,23 +616,51 @@ export class VoiceChatService {
       // Ensure signal directory exists
       mkdirSync(this.signalDir, { recursive: true })
 
-      // Clear stale signal files
-      for (const f of [this.incomingPath, this.outgoingPath]) {
+      // Sweep stale legacy file-IPC artifacts so the new TCP bridge can't
+      // accidentally pick up garbage on first run.
+      for (const f of [this.legacyIncomingPath, this.legacyOutgoingPath]) {
         if (existsSync(f)) unlinkSync(f)
       }
 
+      // Bring up the TCP listener and write the port file Lua looks for.
+      void this.startBridge()
+
       this.deployed = true
       this.log('Bridge deployed to ' + this.extensionPath)
-      this.startSignalPoller()
       return { success: true }
     } catch (err) {
       return { success: false, error: `Failed to deploy voice bridge: ${err}` }
     }
   }
 
+  private async startBridge(): Promise<void> {
+    if (this.bridge) return
+    const bridge = new VoiceBridgeSocket()
+    bridge.onSignal((event, data) => this.handleIncomingSignal(event, data))
+    bridge.onAudio((fromId, seq, b64) => this.handleIncomingAudio(fromId, seq, b64))
+    bridge.onConnect(() => {
+      this.log(`Bridge client connected — flushing ${this.outboundBacklog.length} queued message(s)`)
+      const backlog = this.outboundBacklog.splice(0)
+      for (const m of backlog) {
+        if (m.kind === 'S') bridge.sendSignal(m.a, m.b)
+        else bridge.sendAudio(parseInt(m.a, 10), m.b)
+      }
+    })
+    try {
+      const port = await bridge.start(this.signalDir)
+      this.bridge = bridge
+      this.log(`TCP bridge listening on 127.0.0.1:${port}`)
+    } catch (err) {
+      this.log(`Bridge start failed: ${err}`)
+    }
+  }
+
   undeployBridge(): { success: boolean; error?: string } {
     try {
-      this.stopSignalPoller()
+      if (this.bridge) {
+        this.bridge.stop()
+        this.bridge = null
+      }
 
       if (this.userDir && existsSync(this.extensionPath)) {
         unlinkSync(this.extensionPath)
@@ -551,10 +668,11 @@ export class VoiceChatService {
       // Clean up signal files (incl. legacy status/command files)
       if (this.userDir) {
         for (const f of [
-          this.incomingPath,
-          this.outgoingPath,
+          this.legacyIncomingPath,
+          this.legacyOutgoingPath,
           join(this.signalDir, 'vc_status.json'),
           join(this.signalDir, 'vc_command.json'),
+          join(this.signalDir, 'vc_port.txt'),
         ]) {
           if (existsSync(f)) unlinkSync(f)
         }
@@ -597,66 +715,38 @@ export class VoiceChatService {
     }
   }
 
-  /* ── Signal File Poller ── */
+  /* ── Bridge Inbound Dispatch ── */
 
-  private startSignalPoller(): void {
-    if (this.signalPoller) return
-    this.signalPoller = setInterval(() => this.pollIncomingSignals(), 50)
-    this.log('Signal poller started (50ms)')
+  private handleIncomingAudio(fromId: number, seq: number, b64: string): void {
+    const win = this.getWindow()
+    if (!win || win.isDestroyed()) return
+    win.webContents.send('voice:audio', { fromId, seq, data: b64 })
   }
 
-  private stopSignalPoller(): void {
-    if (this.signalPoller) {
-      clearInterval(this.signalPoller)
-      this.signalPoller = null
-      this.log('Signal poller stopped')
-    }
-  }
-
-  private async pollIncomingSignals(): Promise<void> {
-    if (!this.userDir || !existsSync(this.incomingPath)) return
-    try {
-      const raw = await readFile(this.incomingPath, 'utf-8')
-      const messages: VoiceSignalMessage[] = JSON.parse(raw)
-      if (!Array.isArray(messages) || messages.length === 0) return
-
-      // Clear immediately after reading
-      await writeFile(this.incomingPath, '[]', 'utf-8')
-
-      for (const msg of messages) {
-        this.handleIncomingMessage(msg)
-      }
-    } catch {
-      // File might be empty, malformed, or being written — ignore
-    }
-  }
-
-  private handleIncomingMessage(msg: VoiceSignalMessage): void {
+  private handleIncomingSignal(event: string, data: string): void {
     const win = this.getWindow()
     if (!win || win.isDestroyed()) {
-      this.log(`Dropping signal '${msg.event}': no BrowserWindow available`)
+      this.log(`Dropping signal '${event}': no BrowserWindow available`)
       return
     }
 
-    switch (msg.event) {
+    switch (event) {
       case 'vc_peer_joined': {
         // data: "playerId,playerName"
-        const commaIdx = msg.data.indexOf(',')
+        const commaIdx = data.indexOf(',')
         if (commaIdx < 0) break
-        const playerId = parseInt(msg.data.substring(0, commaIdx), 10)
-        const playerName = msg.data.substring(commaIdx + 1) || `Player_${playerId}`
+        const playerId = parseInt(data.substring(0, commaIdx), 10)
+        const playerName = data.substring(commaIdx + 1) || `Player_${playerId}`
         if (!isNaN(playerId)) {
           this.peers = this.peers.filter((p) => p.playerId !== playerId)
           this.peers.push({ playerId, playerName, speaking: false })
-          // We are the existing peer being notified → impolite (our offer wins)
           win.webContents.send('voice:peerJoined', { playerId, playerName, polite: false })
           this.log(`Peer joined: ${playerName} (pid=${playerId})`)
         }
         break
       }
       case 'vc_peer_left': {
-        // data: "playerId"
-        const playerId = parseInt(msg.data, 10)
+        const playerId = parseInt(data, 10)
         if (!isNaN(playerId)) {
           this.peers = this.peers.filter((p) => p.playerId !== playerId)
           win.webContents.send('voice:peerLeft', { playerId })
@@ -664,35 +754,28 @@ export class VoiceChatService {
         break
       }
       case 'vc_signal': {
-        // data: "fromPlayerId|jsonPayload"
-        const pipeIdx = msg.data.indexOf('|')
+        const pipeIdx = data.indexOf('|')
         if (pipeIdx < 0) break
-        const fromId = parseInt(msg.data.substring(0, pipeIdx), 10)
-        const payload = msg.data.substring(pipeIdx + 1)
+        const fromId = parseInt(data.substring(0, pipeIdx), 10)
+        const payload = data.substring(pipeIdx + 1)
         if (!isNaN(fromId)) {
           win.webContents.send('voice:signal', { fromId, payload })
         }
         break
       }
       case 'vc_peers_list': {
-        // data: "<recipientSelfId>|id1:name1,id2:name2,..."
-        // The leading recipientId is the player id the server assigned to US.
-        // It allows the renderer's mesh tier to elect supernodes correctly.
-        if (msg.data === undefined || msg.data === null) break
-        const pipeIdx = (msg.data as string).indexOf('|')
-        let listPart = msg.data as string
+        if (!data) break
+        const pipeIdx = data.indexOf('|')
+        let listPart = data
         if (pipeIdx >= 0) {
-          const selfIdRaw = (msg.data as string).substring(0, pipeIdx)
-          const selfId = parseInt(selfIdRaw, 10)
-          listPart = (msg.data as string).substring(pipeIdx + 1)
+          const selfId = parseInt(data.substring(0, pipeIdx), 10)
+          listPart = data.substring(pipeIdx + 1)
           if (!isNaN(selfId)) {
             win.webContents.send('voice:selfId', { selfId })
             this.log(`Self player id from server: ${selfId}`)
           }
         }
-        if (!listPart) {
-          break
-        }
+        if (!listPart) break
         const entries = listPart.split(',')
         for (const entry of entries) {
           const colonIdx = entry.indexOf(':')
@@ -703,102 +786,41 @@ export class VoiceChatService {
             if (!this.peers.find((p) => p.playerId === playerId)) {
               this.peers.push({ playerId, playerName: name, speaking: false })
             }
-            // We are the newcomer receiving the existing peer list → polite (yield on collision)
             win.webContents.send('voice:peerJoined', { playerId, playerName: name, polite: true })
             this.log(`Peers list: added ${name} (pid=${playerId})`)
           }
         }
         break
       }
-      case 'vc_audio': {
-        // data: "<senderId>|<seq>|<base64opus>" — Tier 3 (server relay) audio frame.
-        // High-volume (~17/s/talker); no per-frame log.
-        const first = msg.data.indexOf('|')
-        if (first < 0) break
-        const second = msg.data.indexOf('|', first + 1)
-        if (second < 0) break
-        const fromId = parseInt(msg.data.substring(0, first), 10)
-        const seq = parseInt(msg.data.substring(first + 1, second), 10)
-        const b64 = msg.data.substring(second + 1)
-        if (!isNaN(fromId) && !isNaN(seq) && b64) {
-          win.webContents.send('voice:audio', { fromId, seq, data: b64 })
-        }
-        break
-      }
     }
   }
 
-  /* ── Outgoing Signals (renderer → file → Lua → server) ── */
+  /* ── Outgoing (CM → bridge → Lua → BeamMP server) ── */
 
   async sendSignal(event: string, data: string): Promise<void> {
     if (!this.userDir) {
       this.log(`Cannot send signal '${event}': userDir not set`)
       return
     }
-    // Queue the signal and schedule a batched flush to avoid read-modify-write
-    // races when multiple signals (offer + ICE candidates) fire in rapid succession.
-    this.outgoingQueue.push({ event, data })
-    if (!this.flushScheduled) {
-      this.flushScheduled = true
-      queueMicrotask(() => this.flushOutgoingQueue())
+    if (this.bridge && this.bridge.isConnected()) {
+      this.bridge.sendSignal(event, data)
+      return
     }
+    if (this.outboundBacklog.length >= VoiceChatService.OUTBOUND_CAP) {
+      this.outboundBacklog.shift()
+    }
+    this.outboundBacklog.push({ kind: 'S', a: event, b: data })
   }
 
   /**
-   * Tier 3 outbound audio frame. Same queue as sendSignal; the Lua bridge
-   * forwards `vc_audio` events to the server which broadcasts to all other
-   * voice peers. Wire format: data = "<seq>|<base64opus>".
+   * Tier 3 outbound audio frame. Bypasses the signal queue entirely — drops
+   * the frame on the floor if the bridge isn't connected (audio is
+   * loss-tolerant; queueing would only add jitter).
    */
   async sendAudio(seq: number, base64Opus: string): Promise<void> {
     if (!this.userDir || !this.enabled) return
-    this.outgoingQueue.push({ event: 'vc_audio', data: `${seq}|${base64Opus}` })
-    if (!this.flushScheduled) {
-      this.flushScheduled = true
-      queueMicrotask(() => this.flushOutgoingQueue())
-    }
-  }
-
-  private async flushOutgoingQueue(): Promise<void> {
-    this.flushScheduled = false
-
-    // Prevent concurrent flushes — async read+write can interleave and lose signals
-    if (this.flushing) {
-      if (this.outgoingQueue.length > 0 && !this.flushScheduled) {
-        this.flushScheduled = true
-        setTimeout(() => this.flushOutgoingQueue(), 10)
-      }
-      return
-    }
-    this.flushing = true
-
-    try {
-      const batch = this.outgoingQueue.splice(0)
-      if (batch.length === 0) return
-      if (!existsSync(this.signalDir)) {
-        mkdirSync(this.signalDir, { recursive: true })
-      }
-      // Read existing signals that Lua hasn't consumed yet
-      let existing: Array<{ event: string; data: string }> = []
-      if (existsSync(this.outgoingPath)) {
-        try {
-          const raw = await readFile(this.outgoingPath, 'utf-8')
-          const parsed = JSON.parse(raw)
-          if (Array.isArray(parsed)) existing = parsed
-        } catch { /* empty or malformed — start fresh */ }
-      }
-      existing.push(...batch)
-      await writeFile(this.outgoingPath, JSON.stringify(existing), 'utf-8')
-      this.log(`Flushed ${batch.length} signal(s) to outgoing (${existing.length} total queued)`)
-    } catch (err) {
-      this.log(`Failed to flush outgoing signals: ${err}`)
-    } finally {
-      this.flushing = false
-      // If more signals accumulated while we were flushing, flush again
-      if (this.outgoingQueue.length > 0 && !this.flushScheduled) {
-        this.flushScheduled = true
-        queueMicrotask(() => this.flushOutgoingQueue())
-      }
-    }
+    if (!this.bridge || !this.bridge.isConnected()) return
+    this.bridge.sendAudio(seq, base64Opus)
   }
 
   /* ── Enable / Disable ── */
