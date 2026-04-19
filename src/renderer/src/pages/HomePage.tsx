@@ -20,6 +20,7 @@ import { useAppStore } from '../stores/useAppStore'
 import { useServerStore } from '../stores/useServerStore'
 import type { ServerInfo, ModInfo } from '../../../shared/types'
 import { BeamMPText } from '../components/BeamMPText'
+import { useBoundedCache } from '../hooks/useBoundedCache'
 
 function formatMapName(map: string): string {
   const name = map.replace(/^\/levels\//, '').replace(/\/info\.json$/, '').replace(/\/$/, '')
@@ -59,8 +60,10 @@ export function HomePage(): React.JSX.Element {
   const [launchError, setLaunchError] = useState<string | null>(null)
 
   const [recentMods, setRecentMods] = useState<ModInfo[]>([])
-  const [modPreviews, setModPreviews] = useState<Record<string, string>>({})
-  const [mapPreviews, setMapPreviews] = useState<Record<string, string>>({})
+  // Bounded LRU caches for thumbnail base64 data URLs. Caps memory growth as
+  // the user navigates and the favourite/recent server lists rotate.
+  const modPreviews = useBoundedCache<string>(12)
+  const mapPreviews = useBoundedCache<string>(24)
   const [registryUpdates, setRegistryUpdates] = useState(0)
   const [newsItems, setNewsItems] = useState<
     Array<{ id: string; source: 'steam' | 'beammp'; title: string; url: string; date: number; summary: string }>
@@ -120,22 +123,22 @@ export function HomePage(): React.JSX.Element {
   useEffect(() => {
     const allServers = [...favoriteServers, ...recentServers]
     const mapPaths = [...new Set(allServers.map((s) => s.map))].filter(
-      (m) => m && !mapPreviews[m]
+      (m) => m && !mapPreviews.has(m)
     )
     if (mapPaths.length === 0) return
     for (const mapPath of mapPaths) {
       window.api.getMapPreview(mapPath).then((preview) => {
-        if (preview) setMapPreviews((prev) => ({ ...prev, [mapPath]: preview }))
+        if (preview) mapPreviews.set(mapPath, preview)
       })
     }
   }, [favoriteServers.length, recentServers.length])
 
   useEffect(() => {
     for (const mod of recentMods) {
-      if (mod.filePath && !modPreviews[mod.key]) {
+      if (mod.filePath && !modPreviews.has(mod.key)) {
         window.api.getModPreview(mod.filePath).then((result) => {
           if (result.success && result.data) {
-            setModPreviews((prev) => ({ ...prev, [mod.key]: result.data as string }))
+            modPreviews.set(mod.key, result.data as string)
           }
         })
       }
@@ -301,7 +304,7 @@ export function HomePage(): React.JSX.Element {
                 const players = parseInt(server.players, 10) || 0
                 const maxPlayers = parseInt(server.maxplayers, 10) || 0
                 const isFull = players >= maxPlayers
-                const preview = mapPreviews[server.map]
+                const preview = mapPreviews.get(server.map)
 
                 return (
                   <button
@@ -370,7 +373,7 @@ export function HomePage(): React.JSX.Element {
                 const players = parseInt(server.players, 10) || 0
                 const maxPlayers = parseInt(server.maxplayers, 10) || 0
                 const isFull = players >= maxPlayers
-                const preview = mapPreviews[server.map]
+                const preview = mapPreviews.get(server.map)
 
                 return (
                   <button
@@ -441,8 +444,8 @@ export function HomePage(): React.JSX.Element {
                 >
                   {/* Mod thumbnail */}
                   <div className="w-10 h-10 shrink-0 bg-[var(--color-surface)] border border-[var(--color-border)] flex items-center justify-center overflow-hidden">
-                    {modPreviews[mod.key] ? (
-                      <img src={modPreviews[mod.key]} alt="" className="w-full h-full object-cover" />
+                    {modPreviews.get(mod.key) ? (
+                      <img src={modPreviews.get(mod.key)} alt="" className="w-full h-full object-cover" />
                     ) : (
                       <Package size={14} className="text-[var(--color-text-dim)]" />
                     )}

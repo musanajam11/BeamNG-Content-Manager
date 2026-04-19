@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Search, Map, Loader2, X, ChevronLeft, MapPin, User, Tag, Calendar, HardDrive, ExternalLink, Info, Ruler, Flag } from 'lucide-react'
 import type { MapRichMetadata } from '../../../shared/types'
+import { useBoundedCache } from '../hooks/useBoundedCache'
 
 type MapListItem = { name: string; source: 'stock' | 'mod'; modZipPath?: string }
 type ViewMode = 'grid' | 'detail'
@@ -25,7 +26,13 @@ export function MapsPage(): React.JSX.Element {
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterSource, setFilterSource] = useState<'all' | 'stock' | 'mod'>('all')
-  const [previews, setPreviews] = useState<Record<string, string>>({})
+  // Bounded LRU cache for map preview thumbnails. Each is a base64 data URL
+  // (~10-100 KB); without bounding, scrolling through hundreds of maps would
+  // pin all of them in renderer memory for the session.
+  const previews = useBoundedCache<string>(60)
+  // Track which previews have been requested (regardless of cache eviction)
+  // so the lazy-loading effect doesn't loop on evicted entries.
+  const previewsAttempted = useRef<Set<string>>(new Set())
 
   // Detail view
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
@@ -55,18 +62,19 @@ export function MapsPage(): React.JSX.Element {
     if (maps.length === 0) return
     let cancelled = false
     const load = async (): Promise<void> => {
-      const batch = maps.filter((m) => !previews[m.name]).slice(0, 12)
+      const batch = maps.filter((m) => !previewsAttempted.current.has(m.name)).slice(0, 12)
       for (const m of batch) {
         if (cancelled) return
+        previewsAttempted.current.add(m.name)
         const img = await window.api.getMapPreview(`/levels/${m.name}/`, m.modZipPath)
         if (!cancelled && img) {
-          setPreviews((p) => ({ ...p, [m.name]: img }))
+          previews.set(m.name, img)
         }
       }
     }
     load()
     return () => { cancelled = true }
-  }, [maps, previews])
+  }, [maps])
 
   // Filter + search
   const filtered = useMemo(() => {
@@ -191,8 +199,8 @@ export function MapsPage(): React.JSX.Element {
                   className="group flex flex-col bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-accent)] transition-colors cursor-pointer text-left"
                 >
                   <div className="relative w-full aspect-[16/9] bg-[var(--color-scrim-30)] overflow-hidden">
-                    {previews[m.name] ? (
-                      <img src={previews[m.name]} alt={formatMapName(m.name)} className="w-full h-full object-cover" />
+                    {previews.get(m.name) ? (
+                      <img src={previews.get(m.name)} alt={formatMapName(m.name)} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <Map size={28} className="text-[var(--color-text-dim)]" />

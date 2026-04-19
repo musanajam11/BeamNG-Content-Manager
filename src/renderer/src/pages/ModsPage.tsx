@@ -61,6 +61,7 @@ import { CSS } from '@dnd-kit/utilities'
 import type { ModInfo, RepoMod, RepoCategory, RepoSortOrder } from '../../../shared/types'
 import type { AvailableMod, BeamModMetadata, RegistrySearchResult, ResolutionResult, InstalledRegistryMod } from '../../../shared/registry-types'
 import { useConfirmDialog } from '../hooks/useConfirmDialog'
+import { useBoundedCache } from '../hooks/useBoundedCache'
 import { useTranslation } from 'react-i18next'
 import { useModOrderStore } from '../stores/useModOrderStore'
 
@@ -384,7 +385,10 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
   const [filter, setFilter] = useState<ModFilter>('')
   const [selectedMod, setSelectedMod] = useState<ModInfo | null>(null)
   const [actionPending, setActionPending] = useState<string | null>(null)
-  const [previewCache, setPreviewCache] = useState<Record<string, string | null>>({})
+  // Bounded LRU cache for mod preview images. Each preview is a base64 data URL
+  // that can easily be 100-300 KB; without bounding, clicking through hundreds
+  // of mods would retain all of them in renderer memory for the session.
+  const previewCache = useBoundedCache<string | null>(20)
   const [registryInstalled, setRegistryInstalled] = useState<Record<string, InstalledRegistryMod>>({})
   const [scopeDialogMods, setScopeDialogMods] = useState<ModInfo[]>([])
   const [scopeDialogIndex, setScopeDialogIndex] = useState(0)
@@ -437,11 +441,11 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
   useEffect(() => {
     if (!selectedMod) return
     const key = selectedMod.filePath
-    if (key in previewCache) return // already fetched or fetching
-    setPreviewCache((prev) => ({ ...prev, [key]: null }))
+    if (previewCache.has(key)) return // already fetched or fetching
+    previewCache.set(key, null)
     window.api.getModPreview(selectedMod.filePath).then((result) => {
       if (result.success && result.data) {
-        setPreviewCache((prev) => ({ ...prev, [key]: result.data! }))
+        previewCache.set(key, result.data)
       }
     })
   }, [selectedMod])
@@ -847,9 +851,9 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                 </div>
 
                 {/* Preview image */}
-                {previewCache[selectedMod.filePath] && (
+                {previewCache.get(selectedMod.filePath) && (
                   <img
-                    src={previewCache[selectedMod.filePath]!}
+                    src={previewCache.get(selectedMod.filePath)!}
                     alt={selectedMod.title || selectedMod.fileName}
                     className="w-full object-cover border border-[var(--color-border)]"
                   />
@@ -1213,7 +1217,10 @@ function BrowseModsView(): React.JSX.Element {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const [selectedMod, setSelectedMod] = useState<RepoMod | null>(null)
-  const [thumbCache, setThumbCache] = useState<Record<string, string>>({})
+  // Bounded LRU cache for repo browse thumbnails. The user can paginate
+  // through hundreds of pages of mods; without bounding, every thumb
+  // (~10-100 KB base64) accumulates in renderer memory for the session.
+  const thumbCache = useBoundedCache<string>(120)
   const [downloading, setDownloading] = useState<number | null>(null) // resourceId
   const [downloadProgress, setDownloadProgress] = useState<{
     received: number
@@ -1273,10 +1280,12 @@ function BrowseModsView(): React.JSX.Element {
     const urls = mods.map((m) => m.thumbnailUrl).filter(Boolean)
     if (urls.length === 0) return
     // Only fetch URLs we don't already have cached
-    const missing = urls.filter((u) => !thumbCache[u])
+    const missing = urls.filter((u) => !thumbCache.has(u))
     if (missing.length === 0) return
     window.api.getRepoThumbnails(missing).then((result) => {
-      setThumbCache((prev) => ({ ...prev, ...result }))
+      for (const [url, dataUrl] of Object.entries(result)) {
+        thumbCache.set(url, dataUrl as string)
+      }
     })
   }, [mods])
 
@@ -1516,9 +1525,9 @@ function BrowseModsView(): React.JSX.Element {
                     >
                       {/* Thumbnail */}
                       <div className="relative aspect-video bg-[var(--color-scrim-30)] overflow-hidden">
-                        {thumbCache[mod.thumbnailUrl] ? (
+                        {thumbCache.get(mod.thumbnailUrl) ? (
                           <img
-                            src={thumbCache[mod.thumbnailUrl]}
+                            src={thumbCache.get(mod.thumbnailUrl)}
                             alt={mod.title}
                             className="w-full h-full object-cover"
                           />
@@ -1570,10 +1579,10 @@ function BrowseModsView(): React.JSX.Element {
               {selectedMod && (
                 <div className="w-[320px] shrink-0 border-l border-[var(--color-border)] overflow-y-auto p-5 space-y-4">
                   {/* Thumbnail */}
-                  {thumbCache[selectedMod.thumbnailUrl] && (
+                  {thumbCache.get(selectedMod.thumbnailUrl) && (
                     <div className="aspect-video bg-[var(--color-scrim-30)] overflow-hidden">
                       <img
-                        src={thumbCache[selectedMod.thumbnailUrl]}
+                        src={thumbCache.get(selectedMod.thumbnailUrl)}
                         alt={selectedMod.title}
                         className="w-full h-full object-cover"
                       />

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   Search, Car, Loader2, ChevronLeft, X, Save, Trash2,
   Edit3, Copy, Zap, Gauge, Weight, Fuel, Settings2, Info, Box
@@ -6,6 +6,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import type { VehicleDetail, VehicleConfigInfo, VehicleConfigData, VehicleEditorData } from '../../../shared/types'
 import { VehicleViewer, type PaintData } from '../components/VehicleViewer'
+import { useBoundedCache } from '../hooks/useBoundedCache'
 
 type VehicleListItem = {
   name: string; displayName: string; brand: string; type: string
@@ -24,7 +25,13 @@ export function VehiclesPage(): React.JSX.Element {
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<FilterType>('all')
   const [filterBrand, setFilterBrand] = useState<string>('all')
-  const [previews, setPreviews] = useState<Record<string, string>>({})
+  // Bounded LRU cache for vehicle preview thumbnails. Each is a base64 data
+  // URL (~10-100 KB); without bounding, scrolling through hundreds of vehicles
+  // would pin all of them in renderer memory.
+  const previews = useBoundedCache<string>(80)
+  // Track which previews have been requested (regardless of cache eviction)
+  // so the lazy-loading effect doesn't loop on evicted entries.
+  const previewsAttempted = useRef<Set<string>>(new Set())
 
   // Detail / config state
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
@@ -74,18 +81,19 @@ export function VehiclesPage(): React.JSX.Element {
     if (vehicles.length === 0) return
     let cancelled = false
     const load = async (): Promise<void> => {
-      const batch = vehicles.filter((v) => !previews[v.name]).slice(0, 12)
+      const batch = vehicles.filter((v) => !previewsAttempted.current.has(v.name)).slice(0, 12)
       for (const v of batch) {
         if (cancelled) return
+        previewsAttempted.current.add(v.name)
         const img = await window.api.getVehiclePreview(v.name)
         if (!cancelled && img) {
-          setPreviews((p) => ({ ...p, [v.name]: img }))
+          previews.set(v.name, img)
         }
       }
     }
     load()
     return () => { cancelled = true }
-  }, [vehicles, previews])
+  }, [vehicles])
 
   // ── Filtered + searched list ──
   const brands = useMemo(() => {
@@ -121,9 +129,9 @@ export function VehiclesPage(): React.JSX.Element {
     setEditing(false)
 
     // Ensure vehicle preview is loaded for fallback
-    if (!previews[name]) {
+    if (!previews.has(name)) {
       window.api.getVehiclePreview(name).then((img) => {
-        if (img) setPreviews((p) => ({ ...p, [name]: img }))
+        if (img) previews.set(name, img)
       })
     }
 
@@ -378,8 +386,8 @@ export function VehiclesPage(): React.JSX.Element {
                   className="group flex flex-col bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-accent)] transition-colors cursor-pointer text-left"
                 >
                   <div className="relative w-full aspect-[4/3] bg-[var(--color-scrim-30)] overflow-hidden">
-                    {previews[v.name] ? (
-                      <img src={previews[v.name]} alt={v.displayName} className="w-full h-full object-cover" />
+                    {previews.get(v.name) ? (
+                      <img src={previews.get(v.name)} alt={v.displayName} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <Car size={28} className="text-[var(--color-text-dim)]" />
@@ -583,8 +591,8 @@ export function VehiclesPage(): React.JSX.Element {
             <VehicleViewer vehicleName={selectedVehicle} parts={configData?.parts} paints={configData?.paints as PaintData[] | undefined} className="w-full h-full" />
           ) : configPreview ? (
             <img src={configPreview} alt={cfg.displayName} className="w-full h-full object-cover" />
-          ) : previews[selectedVehicle || ''] ? (
-            <img src={previews[selectedVehicle || '']} alt={cfg.displayName} className="w-full h-full object-cover" />
+          ) : previews.get(selectedVehicle || '') ? (
+            <img src={previews.get(selectedVehicle || '')} alt={cfg.displayName} className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center">
               <Car size={48} className="text-[var(--color-text-dim)]" />
