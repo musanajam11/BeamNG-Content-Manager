@@ -42,7 +42,7 @@ export const PLUGIN_CATALOG: PluginCatalogEntry[] = [
   {
     id: 'careermp-banking',
     name: 'CareerMP Banking',
-    description: 'A QoL banking app for CareerMP. Adds in-game commands like /balance, /pay <player> <amount> and /deposit so players can move career money between accounts without leaving the driver seat. Server-side only — no client mod required.',
+    description: 'A custom BeamNG UI app for CareerMP that provides a cleaner banking interface for player payments. Uses CareerMP\'s payment backend for money movement, transaction limits, and balance changes.',
     author: 'DeadEndReece',
     repo: 'DeadEndReece/CareerMP-Banking',
     homepage: 'https://github.com/DeadEndReece/CareerMP-Banking',
@@ -53,7 +53,7 @@ export const PLUGIN_CATALOG: PluginCatalogEntry[] = [
   {
     id: 'buber',
     name: 'Buber',
-    description: 'The UBER-style ride-hailing app for BeamNG.Drive Career Mode on BeamMP. Players can request rides and earn career money by accepting fares from other players — great for taxi/limo roleplay servers. Adds an in-game UI app and chat commands.',
+    description: 'BUBER turns BeamNG.drive Career Mode into a ride-share, taxi, shared ride, and bus route side hustle. Take fares, keep passengers happy, build your driver rating, unlock bigger jobs, and work your way from small local pickups to full city routes.',
     author: 'DeadEndReece',
     repo: 'DeadEndReece/Buber',
     homepage: 'https://github.com/DeadEndReece/Buber',
@@ -64,7 +64,7 @@ export const PLUGIN_CATALOG: PluginCatalogEntry[] = [
   {
     id: 'dynamic-traffic',
     name: 'BeamMP Dynamic Traffic',
-    description: 'Spawns AI traffic dynamically around players on your BeamMP server so the world feels alive instead of empty. Density, vehicle pool and spawn radius are configurable. Compatible with both vanilla BeamMP and CareerMP / RLS servers.',
+    description: 'A dynamic server and client module for BeamMP that intelligently manages AI traffic spawning based on active player counts. Features a waiting room mechanism to prevent traffic from generating before players have fully loaded into the server.',
     author: 'DeadEndReece',
     repo: 'DeadEndReece/BeamMPDynamicTraffic',
     homepage: 'https://github.com/DeadEndReece/BeamMPDynamicTraffic',
@@ -79,7 +79,7 @@ export const SERVER_ADMIN_CATALOG: PluginCatalogEntry[] = [
   {
     id: 'cobalt-essentials',
     name: 'CobaltEssentials',
-    description: 'The go-to server-side admin & permissions framework for BeamMP. Provides kick, ban, mute, teleport, vehicle whitelist/blacklist, group-based permissions, and a rich Lua API that other plugins (like CEI) hook into. Install this first if you need any admin tooling.',
+    description: 'CobaltEssentials for BeamMP Servers. Provides admin and permissions management with group-based access control.',
     author: 'prestonelam2003',
     repo: 'prestonelam2003/CobaltEssentials',
     homepage: 'https://github.com/prestonelam2003/CobaltEssentials',
@@ -92,7 +92,7 @@ export const SERVER_ADMIN_CATALOG: PluginCatalogEntry[] = [
   {
     id: 'cobalt-essentials-interface',
     name: 'CobaltEssentialsInterface (CEI)',
-    description: 'A Dear ImGui-powered in-game admin panel for servers running CobaltEssentials. Gives admins a visual overlay to manage players, vehicles, permissions, teleports and more — no chat commands needed. Requires CobaltEssentials to be installed on the same server.',
+    description: 'A Dear ImGui based interface for BeamMP Servers running CobaltEssentials.',
     author: 'Dudekahedron',
     repo: 'StanleyDudek/CobaltEssentialsInterface',
     homepage: 'https://github.com/StanleyDudek/CobaltEssentialsInterface',
@@ -103,7 +103,7 @@ export const SERVER_ADMIN_CATALOG: PluginCatalogEntry[] = [
   {
     id: 'restart-notifier',
     name: 'Restart Notifier',
-    description: 'Sends timed countdown warnings to all connected players before a scheduled server restart so nobody gets caught mid-drive. Intervals and messages are configurable in the server config.',
+    description: 'A BeamMP plugin to notify players of scheduled server restarts with customizable warnings and manual trigger options.',
     author: 'DeadEndReece',
     repo: 'DeadEndReece/RestartNotifier',
     homepage: 'https://github.com/DeadEndReece/RestartNotifier',
@@ -114,7 +114,7 @@ export const SERVER_ADMIN_CATALOG: PluginCatalogEntry[] = [
   {
     id: 'profilter',
     name: 'ProFilter',
-    description: 'An advanced server-side chat filter with regex pattern matching, word blocklists, auto-mute escalation and admin bypass. Keeps your server chat clean with minimal configuration.',
+    description: 'A highly customizable, server-side profanity filter for BeamMP. Intercepts chat messages before they are broadcasted to the server, actively preventing toxicity while giving server owners complete control over how rule-breakers are handled.',
     author: 'DeadEndReece',
     repo: 'DeadEndReece/ProFilter',
     homepage: 'https://github.com/DeadEndReece/ProFilter',
@@ -125,7 +125,7 @@ export const SERVER_ADMIN_CATALOG: PluginCatalogEntry[] = [
   {
     id: 'beammp-quick-chat',
     name: 'BeamMP Quick Chat',
-    description: 'A client-side UI app that adds a quick-chat radial menu with customizable preset messages, racing countdown triggers and slash-command shortcuts. Deployed to Resources/Client/ so every player who joins gets it automatically.',
+    description: 'A highly customizable quality-of-life UI app for BeamMP players. Create, organize, and send predefined chat messages and server commands with a single click — perfect for rapid communication during races, cruises, or roleplay sessions.',
     author: 'DeadEndReece',
     repo: 'DeadEndReece/BeamMP-Quick-Chat',
     homepage: 'https://github.com/DeadEndReece/BeamMP-Quick-Chat',

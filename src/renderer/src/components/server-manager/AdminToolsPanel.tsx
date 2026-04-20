@@ -17,6 +17,7 @@ import {
   ProFilterIcon,
   QuickChatIcon
 } from './PluginIcons'
+import { PluginReadmeToggle } from './PluginReadme'
 
 type PluginCompat = 'careerMP' | 'rls' | 'both' | 'beamMP'
 
@@ -360,6 +361,7 @@ export function AdminToolsPanel({ serverId }: AdminToolsPanelProps): React.JSX.E
                     {m.text}
                   </p>
                 )}
+                <PluginReadmeToggle pluginId={entry.id} />
               </div>
             )
           })}

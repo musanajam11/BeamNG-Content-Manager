@@ -119,6 +119,78 @@ select option {
 ::-webkit-scrollbar-thumb { background: var(--color-scroll-thumb); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--color-scroll-thumb-hover); }
 
+/* ── README markdown prose ── */
+.readme-prose h1,
+.readme-prose h2,
+.readme-prose h3,
+.readme-prose h4,
+.readme-prose h5,
+.readme-prose h6 {
+  color: var(--color-text-primary);
+  font-weight: 600;
+  margin-top: 0.75rem;
+  margin-bottom: 0.4rem;
+  line-height: 1.3;
+}
+.readme-prose h1 { font-size: 1rem; }
+.readme-prose h2 { font-size: 0.95rem; }
+.readme-prose h3 { font-size: 0.85rem; }
+.readme-prose h4,
+.readme-prose h5,
+.readme-prose h6 { font-size: 0.8rem; }
+.readme-prose p { margin: 0.4rem 0; line-height: 1.5; }
+.readme-prose ul,
+.readme-prose ol { margin: 0.4rem 0 0.4rem 1rem; padding-left: 0.5rem; }
+.readme-prose ul { list-style: disc; }
+.readme-prose ol { list-style: decimal; }
+.readme-prose li { margin: 0.2rem 0; }
+.readme-prose code {
+  background: var(--color-scrim-40, rgba(0,0,0,0.35));
+  color: var(--color-text-primary);
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+}
+.readme-prose pre {
+  background: var(--color-scrim-40, rgba(0,0,0,0.35));
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  margin: 0.5rem 0;
+  overflow-x: auto;
+}
+.readme-prose pre code { background: transparent; padding: 0; }
+.readme-prose blockquote {
+  border-left: 2px solid var(--color-border);
+  padding-left: 0.6rem;
+  margin: 0.5rem 0;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.readme-prose hr {
+  border: 0;
+  border-top: 1px solid var(--color-border);
+  margin: 0.75rem 0;
+}
+.readme-prose table {
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+  font-size: 0.9em;
+  width: 100%;
+}
+.readme-prose th,
+.readme-prose td {
+  border: 1px solid var(--color-border);
+  padding: 0.3rem 0.5rem;
+  text-align: left;
+}
+.readme-prose th { background: var(--color-scrim-20); color: var(--color-text-primary); }
+.readme-prose img { display: block; margin: 0.5rem 0; }
+.readme-prose strong { color: var(--color-text-primary); }
+.readme-prose > *:first-child { margin-top: 0; }
+.readme-prose > *:last-child { margin-bottom: 0; }
+
 /* ── Titlebar drag ── */
 .titlebar-drag { -webkit-app-region: drag; }
 .titlebar-no-drag { -webkit-app-region: no-drag; }

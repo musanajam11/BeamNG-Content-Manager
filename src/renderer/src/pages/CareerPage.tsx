@@ -44,6 +44,8 @@ import {
 } from 'lucide-react'
 import { BuberIcon, BankingIcon, DynamicTrafficIcon, pluginPreviewImage } from '../components/server-manager/PluginIcons'
 
+import { PluginReadmeToggle } from '../components/server-manager/PluginReadme'
+
 /* ── types mirrored from backend ── */
 interface CareerSaveSlot {
   name: string
@@ -1562,6 +1564,7 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
             {cmpMsg && (
               <p className={`text-xs mt-2 ${cmpMsg.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{cmpMsg.text}</p>
             )}
+            <PluginReadmeToggle pluginId="careermp-mod" />
           </div>
 
           {/* RLS section */}
@@ -1658,6 +1661,7 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
             {rlsMsg && (
               <p className={`text-xs mt-2 ${rlsMsg.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{rlsMsg.text}</p>
             )}
+            <PluginReadmeToggle pluginId="rls-mod" />
           </div>
           </div>
 
@@ -1982,6 +1986,7 @@ function PluginBrowserPanel({ getActiveServerDir, t }: {
                 {m && (
                   <p className={`text-[11px] ${m.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{m.text}</p>
                 )}
+                <PluginReadmeToggle pluginId={entry.id} />
               </div>
             )
           })}

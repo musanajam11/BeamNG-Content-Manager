@@ -431,7 +431,7 @@ export function StatusDashboard({
                 </li>
                 <li>
                   <strong className="text-[var(--color-text-primary)]">{t('serverManager.tailscaleHostStep2Title')}</strong> — {t('serverManager.tailscaleHostStep2Desc')}{' '}
-                  <button onClick={() => window.open('https://login.tailscale.com/admin/users', '_blank')} className="text-[var(--color-accent)] hover:underline inline-flex items-center gap-0.5">
+                  <button onClick={() => window.open('https://login.tailscale.com/admin/machines', '_blank')} className="text-[var(--color-accent)] hover:underline inline-flex items-center gap-0.5">
                     {t('serverManager.tailscaleAdminPanel')} <ExternalLink size={10} />
                   </button>{' '}
                   {t('serverManager.tailscaleHostStep2Suffix')}
@@ -480,6 +480,7 @@ export function StatusDashboard({
                 <li dangerouslySetInnerHTML={{ __html: '• ' + t('serverManager.tailscaleEncryptedNote') }} />
                 <li>• {t('serverManager.tailscaleLatencyNote')}</li>
                 <li>• {t('serverManager.tailscaleAutoNote')}</li>
+                <li dangerouslySetInnerHTML={{ __html: '• ' + t('serverManager.tailscaleShareLinkNote') }} />
               </ul>
             </div>
           </div>
