@@ -10,6 +10,7 @@ import { AxisConfigPanel } from '../components/controls/AxisConfigPanel'
 import { FFBSettingsPanel } from '../components/controls/FFBSettingsPanel'
 import { LiveInputPanel } from '../components/controls/LiveInputPanel'
 import { PresetManager } from '../components/controls/PresetManager'
+import { ProfileDropdown } from '../components/controls/ProfileDropdown'
 import { SteeringFilterPanel } from '../components/controls/SteeringFilterPanel'
 import type { ControlsTab, InputAction, InputBinding, BindingConflict, ConflictResolution, InputDeviceType, FFBConfig } from '../../../shared/types'
 
@@ -268,19 +269,24 @@ export function ControlsPage(): React.JSX.Element {
             </button>
           )}
 
+          {/* Profiles dropdown */}
+          {tab === 'bindings' && <ProfileDropdown />}
+
           {/* Search */}
           {tab === 'bindings' && (
             <div className="relative">
               <Search
                 size={14}
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]"
+                className="absolute top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] pointer-events-none"
+                style={{ left: 14 }}
               />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t('controls.searchBindings')}
-                className="w-52 pl-8 pr-3 py-1.5 text-xs bg-[var(--color-scrim-20)] border border-[var(--color-border)] rounded-md text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)]/50"
+                className="w-52 pr-3 py-1.5 text-xs bg-[var(--color-scrim-20)] border border-[var(--color-border)] text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:border-[var(--color-accent)]/50"
+                style={{ paddingLeft: 38 }}
               />
             </div>
           )}

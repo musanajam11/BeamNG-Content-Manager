@@ -616,8 +616,8 @@ export interface LoadOrderData {
 export interface ModConflict {
   /** The file path inside the zip that overlaps */
   filePath: string
-  /** Mods that contain this file, with their load order */
-  mods: Array<{ modKey: string; loadOrder: number }>
+  /** Mods that contain this file, with their load order and enabled state */
+  mods: Array<{ modKey: string; loadOrder: number; enabled: boolean }>
   /** The mod whose version of the file is used (highest load order = last loaded = wins) */
   winner: string
 }

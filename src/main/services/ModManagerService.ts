@@ -207,6 +207,28 @@ export class ModManagerService {
     return mods
   }
 
+  /**
+   * Find a mod entry in modsMap by our computed key.
+   * BeamNG uses its own key format in db.json (e.g. full paths) that may differ
+   * from our computed key (stripArchiveExt(filename).toLowerCase()).
+   * Returns [dbKey, entry] or undefined.
+   */
+  private findModEntry(
+    modsMap: Record<string, DbEntry>,
+    modKey: string
+  ): [string, DbEntry] | undefined {
+    // Direct match first (our own installs use this format)
+    if (modsMap[modKey]) return [modKey, modsMap[modKey]]
+
+    // Search by matching filename → our key
+    for (const [dbKey, entry] of Object.entries(modsMap)) {
+      if (entry.filename && stripArchiveExt(entry.filename).toLowerCase() === modKey) {
+        return [dbKey, entry]
+      }
+    }
+    return undefined
+  }
+
   /** Toggle mod active state in db.json */
   async toggleMod(userDir: string, modKey: string, enabled: boolean): Promise<void> {
     const dbPath = join(userDir, 'mods', 'db.json')
@@ -214,10 +236,36 @@ export class ModManagerService {
     const db = JSON.parse(stripBom(raw))
     const modsMap = this.getModsMap(db)
 
-    if (modsMap[modKey]) {
-      modsMap[modKey].active = enabled
+    const found = this.findModEntry(modsMap, modKey)
+    if (found) {
+      found[1].active = enabled
       const output = this.buildDbJson(db, modsMap)
       await writeFile(dbPath, JSON.stringify(output, null, 3), 'utf-8')
+    } else {
+      // Mod exists on disk but not in db.json — create entry
+      const repoDir = join(userDir, 'mods', 'repo')
+      try {
+        const files = await readdir(repoDir)
+        const match = files.find((f) => stripArchiveExt(f).toLowerCase() === modKey)
+        if (match) {
+          const filePath = join(repoDir, match)
+          const s = await stat(filePath)
+          modsMap[modKey] = {
+            active: enabled,
+            modname: modKey,
+            filename: match,
+            fullpath: filePath,
+            dirname: repoDir,
+            modType: 'unknown',
+            stat: {
+              filesize: s.size,
+              modtime: Math.floor(s.mtimeMs / 1000)
+            }
+          }
+          const output = this.buildDbJson(db, modsMap)
+          await writeFile(dbPath, JSON.stringify(output, null, 3), 'utf-8')
+        }
+      } catch { /* repo dir may not exist */ }
     }
   }
 
@@ -232,8 +280,9 @@ export class ModManagerService {
     } catch { /* ignore */ }
 
     const modsMap = this.getModsMap(db)
-    const entry = modsMap[modKey]
-    if (entry) {
+    const found = this.findModEntry(modsMap, modKey)
+    if (found) {
+      const [dbKey, entry] = found
       // Delete the actual file
       const location = this.detectLocation(entry.dirname)
       const dir = location === 'repo' ? 'repo' : location === 'multiplayer' ? 'multiplayer' : ''
@@ -243,7 +292,7 @@ export class ModManagerService {
       } catch { /* file may already be gone */ }
 
       // Remove from db.json
-      delete modsMap[modKey]
+      delete modsMap[dbKey]
       const output = this.buildDbJson(db, modsMap)
       await writeFile(dbPath, JSON.stringify(output, null, 3), 'utf-8')
     } else {

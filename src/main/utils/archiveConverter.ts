@@ -1,4 +1,4 @@
-import { open as yauzlOpen, type Entry } from 'yauzl'
+import { open as yauzlOpen, fromBuffer as yauzlFromBuffer, type Entry } from 'yauzl'
 
 // ── Extension helpers ──
 
@@ -170,6 +170,86 @@ export function listEntries(archivePath: string): Promise<string[]> {
         zipFile.readEntry()
       })
       zipFile.on('end', () => { zipFile.close(); resolve(entries) })
+      zipFile.on('error', () => resolve(entries))
+    })
+  })
+}
+
+/**
+ * List entries from a zip buffer (for scanning inner zips).
+ */
+function listEntriesFromBuffer(buf: Buffer): Promise<string[]> {
+  return new Promise((resolve) => {
+    const entries: string[] = []
+    yauzlFromBuffer(buf, { lazyEntries: true }, (err, zipFile) => {
+      if (err || !zipFile) { resolve(entries); return }
+      zipFile.readEntry()
+      zipFile.on('entry', (entry: Entry) => {
+        entries.push(entry.fileName)
+        zipFile.readEntry()
+      })
+      zipFile.on('end', () => { zipFile.close(); resolve(entries) })
+      zipFile.on('error', () => resolve(entries))
+    })
+  })
+}
+
+/**
+ * Deep-list all entries in an archive, recursing into inner .zip files.
+ * Inner zip entries are returned as "outerPath→innerPath" so conflicts
+ * inside nested zips can be detected.
+ * Buffers are released as each inner zip is processed to limit memory usage.
+ */
+export function listEntriesDeep(archivePath: string): Promise<string[]> {
+  return new Promise((resolve) => {
+    const entries: string[] = []
+    const innerZipQueue: Array<{ outerPath: string; buf: Buffer }> = []
+    let pending = 0
+
+    yauzlOpen(archivePath, { lazyEntries: true }, (err, zipFile) => {
+      if (err || !zipFile) { resolve(entries); return }
+
+      zipFile.readEntry()
+      zipFile.on('entry', (entry: Entry) => {
+        entries.push(entry.fileName)
+
+        // If this entry is a .zip file, extract it for recursive scanning
+        if (/\.zip$/i.test(entry.fileName) && !entry.fileName.endsWith('/')) {
+          pending++
+          zipFile.openReadStream(entry, (sErr, stream) => {
+            if (sErr || !stream) { pending--; zipFile.readEntry(); return }
+            const chunks: Buffer[] = []
+            stream.on('data', (c: Buffer) => chunks.push(c))
+            stream.on('end', () => {
+              innerZipQueue.push({ outerPath: entry.fileName, buf: Buffer.concat(chunks) })
+              pending--
+            })
+            stream.on('error', () => { pending-- })
+          })
+        }
+        zipFile.readEntry()
+      })
+
+      zipFile.on('end', async () => {
+        zipFile.close()
+        // Wait for any pending stream reads
+        while (pending > 0) await new Promise((r) => setTimeout(r, 10))
+
+        // Process inner zips one at a time, releasing each buffer after use
+        while (innerZipQueue.length > 0) {
+          const item = innerZipQueue.shift()!
+          try {
+            const innerEntries = await listEntriesFromBuffer(item.buf)
+            for (const ie of innerEntries) {
+              entries.push(`${item.outerPath}→${ie}`)
+            }
+          } catch { /* skip unreadable inner zips */ }
+          // Buffer is now unreferenced and eligible for GC
+        }
+
+        resolve(entries)
+      })
+
       zipFile.on('error', () => resolve(entries))
     })
   })

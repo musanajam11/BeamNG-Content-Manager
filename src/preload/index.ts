@@ -198,7 +198,6 @@ const api = {
     ipcRenderer.invoke('mods:scanConflicts') as Promise<{ success: boolean; data?: import('../shared/types').ModConflictReport; error?: string }>,
   getModConflicts: (modKey: string) =>
     ipcRenderer.invoke('mods:getModConflicts', modKey) as Promise<{ success: boolean; data?: import('../shared/types').ModConflict[]; error?: string }>,
-
   // Mod Repository
   browseRepoMods: (categoryId: number, page: number, sort: string) =>
     ipcRenderer.invoke('repo:browse', categoryId, page, sort),

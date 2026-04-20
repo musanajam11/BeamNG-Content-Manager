@@ -1,3 +1,21 @@
+import buberImg from '../../assets/plugin-icons/buber.png'
+import bankingImg from '../../assets/plugin-icons/bank.jpg'
+
+/**
+ * Optional preview-image URL per plugin id, shown as a popover on hover in the
+ * plugin browser. Returns undefined for plugins without a screenshot.
+ */
+export function pluginPreviewImage(pluginId: string): string | undefined {
+  switch (pluginId) {
+    case 'buber':
+      return buberImg
+    case 'careermp-banking':
+      return bankingImg
+    default:
+      return undefined
+  }
+}
+
 interface IconProps {
   size?: number
   className?: string

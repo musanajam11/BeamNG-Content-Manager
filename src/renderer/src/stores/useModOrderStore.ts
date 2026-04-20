@@ -10,7 +10,6 @@ interface ModOrderState {
   conflictReport: ModConflictReport | null
   /** Loading state for conflict scan */
   scanningConflicts: boolean
-
   // Actions
   fetchLoadOrder: () => Promise<void>
   setLoadOrder: (orderedKeys: string[]) => Promise<void>
@@ -26,7 +25,6 @@ export const useModOrderStore = create<ModOrderState>((set, get) => ({
   enforcement: false,
   conflictReport: null,
   scanningConflicts: false,
-
   fetchLoadOrder: async () => {
     try {
       const [orderResult, config] = await Promise.all([

@@ -42,7 +42,7 @@ import {
   Unlock,
   Info
 } from 'lucide-react'
-import { BuberIcon, BankingIcon, DynamicTrafficIcon } from '../components/server-manager/PluginIcons'
+import { BuberIcon, BankingIcon, DynamicTrafficIcon, pluginPreviewImage } from '../components/server-manager/PluginIcons'
 
 /* ── types mirrored from backend ── */
 interface CareerSaveSlot {
@@ -1897,12 +1897,32 @@ function PluginBrowserPanel({ getActiveServerDir, t }: {
             const m = msg[entry.id]
             const badge = compatBadge(entry.compat, t)
             const { Icon: PluginIcon, className: iconClass } = pluginIcon(entry.id)
+            const previewSrc = pluginPreviewImage(entry.id)
             return (
               <div key={entry.id} className="bg-[var(--color-scrim-20)] rounded-lg border border-[var(--color-border)] p-3 flex flex-col gap-2">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-start gap-2.5 min-w-0">
-                    <div className={`shrink-0 mt-0.5 w-8 h-8 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] flex items-center justify-center ${iconClass}`}>
+                    <div
+                      className={`shrink-0 mt-0.5 w-8 h-8 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] flex items-center justify-center ${iconClass} ${previewSrc ? 'relative group cursor-help' : ''}`}
+                    >
                       <PluginIcon size={16} />
+                      {previewSrc && (
+                        <div
+                          className="absolute z-30 left-0 top-full mt-2 hidden group-hover:block pointer-events-none"
+                          role="tooltip"
+                        >
+                          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl p-1.5">
+                            <img
+                              src={previewSrc}
+                              alt={entry.name}
+                              draggable={false}
+                              className="block rounded-md select-none"
+                              style={{ maxWidth: 280, maxHeight: 280, width: 'auto', height: 'auto' }}
+                            />
+                            <p className="text-[10px] text-[var(--text-muted)] text-center mt-1">{entry.name}</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
