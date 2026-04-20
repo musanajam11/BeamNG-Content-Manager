@@ -611,9 +611,9 @@ export function LuaUIFilesPanel({ onReloadUI }: Props): React.JSX.Element {
           </div>
         </div>
         <div onMouseDown={onDragStart} className="w-1 cursor-col-resize bg-[var(--color-border)] hover:bg-[var(--color-accent)]" />
-        <div className="flex flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col">
           {openFiles.size > 0 && (
-            <div className="flex items-center gap-1 overflow-x-auto border-b border-[var(--color-border)] bg-[var(--color-scrim-10)] px-1 py-1 text-[11px] backdrop-blur-sm">
+            <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-[var(--color-border)] bg-[var(--color-scrim-10)] px-1 py-1 text-[11px] backdrop-blur-sm">
               {Array.from(openFiles.entries()).map(([key, f]) => {
                 const fDirty = f.bufferContent !== f.savedContent
                 const fStaged = stagedKeys.has(key)
@@ -644,29 +644,31 @@ export function LuaUIFilesPanel({ onReloadUI }: Props): React.JSX.Element {
           )}
           {openPath ? (
             <>
-              <div className="border-b border-zinc-800 px-3 py-1 text-xs text-zinc-400">
+              <div className="shrink-0 border-b border-zinc-800 px-3 py-1 text-xs text-zinc-400">
                 <span className="text-zinc-200">{openPath}</span>
                 {dirty && <span className="ml-2 text-amber-400">● unsaved</span>}
                 {!dirty && uncommitted && <span className="ml-2 text-sky-400">◆ saved (uncommitted)</span>}
                 {!activeRoot?.writable && <span className="ml-2 text-zinc-500">(read-only)</span>}
               </div>
               {isEditable ? (
-                <Editor
-                  language={currentFile?.language ?? langForFile(openPath)}
-                  theme="beammp-devtools"
-                  path={currentKey ?? undefined}
-                  value={content}
-                  onChange={(v) => setBuffer(v ?? '')}
-                  onMount={handleEditorMount}
-                  options={{
-                    fontSize: 13,
-                    minimap: { enabled: false },
-                    readOnly: !activeRoot?.writable || loading,
-                    automaticLayout: true,
-                    wordWrap: 'on',
-                    tabSize: 2,
-                  }}
-                />
+                <div className="min-h-0 flex-1">
+                  <Editor
+                    language={currentFile?.language ?? langForFile(openPath)}
+                    theme="beammp-devtools"
+                    path={currentKey ?? undefined}
+                    value={content}
+                    onChange={(v) => setBuffer(v ?? '')}
+                    onMount={handleEditorMount}
+                    options={{
+                      fontSize: 13,
+                      minimap: { enabled: false },
+                      readOnly: !activeRoot?.writable || loading,
+                      automaticLayout: true,
+                      wordWrap: 'on',
+                      tabSize: 2,
+                    }}
+                  />
+                </div>
               ) : (
                 <div className="flex flex-1 items-center justify-center text-zinc-500">Binary or unsupported file type</div>
               )}
