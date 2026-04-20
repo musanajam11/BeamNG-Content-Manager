@@ -2,6 +2,49 @@ import { ElectronAPI } from '@electron-toolkit/preload'
 import type { AppConfig, GamePaths, ServerInfo, AuthResult, GameStatus, ModInfo, RepoBrowseResult, RepoCategory, RepoSortOrder, VehicleDetail, VehicleConfigInfo, VehicleConfigData, HostedServerConfig, HostedServerStatus, HostedServerEntry, ServerFileEntry, ServerFileSearchResult, ServerExeStatus, GPSRoute, PlayerPosition, BackupSchedule, BackupEntry, ScheduledTask, AnalyticsData, MapRichMetadata, LoadOrderData, ModConflictReport } from '../shared/types'
 import type { RegistryStatus, RegistrySearchOptions, RegistrySearchResult, AvailableMod, InstalledRegistryMod, ResolutionResult, RegistryRepository, BeamModMetadata, ModpackExport } from '../shared/registry-types'
 
+export interface CareerMPServerConfig {
+  server: {
+    autoUpdate: boolean
+    autoRestart: boolean
+    allowTransactions: boolean
+    sessionSendingMax: number
+    sessionReceiveMax: number
+    shortWindowMax: number
+    shortWindowSeconds: number
+    longWindowMax: number
+    longWindowSeconds: number
+    [key: string]: unknown
+  }
+  client: {
+    allGhost: boolean
+    unicycleGhost: boolean
+    serverSaveName: string
+    serverSaveSuffix: string
+    serverSaveNameEnabled: boolean
+    roadTrafficAmount: number
+    parkedTrafficAmount: number
+    roadTrafficEnabled: boolean
+    parkedTrafficEnabled: boolean
+    worldEditorEnabled: boolean
+    consoleEnabled: boolean
+    simplifyRemoteVehicles: boolean
+    spawnVehicleIgnitionLevel: number
+    skipOtherPlayersVehicles: boolean
+    trafficSmartSelections: boolean
+    trafficSimpleVehicles: boolean
+    trafficAllowMods: boolean
+    [key: string]: unknown
+  }
+  [key: string]: unknown
+}
+
+export interface DynamicTrafficConfig {
+  aisPerPlayer: number
+  maxServerTraffic: number
+  trafficGhosting: boolean
+  trafficSpawnWarnings: boolean
+}
+
 interface AppAPI {
   // Config
   getConfig(): Promise<AppConfig>
@@ -453,6 +496,23 @@ interface AppAPI {
   }>
   careerBrowseServerDir(): Promise<string | null>
   careerGetServerDir(serverId: string): Promise<string>
+
+  // CareerMP server config.json
+  careerMPGetServerConfig(serverId: string): Promise<{
+    installed: boolean
+    exists: boolean
+    config: CareerMPServerConfig | null
+    raw: string | null
+  }>
+  careerMPSaveServerConfig(serverId: string, config: CareerMPServerConfig): Promise<{ success: boolean; error?: string }>
+
+  // BeamMP Dynamic Traffic settings.txt
+  dynamicTrafficGetConfig(serverId: string): Promise<{
+    installed: boolean
+    exists: boolean
+    config: DynamicTrafficConfig | null
+  }>
+  dynamicTrafficSaveConfig(serverId: string, config: DynamicTrafficConfig): Promise<{ success: boolean; error?: string }>
 
   // Career Plugin Browser
   careerListPluginCatalog(): Promise<Array<{

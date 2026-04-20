@@ -5397,6 +5397,32 @@ export function registerIpcHandlers(): void {
     return careerModService.getInstalledMods(serverDir)
   })
 
+  ipcMain.handle('careerMP:getServerConfig', async (_event, serverId: string) => {
+    const dir = serverManagerService.getServerDir(serverId)
+    return careerModService.getCareerMPServerConfig(dir)
+  })
+
+  ipcMain.handle(
+    'careerMP:saveServerConfig',
+    async (_event, serverId: string, config: Parameters<typeof careerModService.saveCareerMPServerConfig>[1]) => {
+      const dir = serverManagerService.getServerDir(serverId)
+      return careerModService.saveCareerMPServerConfig(dir, config)
+    }
+  )
+
+  ipcMain.handle('dynamicTraffic:getConfig', async (_event, serverId: string) => {
+    const dir = serverManagerService.getServerDir(serverId)
+    return careerModService.getDynamicTrafficConfig(dir)
+  })
+
+  ipcMain.handle(
+    'dynamicTraffic:saveConfig',
+    async (_event, serverId: string, config: Parameters<typeof careerModService.saveDynamicTrafficConfig>[1]) => {
+      const dir = serverManagerService.getServerDir(serverId)
+      return careerModService.saveDynamicTrafficConfig(dir, config)
+    }
+  )
+
   // ── Career Plugin Browser ──
   const careerPluginService = new CareerPluginService()
 

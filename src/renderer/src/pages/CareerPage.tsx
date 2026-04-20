@@ -39,8 +39,10 @@ import {
   GitBranch,
   MapPinned,
   BookOpen,
-  Unlock
+  Unlock,
+  Info
 } from 'lucide-react'
+import { BuberIcon, BankingIcon, DynamicTrafficIcon } from '../components/server-manager/PluginIcons'
 
 /* ── types mirrored from backend ── */
 interface CareerSaveSlot {
@@ -1524,6 +1526,11 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
             </div>
             <p className="text-xs text-[var(--text-muted)] mb-3">{t('career.mod.careerMPBlurb')}</p>
 
+            <div className="flex items-start gap-2 mb-3 px-3 py-2 bg-amber-500/10 rounded-lg border border-amber-500/20">
+              <Info size={14} className="text-amber-300 mt-0.5 shrink-0" />
+              <p className="text-[11px] leading-snug text-amber-200/90">{t('career.mod.careerMPNote')}</p>
+            </div>
+
             {installedMods?.careerMP && (
               <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-green-500/10 rounded-lg border border-green-500/20">
                 <Check size={14} className="text-green-400" />
@@ -1573,6 +1580,11 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
               </a>
             </div>
             <p className="text-xs text-[var(--text-muted)] mb-3">{t('career.mod.rlsBlurb')}</p>
+
+            <div className="flex items-start gap-2 mb-3 px-3 py-2 bg-amber-500/10 rounded-lg border border-amber-500/20">
+              <Info size={14} className="text-amber-300 mt-0.5 shrink-0" />
+              <p className="text-[11px] leading-snug text-amber-200/90">{t('career.mod.rlsNote')}</p>
+            </div>
 
             {installedMods?.rls && (
               <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-green-500/10 rounded-lg border border-green-500/20">
@@ -1701,6 +1713,24 @@ function compatBadge(compat: PluginCompat, t: (k: string) => string): { label: s
     case 'beamMP':
     default:
       return { label: t('career.plugin.compatBeamMP'), className: 'bg-sky-500/15 text-sky-300 border-sky-500/30' }
+  }
+}
+
+/**
+ * Per-plugin icon + accent colour for the curated career-tier catalog. Falls back
+ * to a generic Package icon for any plugin id we don't have a hand-picked icon
+ * for yet (e.g. newly added entries).
+ */
+function pluginIcon(id: string): { Icon: React.ComponentType<{ size?: number; className?: string }>; className: string } {
+  switch (id) {
+    case 'careermp-banking':
+      return { Icon: BankingIcon, className: 'text-emerald-300' }
+    case 'buber':
+      return { Icon: BuberIcon, className: 'text-sky-300' }
+    case 'dynamic-traffic':
+      return { Icon: DynamicTrafficIcon, className: 'text-orange-300' }
+    default:
+      return { Icon: Package, className: 'text-[var(--color-accent)]' }
   }
 }
 
@@ -1866,26 +1896,32 @@ function PluginBrowserPanel({ getActiveServerDir, t }: {
             const isBusy = !!busy[entry.id]
             const m = msg[entry.id]
             const badge = compatBadge(entry.compat, t)
+            const { Icon: PluginIcon, className: iconClass } = pluginIcon(entry.id)
             return (
               <div key={entry.id} className="bg-[var(--color-scrim-20)] rounded-lg border border-[var(--color-border)] p-3 flex flex-col gap-2">
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="text-sm font-semibold text-[var(--color-text-primary)] truncate">{entry.name}</h4>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${badge.className}`}>{badge.label}</span>
-                      {isInstalled && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full border bg-green-500/15 text-green-300 border-green-500/30 flex items-center gap-1">
-                          <Check size={10} /> v{installedVer}
-                        </span>
-                      )}
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <div className={`shrink-0 mt-0.5 w-8 h-8 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] flex items-center justify-center ${iconClass}`}>
+                      <PluginIcon size={16} />
                     </div>
-                    <p className="text-[11px] text-[var(--text-muted)] mt-0.5">{t('career.plugin.by', { author: entry.author })}</p>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-sm font-semibold text-[var(--color-text-primary)] truncate">{entry.name}</h4>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${badge.className}`}>{badge.label}</span>
+                        {isInstalled && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full border bg-green-500/15 text-green-300 border-green-500/30 flex items-center gap-1">
+                            <Check size={10} /> v{installedVer}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-[var(--text-muted)] mt-0.5">{t('career.plugin.by', { author: entry.author })}</p>
+                    </div>
                   </div>
                   <a href={entry.homepage} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--text-muted)] hover:text-[var(--color-accent)] flex items-center gap-1 shrink-0">
                     <ExternalLink size={12} />
                   </a>
                 </div>
-                <p className="text-xs text-[var(--text-muted)] line-clamp-2">{entry.description}</p>
+                <p className="text-xs text-[var(--text-muted)] leading-snug">{entry.description}</p>
 
                 {releases.length > 0 ? (
                   <select

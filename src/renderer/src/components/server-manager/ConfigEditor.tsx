@@ -3,6 +3,8 @@ import { Trash2, AlertTriangle, Upload, X, ImageIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { HostedServerConfig } from '../../../../shared/types'
 import { BeamMPNameEditor } from './BeamMPNameEditor'
+import { CareerMPConfigSection } from './CareerMPConfigSection'
+import { DynamicTrafficConfigSection } from './DynamicTrafficConfigSection'
 
 type MapEntry = { name: string; source: 'stock' | 'mod'; levelDir?: string }
 
@@ -281,6 +283,12 @@ export function ConfigEditor({
           </div>
         </div>
       )}
+
+      {/* CareerMP plugin config — only renders when CareerMP is installed for this server */}
+      <CareerMPConfigSection serverId={serverId} />
+
+      {/* BeamMP Dynamic Traffic plugin config — only renders when that plugin is installed for this server */}
+      <DynamicTrafficConfigSection serverId={serverId} />
 
       {/* Actions */}
       <div className="mt-4 flex items-center gap-3">

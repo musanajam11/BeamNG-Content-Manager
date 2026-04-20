@@ -10,6 +10,13 @@ import {
   RefreshCw,
   Trash2
 } from 'lucide-react'
+import {
+  CobaltEssentialsIcon,
+  CEIIcon,
+  RestartNotifierIcon,
+  ProFilterIcon,
+  QuickChatIcon
+} from './PluginIcons'
 
 type PluginCompat = 'careerMP' | 'rls' | 'both' | 'beamMP'
 
@@ -45,6 +52,26 @@ interface InstalledPlugin {
 
 interface AdminToolsPanelProps {
   serverId: string
+}
+
+/**
+ * Per-plugin icon + accent colour for the server-admin catalog.
+ */
+function adminPluginIcon(id: string): { Icon: React.ComponentType<{ size?: number; className?: string }>; className: string } {
+  switch (id) {
+    case 'cobalt-essentials':
+      return { Icon: CobaltEssentialsIcon, className: 'text-sky-300' }
+    case 'cobalt-essentials-interface':
+      return { Icon: CEIIcon, className: 'text-violet-300' }
+    case 'restart-notifier':
+      return { Icon: RestartNotifierIcon, className: 'text-amber-300' }
+    case 'profilter':
+      return { Icon: ProFilterIcon, className: 'text-rose-300' }
+    case 'beammp-quick-chat':
+      return { Icon: QuickChatIcon, className: 'text-emerald-300' }
+    default:
+      return { Icon: Package, className: 'text-[var(--color-accent)]' }
+  }
 }
 
 export function AdminToolsPanel({ serverId }: AdminToolsPanelProps): React.JSX.Element {
@@ -241,26 +268,32 @@ export function AdminToolsPanel({ serverId }: AdminToolsPanelProps): React.JSX.E
             const installedVer = installed[entry.id]?.version
             const isBusy = !!busy[entry.id]
             const m = msg[entry.id]
+            const { Icon: PluginIcon, className: iconClass } = adminPluginIcon(entry.id)
             return (
               <div
                 key={entry.id}
                 className="bg-[var(--color-scrim-20)] rounded-lg border border-[var(--color-border)] p-3 flex flex-col gap-2"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="text-sm font-semibold text-[var(--color-text-primary)] truncate">
-                        {entry.name}
-                      </h4>
-                      {isInstalled && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full border bg-green-500/15 text-green-300 border-green-500/30 flex items-center gap-1">
-                          <Check size={10} /> v{installedVer}
-                        </span>
-                      )}
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <div className={`shrink-0 mt-0.5 w-8 h-8 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] flex items-center justify-center ${iconClass}`}>
+                      <PluginIcon size={16} />
                     </div>
-                    <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                      {t('serverManager.adminTools.by', { author: entry.author })}
-                    </p>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-sm font-semibold text-[var(--color-text-primary)] truncate">
+                          {entry.name}
+                        </h4>
+                        {isInstalled && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full border bg-green-500/15 text-green-300 border-green-500/30 flex items-center gap-1">
+                            <Check size={10} /> v{installedVer}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                        {t('serverManager.adminTools.by', { author: entry.author })}
+                      </p>
+                    </div>
                   </div>
                   <a
                     href={entry.homepage}
@@ -271,7 +304,7 @@ export function AdminToolsPanel({ serverId }: AdminToolsPanelProps): React.JSX.E
                     <ExternalLink size={12} />
                   </a>
                 </div>
-                <p className="text-xs text-[var(--text-muted)] line-clamp-2">{entry.description}</p>
+                <p className="text-xs text-[var(--text-muted)] leading-snug">{entry.description}</p>
 
                 {releases.length > 0 ? (
                   <select

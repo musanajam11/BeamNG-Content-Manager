@@ -1,7 +1,7 @@
 import { get as httpsGet } from 'https'
 import { createWriteStream, existsSync } from 'fs'
-import { mkdir, readFile, writeFile, rm, copyFile } from 'node:fs/promises'
-import { join, dirname, basename } from 'node:path'
+import { mkdir, readFile, writeFile, rm, copyFile, readdir, rmdir } from 'node:fs/promises'
+import { join, dirname, basename, resolve as resolvePath, sep } from 'node:path'
 import { app } from 'electron'
 import { open as yauzlOpen, type Entry } from 'yauzl'
 
@@ -42,7 +42,7 @@ export const PLUGIN_CATALOG: PluginCatalogEntry[] = [
   {
     id: 'careermp-banking',
     name: 'CareerMP Banking',
-    description: 'A QoL Banking app for CareerMP. Adds in-game banking commands.',
+    description: 'A QoL banking app for CareerMP. Adds in-game commands like /balance, /pay <player> <amount> and /deposit so players can move career money between accounts without leaving the driver seat. Server-side only — no client mod required.',
     author: 'DeadEndReece',
     repo: 'DeadEndReece/CareerMP-Banking',
     homepage: 'https://github.com/DeadEndReece/CareerMP-Banking',
@@ -53,7 +53,7 @@ export const PLUGIN_CATALOG: PluginCatalogEntry[] = [
   {
     id: 'buber',
     name: 'Buber',
-    description: 'The UBER app for BeamNG.Drive Career Mode — request rides between players.',
+    description: 'The UBER-style ride-hailing app for BeamNG.Drive Career Mode on BeamMP. Players can request rides and earn career money by accepting fares from other players — great for taxi/limo roleplay servers. Adds an in-game UI app and chat commands.',
     author: 'DeadEndReece',
     repo: 'DeadEndReece/Buber',
     homepage: 'https://github.com/DeadEndReece/Buber',
@@ -64,7 +64,7 @@ export const PLUGIN_CATALOG: PluginCatalogEntry[] = [
   {
     id: 'dynamic-traffic',
     name: 'BeamMP Dynamic Traffic',
-    description: 'Dynamic traffic spawning on your servers. Works with vanilla BeamMP and CareerMP.',
+    description: 'Spawns AI traffic dynamically around players on your BeamMP server so the world feels alive instead of empty. Density, vehicle pool and spawn radius are configurable. Compatible with both vanilla BeamMP and CareerMP / RLS servers.',
     author: 'DeadEndReece',
     repo: 'DeadEndReece/BeamMPDynamicTraffic',
     homepage: 'https://github.com/DeadEndReece/BeamMPDynamicTraffic',
@@ -79,18 +79,20 @@ export const SERVER_ADMIN_CATALOG: PluginCatalogEntry[] = [
   {
     id: 'cobalt-essentials',
     name: 'CobaltEssentials',
-    description: 'A powerful BeamMP server-side admin & permissions framework (kick, ban, teleport, vehicle controls, etc).',
+    description: 'The go-to server-side admin & permissions framework for BeamMP. Provides kick, ban, mute, teleport, vehicle whitelist/blacklist, group-based permissions, and a rich Lua API that other plugins (like CEI) hook into. Install this first if you need any admin tooling.',
     author: 'prestonelam2003',
     repo: 'prestonelam2003/CobaltEssentials',
     homepage: 'https://github.com/prestonelam2003/CobaltEssentials',
     compat: 'beamMP',
-    installMethod: 'extract-to-server-plugin',
+    // Release zip already contains `Resources/Server/CobaltEssentials/...` at its root,
+    // so we extract to the server root rather than nesting under Resources/Server/CobaltEssentials/.
+    installMethod: 'extract-to-root',
     serverPluginFolder: 'CobaltEssentials'
   },
   {
     id: 'cobalt-essentials-interface',
     name: 'CobaltEssentialsInterface (CEI)',
-    description: 'Dear ImGui based in-game admin interface for BeamMP servers running CobaltEssentials.',
+    description: 'A Dear ImGui-powered in-game admin panel for servers running CobaltEssentials. Gives admins a visual overlay to manage players, vehicles, permissions, teleports and more — no chat commands needed. Requires CobaltEssentials to be installed on the same server.',
     author: 'Dudekahedron',
     repo: 'StanleyDudek/CobaltEssentialsInterface',
     homepage: 'https://github.com/StanleyDudek/CobaltEssentialsInterface',
@@ -101,7 +103,7 @@ export const SERVER_ADMIN_CATALOG: PluginCatalogEntry[] = [
   {
     id: 'restart-notifier',
     name: 'Restart Notifier',
-    description: 'Notify players of scheduled server restarts with customizable warnings.',
+    description: 'Sends timed countdown warnings to all connected players before a scheduled server restart so nobody gets caught mid-drive. Intervals and messages are configurable in the server config.',
     author: 'DeadEndReece',
     repo: 'DeadEndReece/RestartNotifier',
     homepage: 'https://github.com/DeadEndReece/RestartNotifier',
@@ -112,7 +114,7 @@ export const SERVER_ADMIN_CATALOG: PluginCatalogEntry[] = [
   {
     id: 'profilter',
     name: 'ProFilter',
-    description: 'Advanced chat filter for BeamMP servers with admin tools.',
+    description: 'An advanced server-side chat filter with regex pattern matching, word blocklists, auto-mute escalation and admin bypass. Keeps your server chat clean with minimal configuration.',
     author: 'DeadEndReece',
     repo: 'DeadEndReece/ProFilter',
     homepage: 'https://github.com/DeadEndReece/ProFilter',
@@ -123,7 +125,7 @@ export const SERVER_ADMIN_CATALOG: PluginCatalogEntry[] = [
   {
     id: 'beammp-quick-chat',
     name: 'BeamMP Quick Chat',
-    description: 'A quick-chat UI app for custom commands and racing countdowns. Client-side mod.',
+    description: 'A client-side UI app that adds a quick-chat radial menu with customizable preset messages, racing countdown triggers and slash-command shortcuts. Deployed to Resources/Client/ so every player who joins gets it automatically.',
     author: 'DeadEndReece',
     repo: 'DeadEndReece/BeamMP-Quick-Chat',
     homepage: 'https://github.com/DeadEndReece/BeamMP-Quick-Chat',
@@ -187,7 +189,9 @@ export class CareerPluginService {
     const url = `https://api.github.com/repos/${entry.repo}/releases?per_page=20`
     interface RawAsset { name: string; browser_download_url: string; size: number; download_count: number }
     interface RawRelease { tag_name: string; name: string; body: string; prerelease: boolean; published_at: string; assets: RawAsset[] }
-    const releases = (await this.fetchJson(url)) as RawRelease[]
+    const raw = await this.fetchJson(url)
+    if (!Array.isArray(raw)) return []
+    const releases = raw as RawRelease[]
     return releases
       .filter((r) => r.assets.length > 0)
       .map((r) => {
@@ -266,13 +270,92 @@ export class CareerPluginService {
     try {
       const tracking = await this.readTracking(serverDir, category)
       const installed = tracking.plugins[pluginId]
-      if (!installed) return { success: true }
-      for (const rel of installed.artifacts) {
-        const full = join(serverDir, rel)
-        // Path traversal guard
-        if (!full.startsWith(serverDir)) continue
-        await rm(full, { recursive: true, force: true }).catch(() => {})
+      // Refuse to delete well-known top-level server directories. This protects against legacy
+      // tracking files from older CM versions that tracked coarse artifacts like "Resources",
+      // which would otherwise wipe the entire server's content on uninstall.
+      const PROTECTED = new Set(['', '.', 'Resources', 'Resources/Server', 'Resources/Client'])
+      const dirsToPrune = new Set<string>()
+      const resolvedServer = resolvePath(serverDir)
+      const failures: string[] = []
+
+      // Build the artifact list. Start from tracking; if missing, fall back to the catalog
+      // entry's known install folder so users can still clean up plugins installed by older
+      // CM versions (or where tracking was lost).
+      const rawArtifacts: string[] = installed ? [...installed.artifacts] : []
+      const catalogEntry = catalogFor(category).find((p) => p.id === pluginId)
+      if (catalogEntry) {
+        const folder = catalogEntry.serverPluginFolder || catalogEntry.id
+        // Defensively include the well-known plugin folder location(s) so leftover files
+        // get cleaned even if the install tracked them piecewise.
+        if (catalogEntry.installMethod === 'extract-to-server-plugin') {
+          rawArtifacts.push(join('Resources', 'Server', folder))
+        } else if (catalogEntry.installMethod === 'extract-to-root' && folder) {
+          // Most extract-to-root plugins land under Resources/Server/<folder>.
+          rawArtifacts.push(join('Resources', 'Server', folder))
+        }
       }
+      // De-duplicate while preserving order.
+      const artifacts = Array.from(new Set(rawArtifacts.map((a) => a.replace(/\\/g, '/').replace(/\/+$/, ''))))
+
+      // Nothing tracked AND no catalog hint — treat as already uninstalled.
+      if (artifacts.length === 0) {
+        if (installed) {
+          delete tracking.plugins[pluginId]
+          await this.writeTracking(serverDir, category, tracking)
+        }
+        return { success: true }
+      }
+
+      for (const rel of artifacts) {
+        if (PROTECTED.has(rel)) continue
+        const full = join(serverDir, rel)
+        const resolvedFull = resolvePath(full)
+        // Path traversal guard: full path must live strictly inside serverDir.
+        if (resolvedFull === resolvedServer) continue
+        if (!resolvedFull.startsWith(resolvedServer + sep)) continue
+        if (!existsSync(full)) {
+          // Already gone — fine, queue parent for pruning and move on.
+        } else {
+          try {
+            await rm(full, { recursive: true, force: true })
+          } catch (err) {
+            failures.push(`${rel}: ${(err as Error).message || String(err)}`)
+            continue
+          }
+          // Verify it is actually gone (Windows can silently leave locked files behind on
+          // some node/electron versions when force is set).
+          if (existsSync(full)) {
+            failures.push(`${rel}: file/folder still present after delete (in use?)`)
+            continue
+          }
+        }
+        // Queue ancestor dirs for empty-dir pruning.
+        let parent = dirname(rel)
+        while (parent && parent !== '.' && !PROTECTED.has(parent)) {
+          dirsToPrune.add(parent)
+          parent = dirname(parent)
+        }
+      }
+
+      // Prune deepest first so parents become eligible as children are removed.
+      const sortedDirs = Array.from(dirsToPrune).sort((a, b) => b.length - a.length)
+      for (const d of sortedDirs) {
+        const full = join(serverDir, d)
+        try {
+          const entries = await readdir(full)
+          if (entries.length === 0) await rmdir(full).catch(() => {})
+        } catch { /* ignore */ }
+      }
+
+      if (failures.length > 0) {
+        return {
+          success: false,
+          error:
+            'Could not fully remove plugin files (server may be running and holding them open):\n  - ' +
+            failures.join('\n  - ')
+        }
+      }
+
       delete tracking.plugins[pluginId]
       await this.writeTracking(serverDir, category, tracking)
       return { success: true }
@@ -318,25 +401,26 @@ export class CareerPluginService {
   }
 
   /**
-   * Extract a zip into destDir, returning the list of top-level entries created
-   * (relative to destDir) for later uninstall. Performs a path-traversal guard.
+   * Extract a zip into destDir, returning the list of file paths written
+   * (relative to destDir, forward-slash separated) for precise uninstall.
+   * Performs a path-traversal guard.
    */
   private extractZipTracked(zipPath: string, destDir: string): Promise<string[]> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolvePromise, reject) => {
       yauzlOpen(zipPath, { lazyEntries: true }, (err, zipFile) => {
         if (err || !zipFile) { reject(err ?? new Error('Failed to open zip')); return }
 
-        const topLevel = new Set<string>()
+        const files: string[] = []
+        const resolvedDest = resolvePath(destDir)
         zipFile.readEntry()
 
         zipFile.on('entry', (entry: Entry) => {
           const entryPath = join(destDir, entry.fileName)
-          if (!entryPath.startsWith(destDir)) {
+          const resolvedEntry = resolvePath(entryPath)
+          if (resolvedEntry !== resolvedDest && !resolvedEntry.startsWith(resolvedDest + sep)) {
             zipFile.readEntry()
             return
           }
-          const top = entry.fileName.split(/[\\/]/, 1)[0]
-          if (top) topLevel.add(top)
 
           if (/\/$/.test(entry.fileName)) {
             mkdir(entryPath, { recursive: true })
@@ -349,7 +433,10 @@ export class CareerPluginService {
                   if (sErr || !stream) { zipFile.readEntry(); return }
                   const ws = createWriteStream(entryPath)
                   stream.pipe(ws)
-                  ws.on('finish', () => zipFile.readEntry())
+                  ws.on('finish', () => {
+                    files.push(entry.fileName.replace(/\\/g, '/'))
+                    zipFile.readEntry()
+                  })
                   ws.on('error', () => zipFile.readEntry())
                 })
               })
@@ -359,8 +446,7 @@ export class CareerPluginService {
 
         zipFile.on('end', () => {
           zipFile.close()
-          // Best-effort relative path list. Avoid pruning siblings on uninstall.
-          resolve(Array.from(topLevel))
+          resolvePromise(files)
         })
         zipFile.on('error', (e) => reject(e))
       })

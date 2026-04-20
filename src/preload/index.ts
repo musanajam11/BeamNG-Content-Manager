@@ -582,6 +582,18 @@ const api = {
   careerGetServerDir: (serverId: string) =>
     ipcRenderer.invoke('career:getServerDir', serverId) as Promise<string>,
 
+  // CareerMP server config.json (Resources/Server/CareerMP/config/config.json)
+  careerMPGetServerConfig: (serverId: string) =>
+    ipcRenderer.invoke('careerMP:getServerConfig', serverId),
+  careerMPSaveServerConfig: (serverId: string, config: unknown) =>
+    ipcRenderer.invoke('careerMP:saveServerConfig', serverId, config) as Promise<{ success: boolean; error?: string }>,
+
+  // BeamMP Dynamic Traffic settings.txt (Resources/Server/CareerMPTraffic/settings.txt)
+  dynamicTrafficGetConfig: (serverId: string) =>
+    ipcRenderer.invoke('dynamicTraffic:getConfig', serverId),
+  dynamicTrafficSaveConfig: (serverId: string, config: unknown) =>
+    ipcRenderer.invoke('dynamicTraffic:saveConfig', serverId, config) as Promise<{ success: boolean; error?: string }>,
+
   // Career Plugin Browser
   careerListPluginCatalog: () =>
     ipcRenderer.invoke('career:listPluginCatalog'),
