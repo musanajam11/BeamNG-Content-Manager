@@ -1529,8 +1529,14 @@ function SidebarLayoutSection({ appearance, update }: {
   const order: AppPage[] = appearance.sidebarOrder?.length ? appearance.sidebarOrder : DEFAULT_SIDEBAR_ORDER
   const hidden = new Set(appearance.sidebarHidden ?? [])
 
-  // Build ordered visible list + hidden list
-  const visibleIds = order.filter((id) => !hidden.has(id) && allItems.some((n) => n.id === id))
+  // Build ordered visible list + hidden list. Any nav item not present in either
+  // the saved order or the hidden set (e.g. a newly-added page on a pre-existing
+  // install) is appended to the visible list so the user can see and re-arrange
+  // or hide it from the Appearance UI.
+  const orderedKnown = order.filter((id) => allItems.some((n) => n.id === id))
+  const seen = new Set<AppPage>([...orderedKnown, ...hidden])
+  const missing = allItems.filter((n) => !seen.has(n.id)).map((n) => n.id)
+  const visibleIds = [...orderedKnown.filter((id) => !hidden.has(id)), ...missing]
   const hiddenIds = allItems.filter((n) => hidden.has(n.id)).map((n) => n.id)
 
   const handleDragStart = (index: number): void => {

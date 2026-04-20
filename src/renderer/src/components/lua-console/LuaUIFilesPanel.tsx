@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import { ChevronRight, ChevronDown, FileText, Folder, RefreshCw, Save, RotateCcw, FolderOpen, Settings as SettingsIcon, GitCommit, Undo2, FolderPlus, Trash2 } from 'lucide-react'
 import { useToastStore } from '@renderer/stores/useToastStore'
+import { useDevEditorStore } from '@renderer/stores/useDevEditorStore'
 import { STORAGE_KEYS, loadJSON, saveJSON } from './luaConsoleShared'
 
 export interface UIRoot {
@@ -78,8 +79,17 @@ export function LuaUIFilesPanel({ onReloadUI }: Props): React.JSX.Element {
   const [activeRootId, setActiveRootId] = useState<string | null>(() => loadJSON<string | null>(STORAGE_KEYS.uiFilesLastRoot, null) ?? null)
   const [openPath, setOpenPath] = useState<string | null>(() => loadJSON<string | null>(STORAGE_KEYS.uiFilesLastPath, null) ?? null)
   const [tree, setTree] = useState<TreeNode | null>(null)
-  // Multi-file open buffers — preserves dirty state when switching between files.
-  const [openFiles, setOpenFiles] = useState<Map<string, OpenFileState>>(() => new Map())
+  // Multi-file open buffers — preserves dirty state when switching between files
+  // AND across page navigation (seeded from / synced to the persisted dev-editor store).
+  const persistedOpenFiles = useDevEditorStore((s) => s.openFiles)
+  const persistOpenFiles = useDevEditorStore((s) => s.setOpenFiles)
+  const [openFiles, setOpenFiles] = useState<Map<string, OpenFileState>>(
+    () => new Map(Object.entries(persistedOpenFiles))
+  )
+  // Push every local change into the store so unmount preserves them.
+  useEffect(() => {
+    persistOpenFiles(Object.fromEntries(openFiles))
+  }, [openFiles, persistOpenFiles])
   // Staged-but-uncommitted set (rootId\0subPath).
   const [stagedKeys, setStagedKeys] = useState<Set<string>>(() => new Set())
   const [loading, setLoading] = useState(false)

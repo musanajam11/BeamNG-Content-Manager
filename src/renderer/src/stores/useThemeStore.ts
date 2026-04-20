@@ -3,7 +3,8 @@ import type { AppearanceSettings, AppPage } from '../../../shared/types'
 
 export const DEFAULT_SIDEBAR_ORDER: AppPage[] = [
   'home', 'servers', 'friends', 'vehicles', 'maps', 'mods',
-  'career', 'server-admin', 'launcher', 'controls', 'live-gps', 'livery-editor', 'voice-chat'
+  'career', 'server-admin', 'launcher', 'controls', 'live-gps', 'livery-editor', 'voice-chat',
+  'lua-console'
 ]
 
 const DEFAULT_APPEARANCE: AppearanceSettings = {
