@@ -29,9 +29,12 @@
   --color-info: #60a5fa;
 
   /* ── Scrim overlays (dark: black-based) ── */
+  --color-scrim-10: rgba(0, 0, 0, 0.10);
+  --color-scrim-15: rgba(0, 0, 0, 0.15);
   --color-scrim-20: rgba(0, 0, 0, 0.20);
   --color-scrim-30: rgba(0, 0, 0, 0.30);
   --color-scrim-40: rgba(0, 0, 0, 0.40);
+  --color-scrim-50: rgba(0, 0, 0, 0.50);
   --color-scrim-60: rgba(0, 0, 0, 0.60);
   --color-scrim-80: rgba(0, 0, 0, 0.80);
 
@@ -66,9 +69,12 @@
   --color-warning: #d97706;
   --color-error: #dc2626;
   --color-info: #2563eb;
+  --color-scrim-10: rgba(255, 255, 255, 0.10);
+  --color-scrim-15: rgba(255, 255, 255, 0.15);
   --color-scrim-20: rgba(255, 255, 255, 0.20);
   --color-scrim-30: rgba(255, 255, 255, 0.30);
   --color-scrim-40: rgba(255, 255, 255, 0.40);
+  --color-scrim-50: rgba(255, 255, 255, 0.50);
   --color-scrim-60: rgba(255, 255, 255, 0.60);
   --color-scrim-80: rgba(255, 255, 255, 0.80);
   --color-scroll-thumb: rgba(0, 0, 0, 0.15);

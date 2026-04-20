@@ -251,9 +251,12 @@ export function applyTheme(s: AppearanceSettings, mode: 'dark' | 'light'): void 
   root.style.setProperty('--color-info', p.info)
 
   // Scrim overlays — dark uses black, light uses white-ish
+  root.style.setProperty('--color-scrim-10', `rgba(${p.overlayChannel},0.10)`)
+  root.style.setProperty('--color-scrim-15', `rgba(${p.overlayChannel},0.15)`)
   root.style.setProperty('--color-scrim-20', `rgba(${p.overlayChannel},0.20)`)
   root.style.setProperty('--color-scrim-30', `rgba(${p.overlayChannel},0.30)`)
   root.style.setProperty('--color-scrim-40', `rgba(${p.overlayChannel},0.40)`)
+  root.style.setProperty('--color-scrim-50', `rgba(${p.overlayChannel},0.50)`)
   root.style.setProperty('--color-scrim-60', `rgba(${p.overlayChannel},0.60)`)
   root.style.setProperty('--color-scrim-80', `rgba(${p.overlayChannel},0.80)`)
 

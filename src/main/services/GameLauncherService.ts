@@ -44,6 +44,18 @@ local pollInterval = 0.25
 local timer = 0
 local joined = false
 local voiceLoaded = false
+local consoleLoaded = false
+
+local function tryAutoLoadConsole()
+  local f = io.open("lua/ge/extensions/beamcmConsole.lua", "r")
+  if not f then return end
+  f:close()
+  if consoleLoaded then return end
+  extensions.load('beamcmConsole')
+  setExtensionUnloadMode('beamcmConsole', 'manual')
+  consoleLoaded = true
+  log('I', 'beammpCMBridge', 'Auto-loaded beamcmConsole extension (manual unload mode)')
+end
 
 local function onExtensionLoaded()
   log('I', 'beammpCMBridge', 'BeamMP Content Manager bridge extension loaded')
@@ -57,6 +69,8 @@ local function onExtensionLoaded()
     voiceLoaded = true
     log('I', 'beammpCMBridge', 'Auto-loaded beamcmVoice extension (manual unload mode)')
   end
+  -- Auto-load Lua console bridge if deployed
+  tryAutoLoadConsole()
 end
 
 -- ── GPS tracker hot-load support ──
@@ -83,9 +97,34 @@ local function pollGpsSignal(dt)
   end
 end
 
+-- ── Lua console hot-load support ──
+local consoleSignalFile = "settings/BeamCM/console_signal.json"
+local consoleTimer = 0
+local consolePollInterval = 0.5
+
+local function pollConsoleSignal(dt)
+  consoleTimer = consoleTimer + dt
+  if consoleTimer < consolePollInterval then return end
+  consoleTimer = 0
+  local sig = jsonReadFile(consoleSignalFile)
+  if not sig or sig.processed then return end
+  jsonWriteFile(consoleSignalFile, {action = sig.action, processed = true})
+  if sig.action == "load" then
+    if not consoleLoaded then
+      tryAutoLoadConsole()
+    end
+  elseif sig.action == "unload" and consoleLoaded then
+    log('I', 'beammpCMBridge', 'Unloading Lua console extension')
+    extensions.unload('beamcmConsole')
+    consoleLoaded = false
+  end
+end
+
 local function onUpdate(dt)
   -- GPS hot-load polling always runs
   pollGpsSignal(dt)
+  -- Lua console hot-load polling always runs
+  pollConsoleSignal(dt)
 
   if joined then return end
   timer = timer + dt
@@ -130,6 +169,15 @@ local ready = false
 
 local function onExtensionLoaded()
   log('I', 'beamcmBridge', 'BeamCM singleplayer bridge loaded')
+  -- Auto-load Lua console bridge if deployed
+  local consoleExt = "lua/ge/extensions/beamcmConsole.lua"
+  local cf = io.open(consoleExt, "r")
+  if cf then
+    cf:close()
+    extensions.load('beamcmConsole')
+    setExtensionUnloadMode('beamcmConsole', 'manual')
+    log('I', 'beamcmBridge', 'Auto-loaded beamcmConsole extension')
+  end
 end
 
 local function onUpdate(dt)
@@ -213,10 +261,36 @@ local function pollGpsSignal(dt)
   end
 end
 
+-- ── Lua console hot-load support ──
+local consoleSignalFile = "settings/BeamCM/console_signal.json"
+local consoleTimer = 0
+local consolePollInterval = 0.5
+local consoleLoaded = false
+
+local function pollConsoleSignal(dt)
+  consoleTimer = consoleTimer + dt
+  if consoleTimer < consolePollInterval then return end
+  consoleTimer = 0
+  local sig = jsonReadFile(consoleSignalFile)
+  if not sig or sig.processed then return end
+  jsonWriteFile(consoleSignalFile, {action = sig.action, processed = true})
+  if sig.action == "load" and not consoleLoaded then
+    log('I', 'beamcmBridge', 'Hot-loading Lua console extension')
+    extensions.load('beamcmConsole')
+    setExtensionUnloadMode('beamcmConsole', 'manual')
+    consoleLoaded = true
+  elseif sig.action == "unload" and consoleLoaded then
+    log('I', 'beamcmBridge', 'Unloading Lua console extension')
+    extensions.unload('beamcmConsole')
+    consoleLoaded = false
+  end
+end
+
 local origOnUpdate = onUpdate
 local function onUpdateWithGps(dt)
   origOnUpdate(dt)
   pollGpsSignal(dt)
+  pollConsoleSignal(dt)
 end
 
 M.onExtensionLoaded = onExtensionLoaded

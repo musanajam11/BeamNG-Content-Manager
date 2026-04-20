@@ -5,6 +5,8 @@ import { app, BrowserWindow, safeStorage } from 'electron'
 import { spawn, ChildProcess } from 'child_process'
 import { randomUUID } from 'crypto'
 import { get as httpsGet } from 'https'
+import { totalmem } from 'os'
+import pidusage from 'pidusage'
 import { open as yauzlOpen, type Entry } from 'yauzl'
 import archiver from 'archiver'
 import { isModArchive, stripArchiveExt } from '../utils/archiveConverter'
@@ -42,6 +44,9 @@ interface RunningServer {
   players: number
   error: string | null
   consoleBuffer: string[]
+  memoryBytes: number
+  cpuPercent: number
+  resourceTimer: ReturnType<typeof setInterval> | null
 }
 
 const MAX_CONSOLE_LINES = 2000
@@ -813,9 +818,23 @@ export class ServerManagerService {
       startedAt: Date.now(),
       players: 0,
       error: null,
-      consoleBuffer: []
+      consoleBuffer: [],
+      memoryBytes: 0,
+      cpuPercent: 0,
+      resourceTimer: null
     }
     this.running.set(id, entry)
+
+    // Start periodic resource monitoring
+    entry.resourceTimer = setInterval(() => {
+      const pid = child.pid
+      if (!pid) return
+      pidusage(pid).then((stats) => {
+        entry.memoryBytes = stats.memory
+        entry.cpuPercent = Math.round(stats.cpu * 10) / 10
+        this.emitStatusChange(id)
+      }).catch(() => {})
+    }, 2000)
 
     const pushLine = (line: string): void => {
       entry.consoleBuffer.push(line)
@@ -858,6 +877,7 @@ export class ServerManagerService {
     })
 
     child.on('exit', (code) => {
+      if (entry.resourceTimer) clearInterval(entry.resourceTimer)
       if (entry.state !== 'error') {
         entry.state = 'stopped'
         if (code !== 0 && code !== null) {
@@ -885,6 +905,7 @@ export class ServerManagerService {
   stopServer(id: string): void {
     const entry = this.running.get(id)
     if (!entry) return
+    if (entry.resourceTimer) clearInterval(entry.resourceTimer)
     entry.state = 'stopped'
     entry.process.kill()
     this.running.delete(id)
@@ -899,9 +920,10 @@ export class ServerManagerService {
   }
 
   getStatus(id: string): HostedServerStatus {
+    const totalMem = totalmem()
     const entry = this.running.get(id)
     if (!entry) {
-      return { id, state: 'stopped', pid: null, uptimeMs: 0, startedAt: null, players: 0, error: null }
+      return { id, state: 'stopped', pid: null, uptimeMs: 0, startedAt: null, players: 0, error: null, memoryBytes: 0, cpuPercent: 0, totalMemoryBytes: totalMem }
     }
     return {
       id,
@@ -910,7 +932,10 @@ export class ServerManagerService {
       uptimeMs: Date.now() - entry.startedAt,
       startedAt: entry.startedAt,
       players: entry.players,
-      error: entry.error
+      error: entry.error,
+      memoryBytes: entry.memoryBytes,
+      cpuPercent: entry.cpuPercent,
+      totalMemoryBytes: totalMem
     }
   }
 

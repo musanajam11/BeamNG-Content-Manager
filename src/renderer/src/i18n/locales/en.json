@@ -66,6 +66,7 @@
     "liveGPS": "Live GPS",
     "liveryEditor": "Livery Editor",
     "voiceChat": "Voice Chat",
+    "luaConsole": "Dev Tools",
     "settings": "Settings",
     "collapse": "Collapse",
     "expandSidebar": "Expand sidebar",
@@ -1355,6 +1356,48 @@
     "view3D": "3D",
     "hint1": "Deploy the tracker and launch BeamNG to see live position data.",
     "hint2": "The tracker is a Lua extension placed in your user folder. Undeploy to remove it."
+  },
+  "luaConsole": {
+    "title": "Dev Tools",
+    "deploy": "Deploy",
+    "undeploy": "Undeploy",
+    "deployed": "Lua console extension deployed (port {{port}}). Launch or reload BeamNG to connect.",
+    "undeployed": "Lua console extension removed.",
+    "remoteCleared": "Cleared remote print buffer.",
+    "run": "Run",
+    "clearOutput": "Clear output",
+    "clearRemote": "Clear remote print buffer",
+    "toggleWordWrap": "Toggle word wrap",
+    "toggleAutoScroll": "Toggle auto-scroll",
+    "searchPlaceholder": "Search output…",
+    "filterPlaceholder": "Filter…",
+    "empty": "No output yet — run something to see results here.",
+    "noHistory": "No history yet.",
+    "loadIntoEditor": "Load into editor",
+    "runAgain": "Run again",
+    "insertSnippet": "Insert into editor",
+    "clearHistory": "Clear history",
+    "entryCount": "{{count}} / {{total}}",
+    "scope": {
+      "ge": { "label": "GE", "desc": "GameEngine Lua (global state)" },
+      "veh": { "label": "Vehicle", "desc": "Active player vehicle Lua" }
+    },
+    "status": {
+      "notDeployed": "not deployed",
+      "waiting": "waiting for game",
+      "connected": "connected"
+    },
+    "filter": {
+      "all": "All",
+      "result": "Result",
+      "err": "Error",
+      "log": "Log",
+      "print": "Print"
+    },
+    "tab": {
+      "history": "History",
+      "snippets": "Snippets"
+    }
   },
   "voiceChat": {
     "title": "Voice Chat",

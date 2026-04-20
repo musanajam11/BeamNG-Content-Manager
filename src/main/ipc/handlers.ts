@@ -31,6 +31,8 @@ import { ConflictDetectionService } from '../services/ConflictDetectionService'
 import { InputBindingsService } from '../services/InputBindingsService'
 import { VoiceChatService } from '../services/VoiceChatService'
 import { VoiceMeshService } from '../services/VoiceMeshService'
+import { LuaConsoleService, type LuaScope } from '../services/LuaConsoleService'
+import { BeamUIFilesService } from '../services/BeamUIFilesService'
 import { parseBeamNGJson } from '../utils/parseBeamNGJson'
 import { LRUCache } from '../utils/lruCache'
 import type { AppConfig, GamePaths, ServerInfo, RepoSortOrder, VehicleDetail, VehicleConfigInfo, VehicleConfigData, VehicleEditorData, SlotInfo, VariableInfo, WheelPlacement, ActiveMeshResult, HostedServerConfig, GPSRoute, ScheduledTask, MapRichMetadata } from '../../shared/types'
@@ -53,6 +55,8 @@ let conflictDetectionService: ConflictDetectionService
 let inputBindingsService: InputBindingsService
 let voiceChatService: VoiceChatService
 let voiceMeshService: VoiceMeshService
+let luaConsoleService: LuaConsoleService
+let beamUIFilesService: BeamUIFilesService
 let careerSaveService: CareerSaveService
 
 // ── Server ↔ career-save tracking state ──
@@ -101,6 +105,8 @@ export function initializeServices(): {
   inputBindingsService = new InputBindingsService()
   voiceChatService = new VoiceChatService()
   voiceMeshService = new VoiceMeshService()
+  luaConsoleService = new LuaConsoleService()
+  beamUIFilesService = new BeamUIFilesService()
   registryService.setModManager(modManagerService)
 
   // Auto-deploy/undeploy voice bridge on server join/leave.
@@ -1043,6 +1049,132 @@ export function registerIpcHandlers(): void {
       ? payload.data
       : Buffer.from(payload.data instanceof Uint8Array ? payload.data : new Uint8Array(payload.data))
     return voiceMeshService.send(payload.peerId, buf)
+  })
+
+  // ── Lua Console (live REPL into BeamNG.drive GE-Lua) ──
+  ipcMain.handle('luaConsole:deploy', async () => {
+    const userDir = configService.get().gamePaths?.userDir
+    if (!userDir) return { success: false, error: 'User data folder not configured' }
+    return luaConsoleService.deploy(userDir)
+  })
+  ipcMain.handle('luaConsole:undeploy', async () => {
+    return luaConsoleService.undeploy()
+  })
+  ipcMain.handle('luaConsole:isDeployed', async () => {
+    return luaConsoleService.isDeployed()
+  })
+  ipcMain.handle('luaConsole:isConnected', async () => {
+    return luaConsoleService.isConnected()
+  })
+  ipcMain.handle('luaConsole:execute', async (_event, payload: { reqId: number; source: string }) => {
+    luaConsoleService.execute(payload.reqId, payload.source)
+    return { success: true }
+  })
+  ipcMain.handle('luaConsole:inspect', async (_event, payload: { reqId: number; path: string }) => {
+    luaConsoleService.inspect(payload.reqId, payload.path)
+    return { success: true }
+  })
+  ipcMain.handle('luaConsole:setScope', async (_event, payload: { scope: LuaScope; vehId?: number | null }) => {
+    luaConsoleService.setScope(payload.scope, payload.vehId ?? null)
+    return { success: true }
+  })
+  ipcMain.handle('luaConsole:clear', async () => {
+    luaConsoleService.clearBuffer()
+    return { success: true }
+  })
+  ipcMain.handle('luaConsole:complete', async (_event, payload: { reqId: number; prefix: string }) => {
+    luaConsoleService.complete(payload.reqId, payload.prefix)
+    return { success: true }
+  })
+  ipcMain.handle('luaConsole:tree', async (_event, payload: { reqId: number; path: string }) => {
+    luaConsoleService.tree(payload.reqId, payload.path)
+    return { success: true }
+  })
+  ipcMain.handle('luaConsole:query', async (_event, payload: { reqId: number; query: string }) => {
+    luaConsoleService.query(payload.reqId, payload.query)
+    return { success: true }
+  })
+  ipcMain.handle('luaConsole:reload', async (_event, payload: { reqId: number | null; action: 'ge' | 'veh' | 'env' }) => {
+    luaConsoleService.reload(payload.reqId, payload.action)
+    return { success: true }
+  })
+
+  // ── BeamNG UI Files (HTML/JS/CSS/JSON live editor) ──
+  ipcMain.handle('beamUI:listRoots', async (_event, payload: { includeInstall: boolean; installWritable?: boolean }) => {
+    const cfg = configService.get()
+    let userDir = cfg.gamePaths?.userDir ?? null
+    let installDir = cfg.gamePaths?.installDir ?? null
+    // Fallback to live discovery if the persisted config is empty (some features
+    // discover paths on demand without writing them back into AppConfig).
+    if (!userDir || !installDir) {
+      try {
+        const discovered = await discoveryService.discoverPaths()
+        userDir = userDir ?? discovered.userDir ?? null
+        installDir = installDir ?? discovered.installDir ?? null
+      } catch { /* ignore */ }
+    }
+    const roots = await beamUIFilesService.listRoots({ userDir, installDir }, {
+      includeInstall: !!payload?.includeInstall,
+      installWritable: !!payload?.installWritable,
+    })
+    return { roots, resolvedUserDir: userDir, resolvedInstallDir: installDir }
+  })
+  ipcMain.handle('beamUI:listDir', async (_event, payload: { rootId: string; subPath: string }) => {
+    return beamUIFilesService.listDir(payload.rootId, payload.subPath ?? '')
+  })
+  ipcMain.handle('beamUI:readFile', async (_event, payload: { rootId: string; subPath: string }) => {
+    return beamUIFilesService.readFile(payload.rootId, payload.subPath)
+  })
+  ipcMain.handle('beamUI:writeFile', async (_event, payload: { rootId: string; subPath: string; content: string }) => {
+    await beamUIFilesService.writeFile(payload.rootId, payload.subPath, payload.content)
+    return { success: true }
+  })
+  ipcMain.handle('beamUI:createFolder', async (_event, payload: { rootId: string; subPath: string }) => {
+    await beamUIFilesService.createFolder(payload.rootId, payload.subPath)
+    return { success: true }
+  })
+  ipcMain.handle('beamUI:delete', async (_event, payload: { rootId: string; subPath: string }) => {
+    await beamUIFilesService.deleteEntry(payload.rootId, payload.subPath)
+    return { success: true }
+  })
+  ipcMain.handle('beamUI:rename', async (_event, payload: { rootId: string; subPath: string; newName: string }) => {
+    return beamUIFilesService.renameEntry(payload.rootId, payload.subPath, payload.newName)
+  })
+  ipcMain.handle('beamUI:revealInExplorer', async (_event, payload: { rootId: string; subPath: string }) => {
+    const abs = beamUIFilesService.getAbsolutePath(payload.rootId, payload.subPath)
+    shell.showItemInFolder(abs)
+    return { success: true }
+  })
+
+  // Staging / commit / revert
+  ipcMain.handle('beamUI:listStaged', async () => beamUIFilesService.listStagedChanges())
+  ipcMain.handle('beamUI:commit', async (_event, payload: { rootId: string; subPath: string }) => {
+    await beamUIFilesService.commitFile(payload.rootId, payload.subPath)
+    return { success: true }
+  })
+  ipcMain.handle('beamUI:commitAll', async () => ({ committed: await beamUIFilesService.commitAll() }))
+  ipcMain.handle('beamUI:revert', async (_event, payload: { rootId: string; subPath: string }) => {
+    await beamUIFilesService.revertFile(payload.rootId, payload.subPath)
+    return { success: true }
+  })
+  ipcMain.handle('beamUI:revertAll', async () => ({ reverted: await beamUIFilesService.revertAll() }))
+  ipcMain.handle('beamUI:getAutoRevert', async () => beamUIFilesService.getAutoRevertOnExit())
+  ipcMain.handle('beamUI:setAutoRevert', async (_event, payload: { value: boolean }) => {
+    await beamUIFilesService.setAutoRevertOnExit(!!payload?.value)
+    return { success: true }
+  })
+
+  // Projects
+  ipcMain.handle('beamUI:listProjects', async () => beamUIFilesService.listProjects())
+  ipcMain.handle('beamUI:saveProject', async (_event, payload: { name: string }) => {
+    return beamUIFilesService.saveProject(payload.name)
+  })
+  ipcMain.handle('beamUI:loadProject', async (_event, payload: { name: string }) => {
+    return beamUIFilesService.loadProject(payload.name)
+  })
+  ipcMain.handle('beamUI:deleteProject', async (_event, payload: { name: string }) => {
+    await beamUIFilesService.deleteProject(payload.name)
+    return { success: true }
   })
 
   // ── GPS Map POIs ──
@@ -2749,10 +2881,28 @@ export function registerIpcHandlers(): void {
   })
 
   // Push game-status changes to renderer in real-time
+  let lastGamePid: number | null = null
   launcherService.onStatusChange((status) => {
     for (const win of BrowserWindow.getAllWindows()) {
       if (!win.isDestroyed()) win.webContents.send('game:statusChange', status)
     }
+
+    // Detect game-exit transition (had a pid, now doesn't) and revert any
+    // uncommitted UI-file edits unless the user disabled auto-revert.
+    const pid = status.pid ?? null
+    if (lastGamePid && !pid) {
+      ;(async () => {
+        try {
+          const res = await beamUIFilesService.onGameExited()
+          if ('reverted' in res && res.reverted > 0) {
+            for (const win of BrowserWindow.getAllWindows()) {
+              if (!win.isDestroyed()) win.webContents.send('beamUI:stagingChanged', { reason: 'gameExit', reverted: res.reverted })
+            }
+          }
+        } catch { /* best-effort */ }
+      })()
+    }
+    lastGamePid = pid
 
     // When player disconnects from a server, check if any deployed career saves were updated
     if (!status.connectedServer && serverSessionSnapshot) {

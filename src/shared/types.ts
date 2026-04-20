@@ -403,6 +403,7 @@ export type AppPage =
   | 'live-gps'
   | 'livery-editor'
   | 'voice-chat'
+  | 'lua-console'
 
 /* ── Hosted Server Manager ── */
 
@@ -434,6 +435,9 @@ export interface HostedServerStatus {
   startedAt: number | null
   players: number
   error: string | null
+  memoryBytes: number
+  cpuPercent: number
+  totalMemoryBytes: number
 }
 
 export interface HostedServerEntry {

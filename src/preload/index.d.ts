@@ -623,6 +623,44 @@ interface AppAPI {
   liverySaveProject(data: string): Promise<{ success: boolean; filePath?: string; error?: string }>
   liveryLoadProject(): Promise<{ success: boolean; data?: string; error?: string }>
   liveryImportImage(): Promise<string | null>
+
+  // Lua Console (live BeamNG.drive GE-Lua REPL)
+  luaConsoleDeploy(): Promise<{ success: boolean; error?: string; port?: number }>
+  luaConsoleUndeploy(): Promise<{ success: boolean; error?: string }>
+  luaConsoleIsDeployed(): Promise<boolean>
+  luaConsoleIsConnected(): Promise<boolean>
+  luaConsoleExecute(payload: { reqId: number; source: string }): Promise<{ success: boolean }>
+  luaConsoleInspect(payload: { reqId: number; path: string }): Promise<{ success: boolean }>
+  luaConsoleSetScope(payload: { scope: 'ge' | 'veh'; vehId?: number | null }): Promise<{ success: boolean }>
+  luaConsoleClear(): Promise<{ success: boolean }>
+  luaConsoleComplete(payload: { reqId: number; prefix: string }): Promise<{ success: boolean }>
+  luaConsoleTree(payload: { reqId: number; path: string }): Promise<{ success: boolean }>
+  luaConsoleQuery(payload: { reqId: number; query: string }): Promise<{ success: boolean }>
+  luaConsoleReload(payload: { reqId: number | null; action: 'ge' | 'veh' | 'env' }): Promise<{ success: boolean }>
+  // ── BeamNG UI Files ──
+  beamUIListRoots(payload: { includeInstall: boolean; installWritable?: boolean }): Promise<{ roots: Array<{ id: string; label: string; path: string; kind: 'userUi' | 'modUi' | 'installUi'; writable: boolean; modName?: string }>; resolvedUserDir: string | null; resolvedInstallDir: string | null }>
+  beamUIListDir(payload: { rootId: string; subPath: string }): Promise<Array<{ name: string; isDirectory: boolean; size: number; modifiedMs: number }>>
+  beamUIReadFile(payload: { rootId: string; subPath: string }): Promise<string>
+  beamUIWriteFile(payload: { rootId: string; subPath: string; content: string }): Promise<{ success: boolean }>
+  beamUICreateFolder(payload: { rootId: string; subPath: string }): Promise<{ success: boolean }>
+  beamUIDelete(payload: { rootId: string; subPath: string }): Promise<{ success: boolean }>
+  beamUIRename(payload: { rootId: string; subPath: string; newName: string }): Promise<string>
+  beamUIRevealInExplorer(payload: { rootId: string; subPath: string }): Promise<{ success: boolean }>
+  beamUIListStaged(): Promise<Array<{ rootId: string; subPath: string; originalExisted: boolean; backupName: string; savedAt: number; saveCount: number }>>
+  beamUICommit(payload: { rootId: string; subPath: string }): Promise<{ success: boolean }>
+  beamUICommitAll(): Promise<{ committed: number }>
+  beamUIRevert(payload: { rootId: string; subPath: string }): Promise<{ success: boolean }>
+  beamUIRevertAll(): Promise<{ reverted: number }>
+  beamUIGetAutoRevert(): Promise<boolean>
+  beamUISetAutoRevert(payload: { value: boolean }): Promise<{ success: boolean }>
+  beamUIListProjects(): Promise<Array<{ name: string; savedAt: number; fileCount: number }>>
+  beamUISaveProject(payload: { name: string }): Promise<{ savedAt: number; fileCount: number }>
+  beamUILoadProject(payload: { name: string }): Promise<{ applied: number; skipped: string[] }>
+  beamUIDeleteProject(payload: { name: string }): Promise<{ success: boolean }>
+  onBeamUIStagingChanged(callback: (data: { reason: string; reverted?: number }) => void): () => void
+  onLuaConsoleResult(callback: (data: { reqId: number; status: 'ok' | 'err'; repr: string }) => void): () => void
+  onLuaConsoleLog(callback: (data: { kind: 'log' | 'print'; level?: 'I' | 'W' | 'E' | 'D'; source?: string; text: string; at: number }) => void): () => void
+  onLuaConsoleConnection(callback: (data: { connected: boolean }) => void): () => void
 }
 
 declare global {

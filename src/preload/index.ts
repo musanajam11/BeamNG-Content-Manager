@@ -752,6 +752,92 @@ const api = {
     ipcRenderer.invoke('livery:loadProject') as Promise<{ success: boolean; data?: string; error?: string }>,
   liveryImportImage: () =>
     ipcRenderer.invoke('livery:importImage') as Promise<string | null>,
+
+  // Lua Console (live BeamNG.drive GE-Lua REPL)
+  luaConsoleDeploy: () =>
+    ipcRenderer.invoke('luaConsole:deploy') as Promise<{ success: boolean; error?: string; port?: number }>,
+  luaConsoleUndeploy: () =>
+    ipcRenderer.invoke('luaConsole:undeploy') as Promise<{ success: boolean; error?: string }>,
+  luaConsoleIsDeployed: () =>
+    ipcRenderer.invoke('luaConsole:isDeployed') as Promise<boolean>,
+  luaConsoleIsConnected: () =>
+    ipcRenderer.invoke('luaConsole:isConnected') as Promise<boolean>,
+  luaConsoleExecute: (payload: { reqId: number; source: string }) =>
+    ipcRenderer.invoke('luaConsole:execute', payload) as Promise<{ success: boolean }>,
+  luaConsoleInspect: (payload: { reqId: number; path: string }) =>
+    ipcRenderer.invoke('luaConsole:inspect', payload) as Promise<{ success: boolean }>,
+  luaConsoleSetScope: (payload: { scope: 'ge' | 'veh'; vehId?: number | null }) =>
+    ipcRenderer.invoke('luaConsole:setScope', payload) as Promise<{ success: boolean }>,
+  luaConsoleClear: () =>
+    ipcRenderer.invoke('luaConsole:clear') as Promise<{ success: boolean }>,
+  luaConsoleComplete: (payload: { reqId: number; prefix: string }) =>
+    ipcRenderer.invoke('luaConsole:complete', payload) as Promise<{ success: boolean }>,
+  luaConsoleTree: (payload: { reqId: number; path: string }) =>
+    ipcRenderer.invoke('luaConsole:tree', payload) as Promise<{ success: boolean }>,
+  luaConsoleQuery: (payload: { reqId: number; query: string }) =>
+    ipcRenderer.invoke('luaConsole:query', payload) as Promise<{ success: boolean }>,
+  luaConsoleReload: (payload: { reqId: number | null; action: 'ge' | 'veh' | 'env' }) =>
+    ipcRenderer.invoke('luaConsole:reload', payload) as Promise<{ success: boolean }>,
+
+  // ── BeamNG UI Files ──
+  beamUIListRoots: (payload: { includeInstall: boolean; installWritable?: boolean }) =>
+    ipcRenderer.invoke('beamUI:listRoots', payload) as Promise<{ roots: Array<{ id: string; label: string; path: string; kind: 'userUi' | 'modUi' | 'installUi'; writable: boolean; modName?: string }>; resolvedUserDir: string | null; resolvedInstallDir: string | null }>,
+  beamUIListDir: (payload: { rootId: string; subPath: string }) =>
+    ipcRenderer.invoke('beamUI:listDir', payload) as Promise<Array<{ name: string; isDirectory: boolean; size: number; modifiedMs: number }>>,
+  beamUIReadFile: (payload: { rootId: string; subPath: string }) =>
+    ipcRenderer.invoke('beamUI:readFile', payload) as Promise<string>,
+  beamUIWriteFile: (payload: { rootId: string; subPath: string; content: string }) =>
+    ipcRenderer.invoke('beamUI:writeFile', payload) as Promise<{ success: boolean }>,
+  beamUICreateFolder: (payload: { rootId: string; subPath: string }) =>
+    ipcRenderer.invoke('beamUI:createFolder', payload) as Promise<{ success: boolean }>,
+  beamUIDelete: (payload: { rootId: string; subPath: string }) =>
+    ipcRenderer.invoke('beamUI:delete', payload) as Promise<{ success: boolean }>,
+  beamUIRename: (payload: { rootId: string; subPath: string; newName: string }) =>
+    ipcRenderer.invoke('beamUI:rename', payload) as Promise<string>,
+  beamUIRevealInExplorer: (payload: { rootId: string; subPath: string }) =>
+    ipcRenderer.invoke('beamUI:revealInExplorer', payload) as Promise<{ success: boolean }>,
+  beamUIListStaged: () =>
+    ipcRenderer.invoke('beamUI:listStaged') as Promise<Array<{ rootId: string; subPath: string; originalExisted: boolean; backupName: string; savedAt: number; saveCount: number }>>,
+  beamUICommit: (payload: { rootId: string; subPath: string }) =>
+    ipcRenderer.invoke('beamUI:commit', payload) as Promise<{ success: boolean }>,
+  beamUICommitAll: () =>
+    ipcRenderer.invoke('beamUI:commitAll') as Promise<{ committed: number }>,
+  beamUIRevert: (payload: { rootId: string; subPath: string }) =>
+    ipcRenderer.invoke('beamUI:revert', payload) as Promise<{ success: boolean }>,
+  beamUIRevertAll: () =>
+    ipcRenderer.invoke('beamUI:revertAll') as Promise<{ reverted: number }>,
+  beamUIGetAutoRevert: () =>
+    ipcRenderer.invoke('beamUI:getAutoRevert') as Promise<boolean>,
+  beamUISetAutoRevert: (payload: { value: boolean }) =>
+    ipcRenderer.invoke('beamUI:setAutoRevert', payload) as Promise<{ success: boolean }>,
+  beamUIListProjects: () =>
+    ipcRenderer.invoke('beamUI:listProjects') as Promise<Array<{ name: string; savedAt: number; fileCount: number }>>,
+  beamUISaveProject: (payload: { name: string }) =>
+    ipcRenderer.invoke('beamUI:saveProject', payload) as Promise<{ savedAt: number; fileCount: number }>,
+  beamUILoadProject: (payload: { name: string }) =>
+    ipcRenderer.invoke('beamUI:loadProject', payload) as Promise<{ applied: number; skipped: string[] }>,
+  beamUIDeleteProject: (payload: { name: string }) =>
+    ipcRenderer.invoke('beamUI:deleteProject', payload) as Promise<{ success: boolean }>,
+  onBeamUIStagingChanged: (callback: (data: { reason: string; reverted?: number }) => void) => {
+    const handler = (_e: unknown, data: { reason: string; reverted?: number }): void => callback(data)
+    ipcRenderer.on('beamUI:stagingChanged', handler)
+    return () => { ipcRenderer.removeListener('beamUI:stagingChanged', handler) }
+  },
+  onLuaConsoleResult: (callback: (data: { reqId: number; status: 'ok' | 'err'; repr: string }) => void) => {
+    const handler = (_e: unknown, data: { reqId: number; status: 'ok' | 'err'; repr: string }): void => callback(data)
+    ipcRenderer.on('luaConsole:result', handler)
+    return () => { ipcRenderer.removeListener('luaConsole:result', handler) }
+  },
+  onLuaConsoleLog: (callback: (data: { kind: 'log' | 'print'; level?: 'I' | 'W' | 'E' | 'D'; source?: string; text: string; at: number }) => void) => {
+    const handler = (_e: unknown, data: { kind: 'log' | 'print'; level?: 'I' | 'W' | 'E' | 'D'; source?: string; text: string; at: number }): void => callback(data)
+    ipcRenderer.on('luaConsole:log', handler)
+    return () => { ipcRenderer.removeListener('luaConsole:log', handler) }
+  },
+  onLuaConsoleConnection: (callback: (data: { connected: boolean }) => void) => {
+    const handler = (_e: unknown, data: { connected: boolean }): void => callback(data)
+    ipcRenderer.on('luaConsole:connection', handler)
+    return () => { ipcRenderer.removeListener('luaConsole:connection', handler) }
+  },
 }
 
 if (process.contextIsolated) {

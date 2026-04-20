@@ -137,15 +137,15 @@ export function StatusDashboard({
         <MetricCard
           icon={<Cpu size={16} />}
           label={t('serverManager.cpuUsage')}
-          value={isRunning ? '0%' : '—'}
-          barPercent={0}
+          value={isRunning ? `${status.cpuPercent}%` : '—'}
+          barPercent={isRunning ? Math.min(status.cpuPercent, 100) : 0}
           barColor="bg-blue-500"
         />
         <MetricCard
           icon={<HardDrive size={16} />}
           label={t('serverManager.memoryUsage')}
-          value={isRunning ? '0.02 / 60.50 GB' : '— / —'}
-          barPercent={isRunning ? 0.03 : 0}
+          value={isRunning ? `${formatBytes(status.memoryBytes)} / ${formatBytes(status.totalMemoryBytes)}` : '— / —'}
+          barPercent={isRunning && status.totalMemoryBytes > 0 ? (status.memoryBytes / status.totalMemoryBytes) * 100 : 0}
           barColor="bg-blue-500"
         />
         <MetricCard
@@ -556,4 +556,12 @@ function formatUptime(ms: number): string {
   const m = Math.floor((totalSec % 3600) / 60)
   const s = totalSec % 60
   return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
+  const val = bytes / Math.pow(1024, i)
+  return `${val.toFixed(i >= 2 ? 2 : 0)} ${units[i]}`
 }

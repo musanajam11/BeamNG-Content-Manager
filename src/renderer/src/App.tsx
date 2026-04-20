@@ -17,6 +17,7 @@ import { CareerPage } from './pages/CareerPage'
 import { LiveGPSPage } from './pages/LiveGPSPage'
 import { LiveryEditorPage } from './pages/LiveryEditorPage'
 import { VoiceChatPage } from './pages/VoiceChatPage'
+import { LuaConsolePage } from './pages/LuaConsolePage'
 import { SetupWizard } from './pages/SetupWizard'
 import { VoiceChatPanel } from './components/VoiceChatPanel'
 import { useAppStore } from './stores/useAppStore'
@@ -56,6 +57,8 @@ function PageRouter(): React.JSX.Element {
       return <LiveryEditorPage />
     case 'voice-chat':
       return <VoiceChatPage />
+    case 'lua-console':
+      return <LuaConsolePage />
     case 'settings':
       return <SettingsPage />
     default:

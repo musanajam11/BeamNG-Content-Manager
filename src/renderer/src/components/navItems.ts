@@ -11,7 +11,8 @@ import {
   Briefcase,
   Navigation2,
   Paintbrush,
-  Mic
+  Mic,
+  Code2
 } from 'lucide-react'
 import type { AppPage } from '../../../shared/types'
 
@@ -35,4 +36,5 @@ export const ALL_NAV_ITEMS: NavItem[] = [
   { id: 'live-gps', labelKey: 'sidebar.liveGPS', icon: Navigation2 },
   { id: 'livery-editor', labelKey: 'sidebar.liveryEditor', icon: Paintbrush },
   { id: 'voice-chat', labelKey: 'sidebar.voiceChat', icon: Mic },
+  { id: 'lua-console', labelKey: 'sidebar.luaConsole', icon: Code2 },
 ]
