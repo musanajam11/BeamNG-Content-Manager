@@ -71,7 +71,32 @@ export class PeerClient extends EventEmitter {
     this.authorId = cfg.authorId || randomUUID()
 
     return new Promise<WelcomeMsg>((resolve, reject) => {
-      const socket = createConnection({ host: cfg.host, port: cfg.port }, () => {
+      // Two distinct phases, each with its own timeout, so a stuck connection
+      // produces an actionable error instead of hanging on the OS-default
+      // ~75 s SYN retry budget. Tailscale specifically can take several
+      // seconds to set up the route on the very first connection, so we
+      // intentionally leave generous headroom.
+      const CONNECT_TIMEOUT_MS = 12_000  // TCP SYN + ACK
+      const WELCOME_TIMEOUT_MS = 8_000   // host → 'welcome' frame after TCP up
+      let phaseTimer: ReturnType<typeof setTimeout> | null = null
+      let settled = false
+      let socket: ReturnType<typeof createConnection>
+      const fail = (err: Error): void => {
+        if (settled) return
+        settled = true
+        if (phaseTimer) { clearTimeout(phaseTimer); phaseTimer = null }
+        this.cleanup()
+        reject(err)
+      }
+      const armTimer = (ms: number, label: string): void => {
+        if (phaseTimer) clearTimeout(phaseTimer)
+        phaseTimer = setTimeout(() => {
+          fail(new Error(label))
+          try { socket.destroy() } catch { /* ignore */ }
+        }, ms)
+      }
+
+      socket = createConnection({ host: cfg.host, port: cfg.port }, () => {
         socket.setNoDelay(true)
         sendMessage(socket, {
           type: 'hello',
@@ -81,16 +106,11 @@ export class PeerClient extends EventEmitter {
           token: cfg.token,
           fromSeq: cfg.fromSeq,
         })
+        // TCP up — now we wait for the host to reply with a welcome frame.
+        armTimer(WELCOME_TIMEOUT_MS, 'no welcome from host within 8s (token rejected? wrong port? host crashed?)')
       })
       this.socket = socket
-
-      let settled = false
-      const fail = (err: Error): void => {
-        if (settled) return
-        settled = true
-        this.cleanup()
-        reject(err)
-      }
+      armTimer(CONNECT_TIMEOUT_MS, `connect timed out after 12s — host unreachable at ${cfg.host}:${cfg.port} (firewall? Tailscale not routing? wrong invite code?)`)
 
       this.decoder = new FrameDecoder(
         (msg) => {
@@ -101,6 +121,7 @@ export class PeerClient extends EventEmitter {
               this.authorId = msg.yourAuthorId
               this.lastSeq = msg.lastSeq
               settled = true
+              if (phaseTimer) { clearTimeout(phaseTimer); phaseTimer = null }
               this.startPing()
               this.emit('ready', msg)
               resolve(msg)
@@ -128,6 +149,7 @@ export class PeerClient extends EventEmitter {
         this.emit('error', err)
       })
       socket.on('close', () => {
+        if (phaseTimer) { clearTimeout(phaseTimer); phaseTimer = null }
         this.cleanup()
         this.emit('closed', 'peer closed')
         if (!settled) reject(new Error('socket closed before welcome'))

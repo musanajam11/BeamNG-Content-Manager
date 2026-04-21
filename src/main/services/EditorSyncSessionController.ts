@@ -274,6 +274,7 @@ export class EditorSyncSessionController extends EventEmitter {
     this.peer = client
     this.state = 'connecting'
     this.pushStatus()
+    this.log('info', 'peer', `Connecting to ${opts.host}:${opts.port}…`)
 
     try {
       const welcome: WelcomeMsg = await client.connect({
@@ -298,6 +299,7 @@ export class EditorSyncSessionController extends EventEmitter {
     } catch (err) {
       this.peer = null
       this.state = 'idle'
+      this.log('error', 'peer', `Connect failed: ${err instanceof Error ? err.message : String(err)}`)
       this.pushStatus()
       throw err
     }

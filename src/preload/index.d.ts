@@ -643,6 +643,16 @@ interface AppAPI {
   }): Promise<{ success: boolean; error?: string; level?: string }>
   worldEditSessionGetLanIps(): Promise<string[]>
   worldEditSessionGetPublicIp(): Promise<{ ip: string | null; error?: string }>
+  worldEditSessionCheckFirewallHole(port: number): Promise<{
+    supported: boolean
+    exists?: boolean
+    error?: string
+  }>
+  worldEditSessionOpenFirewallHole(port: number): Promise<{
+    success: boolean
+    cancelled?: boolean
+    error?: string
+  }>
   onWorldEditSessionStatus(cb: (status: import('../shared/types').SessionStatus) => void): () => void
   onWorldEditSessionOp(cb: (op: import('../shared/types').SessionOp) => void): () => void
   onWorldEditSessionLog(cb: (entry: import('../shared/types').SessionLogEntry) => void): () => void

@@ -1241,6 +1241,116 @@ export function registerIpcHandlers(): void {
     }
   )
 
+  // Check whether a Windows Firewall inbound TCP allow-rule already exists for
+  // this port under our well-known display name. Read-only — no UAC needed.
+  ipcMain.handle(
+    'worldEdit:session:checkFirewallHole',
+    async (
+      _event,
+      port: number
+    ): Promise<{ supported: boolean; exists?: boolean; error?: string }> => {
+      if (process.platform !== 'win32') return { supported: false }
+      if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        return { supported: true, error: 'Invalid port' }
+      }
+      // Match by display-name prefix so legacy rules (without "(port)" suffix)
+      // and the new per-port rules are both detected.
+      const psScript =
+        `$rules = Get-NetFirewallRule -DisplayName 'BeamMP CM World Editor Sync*' -ErrorAction SilentlyContinue;` +
+        `if ($rules) {` +
+        ` foreach ($r in $rules) {` +
+        `  $pf = $r | Get-NetFirewallPortFilter -ErrorAction SilentlyContinue;` +
+        `  if ($pf -and ($pf.LocalPort -eq '${port}' -or $pf.LocalPort -contains '${port}')) { 'YES'; exit 0 }` +
+        ` }` +
+        `}; 'NO'`
+      try {
+        const { spawn } = await import('node:child_process')
+        const encoded = Buffer.from(psScript, 'utf16le').toString('base64')
+        const exists = await new Promise<boolean>((resolve) => {
+          const ps = spawn(
+            'powershell.exe',
+            ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded],
+            { windowsHide: true }
+          )
+          let out = ''
+          ps.stdout.on('data', (c) => (out += c.toString()))
+          ps.on('error', () => resolve(false))
+          ps.on('close', () => resolve(out.includes('YES')))
+        })
+        return { supported: true, exists }
+      } catch (err) {
+        return { supported: true, error: `${err}` }
+      }
+    }
+  )
+
+  // Create a Windows Firewall inbound TCP allow-rule for the session port.
+  // Spawns an elevated PowerShell via UAC; the user must accept the prompt.
+  // Using a port-based rule (Profile=Any) so it covers Tailscale's wintun
+  // interface as well as LAN — Electron's auto-prompt only covers the host
+  // app's binary on the active network profile and misses Tailscale.
+  ipcMain.handle(
+    'worldEdit:session:openFirewallHole',
+    async (
+      _event,
+      port: number
+    ): Promise<{ success: boolean; cancelled?: boolean; error?: string }> => {
+      if (process.platform !== 'win32') {
+        return { success: false, error: 'Only supported on Windows' }
+      }
+      if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        return { success: false, error: 'Invalid port' }
+      }
+      const displayName = `BeamMP CM World Editor Sync (${port})`
+      try {
+        const { spawn } = await import('node:child_process')
+        // The elevated child script. Encoded as Base64-UTF16LE and passed via
+        // -EncodedCommand to dodge every layer of PowerShell quote-escaping
+        // hell. Idempotent: skips creation if the rule already exists.
+        const childScript =
+          `if (-not (Get-NetFirewallRule -DisplayName '${displayName}' -ErrorAction SilentlyContinue)) {` +
+          ` New-NetFirewallRule -DisplayName '${displayName}'` +
+          ` -Description 'Allows BeamMP Content Manager to host World-Editor co-op sessions'` +
+          ` -Direction Inbound -Protocol TCP -LocalPort ${port}` +
+          ` -Action Allow -Profile Any | Out-Null` +
+          `}`
+        const childEncoded = Buffer.from(childScript, 'utf16le').toString('base64')
+        // The outer (non-elevated) script that triggers the UAC prompt.
+        // Start-Process throws when the user clicks "No" on UAC; we map that
+        // to exit code 2 so the renderer can show a friendlier message.
+        const outerScript =
+          `try {` +
+          ` Start-Process powershell.exe -Verb RunAs -WindowStyle Hidden -Wait` +
+          ` -ArgumentList '-NoProfile','-NonInteractive','-EncodedCommand','${childEncoded}';` +
+          ` exit 0` +
+          `} catch {` +
+          ` $msg = $_.Exception.Message;` +
+          ` if ($msg -like '*canceled*' -or $msg -like '*cancelled*') { exit 2 }` +
+          ` else { Write-Error $msg; exit 1 }` +
+          `}`
+        const outerEncoded = Buffer.from(outerScript, 'utf16le').toString('base64')
+        const result = await new Promise<{ success: boolean; cancelled?: boolean; error?: string }>((resolve) => {
+          const ps = spawn(
+            'powershell.exe',
+            ['-NoProfile', '-NonInteractive', '-EncodedCommand', outerEncoded],
+            { windowsHide: true }
+          )
+          let stderr = ''
+          ps.stderr.on('data', (c) => (stderr += c.toString()))
+          ps.on('error', (err) => resolve({ success: false, error: err.message }))
+          ps.on('close', (code) => {
+            if (code === 0) resolve({ success: true })
+            else if (code === 2) resolve({ success: false, cancelled: true })
+            else resolve({ success: false, error: stderr.trim() || `exit ${code}` })
+          })
+        })
+        return result
+      } catch (err) {
+        return { success: false, error: `${err}` }
+      }
+    }
+  )
+
   // ── Voice Chat ──
 
   ipcMain.handle('voice:enable', async () => {

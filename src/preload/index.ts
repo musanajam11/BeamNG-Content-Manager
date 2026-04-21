@@ -751,6 +751,18 @@ const api = {
     ipcRenderer.invoke('worldEdit:session:getLanIps') as Promise<string[]>,
   worldEditSessionGetPublicIp: () =>
     ipcRenderer.invoke('worldEdit:session:getPublicIp') as Promise<{ ip: string | null; error?: string }>,
+  worldEditSessionCheckFirewallHole: (port: number) =>
+    ipcRenderer.invoke('worldEdit:session:checkFirewallHole', port) as Promise<{
+      supported: boolean
+      exists?: boolean
+      error?: string
+    }>,
+  worldEditSessionOpenFirewallHole: (port: number) =>
+    ipcRenderer.invoke('worldEdit:session:openFirewallHole', port) as Promise<{
+      success: boolean
+      cancelled?: boolean
+      error?: string
+    }>,
   onWorldEditSessionStatus: (cb: (status: import('../shared/types').SessionStatus) => void) => {
     const handler = (_e: unknown, status: import('../shared/types').SessionStatus): void => cb(status)
     ipcRenderer.on('worldEdit:session:status', handler)

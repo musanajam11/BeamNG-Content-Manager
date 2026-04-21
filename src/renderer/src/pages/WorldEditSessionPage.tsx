@@ -110,11 +110,23 @@ export function WorldEditSessionPage(): React.JSX.Element {
   // Host form
   const [hostPort, setHostPort] = useState('45678')
   const [hostToken, setHostToken] = useState('')
+  const [hostLevel, setHostLevel] = useState('')
+  const [availableMaps, setAvailableMaps] = useState<
+    Array<{ name: string; source: 'stock' | 'mod'; levelDir?: string }>
+  >([])
   const [displayName, setDisplayName] = useState('Player')
   const [lanIps, setLanIps] = useState<string[]>([])
   const [publicIp, setPublicIp] = useState<string | null>(null)
   const [publicIpBusy, setPublicIpBusy] = useState(false)
   const [publicIpErr, setPublicIpErr] = useState<string | null>(null)
+
+  // Windows Firewall hole for the listen port — Electron's auto-prompt only
+  // covers our app binary on the active LAN profile and silently misses the
+  // Tailscale wintun interface, so we offer a one-click port-based allow rule.
+  const [firewallSupported, setFirewallSupported] = useState(false)
+  const [firewallExists, setFirewallExists] = useState<boolean | null>(null)
+  const [firewallBusy, setFirewallBusy] = useState(false)
+  const [firewallMsg, setFirewallMsg] = useState<string | null>(null)
 
   // Tailscale (optional — only shown if installed and running)
   const [tsIp, setTsIp] = useState<string | null>(null)
@@ -189,6 +201,12 @@ export function WorldEditSessionPage(): React.JSX.Element {
     // Fetch LAN IPs for the Host panel (defensive: preload binding may be
     // missing if the main process was not restarted after adding it).
     window.api.worldEditSessionGetLanIps?.().then(setLanIps).catch(() => setLanIps([]))
+    // Populate the host-side level dropdown so users can pick the map up
+    // front (same UX as making a BeamMP server). Sorted by name in main.
+    window.api
+      .listMaps?.()
+      .then((maps) => setAvailableMaps(maps ?? []))
+      .catch(() => setAvailableMaps([]))
     // Fetch Tailscale status — if the user has Tailscale running we can offer
     // a zero-config cross-network invite code using their tailnet IP.
     window.api
@@ -238,6 +256,58 @@ export function WorldEditSessionPage(): React.JSX.Element {
     }
   }
 
+  // Re-check the firewall-rule presence whenever the port changes (no admin
+  // needed for the read). The button is only useful on Windows hosts.
+  useEffect(() => {
+    let cancelled = false
+    const portNum = Number.parseInt(hostPort, 10)
+    if (!Number.isFinite(portNum) || portNum <= 0) {
+      setFirewallSupported(false)
+      setFirewallExists(null)
+      return
+    }
+    void window.api
+      .worldEditSessionCheckFirewallHole?.(portNum)
+      .then((res) => {
+        if (cancelled || !res) return
+        setFirewallSupported(res.supported)
+        setFirewallExists(res.supported ? !!res.exists : null)
+      })
+      .catch(() => {
+        if (!cancelled) setFirewallSupported(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [hostPort])
+
+  const onOpenFirewallHole = async (): Promise<void> => {
+    const portNum = Number.parseInt(hostPort, 10)
+    if (!Number.isFinite(portNum) || portNum <= 0) {
+      setFirewallMsg('Invalid port')
+      return
+    }
+    setFirewallBusy(true)
+    setFirewallMsg(null)
+    try {
+      const res = await window.api.worldEditSessionOpenFirewallHole?.(portNum)
+      if (!res) {
+        setFirewallMsg('Firewall helper unavailable — restart CM.')
+      } else if (res.success) {
+        setFirewallExists(true)
+        setFirewallMsg('Firewall rule added — peers can now reach this port.')
+      } else if (res.cancelled) {
+        setFirewallMsg('UAC prompt was cancelled.')
+      } else {
+        setFirewallMsg(res.error || 'Failed to add rule.')
+      }
+    } catch (e) {
+      setFirewallMsg(String(e))
+    } finally {
+      setFirewallBusy(false)
+    }
+  }
+
   const onHost = async (): Promise<void> => {
     setBusy(true)
     setErr(null)
@@ -246,6 +316,7 @@ export function WorldEditSessionPage(): React.JSX.Element {
       const res = await window.api.worldEditSessionHost({
         port: Number.isFinite(port) && port > 0 ? port : undefined,
         token: hostToken.trim() || null,
+        levelName: hostLevel.trim() || null,
         displayName: displayName.trim() || undefined,
       })
       if (!res.success) setErr(res.error || 'host failed')
@@ -496,6 +567,40 @@ export function WorldEditSessionPage(): React.JSX.Element {
               machine so peers outside your LAN can reach you. Alternatively put both machines on
               Tailscale / Hamachi and share the VPN IP.
             </div>
+            {firewallSupported && (
+              <div className="pt-2 mt-1 border-t border-yellow-500/20 flex flex-wrap items-center gap-2">
+                <span className="text-yellow-200/80">
+                  Windows Firewall:&nbsp;
+                  {firewallExists === true ? (
+                    <span className="text-green-300 font-medium">rule for TCP {hostPort} present</span>
+                  ) : firewallExists === false ? (
+                    <span className="text-yellow-300 font-medium">no rule for TCP {hostPort} yet</span>
+                  ) : (
+                    <span className="opacity-70">checking…</span>
+                  )}
+                </span>
+                {firewallExists === false && (
+                  <button
+                    onClick={() => void onOpenFirewallHole()}
+                    disabled={firewallBusy}
+                    className="px-2 py-1 rounded border border-yellow-500/40 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-100 text-[11px] inline-flex items-center gap-1 disabled:opacity-50"
+                    title="Adds an inbound TCP allow-rule (Profile=Any) so peers can reach this port over LAN, Tailscale or any active interface. Triggers a UAC prompt."
+                  >
+                    {firewallBusy ? (
+                      <Loader2 size={11} className="animate-spin" />
+                    ) : (
+                      <Shield size={11} />
+                    )}
+                    Open firewall hole (UAC)
+                  </button>
+                )}
+                {firewallMsg && (
+                  <span className="text-[11px] text-[var(--color-text-muted)] basis-full">
+                    {firewallMsg}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -514,6 +619,41 @@ export function WorldEditSessionPage(): React.JSX.Element {
                 onChange={(e) => setHostPort(e.target.value)}
                 className="w-full px-2 py-1.5 rounded bg-[var(--color-bg)] border border-[var(--color-border)] font-mono"
               />
+            </label>
+            <label className="text-xs space-y-1 md:col-span-2">
+              <span className="text-[var(--color-text-muted)]">
+                Level (optional — peers will be told which map to load; auto-detected from
+                the host's game once you launch into the editor if left blank)
+              </span>
+              <select
+                value={hostLevel}
+                onChange={(e) => setHostLevel(e.target.value)}
+                className="w-full px-2 py-1.5 rounded bg-[var(--color-bg)] border border-[var(--color-border)] font-mono"
+              >
+                <option value="">— auto-detect from game —</option>
+                {availableMaps.length > 0 && (
+                  <optgroup label="Stock maps">
+                    {availableMaps
+                      .filter((m) => m.source === 'stock')
+                      .map((m) => (
+                        <option key={`stock-${m.name}`} value={m.levelDir ?? m.name}>
+                          {m.name}
+                        </option>
+                      ))}
+                  </optgroup>
+                )}
+                {availableMaps.some((m) => m.source === 'mod') && (
+                  <optgroup label="Mod maps">
+                    {availableMaps
+                      .filter((m) => m.source === 'mod')
+                      .map((m) => (
+                        <option key={`mod-${m.levelDir ?? m.name}`} value={m.levelDir ?? m.name}>
+                          {m.name}
+                        </option>
+                      ))}
+                  </optgroup>
+                )}
+              </select>
             </label>
             <label className="text-xs space-y-1 md:col-span-2">
               <span className="text-[var(--color-text-muted)]">
@@ -1032,25 +1172,20 @@ function InvitePanel({
   const port = status.port ?? 45678
   const token = hostToken.trim() || null
 
-  // Build list of invite codes: public IP first (primary — works across the
-  // internet), Tailscale (zero-config cross-network), then LAN IPs, then
-  // loopback (for local 2-instance smoke tests on one PC).
+  // Build list of invite codes. Order matters — peers tend to copy the
+  // first one they see, so we put the most-likely-to-actually-work option
+  // up top. Tailscale wins when available (zero-config, no port-forwarding,
+  // works across networks). Otherwise public IP (requires forwarding) →
+  // LAN → loopback.
   interface Entry {
     ip: string
     code: string
     label: string
     tone: 'primary' | 'tailscale' | 'lan' | 'loopback'
+    recommended?: boolean
   }
   const entries = useMemo<Entry[]>(() => {
     const out: Entry[] = []
-    if (publicIp) {
-      out.push({
-        ip: publicIp,
-        code: encodeInviteCode({ host: publicIp, port, token }),
-        label: 'For peers on the internet (requires port-forwarding)',
-        tone: 'primary',
-      })
-    }
     if (tsIp) {
       out.push({
         ip: tsIp,
@@ -1059,6 +1194,16 @@ function InvitePanel({
           ? `Tailscale (${tsHostname}) — any peer on your tailnet, no port-forwarding`
           : 'Tailscale — any peer on your tailnet, no port-forwarding',
         tone: 'tailscale',
+        recommended: true,
+      })
+    }
+    if (publicIp) {
+      out.push({
+        ip: publicIp,
+        code: encodeInviteCode({ host: publicIp, port, token }),
+        label: 'For peers on the internet (requires port-forwarding)',
+        tone: 'primary',
+        recommended: !tsIp,
       })
     }
     for (const ip of lanIps) {
@@ -1144,7 +1289,7 @@ function InvitePanel({
         <div className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">
           Share an invite code with your peers
         </div>
-        {entries.map(({ ip, code, label, tone }) => (
+        {entries.map(({ ip, code, label, tone, recommended }) => (
           <div key={ip} className="flex items-center gap-2">
             <div className="flex-1 min-w-0">
               <div className="text-[10px] text-[var(--color-text-muted)] mb-0.5 flex items-center gap-1">
@@ -1167,6 +1312,11 @@ function InvitePanel({
                         ? 'LAN'
                         : 'LOCAL'}
                 </span>
+                {recommended && (
+                  <span className="px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-300 font-semibold uppercase tracking-wide text-[9px]">
+                    Recommended
+                  </span>
+                )}
                 <span>
                   <span className="font-mono">{ip}</span> — {label}
                 </span>
