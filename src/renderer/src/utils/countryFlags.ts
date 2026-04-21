@@ -21,6 +21,23 @@ export function countryFlag(code: string): string {
   return FLAGS[code.toUpperCase()] || '\u{1F310}'
 }
 
+/** Returns a human-readable region name for an ISO country code. */
+let _regionNameInstance: Intl.DisplayNames | null | undefined
+export function regionName(code: string): string {
+  if (!code) return ''
+  const upper = code.toUpperCase()
+  try {
+    if (_regionNameInstance === undefined) {
+      _regionNameInstance = typeof Intl !== 'undefined' && Intl.DisplayNames
+        ? new Intl.DisplayNames(['en'], { type: 'region' })
+        : null
+    }
+    const name = _regionNameInstance?.of(upper)
+    if (name && name !== upper) return name
+  } catch { /* ignore */ }
+  return upper
+}
+
 /** Returns a CDN URL for a high-quality flag image (40px wide PNG) */
 export function flagImageUrl(code: string): string | null {
   if (!code) return null

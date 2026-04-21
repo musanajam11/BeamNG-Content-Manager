@@ -11,9 +11,10 @@ import {
   ShieldAlert, Compass, Briefcase, Users, Trophy, Sparkles,
   Flag, CircleDot, ArrowRight, Mountain, Wind, Flame,
   TreePine, Droplets, Snowflake, CloudRain,
-  Clock, Moon, CloudLightning,
-  Bug, Shield, Target, Zap,
-  Truck, Coins, ArrowLeftRight, BarChart3, Calendar,
+  Clock, Moon, CloudLightning, CloudSun,
+  Bug, Shield, Target, Zap, Swords,
+  Truck, Coins, ArrowLeftRight, BarChart3, Calendar, Film,
+  Car,
   Package, Paintbrush, Gamepad2, Wrench,
   Globe, Leaf, ShieldOff, ShieldCheck, Hammer, Tag
 } from 'lucide-react'
@@ -73,6 +74,7 @@ const TAGS: Record<string, TagDef> = {
   'career':              { label: 'Career',           icon: Briefcase,      tone: 'blue',    category: 'gameplay' },
   'roleplay':            { label: 'Roleplay',         icon: Users,          tone: 'blue',    category: 'gameplay' },
   'rp':                  { label: 'Roleplay',         icon: Users,          tone: 'blue',    category: 'gameplay' },
+  'traffic':             { label: 'Traffic',          icon: Car,            tone: 'blue',    category: 'gameplay' },
   'custom':              { label: 'Custom',           icon: Sparkles,       tone: 'blue',    category: 'gameplay' },
 
   // ── Motorsports ──────────────────────────────────────────────────────
@@ -100,6 +102,8 @@ const TAGS: Record<string, TagDef> = {
   'rock crawling':       { label: 'Rock Crawling',    icon: Mountain,       tone: 'emerald', category: 'offroad' },
   'rockcrawling':        { label: 'Rock Crawling',    icon: Mountain,       tone: 'emerald', category: 'offroad' },
   'crawling':            { label: 'Rock Crawling',    icon: Mountain,       tone: 'emerald', category: 'offroad' },
+  'challenge':           { label: 'Challenge',        icon: Trophy,         tone: 'emerald', category: 'offroad' },
+  'challenges':          { label: 'Challenge',        icon: Trophy,         tone: 'emerald', category: 'offroad' },
 
   // ── Surface ──────────────────────────────────────────────────────────
   'asphalt':             { label: 'Asphalt',          icon: CircleDot,      tone: 'stone',   category: 'surface' },
@@ -123,6 +127,10 @@ const TAGS: Record<string, TagDef> = {
   'day night':           { label: 'Time Cycle',       icon: Clock,          tone: 'sky',     category: 'weather' },
   'day/night':           { label: 'Time Cycle',       icon: Clock,          tone: 'sky',     category: 'weather' },
   'night':               { label: 'Night',            icon: Moon,           tone: 'sky',     category: 'weather' },
+  'weather':             { label: 'Dynamic Weather',  icon: CloudSun,       tone: 'sky',     category: 'weather' },
+  'dynamic weather':     { label: 'Dynamic Weather',  icon: CloudSun,       tone: 'sky',     category: 'weather' },
+  'snow/ice':            { label: 'Snow & Ice',       icon: Snowflake,      tone: 'sky',     category: 'weather' },
+  'snow ice':            { label: 'Snow & Ice',       icon: Snowflake,      tone: 'sky',     category: 'weather' },
   'natural disaster':    { label: 'Natural Disaster', icon: CloudLightning, tone: 'sky',     category: 'weather' },
   'disaster':            { label: 'Natural Disaster', icon: CloudLightning, tone: 'sky',     category: 'weather' },
   'storm':               { label: 'Storm',            icon: CloudLightning, tone: 'sky',     category: 'weather' },
@@ -131,6 +139,7 @@ const TAGS: Record<string, TagDef> = {
   'derby':               { label: 'Derby',            icon: Flame,          tone: 'purple',  category: 'gamemode' },
   'demolition derby':    { label: 'Demolition Derby', icon: Flame,          tone: 'purple',  category: 'gamemode' },
   'demo derby':          { label: 'Demolition Derby', icon: Flame,          tone: 'purple',  category: 'gamemode' },
+  'arena':               { label: 'Arena',            icon: Swords,         tone: 'purple',  category: 'gamemode' },
   'infection':           { label: 'Infection',        icon: Bug,            tone: 'purple',  category: 'gamemode' },
   'zombie':              { label: 'Infection',        icon: Bug,            tone: 'purple',  category: 'gamemode' },
   'zombies':             { label: 'Infection',        icon: Bug,            tone: 'purple',  category: 'gamemode' },
@@ -155,6 +164,8 @@ const TAGS: Record<string, TagDef> = {
   'leaderboards':        { label: 'Leaderboard',      icon: BarChart3,      tone: 'teal',    category: 'features' },
   'events':              { label: 'Events',           icon: Calendar,       tone: 'teal',    category: 'features' },
   'event':               { label: 'Events',           icon: Calendar,       tone: 'teal',    category: 'features' },
+  'scenarios':           { label: 'Scenarios',        icon: Film,           tone: 'teal',    category: 'features' },
+  'scenario':            { label: 'Scenarios',        icon: Film,           tone: 'teal',    category: 'features' },
 
   // ── Mods ─────────────────────────────────────────────────────────────
   'modded':              { label: 'Modded',           icon: Package,        tone: 'yellow',  category: 'mods' },
