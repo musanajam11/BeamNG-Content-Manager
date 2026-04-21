@@ -29,29 +29,199 @@ Manage mods, vehicles, maps, servers, friends, career saves, and more — from a
 
 <div align="center">
 
-![Home](docs/screenshots/Home.jpg)
+<img src="docs/screenshots/Home.jpg" alt="Home Dashboard" width="880" />
+
+<sub><i>One hub for your whole BeamNG + BeamMP setup</i></sub>
+
+<br><br>
 
 <details>
-<summary><b>View all screenshots</b></summary>
+<summary><b>Browse the full gallery</b></summary>
+
 <br>
 
-| | |
-|:---:|:---:|
-| ![Server List](docs/screenshots/server-list.jpg) | ![Servers Overview](docs/screenshots/Servers-overview.jpg) |
-| ![Server Config](docs/screenshots/Servers-server.jpg) | ![Server Config Editor](docs/screenshots/Servers-server-config.jpg) |
-| ![Server Scheduler](docs/screenshots/Servers-server-scheduler.jpg) | ![Server Mods](docs/screenshots/Servers-mods.jpg) |
-| ![Friends](docs/screenshots/friends.jpg) | ![Voice Chat](docs/screenshots/voicechat.png) |
-| ![Cars Overview](docs/screenshots/cars-overview.jpg) | ![Cars Editor](docs/screenshots/cars-editor.jpg) |
-| ![Maps](docs/screenshots/Maps.jpg) | ![Map Selection](docs/screenshots/map-selection.jpg) |
-| ![Mods Installed](docs/screenshots/Mods-installed.jpg) | ![Mods Browse](docs/screenshots/Mods-browse.jpg) |
-| ![Mods Registry](docs/screenshots/mods-registry.jpg) | ![Live GPS](docs/screenshots/Live-GPS.png) |
-| ![Controls Live Input](docs/screenshots/Controls-liveinput.jpg) | ![Livery Editor](docs/screenshots/LiveryEditor.jpg) |
-| ![Coop World Editor — Host](docs/screenshots/CoopEditor0.png) | ![Coop World Editor — Session](docs/screenshots/CoopEditor1.png) |
-| ![Coop World Editor — In-Game](docs/screenshots/CoopEditor2.png) | ![Coop World Editor — Peers](docs/screenshots/CoopEditor3.png) |
-| ![Coop World Editor — Project Sync](docs/screenshots/CoopEditor4.png) | ![CareerMP Saves](docs/screenshots/CareerMP-Saves.jpg) |
-| ![CareerMP Mods](docs/screenshots/CareerMP-Mods.jpg) | ![Settings — General](docs/screenshots/settings1.png) |
-| ![Settings — Appearance](docs/screenshots/settings2.png) | ![Settings — Visual](docs/screenshots/settings3.png) |
-| ![DevTools](docs/screenshots/DevTools.png) | |
+### Servers
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/server-list.jpg" alt="Server browser" /><br>
+      <sub><b>Server browser</b> — live list with filters &amp; favorites</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/Servers-overview.jpg" alt="Self-hosted servers" /><br>
+      <sub><b>Self-hosted servers</b> — every instance in one panel</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="docs/screenshots/Servers-server.jpg" alt="Server detail" /><br>
+      <sub><b>Server detail</b> — status, players, console, logs</sub>
+    </td>
+    <td align="center">
+      <img src="docs/screenshots/Servers-server-config.jpg" alt="Server config editor" /><br>
+      <sub><b>Config editor</b> — typed form over ServerConfig.toml</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="docs/screenshots/Servers-server-scheduler.jpg" alt="Scheduler" /><br>
+      <sub><b>Scheduler</b> — cron-style restarts &amp; announcements</sub>
+    </td>
+    <td align="center">
+      <img src="docs/screenshots/Servers-mods.jpg" alt="Server mods" /><br>
+      <sub><b>Server mods</b> — drag-drop deploy to each instance</sub>
+    </td>
+  </tr>
+</table>
+
+### Coop World Editor
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/CoopEditor0.png" alt="Host a coop session" /><br>
+      <sub><b>Host a session</b> — one click starts the relay &amp; launches the editor</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/CoopEditor1.png" alt="Live session" /><br>
+      <sub><b>Live session</b> — invite code, peers, live op stats</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="docs/screenshots/CoopEditor2.png" alt="In-game sync" /><br>
+      <sub><b>In-game</b> — remote cursor &amp; edits mirrored in real time</sub>
+    </td>
+    <td align="center">
+      <img src="docs/screenshots/CoopEditor3.png" alt="Peer presence" /><br>
+      <sub><b>Peer presence</b> — per-author colors, tool, selection</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2">
+      <img src="docs/screenshots/CoopEditor4.png" alt="Shared project sync" width="720" /><br>
+      <sub><b>Shared project sync</b> — joiners auto-download the host's project &amp; relaunch into it</sub>
+    </td>
+  </tr>
+</table>
+
+### Vehicles &amp; Maps
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/cars-overview.jpg" alt="Vehicle browser" /><br>
+      <sub><b>Vehicle browser</b> — every car, stock &amp; modded</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/cars-editor.jpg" alt="Vehicle editor" /><br>
+      <sub><b>Vehicle editor</b> — tweak configs in place</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="docs/screenshots/Maps.jpg" alt="Map browser" /><br>
+      <sub><b>Map browser</b> — built-in &amp; modded levels</sub>
+    </td>
+    <td align="center">
+      <img src="docs/screenshots/map-selection.jpg" alt="Map selection" /><br>
+      <sub><b>Map selection</b> — spawn points and level metadata</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="docs/screenshots/LiveryEditor.jpg" alt="Livery editor" /><br>
+      <sub><b>Livery editor</b> — per-config skin management</sub>
+    </td>
+    <td align="center">
+      <img src="docs/screenshots/Controls-liveinput.jpg" alt="Controls editor" /><br>
+      <sub><b>Controls editor</b> — live input viewer &amp; binder</sub>
+    </td>
+  </tr>
+</table>
+
+### Mods
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/Mods-installed.jpg" alt="Installed mods" /><br>
+      <sub><b>Installed mods</b> — enable, disable, uninstall</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/Mods-browse.jpg" alt="Mod browser" /><br>
+      <sub><b>Browse</b> — install from repo with one click</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2">
+      <img src="docs/screenshots/mods-registry.jpg" alt="Mod registry" width="720" /><br>
+      <sub><b>Registry</b> — deduplicated, indexed, searchable</sub>
+    </td>
+  </tr>
+</table>
+
+### Social &amp; Live
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/friends.jpg" alt="Friends" /><br>
+      <sub><b>Friends</b> — online status &amp; server presence</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/voicechat.png" alt="Voice chat" /><br>
+      <sub><b>Voice chat</b> — hybrid proximity + party audio</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2">
+      <img src="docs/screenshots/Live-GPS.png" alt="Live GPS" width="720" /><br>
+      <sub><b>Live GPS</b> — track players &amp; routes in real time</sub>
+    </td>
+  </tr>
+</table>
+
+### CareerMP
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/CareerMP-Saves.jpg" alt="CareerMP saves" /><br>
+      <sub><b>Saves</b> — cloud-style slot manager</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/CareerMP-Mods.jpg" alt="CareerMP mods" /><br>
+      <sub><b>Mods</b> — per-career mod sets</sub>
+    </td>
+  </tr>
+</table>
+
+### Settings &amp; Dev
+
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <img src="docs/screenshots/settings1.png" alt="Settings — General" /><br>
+      <sub><b>General</b></sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="docs/screenshots/settings2.png" alt="Settings — Appearance" /><br>
+      <sub><b>Appearance</b></sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="docs/screenshots/settings3.png" alt="Settings — Visual" /><br>
+      <sub><b>Visual filters</b></sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="3">
+      <img src="docs/screenshots/DevTools.png" alt="DevTools" width="720" /><br>
+      <sub><b>DevTools</b> — Lua REPL, tabbed buffers, live output</sub>
+    </td>
+  </tr>
+</table>
 
 </details>
 
