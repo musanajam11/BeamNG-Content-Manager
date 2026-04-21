@@ -25,6 +25,7 @@ import { useAppStore } from './stores/useAppStore'
 import { useServerStore } from './stores/useServerStore'
 import { useVoiceChatStore } from './stores/useVoiceChatStore'
 import { useGameStore } from './stores/useGameStore'
+import { useWorldEditSessionStore } from './stores/useWorldEditSessionStore'
 import { useThemeStore, resolveColorMode, applyTheme } from './stores/useThemeStore'
 import i18n from './i18n'
 
@@ -90,6 +91,23 @@ function App(): React.JSX.Element {
       setUpdateReady(info.version)
     })
     return () => { unsub1(); unsub2(); unsub3() }
+  }, [])
+
+  // World Editor Sync — register IPC subscriptions once at the App level so
+  // op/log/peer history survives navigating away from the session page. The
+  // page itself just reads from the store.
+  useEffect(() => {
+    const store = useWorldEditSessionStore
+    const off1 = window.api.onWorldEditSessionOp?.((op) => store.getState().pushOp(op))
+    const off2 = window.api.onWorldEditSessionLog?.((entry) => store.getState().pushLog(entry))
+    const off3 = window.api.onWorldEditSessionPeerPose?.((pose) => store.getState().setPose(pose))
+    const off4 = window.api.onWorldEditSessionPeerActivity?.((act) => store.getState().setActivity(act))
+    return () => {
+      off1?.()
+      off2?.()
+      off3?.()
+      off4?.()
+    }
   }, [])
 
   // Discord Rich Presence: update when the user joins / leaves a server

@@ -630,6 +630,9 @@ interface AppAPI {
     token?: string | null
     levelName?: string | null
     displayName?: string
+    authMode?: 'open' | 'token' | 'approval' | 'friends'
+    friendsWhitelist?: string[]
+    advertiseHost?: string | null
   }): Promise<{ success: boolean; error?: string; status?: import('../shared/types').SessionStatus }>
   worldEditSessionJoin(opts: {
     host: string
@@ -637,6 +640,39 @@ interface AppAPI {
     token?: string | null
     displayName?: string
   }): Promise<{ success: boolean; error?: string; status?: import('../shared/types').SessionStatus }>
+  worldEditSessionDecodeCode(code: string): Promise<{
+    ok: boolean
+    host?: string
+    port?: number
+    token?: string | null
+    level?: string | null
+    sessionId?: string | null
+    displayName?: string | null
+    error?: string
+  }>
+  worldEditSessionHostAndLaunch(opts: {
+    port?: number
+    token?: string | null
+    levelName?: string | null
+    displayName?: string
+    authMode?: 'open' | 'token' | 'approval' | 'friends'
+    friendsWhitelist?: string[]
+    advertiseHost?: string | null
+  }): Promise<{ success: boolean; error?: string; status?: import('../shared/types').SessionStatus; level?: string }>
+  worldEditSessionJoinCodeAndLaunch(opts: {
+    code: string; displayName?: string
+  }): Promise<{ success: boolean; error?: string; status?: import('../shared/types').SessionStatus; level?: string }>
+  worldEditSessionApprovePeer(authorId: string): Promise<{ success: boolean }>
+  worldEditSessionRejectPeer(opts: { authorId: string; reason?: string }): Promise<{ success: boolean }>
+  worldEditSessionSetAuthMode(mode: 'open' | 'token' | 'approval' | 'friends'): Promise<{ success: boolean }>
+  worldEditSessionSetFriendsWhitelist(usernames: string[]): Promise<{ success: boolean }>
+  worldEditSessionSetAdvertiseHost(host: string): Promise<{ success: boolean }>
+  worldEditSessionGetHostAddresses(): Promise<Array<{
+    kind: 'tailscale' | 'lan' | 'public' | 'loopback'
+    address: string
+    label: string
+    recommended: boolean
+  }>>
   worldEditSessionLeave(): Promise<{ success: boolean }>
   worldEditSessionLaunchIntoEditor(opts?: {
     levelOverride?: string | null
@@ -658,6 +694,29 @@ interface AppAPI {
   onWorldEditSessionLog(cb: (entry: import('../shared/types').SessionLogEntry) => void): () => void
   onWorldEditSessionPeerPose(cb: (pose: import('../shared/types').PeerPoseEntry) => void): () => void
   onWorldEditSessionPeerActivity(cb: (act: import('../shared/types').PeerActivity) => void): () => void
+  onWorldEditSessionPeerPendingApproval(cb: (p: {
+    authorId: string; displayName: string; beamUsername: string | null; remote: string
+  }) => void): () => void
+  onWorldEditSessionLevelRequired(cb: (info: {
+    levelName: string | null
+    levelSource: { builtIn: boolean; modPath?: string; hash?: string } | null
+  }) => void): () => void
+
+  /* Coop-session project: advertise (host) / download (joiner). */
+  worldEditSessionSetActiveProject(args: {
+    path: string; name: string; levelName: string; folder: string
+  }): Promise<{
+    success: boolean
+    error?: string
+    project?: import('../shared/types').SessionProjectInfo | null
+  }>
+  worldEditSessionClearActiveProject(): Promise<{ success: boolean }>
+  worldEditSessionDownloadOfferedProject(): Promise<{
+    success: boolean
+    error?: string
+    localPath?: string
+  }>
+  onWorldEditSessionProjectOffered(cb: (info: import('../shared/types').SessionProjectInfo) => void): () => void
 
   // Voice Chat
   voiceEnable(): Promise<{ success: boolean; error?: string }>

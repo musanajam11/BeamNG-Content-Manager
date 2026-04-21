@@ -685,6 +685,48 @@ export interface SessionStatus {
   bridgeReady: boolean
   opsIn: number
   opsOut: number
+  /** Host-only: current auth mode; null when idle or joined. */
+  authMode: 'open' | 'token' | 'approval' | 'friends' | null
+  /** Host-only: joiners awaiting host approval. */
+  pendingApprovals: Array<{
+    authorId: string
+    displayName: string
+    beamUsername: string | null
+    remote: string
+  }>
+  /** Host-only: shareable session code (base64 encoded + "BEAMCM2:" prefix). */
+  sessionCode: string | null
+  /**
+   * Project the host is offering for peers to download. Host-side: populated
+   * after `worldEdit:session:setActiveProject` + initial zip/hash build.
+   * Joiner-side: populated from the welcome frame so the UI can prompt the
+   * user to download + install + load the host's saved project.
+   */
+  project?: SessionProjectInfo | null
+  /** Joiner-side: download progress of the current project transfer (0..1). */
+  projectDownload?: { received: number; total: number; done: boolean; error?: string } | null
+  /** Joiner-side: true once the downloaded project has been installed locally. */
+  projectInstalledPath?: string | null
+}
+
+/**
+ * Metadata about the host's "active project" — the one a joiner can download
+ * and apply locally to get the same starting point. Served by the relay over
+ * HTTP on `httpPort` as `GET /project.zip`.
+ */
+export interface SessionProjectInfo {
+  /** Short human name, e.g. "coop_20260421_1905". */
+  name: string
+  /** BeamNG source level the project is derived from, e.g. "gridmap_v2". */
+  levelName: string
+  /** Folder name under `<userDir>/levels/_beamcm_projects/` on the host. */
+  folder: string
+  /** SHA-256 of the zipped project bytes. */
+  sha256: string
+  /** Size of the .zip payload in bytes. */
+  sizeBytes: number
+  /** TCP port the host exposes its HTTP download endpoint on. */
+  httpPort: number
 }
 
 /** Op envelope as it crosses the CM-to-CM wire and is surfaced to the renderer. */
@@ -705,7 +747,7 @@ export interface SessionOp {
 export interface SessionLogEntry {
   ts: number
   level: 'info' | 'warn' | 'error'
-  source: 'relay' | 'peer' | 'bridge' | 'session'
+  source: 'relay' | 'peer' | 'bridge' | 'session' | 'snapshot'
   message: string
 }
 

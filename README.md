@@ -39,14 +39,19 @@ Manage mods, vehicles, maps, servers, friends, career saves, and more — from a
 |:---:|:---:|
 | ![Server List](docs/screenshots/server-list.jpg) | ![Servers Overview](docs/screenshots/Servers-overview.jpg) |
 | ![Server Config](docs/screenshots/Servers-server.jpg) | ![Server Config Editor](docs/screenshots/Servers-server-config.jpg) |
-| ![Server Scheduler](docs/screenshots/Servers-server-scheduler.jpg) | ![Friends](docs/screenshots/friends.jpg) |
+| ![Server Scheduler](docs/screenshots/Servers-server-scheduler.jpg) | ![Server Mods](docs/screenshots/Servers-mods.jpg) |
+| ![Friends](docs/screenshots/friends.jpg) | ![Voice Chat](docs/screenshots/voicechat.png) |
 | ![Cars Overview](docs/screenshots/cars-overview.jpg) | ![Cars Editor](docs/screenshots/cars-editor.jpg) |
 | ![Maps](docs/screenshots/Maps.jpg) | ![Map Selection](docs/screenshots/map-selection.jpg) |
 | ![Mods Installed](docs/screenshots/Mods-installed.jpg) | ![Mods Browse](docs/screenshots/Mods-browse.jpg) |
 | ![Mods Registry](docs/screenshots/mods-registry.jpg) | ![Live GPS](docs/screenshots/Live-GPS.png) |
-| ![Controls Live Input](docs/screenshots/Controls-liveinput.jpg) | ![Career Overview](docs/screenshots/Career-Overview.jpg) |
-| ![Career Saved](docs/screenshots/Career-Saved.jpg) | ![Career Easy Install](docs/screenshots/Career-EasyInstall.jpg) |
-| ![Settings General](docs/screenshots/Settings-general.jpg) | ![Settings Appearance](docs/screenshots/Settings-appearance.jpg) |
+| ![Controls Live Input](docs/screenshots/Controls-liveinput.jpg) | ![Livery Editor](docs/screenshots/LiveryEditor.jpg) |
+| ![Coop World Editor — Host](docs/screenshots/CoopEditor0.png) | ![Coop World Editor — Session](docs/screenshots/CoopEditor1.png) |
+| ![Coop World Editor — In-Game](docs/screenshots/CoopEditor2.png) | ![Coop World Editor — Peers](docs/screenshots/CoopEditor3.png) |
+| ![Coop World Editor — Project Sync](docs/screenshots/CoopEditor4.png) | ![CareerMP Saves](docs/screenshots/CareerMP-Saves.jpg) |
+| ![CareerMP Mods](docs/screenshots/CareerMP-Mods.jpg) | ![Settings — General](docs/screenshots/settings1.png) |
+| ![Settings — Appearance](docs/screenshots/settings2.png) | ![Settings — Visual](docs/screenshots/settings3.png) |
+| ![DevTools](docs/screenshots/DevTools.png) | |
 
 </details>
 
@@ -307,6 +312,48 @@ Pull mod metadata from configurable repositories (name, URL, priority). Verified
 
 </details>
 
+### Coop World Editor
+
+<details>
+<summary>Edit BeamNG maps together in real time — no BeamMP server needed</summary>
+
+Peer-to-peer collaborative World Editor that mirrors object placement, terrain edits, brush strokes, camera poses, and undo/redo history across every participant. Each player runs vanilla singleplayer BeamNG.drive; Content Manager bridges the in-game editor over a direct TCP relay so you see the other editor's cursor and changes in real time without a BeamMP server.
+
+- **One-Click Host** — pick an advertise address (Tailscale, public IP, LAN, or loopback), optional token, auth mode, and level — then one button starts the relay AND launches BeamNG directly into the World Editor
+- **One-Click Join** — paste a shareable `BEAMCM2:` session code; Content Manager decodes the host, port, token, session ID, and level; auto-forces you onto the host's level and launches into the editor
+- **Session Code Format** — compact `BEAMCM2:<base64url>` blob encoding host, port, optional token, level, session ID, and display name — one string covers everything a peer needs
+- **Host-Toggleable Auth** — choose per-session: **Open** (code-only), **Token** (code + shared secret), **Approval** (host accepts each joiner manually with Accept / Reject buttons), or **Friends only** (whitelisted BeamMP usernames)
+- **Tailscale-Aware Addressing** — automatically surfaces your Tailnet IP alongside LAN and public IPs; tailnet entries are marked as recommended for zero-config cross-network play
+- **Level Sync & Install Prompt** — the host's current level is advertised in the session code; joiners get a banner showing the required level and whether it's a built-in BeamNG map or a mod (with install hint when missing)
+- **Shared Starting Project** — the host auto-provisions a coop project (`coop_<date>`) on session start, captures the current editor state into it, and exposes it to joiners as a downloadable snapshot so both sides start from an identical map state
+- **Auto Project Download & Launch** — joiners pull the host's project zip over HTTP (sha256-verified), extract it into `levels/_beamcm_projects/<folder>/`, then Content Manager automatically relaunches BeamNG into the synced project — mirroring BeamMP's "download required mods before joining" flow
+- **Mid-Session Project Push** — when the host swaps projects during a live session, a new offer is broadcast to every connected peer; joiners auto-download the new sha and relaunch into it without manual intervention
+- **On-Disk Zip Cache** — the host's project zip is streamed to a dotfile next to the project folder (`.<folder>.coop.zip`) with on-the-fly sha256 hashing and served via `createReadStream`; cleaned up when the session stops
+- **Load Project Picker** — pick any existing coop project from disk as the starting state when hosting, instead of relying on auto-provisioning
+- **Live Op Stream** — every editor action (create/modify/delete object, brush stroke, field edit, terrain paint, undo, redo) is serialized and broadcast with author IDs, sequence numbers, and timestamps
+- **Snapshot Replay** — new joiners receive a full snapshot of the current scene state on connect, then stream live ops going forward, so mid-session joining works cleanly
+- **Peer Presence** — see other participants' editor camera positions, active tool, and selected object in real time with per-author color coding
+- **Windows Firewall Helper** — one-click rule creation for the listen port **and** the project-zip HTTP port in a single UAC prompt (covers Tailscale's wintun interface that Electron's auto-prompt misses)
+- **Discord Rich Presence** — shows "Editing Worlds with Friends" when you're on the coop editor page
+
+</details>
+
+### Lua Console
+
+<details>
+<summary>Live GE/VE-Lua REPL into the running BeamNG.drive process</summary>
+
+- **Scope Selector** — switch between **GE-Lua** (game engine global state) and **VE-Lua** (per-vehicle, pick any spawned vehicle from the dropdown)
+- **Multi-Line Editor** — full Lua editor with syntax highlighting, autocompletion, and snippet insertion; editor/output height splitter is resizable and persisted
+- **Output Stream** — `print()`, `log()`, result returns, and errors are streamed back in real time with timestamps and per-entry typing (log / print / result / err)
+- **Filter & Search** — filter output by entry type and free-text search across the stream
+- **Command History** — every executed snippet is saved to a sidebar history list with replay; snippets tab offers a curated library of common one-liners
+- **Inspector Tree** — right-side panel that recursively expands any Lua value (table, vector, object) returned from the game, with per-node actions
+- **UI Files Panel** — browse and edit BeamNG UI Lua files directly in-app alongside the REPL (split or tabbed layout)
+- **Connection Indicator** — shows whether the bridge is deployed, whether BeamNG.drive is running, and whether the REPL is live
+
+</details>
+
 ### CareerMP Save Manager
 
 <details>
@@ -387,17 +434,17 @@ Pull mod metadata from configurable repositories (name, URL, priority). Verified
 ```
 src/
 ├── main/                # Electron main process
-│   ├── ipc/             #   IPC handlers (~90 channels)
-│   ├── services/        #   Backend services (~18 services)
+│   ├── ipc/             #   IPC handlers (~290 channels)
+│   ├── services/        #   Backend services (~30 services)
 │   └── utils/           #   Parsing utilities
 ├── preload/             # Context bridge
 ├── renderer/            # React frontend
 │   └── src/
 │       ├── components/  #   UI components
 │       ├── hooks/       #   Custom React hooks
-│       ├── locales/     #   20 language JSON files
-│       ├── pages/       #   Page components (12 pages)
-│       └── stores/      #   Zustand state stores (~8 stores)
+│       ├── locales/     #   23 language JSON files
+│       ├── pages/       #   Page components (18 pages)
+│       └── stores/      #   Zustand state stores (~10 stores)
 └── shared/              # Types shared between main & renderer
 build/                   # Electron-builder resources (icons)
 resources/               # Bundled assets (backgrounds)

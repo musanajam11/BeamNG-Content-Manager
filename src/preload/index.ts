@@ -722,6 +722,9 @@ const api = {
     token?: string | null
     levelName?: string | null
     displayName?: string
+    authMode?: 'open' | 'token' | 'approval' | 'friends'
+    friendsWhitelist?: string[]
+    advertiseHost?: string | null
   }) =>
     ipcRenderer.invoke('worldEdit:session:host', opts) as Promise<{
       success: boolean
@@ -739,6 +742,59 @@ const api = {
       error?: string
       status?: import('../shared/types').SessionStatus
     }>,
+  /** Parse a session code without connecting. */
+  worldEditSessionDecodeCode: (code: string) =>
+    ipcRenderer.invoke('worldEdit:session:decodeCode', code) as Promise<{
+      ok: boolean
+      host?: string
+      port?: number
+      token?: string | null
+      level?: string | null
+      sessionId?: string | null
+      displayName?: string | null
+      error?: string
+    }>,
+  /** One-click host: starts relay AND launches the game. */
+  worldEditSessionHostAndLaunch: (opts: {
+    port?: number
+    token?: string | null
+    levelName?: string | null
+    displayName?: string
+    authMode?: 'open' | 'token' | 'approval' | 'friends'
+    friendsWhitelist?: string[]
+    advertiseHost?: string | null
+  }) =>
+    ipcRenderer.invoke('worldEdit:session:hostAndLaunch', opts) as Promise<{
+      success: boolean
+      error?: string
+      status?: import('../shared/types').SessionStatus
+      level?: string
+    }>,
+  /** One-click join: parses the code, connects, and launches the game. */
+  worldEditSessionJoinCodeAndLaunch: (opts: { code: string; displayName?: string }) =>
+    ipcRenderer.invoke('worldEdit:session:joinCodeAndLaunch', opts) as Promise<{
+      success: boolean
+      error?: string
+      status?: import('../shared/types').SessionStatus
+      level?: string
+    }>,
+  worldEditSessionApprovePeer: (authorId: string) =>
+    ipcRenderer.invoke('worldEdit:session:approvePeer', authorId) as Promise<{ success: boolean }>,
+  worldEditSessionRejectPeer: (opts: { authorId: string; reason?: string }) =>
+    ipcRenderer.invoke('worldEdit:session:rejectPeer', opts) as Promise<{ success: boolean }>,
+  worldEditSessionSetAuthMode: (mode: 'open' | 'token' | 'approval' | 'friends') =>
+    ipcRenderer.invoke('worldEdit:session:setAuthMode', mode) as Promise<{ success: boolean }>,
+  worldEditSessionSetFriendsWhitelist: (usernames: string[]) =>
+    ipcRenderer.invoke('worldEdit:session:setFriendsWhitelist', usernames) as Promise<{ success: boolean }>,
+  worldEditSessionSetAdvertiseHost: (host: string) =>
+    ipcRenderer.invoke('worldEdit:session:setAdvertiseHost', host) as Promise<{ success: boolean }>,
+  worldEditSessionGetHostAddresses: () =>
+    ipcRenderer.invoke('worldEdit:session:getHostAddresses') as Promise<Array<{
+      kind: 'tailscale' | 'lan' | 'public' | 'loopback'
+      address: string
+      label: string
+      recommended: boolean
+    }>>,
   worldEditSessionLeave: () =>
     ipcRenderer.invoke('worldEdit:session:leave') as Promise<{ success: boolean }>,
   worldEditSessionLaunchIntoEditor: (opts?: { levelOverride?: string | null }) =>
@@ -787,6 +843,49 @@ const api = {
     const handler = (_e: unknown, act: import('../shared/types').PeerActivity): void => cb(act)
     ipcRenderer.on('worldEdit:session:peerActivity', handler)
     return () => ipcRenderer.removeListener('worldEdit:session:peerActivity', handler)
+  },
+  onWorldEditSessionPeerPendingApproval: (cb: (p: {
+    authorId: string; displayName: string; beamUsername: string | null; remote: string
+  }) => void) => {
+    const handler = (_e: unknown, p: {
+      authorId: string; displayName: string; beamUsername: string | null; remote: string
+    }): void => cb(p)
+    ipcRenderer.on('worldEdit:session:peerPendingApproval', handler)
+    return () => ipcRenderer.removeListener('worldEdit:session:peerPendingApproval', handler)
+  },
+  onWorldEditSessionLevelRequired: (cb: (info: {
+    levelName: string | null
+    levelSource: { builtIn: boolean; modPath?: string; hash?: string } | null
+  }) => void) => {
+    const handler = (_e: unknown, info: {
+      levelName: string | null
+      levelSource: { builtIn: boolean; modPath?: string; hash?: string } | null
+    }): void => cb(info)
+    ipcRenderer.on('worldEdit:session:levelRequired', handler)
+    return () => ipcRenderer.removeListener('worldEdit:session:levelRequired', handler)
+  },
+
+  /* Coop-session project: advertise (host) / download (joiner). */
+  worldEditSessionSetActiveProject: (args: {
+    path: string; name: string; levelName: string; folder: string
+  }) =>
+    ipcRenderer.invoke('worldEdit:session:setActiveProject', args) as Promise<{
+      success: boolean
+      error?: string
+      project?: import('../shared/types').SessionProjectInfo | null
+    }>,
+  worldEditSessionClearActiveProject: () =>
+    ipcRenderer.invoke('worldEdit:session:clearActiveProject') as Promise<{ success: boolean }>,
+  worldEditSessionDownloadOfferedProject: () =>
+    ipcRenderer.invoke('worldEdit:session:downloadOfferedProject') as Promise<{
+      success: boolean
+      error?: string
+      localPath?: string
+    }>,
+  onWorldEditSessionProjectOffered: (cb: (info: import('../shared/types').SessionProjectInfo) => void) => {
+    const handler = (_e: unknown, info: import('../shared/types').SessionProjectInfo): void => cb(info)
+    ipcRenderer.on('worldEdit:session:projectOffered', handler)
+    return () => ipcRenderer.removeListener('worldEdit:session:projectOffered', handler)
   },
 
   // Voice Chat

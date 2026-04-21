@@ -28,7 +28,7 @@ import { createHash } from 'crypto'
 import { homedir } from 'os'
 import { app, BrowserWindow, safeStorage } from 'electron'
 import type { GamePaths, GameStatus } from '../../shared/types'
-import { EditorSyncBridgeSocket, type LuaOpEnvelope, type LuaHello, type LuaPose } from './EditorSyncBridgeSocket'
+import { EditorSyncBridgeSocket, type LuaOpEnvelope, type LuaHello, type LuaPose, type LuaEnvObservation, type LuaFieldObservation, type LuaSnapshotChunk, type LuaSnapshotAck, type LuaBrushObservation } from './EditorSyncBridgeSocket'
 
 interface ModInfo {
   file_name: string
@@ -230,7 +230,7 @@ local function onUpdate(dt)
   log('I', 'beamcmBridge', 'CM launch signal: mode=' .. mode)
   if content.vehicle then pendingVehicle = content.vehicle end
   if mode == "freeroam" then
-    local level = content.level or "gridmap_v2/info.json"
+    local level = content.level or "/levels/gridmap_v2/info.json"
     log('I', 'beamcmBridge', 'Loading level: ' .. level)
     if core_levels and core_levels.startLevel then
       core_levels.startLevel(level)
@@ -532,6 +532,144 @@ local acksRcvd = 0
 local cmPoseTimer = 0
 local cmPoseInterval = 0.2    -- seconds between V| pose frames (~5 Hz)
 
+-- ── Env channel (Phase 1: scene globals — ToD, weather, gravity, simSpeed) ──
+-- Last-write-wins per key. Captured by polling registered getters at 4 Hz,
+-- batched and flushed every 250 ms as N| frames. Inbound M| frames are
+-- applied via the registered setter under suppressEnvCapture so we don't
+-- echo. \`lastSentEnv\` is the per-key cache used both by the diff (to skip
+-- unchanged values on outbound) and by the apply path (to seed the cache so
+-- the next poll doesn't re-emit a remote-set value as if local).
+local cmEnvPollTimer = 0
+local cmEnvPollInterval = 0.25  -- seconds between getter sweeps (4 Hz)
+local cmEnvFlushTimer = 0
+local cmEnvFlushInterval = 0.25 -- seconds between N| batch flushes (4 Hz)
+local cmEnvOutQueue = {}        -- pending {key, value, ts} entries to flush
+local lastSentEnv = {}          -- key -> last value we observed/applied
+local suppressEnvCapture = false
+
+local function envEqual(a, b)
+  if type(a) ~= type(b) then return false end
+  if type(a) == 'number' then return math.abs(a - b) < 1e-4 end
+  if type(a) == 'table' then
+    -- Shallow JSON-equality is good enough for our env values (small flat tables).
+    return jsonEncode(a) == jsonEncode(b)
+  end
+  return a == b
+end
+
+-- Registered env keys. Each entry has \`get\` and \`set\` callbacks; either may
+-- be missing on builds that don't expose the corresponding API, in which case
+-- the key is silently inert. Keep this list small and hand-curated — every
+-- entry is a getter call per poll tick.
+local ENV_KEYS = {
+  tod = {
+    get = function()
+      if core_environment and core_environment.getTimeOfDay then
+        local ok, v = pcall(core_environment.getTimeOfDay)
+        if ok then return v end
+      end
+      return nil
+    end,
+    set = function(v)
+      if core_environment and core_environment.setTimeOfDay then
+        pcall(core_environment.setTimeOfDay, v)
+      end
+    end,
+  },
+  weather = {
+    get = function()
+      -- core_weather may be missing on some builds; treat absent as nil.
+      if core_weather and core_weather.getCurrentPreset then
+        local ok, v = pcall(core_weather.getCurrentPreset)
+        if ok and type(v) == 'string' then return v end
+      end
+      return nil
+    end,
+    set = function(v)
+      if core_weather and core_weather.setPreset and type(v) == 'string' then
+        pcall(core_weather.setPreset, v)
+      end
+    end,
+  },
+  gravity = {
+    get = function()
+      if getGravity then
+        local ok, v = pcall(getGravity)
+        if ok and type(v) == 'number' then return v end
+      end
+      return nil
+    end,
+    set = function(v)
+      if setGravity and type(v) == 'number' then
+        pcall(setGravity, v)
+      end
+    end,
+  },
+  simSpeed = {
+    get = function()
+      -- bullettime is the user-facing slow-mo / speed-up control; getReal()
+      -- gives us the actual rate (0.0–8.0 typical).
+      if bullettime and bullettime.getReal then
+        local ok, v = pcall(bullettime.getReal)
+        if ok and type(v) == 'number' then return v end
+      end
+      return nil
+    end,
+    set = function(v)
+      if bullettime and bullettime.set and type(v) == 'number' then
+        pcall(bullettime.set, v)
+      end
+    end,
+  },
+}
+
+-- ── Field channel (Phase 2: per-object dynamic-field writes) ──
+-- Captures inspector slider/checkbox edits via two complementary paths:
+--   A) cmSetField(obj, name, value, idx) helper — opt-in, immediate, used by
+--      the apply path itself and any in-house tools we wire up.
+--   B) cmPollFields() polling diff — 1 Hz sweep over TRACKED_FIELDS, catches
+--      everything path A misses (stock inspector panel, builtin tools).
+-- Helper-driven changes mark a 250 ms grace window so the next poll doesn't
+-- redundantly re-emit the same value.
+local cmFieldPollTimer = 0
+local cmFieldPollInterval = 1.0   -- seconds between polling sweeps
+local cmFieldFlushTimer = 0
+local cmFieldFlushInterval = 0.25 -- seconds between F| batch flushes
+local cmFieldOutQueue = {}        -- pending field frames to flush
+local lastFieldSnapshot = {}      -- pid -> { fieldName -> last value }
+local fieldHelperGrace = {}       -- "pid|fieldName" -> ts (ms) of last helper write
+local FIELD_GRACE_MS = 250
+local suppressFieldCapture = false
+
+-- Class → list of field names to watch. Hand-curated; expand as we discover
+-- inspector-only writes that matter for collaborative editing. Every entry
+-- costs (instances × fields) string-keyed reads per poll tick.
+local TRACKED_FIELDS = {
+  TimeOfDay      = { 'time', 'dayLength', 'dayScale', 'nightScale', 'azimuthOverride' },
+  ScatterSky     = { 'sunAzimuth', 'sunElevation', 'colorize', 'brightness' },
+  CloudLayer     = { 'coverage', 'windSpeed', 'baseColor' },
+  Precipitation  = { 'numDrops', 'dropSize', 'splashSize' },
+  WaterPlane     = { 'density', 'waveMagnitude', 'overallWaveMagnitude' },
+  LevelInfo      = { 'gravity', 'fogDensity', 'fogDensityOffset', 'fogColor' },
+}
+
+local function fieldGraceKey(pid, fieldName) return pid .. '|' .. fieldName end
+
+local function readObjField(obj, fieldName, arrayIndex)
+  if not obj or not obj.getField then return nil end
+  local ok, v = pcall(function() return obj:getField(fieldName, arrayIndex or 0) end)
+  if ok then return v end
+  return nil
+end
+
+local function getObjPid(obj)
+  if not obj then return nil end
+  local pid = readObjField(obj, 'persistentId', 0)
+  if (not pid or pid == '') and obj.persistentId then pid = obj.persistentId end
+  if pid == '' then pid = nil end
+  return pid
+end
+
 -- In-game ghost markers for peers. Populated by S| frames from CM, drawn
 -- every frame in onPreRender. Stale entries (>5 s) are skipped; CM also
 -- prunes its own pose map at 10 s so we usually stop receiving updates well
@@ -703,6 +841,443 @@ local function cmSendPose()
   cmSendLine("V|" .. json .. "\\n")
 end
 
+-- ── Env channel: poll, flush, apply ──
+local function cmNowMs()
+  return math.floor((socket and socket.gettime and socket.gettime() or os.time()) * 1000)
+end
+
+-- Walk every registered ENV_KEY, compare to lastSentEnv, queue changed values.
+-- Cheap (a handful of pcalled getter calls per tick); skipped while suppressing
+-- so a remote-driven setter doesn't bounce back.
+local function cmPollEnv()
+  if suppressEnvCapture then return end
+  if not cmClient or not cmGreeted then return end
+  for key, entry in pairs(ENV_KEYS) do
+    if entry.get then
+      local v = entry.get()
+      if v ~= nil and not envEqual(v, lastSentEnv[key]) then
+        lastSentEnv[key] = v
+        table.insert(cmEnvOutQueue, { key = key, value = v, ts = cmNowMs() })
+      end
+    end
+  end
+end
+
+-- Flush queued env observations as one N|{batch:[…]} frame. Per-key dedup:
+-- if the same key appears twice in the queue (slider scrub between flushes),
+-- only the latest entry wins.
+local function cmFlushEnv()
+  if not cmClient or not cmGreeted then return end
+  if #cmEnvOutQueue == 0 then return end
+  local byKey = {}
+  for _, entry in ipairs(cmEnvOutQueue) do byKey[entry.key] = entry end
+  cmEnvOutQueue = {}
+  local batch = {}
+  for _, entry in pairs(byKey) do table.insert(batch, entry) end
+  local json = jsonEncode({ batch = batch })
+  if not json then return end
+  cmSendLine("N|" .. json .. "\\n")
+end
+
+-- Apply one remote env observation. Called from the M| frame handler. Wrapped
+-- in suppressEnvCapture so the next cmPollEnv tick doesn't immediately
+-- re-emit the value as if it were a local change.
+local function applyRemoteEnv(env)
+  if type(env) ~= 'table' or type(env.key) ~= 'string' then return end
+  local entry = ENV_KEYS[env.key]
+  if not entry or not entry.set then return end
+  suppressEnvCapture = true
+  local ok, err = pcall(entry.set, env.value)
+  suppressEnvCapture = false
+  if not ok then
+    log('W', 'beamcmEditorSync', 'remote env apply failed for ' .. env.key .. ': ' .. tostring(err))
+    return
+  end
+  -- Seed the diff cache so the very next poll doesn't see this as a local change.
+  lastSentEnv[env.key] = env.value
+end
+
+-- ── Field channel: queue, poll, flush, apply ──
+local function queueFieldFrame(entry)
+  table.insert(cmFieldOutQueue, entry)
+  -- Update local snapshot cache so the next poll tick doesn't re-emit it.
+  lastFieldSnapshot[entry.pid] = lastFieldSnapshot[entry.pid] or {}
+  lastFieldSnapshot[entry.pid][entry.fieldName] = entry.value
+  fieldHelperGrace[fieldGraceKey(entry.pid, entry.fieldName)] = entry.ts
+end
+
+-- Path A: opt-in helper. Sets the field via setField+postApply (matches what
+-- the inspector does internally) and queues a capture frame unless suppressed.
+-- Exposed to other Lua modules (and ourselves) as M.cmSetField below.
+local function cmSetField(obj, fieldName, value, arrayIndex)
+  if not obj or not obj.setField then return end
+  arrayIndex = arrayIndex or 0
+  local ok = pcall(function() obj:setField(fieldName, arrayIndex, value) end)
+  if ok and obj.postApply then pcall(function() obj:postApply() end) end
+  if not ok then return end
+  if suppressFieldCapture then return end
+  if not cmClient or not cmGreeted then return end
+  local pid = getObjPid(obj)
+  if not pid then return end
+  queueFieldFrame({
+    pid = pid, fieldName = fieldName,
+    arrayIndex = arrayIndex, value = value, ts = cmNowMs(),
+  })
+end
+
+-- Path B: 1 Hz polling diff. Iterates TRACKED_FIELDS, queues changed values.
+-- Skips entries inside their helper grace window (path A already handled them).
+local function cmPollFields()
+  if suppressFieldCapture then return end
+  if not cmClient or not cmGreeted then return end
+  if not scenetree or not scenetree.findClassObjects then return end
+  local now = cmNowMs()
+  for className, fields in pairs(TRACKED_FIELDS) do
+    local ok, ids = pcall(function() return scenetree.findClassObjects(className) end)
+    if ok and type(ids) == 'table' then
+      for _, idOrName in ipairs(ids) do
+        local obj = nil
+        if scenetree.findObject then
+          local oOk, o = pcall(function() return scenetree.findObject(idOrName) end)
+          if oOk then obj = o end
+        end
+        if obj then
+          local pid = getObjPid(obj)
+          if pid then
+            local snap = lastFieldSnapshot[pid] or {}
+            for _, fname in ipairs(fields) do
+              local graceTs = fieldHelperGrace[fieldGraceKey(pid, fname)]
+              if not graceTs or (now - graceTs) > FIELD_GRACE_MS then
+                local v = readObjField(obj, fname, 0)
+                if v ~= nil and not envEqual(v, snap[fname]) then
+                  snap[fname] = v
+                  table.insert(cmFieldOutQueue, {
+                    pid = pid, fieldName = fname,
+                    arrayIndex = 0, value = v, ts = now,
+                  })
+                end
+              end
+            end
+            lastFieldSnapshot[pid] = snap
+          end
+        end
+      end
+    end
+  end
+  -- GC stale grace entries so the table doesn't grow unbounded over a long
+  -- session. Anything older than 2× the grace window is safe to drop.
+  local cutoff = now - (FIELD_GRACE_MS * 2)
+  for k, ts in pairs(fieldHelperGrace) do
+    if ts < cutoff then fieldHelperGrace[k] = nil end
+  end
+end
+
+-- Flush queued field captures as one F|{batch:[…]} frame. Per-(pid,fieldName)
+-- dedup: latest entry wins so a slider scrub between flushes only sends one.
+local function cmFlushFields()
+  if not cmClient or not cmGreeted then return end
+  if #cmFieldOutQueue == 0 then return end
+  local byKey = {}
+  for _, entry in ipairs(cmFieldOutQueue) do
+    byKey[entry.pid .. '|' .. entry.fieldName] = entry
+  end
+  cmFieldOutQueue = {}
+  local batch = {}
+  for _, entry in pairs(byKey) do table.insert(batch, entry) end
+  local json = jsonEncode({ batch = batch })
+  if not json then return end
+  cmSendLine("F|" .. json .. "\\n")
+end
+
+-- Apply one remote field write. The pid may not exist yet on this peer (object
+-- not created via op replay or snapshot yet) — silently skip; Phase 3 snapshot
+-- will catch it up later.
+local function applyRemoteField(msg)
+  if type(msg) ~= 'table' or type(msg.pid) ~= 'string' or type(msg.fieldName) ~= 'string' then
+    return
+  end
+  if not scenetree or not scenetree.findObjectByPersistentId then return end
+  local obj = scenetree.findObjectByPersistentId(msg.pid)
+  if not obj then return end
+  suppressFieldCapture = true
+  local ok = pcall(function()
+    obj:setField(msg.fieldName, msg.arrayIndex or 0, msg.value)
+    if obj.postApply then obj:postApply() end
+  end)
+  suppressFieldCapture = false
+  if not ok then return end
+  -- Seed snapshot cache so the next poll doesn't re-emit a remote-set value.
+  lastFieldSnapshot[msg.pid] = lastFieldSnapshot[msg.pid] or {}
+  lastFieldSnapshot[msg.pid][msg.fieldName] = msg.value
+end
+
+-- ── Snapshot exchange (Phase 3) ──
+-- The host CM asks Lua for a snapshot via Z|; Lua replies with one or more
+-- Y| chunks. The host caches them and forwards to late joiners. Joiner CM
+-- receives chunks and pushes them to its local Lua via B| frames; Lua
+-- reassembles, parses, and applies under suppress flags so the apply path
+-- doesn't echo as fresh ops/fields.
+--
+-- v1 snapshot covers env + fields. Touched-object serialization and brush
+-- deltas are stubbed to empty tables (extended in later iterations once we
+-- have BeamNG's scenetree-walk semantics nailed down).
+local SNAPSHOT_CHUNK_BYTES = 256 * 1024  -- 256 KiB chunks, fits comfortably under MAX_FRAME_BYTES
+local snapshotInbox = {}                 -- snapshotId -> { total, parts[], levelName, baseSeq }
+
+local function collectEnvSnapshot()
+  local out = {}
+  for key, _ in pairs(ENV_KEYS) do
+    local entry = ENV_KEYS[key]
+    if entry.get then
+      local v = entry.get()
+      if v ~= nil then out[key] = v end
+    end
+  end
+  return out
+end
+
+local function collectFieldSnapshot()
+  local out = {}
+  if not scenetree or not scenetree.findClassObjects then return out end
+  for className, fields in pairs(TRACKED_FIELDS) do
+    local ok, ids = pcall(function() return scenetree.findClassObjects(className) end)
+    if ok and type(ids) == 'table' then
+      for _, idOrName in ipairs(ids) do
+        local obj = nil
+        if scenetree.findObject then
+          local oOk, o = pcall(function() return scenetree.findObject(idOrName) end)
+          if oOk then obj = o end
+        end
+        if obj then
+          local pid = getObjPid(obj)
+          if pid then
+            for _, fname in ipairs(fields) do
+              local v = readObjField(obj, fname, 0)
+              if v ~= nil then
+                table.insert(out, {
+                  pid = pid, fieldName = fname,
+                  arrayIndex = 0, value = v,
+                })
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+  return out
+end
+
+-- Build + emit a snapshot. The Z| request payload may carry a target
+-- snapshotId so the host can correlate this response with its outstanding
+-- request. Chunks are sent synchronously here (no coroutine yield yet — the
+-- v1 payload is small enough that it doesn't matter; a coroutine becomes
+-- necessary once we serialize touched-object lists and brush deltas).
+local function buildAndSendSnapshot(req)
+  if not cmClient or not cmGreeted then return end
+  local snapshot = {
+    snapshotId = (req and req.snapshotId) or uuidv4(),
+    levelName = (function()
+      if getMissionFilename then
+        local ok, m = pcall(getMissionFilename)
+        if ok and type(m) == 'string' and m ~= '' then return m end
+      end
+      return nil
+    end)(),
+    createdTs = cmNowMs(),
+    env = collectEnvSnapshot(),
+    fields = collectFieldSnapshot(),
+    objects = {},        -- v1 stub; extend with touched-pid serialization later
+    terrainDelta = nil,  -- Phase 4
+    forestDelta = nil,   -- Phase 4
+    decalRoadDelta = nil,
+  }
+  local json = jsonEncode(snapshot)
+  if not json then
+    log('W', 'beamcmEditorSync', 'snapshot encode failed')
+    return
+  end
+  local total = math.max(1, math.ceil(#json / SNAPSHOT_CHUNK_BYTES))
+  -- Emit each chunk as one Y| frame. The host CM accumulates all 'total'
+  -- chunks (matched by snapshotId) before forwarding to joiners.
+  for i = 1, total do
+    local lo = (i - 1) * SNAPSHOT_CHUNK_BYTES + 1
+    local hi = math.min(i * SNAPSHOT_CHUNK_BYTES, #json)
+    local chunk = {
+      snapshotId = snapshot.snapshotId,
+      index = i - 1,
+      total = total,
+      byteLength = #json,
+      levelName = snapshot.levelName,
+      createdTs = snapshot.createdTs,
+      payload = string.sub(json, lo, hi),
+    }
+    local cjson = jsonEncode(chunk)
+    if cjson then cmSendLine("Y|" .. cjson .. "\\n") end
+  end
+end
+
+-- Apply a chunk pushed down by CM (B| frames). Buffers until all 'total'
+-- chunks present, then parses + applies.
+local function handleSnapshotChunk(msg)
+  if type(msg) ~= 'table' or type(msg.snapshotId) ~= 'string' then return end
+  local id = msg.snapshotId
+  local box = snapshotInbox[id]
+  if not box then
+    box = { total = msg.total or 1, parts = {}, levelName = msg.levelName, baseSeq = msg.baseSeq }
+    snapshotInbox[id] = box
+  end
+  if type(msg.index) == 'number' and type(msg.payload) == 'string' then
+    box.parts[msg.index + 1] = msg.payload
+  end
+  -- All chunks present?
+  for i = 1, box.total do
+    if box.parts[i] == nil then return end
+  end
+  local json = table.concat(box.parts)
+  snapshotInbox[id] = nil
+  local ok, snapshot = pcall(jsonDecode, json)
+  if not ok or type(snapshot) ~= 'table' then
+    log('W', 'beamcmEditorSync', 'snapshot decode failed for ' .. id)
+    cmSendLine("Z|" .. jsonEncode({ snapshotId = id, ok = false, error = 'decode failed' }) .. "\\n")
+    return
+  end
+  -- Apply env (cheap, instant) + fields under suppress flags so we don't echo
+  -- the apply back to the host as fresh observations.
+  suppressEnvCapture = true
+  suppressFieldCapture = true
+  local applyOk, applyErr = pcall(function()
+    if type(snapshot.env) == 'table' then
+      for key, value in pairs(snapshot.env) do
+        local entry = ENV_KEYS[key]
+        if entry and entry.set then
+          pcall(entry.set, value)
+          lastSentEnv[key] = value
+        end
+      end
+    end
+    if type(snapshot.fields) == 'table' then
+      for _, f in ipairs(snapshot.fields) do
+        if type(f) == 'table' and type(f.pid) == 'string' and type(f.fieldName) == 'string' then
+          if scenetree and scenetree.findObjectByPersistentId then
+            local obj = scenetree.findObjectByPersistentId(f.pid)
+            if obj then
+              pcall(function()
+                obj:setField(f.fieldName, f.arrayIndex or 0, f.value)
+                if obj.postApply then obj:postApply() end
+              end)
+              lastFieldSnapshot[f.pid] = lastFieldSnapshot[f.pid] or {}
+              lastFieldSnapshot[f.pid][f.fieldName] = f.value
+            end
+          end
+        end
+      end
+    end
+    -- objects/terrainDelta/forestDelta/decalRoadDelta: Phase 4+ hooks.
+  end)
+  suppressEnvCapture = false
+  suppressFieldCapture = false
+  -- Ack to CM either way; CM relays the Ack back up to the originating peer.
+  cmSendLine("Z|" .. jsonEncode({
+    snapshotId = id, ok = applyOk, error = applyOk and nil or tostring(applyErr),
+  }) .. "\\n")
+  log('I', 'beamcmEditorSync',
+      'snapshot ' .. id:sub(1, 8) .. ' applied (ok=' .. tostring(applyOk) .. ')')
+end
+
+-- ── Brush streams (Phase 4) ──
+-- Continuous gestures (terrain height/paint, forest paint, decal-road brush)
+-- streamed as Begin → Tick × N → End. The actual capture hooks live inside
+-- each editor tool — they call M.cmBrushBegin / M.cmBrushTick / M.cmBrushEnd
+-- at their existing apply cadence. We throttle Tick to 30 Hz here so a
+-- runaway tool can't flood the wire.
+--
+-- Apply path is dispatched by brushType. v1 ships the wire/dispatch
+-- skeleton + a per-stroke replay context table; per-brushType apply (calling
+-- into terrain:applyBrushDelta etc.) is wired in as the corresponding tool
+-- module is taught to publish.
+local BRUSH_TICK_MIN_INTERVAL_MS = 33  -- ≈30 Hz cap
+local localStrokes = {}                -- strokeId -> { brushType, lastTickMs }
+local remoteStrokes = {}               -- strokeId -> { brushType, settings, authorId }
+local suppressBrushCapture = false
+
+local function sendBrushFrame(msg)
+  if not cmClient or not cmGreeted then return end
+  local json = jsonEncode(msg)
+  if json then cmSendLine("T|" .. json .. "\\n") end
+end
+
+-- Public helper: tools call this at mouse-down. Returns the strokeId so the
+-- caller can pass it to cmBrushTick / cmBrushEnd.
+local function cmBrushBegin(brushType, payload)
+  if suppressBrushCapture then return nil end
+  if type(brushType) ~= 'string' then return nil end
+  local strokeId = uuidv4()
+  localStrokes[strokeId] = { brushType = brushType, lastTickMs = 0 }
+  sendBrushFrame({
+    strokeId = strokeId, brushType = brushType,
+    kind = 'begin', payload = payload, ts = cmNowMs(),
+  })
+  return strokeId
+end
+
+local function cmBrushTick(strokeId, payload)
+  if suppressBrushCapture then return end
+  local st = localStrokes[strokeId]
+  if not st then return end
+  local now = cmNowMs()
+  if now - st.lastTickMs < BRUSH_TICK_MIN_INTERVAL_MS then return end
+  st.lastTickMs = now
+  sendBrushFrame({
+    strokeId = strokeId, brushType = st.brushType,
+    kind = 'tick', payload = payload, ts = now,
+  })
+end
+
+local function cmBrushEnd(strokeId, finalSummary)
+  local st = localStrokes[strokeId]
+  if not st then return end
+  localStrokes[strokeId] = nil
+  if suppressBrushCapture then return end
+  sendBrushFrame({
+    strokeId = strokeId, brushType = st.brushType,
+    kind = 'end', payload = finalSummary, ts = cmNowMs(),
+  })
+end
+
+-- Apply one inbound brush frame. v1 dispatches by brushType and logs;
+-- per-brushType replay calls (terrain:applyBrushDelta etc.) are inserted
+-- here as each editor tool is taught to participate.
+local function applyRemoteBrush(msg)
+  if type(msg) ~= 'table' or type(msg.strokeId) ~= 'string' then return end
+  if type(msg.brushType) ~= 'string' or type(msg.kind) ~= 'string' then return end
+  local id = msg.strokeId
+  suppressBrushCapture = true
+  local ok = pcall(function()
+    if msg.kind == 'begin' then
+      remoteStrokes[id] = {
+        brushType = msg.brushType,
+        settings = msg.payload,
+        authorId = msg.authorId,
+      }
+      -- TODO: instantiate per-brushType replay context (terrain.beginRemoteStroke etc.)
+    elseif msg.kind == 'tick' then
+      local st = remoteStrokes[id]
+      if not st then return end
+      -- TODO: dispatch to terrain/forest/decalRoad apply hook by st.brushType.
+    elseif msg.kind == 'end' then
+      local st = remoteStrokes[id]
+      remoteStrokes[id] = nil
+      if not st then return end
+      -- TODO: finalise per-brushType replay context.
+    end
+  end)
+  suppressBrushCapture = false
+  if not ok then
+    log('W', 'beamcmEditorSync', 'applyRemoteBrush failed for stroke ' .. id:sub(1, 8))
+  end
+end
+
 -- Drain readable bytes, dispatch complete lines. Non-blocking.
 local function cmPump()
   if not cmClient then return end
@@ -760,6 +1335,53 @@ local function cmPump()
               levelName = p.levelName,
               ts = math.floor((socket and socket.gettime and socket.gettime() or os.time()) * 1000),
             }
+          end
+        elseif t == "M" then
+          -- M|<json> — remote env observation (single key, LWW). The relay
+          -- already filtered echoes by authorId, so we apply unconditionally
+          -- and let suppressEnvCapture stop us from re-emitting it.
+          local json = string.sub(line, 3)
+          local ok, env = pcall(jsonDecode, json)
+          if ok and type(env) == "table" then
+            applyRemoteEnv(env)
+          end
+        elseif t == "G" then
+          -- G|<json> — single remote field write. Phase 2 keeps it one-per-frame
+          -- (no batching inbound) so apply ordering is trivially per-frame FIFO.
+          local json = string.sub(line, 3)
+          local ok, msg = pcall(jsonDecode, json)
+          if ok and type(msg) == "table" then
+            applyRemoteField(msg)
+          end
+        elseif t == "Z" then
+          -- Z|<json> — host CM asking us to build + emit a snapshot. Payload
+          -- carries an optional snapshotId we should use so CM can match the
+          -- response back to the request. (When CM speaks Z| to a joiner-
+          -- side bridge, the joiner-side Lua never receives Z|; CM only
+          -- ever requests builds from the host.)
+          local json = string.sub(line, 3)
+          local ok, req = pcall(jsonDecode, json)
+          if ok and type(req) == "table" then
+            buildAndSendSnapshot(req)
+          else
+            buildAndSendSnapshot(nil)
+          end
+        elseif t == "B" then
+          -- B|<json> — joiner-side: a snapshot chunk pushed down by CM.
+          -- Buffer until all parts present, then apply.
+          local json = string.sub(line, 3)
+          local ok, msg = pcall(jsonDecode, json)
+          if ok and type(msg) == "table" then
+            handleSnapshotChunk(msg)
+          end
+        elseif t == "T" then
+          -- T|<json> — Phase 4 brush stroke frame (begin / tick / end).
+          -- Apply on every peer; originator never receives its own (filtered
+          -- by authorId in the relay).
+          local json = string.sub(line, 3)
+          local ok, msg = pcall(jsonDecode, json)
+          if ok and type(msg) == "table" then
+            applyRemoteBrush(msg)
           end
         elseif t == "P" then
           cmSendLine("Q|\\n")
@@ -832,11 +1454,17 @@ local ID_KEYS_ARRAY = {
 }
 
 -- Recursively rewrite ids in \`data\`. outbound: sim→{__pid=...}. !outbound: reverse.
--- Returns \`data\` (same reference, mutated) or nil if a required pid was unresolvable.
+--
+-- Inbound rewrite (peer op being applied locally) is *best-effort*: if a
+-- {__pid=...} can't be resolved (e.g. the peer's CreateObject references an
+-- object that doesn't exist on this side yet, which is the normal case for
+-- create actions), we replace it with \`nil\` and let BeamNG's action handler
+-- decide. Previously we returned nil from the whole call, which dropped every
+-- create/modify op so only \`undo\` ever applied — exactly the bug the user
+-- reported.
 local function rewriteIds(data, outbound, depth)
   depth = depth or 0
   if depth > 10 or type(data) ~= 'table' then return data end
-  local unresolved = false
   for k, v in pairs(data) do
     if ID_KEYS_SCALAR[k] then
       if outbound then
@@ -848,7 +1476,9 @@ local function rewriteIds(data, outbound, depth)
       else
         if type(v) == 'table' and v.__pid then
           local sim = pidToSim(v.__pid)
-          if sim then data[k] = sim else unresolved = true end
+          -- Best-effort: nil out unresolvable ids so the field is absent
+          -- rather than a stray {__pid=...} table the engine can't read.
+          data[k] = sim
         end
       end
     elseif ID_KEYS_ARRAY[k] and type(v) == 'table' then
@@ -861,16 +1491,15 @@ local function rewriteIds(data, outbound, depth)
         else
           if type(id) == 'table' and id.__pid then
             local sim = pidToSim(id.__pid)
-            if sim then v[i] = sim else unresolved = true end
+            v[i] = sim  -- nil collapses the array slot; acceptable here
           end
         end
       end
     elseif type(v) == 'table' then
-      local r = rewriteIds(v, outbound, depth + 1)
-      if r == nil then unresolved = true end
+      rewriteIds(v, outbound, depth + 1)
     end
   end
-  return unresolved and nil or data
+  return data
 end
 
 -- ── Remote op apply path ──────────────────────────────────────────────────────
@@ -888,12 +1517,11 @@ function applyRemoteOp(env)
       if type(env.name) ~= 'string' then return end
       local data = env.data
       if type(data) == 'table' then
-        local rewritten = rewriteIds(data, false)
-        if rewritten == nil then
-          log('W', 'beamcmEditorSync', 'remote op skipped (unresolved pid): ' .. tostring(env.name))
-          return
-        end
-        data = rewritten
+        -- rewriteIds is best-effort now — never returns nil, so we always
+        -- attempt the action even if some ids didn't resolve. This is
+        -- specifically what allows CreateObject and similar create-style
+        -- actions to land on peer instances.
+        rewriteIds(data, false)
       end
       if editor and editor.history and editor.history.commitAction then
         editor.history:commitAction(env.name, data or {})
@@ -1726,6 +2354,26 @@ local function onUpdate(dt)
       cmPoseTimer = 0
       cmSendPose()
     end
+    cmEnvPollTimer = cmEnvPollTimer + dt
+    if cmEnvPollTimer >= cmEnvPollInterval then
+      cmEnvPollTimer = 0
+      cmPollEnv()
+    end
+    cmEnvFlushTimer = cmEnvFlushTimer + dt
+    if cmEnvFlushTimer >= cmEnvFlushInterval then
+      cmEnvFlushTimer = 0
+      cmFlushEnv()
+    end
+    cmFieldPollTimer = cmFieldPollTimer + dt
+    if cmFieldPollTimer >= cmFieldPollInterval then
+      cmFieldPollTimer = 0
+      cmPollFields()
+    end
+    cmFieldFlushTimer = cmFieldFlushTimer + dt
+    if cmFieldFlushTimer >= cmFieldFlushInterval then
+      cmFieldFlushTimer = 0
+      cmFlushFields()
+    end
   end
   if replayQueue then
     replayTimer = replayTimer + dt
@@ -1742,6 +2390,10 @@ M.onEditorActivated = onEditorActivated
 M.onUpdate = onUpdate
 M.onClientStartMission = onClientStartMission
 M.onPreRender = onPreRender
+M.cmSetField = cmSetField
+M.cmBrushBegin = cmBrushBegin
+M.cmBrushTick = cmBrushTick
+M.cmBrushEnd = cmBrushEnd
 return M
 `
 
@@ -1860,6 +2512,16 @@ export class GameLauncherService {
   private onLuaOp: ((seq: number, env: LuaOpEnvelope) => void) | null = null
   /** Optional listener for pose ticks arriving from Lua (presence awareness). */
   private onLuaPose: ((pose: LuaPose) => void) | null = null
+  /** Optional listener for env observations arriving from Lua (Phase 1 env channel). */
+  private onLuaEnv: ((obs: LuaEnvObservation) => void) | null = null
+  /** Optional listener for field observations arriving from Lua (Phase 2 field channel). */
+  private onLuaField: ((obs: LuaFieldObservation) => void) | null = null
+  /** Optional listener for snapshot chunks arriving from host Lua (Phase 3). */
+  private onLuaSnapshotChunk: ((chunk: LuaSnapshotChunk) => void) | null = null
+  /** Optional listener for snapshot apply acks from joiner Lua (Phase 3). */
+  private onLuaSnapshotApplied: ((ack: LuaSnapshotAck) => void) | null = null
+  /** Optional listener for brush stroke frames from local Lua (Phase 4). */
+  private onLuaBrush: ((obs: LuaBrushObservation) => void) | null = null
 
   // Callback fired when serverInRelay state changes (true = joined server, false = disconnected)
   private onRelayStateChangeCallback: ((inRelay: boolean) => void) | null = null
@@ -3506,20 +4168,26 @@ export class GameLauncherService {
       this.log(`WARNING: Failed to re-patch BeamMP.zip for vanilla launch: ${err}`)
     }
 
-    // Write launch signal so the bridge knows what to load
+    // Write launch signal so the bridge knows what to load. The Lua API
+    // (`core_levels.startLevel`) expects the canonical VFS path with the
+    // leading `/levels/` prefix; passing just `<name>/info.json` silently
+    // no-ops on current BeamNG builds, which is why "Launch into editor"
+    // was landing in the main menu.
     if (config?.mode) {
       this.writeVanillaSignal(paths.userDir, {
         mode: config.mode,
-        level: config.level ? `${config.level}/info.json` : undefined,
+        level: config.level ? `/levels/${config.level}/info.json` : undefined,
         vehicle: config.vehicle
       })
     }
 
-    // Build command-line args — use -level for direct level loading
+    // Build command-line args — use -level for direct level loading. BeamNG
+    // accepts the form `levels/<name>/info.json` for the CLI flag (the leading
+    // slash variant is rejected by the option parser, so we keep it relative
+    // here even though the Lua signal uses `/levels/...`).
     const args: string[] = [...(options?.args ?? [])]
     if (config?.mode === 'freeroam' && config.level) {
-      // BeamNG prepends "levels/" internally, so just pass the folder name
-      args.push('-level', `${config.level}/info.json`)
+      args.push('-level', `levels/${config.level}/info.json`)
     }
 
     try {
@@ -4340,6 +5008,41 @@ export class GameLauncherService {
         console.error('[EditorBridge] onLuaPose listener threw:', err)
       }
     })
+    bridge.on('env', (obs: LuaEnvObservation) => {
+      try {
+        this.onLuaEnv?.(obs)
+      } catch (err) {
+        console.error('[EditorBridge] onLuaEnv listener threw:', err)
+      }
+    })
+    bridge.on('field', (obs: LuaFieldObservation) => {
+      try {
+        this.onLuaField?.(obs)
+      } catch (err) {
+        console.error('[EditorBridge] onLuaField listener threw:', err)
+      }
+    })
+    bridge.on('snapshotChunk', (chunk: LuaSnapshotChunk) => {
+      try {
+        this.onLuaSnapshotChunk?.(chunk)
+      } catch (err) {
+        console.error('[EditorBridge] onLuaSnapshotChunk listener threw:', err)
+      }
+    })
+    bridge.on('snapshotApplied', (ack: LuaSnapshotAck) => {
+      try {
+        this.onLuaSnapshotApplied?.(ack)
+      } catch (err) {
+        console.error('[EditorBridge] onLuaSnapshotApplied listener threw:', err)
+      }
+    })
+    bridge.on('brush', (obs: LuaBrushObservation) => {
+      try {
+        this.onLuaBrush?.(obs)
+      } catch (err) {
+        console.error('[EditorBridge] onLuaBrush listener threw:', err)
+      }
+    })
     try {
       const port = await bridge.start(signalDir)
       this.editorBridge = bridge
@@ -4368,6 +5071,42 @@ export class GameLauncherService {
     this.onLuaPose = cb
   }
 
+  /**
+   * Phase-1 env-channel hook: controller registers here to receive scene-
+   * globals diffs (ToD, weather, gravity, sim speed, …) captured by the Lua
+   * 4 Hz poll loop. One callback per changed key, fanned out from the N|
+   * batch frame.
+   */
+  setEditorEnvListener(cb: ((obs: LuaEnvObservation) => void) | null): void {
+    this.onLuaEnv = cb
+  }
+
+  /**
+   * Phase-2 field-channel hook: controller registers here to receive per-
+   * object dynamic-field writes captured by Lua's helper + 1 Hz polling diff.
+   */
+  setEditorFieldListener(cb: ((obs: LuaFieldObservation) => void) | null): void {
+    this.onLuaField = cb
+  }
+
+  /**
+   * Phase-3 snapshot hooks: relay (host side) registers `setEditorSnapshotChunkListener`
+   * to receive chunks from the host Lua; controller (joiner side) registers
+   * `setEditorSnapshotAppliedListener` to be told when the local Lua has
+   * applied a snapshot pushed via `sendEditorSnapshotChunk`.
+   */
+  setEditorSnapshotChunkListener(cb: ((chunk: LuaSnapshotChunk) => void) | null): void {
+    this.onLuaSnapshotChunk = cb
+  }
+  setEditorSnapshotAppliedListener(cb: ((ack: LuaSnapshotAck) => void) | null): void {
+    this.onLuaSnapshotApplied = cb
+  }
+
+  /** Phase-4 brush hook: controller registers to receive local stroke frames. */
+  setEditorBrushListener(cb: ((obs: LuaBrushObservation) => void) | null): void {
+    this.onLuaBrush = cb
+  }
+
   /** Push a remote op down to Lua for application. No-op if bridge not connected. */
   sendEditorRemoteOp(env: unknown): boolean {
     if (!this.editorBridge) return false
@@ -4383,6 +5122,50 @@ export class GameLauncherService {
   sendEditorRemotePose(pose: unknown): boolean {
     if (!this.editorBridge) return false
     this.editorBridge.sendRemotePose(pose)
+    return true
+  }
+
+  /**
+   * Push a single remote env observation down to Lua for application. Used by
+   * the relay (host side) when broadcasting a peer's env change, and by the
+   * controller (joiner side) when applying inbound env messages or replaying
+   * the cold-join env cache from a Welcome.
+   */
+  sendEditorRemoteEnv(env: unknown): boolean {
+    if (!this.editorBridge) return false
+    this.editorBridge.sendRemoteEnv(env)
+    return true
+  }
+
+  /**
+   * Push a single remote field write down to Lua for application. The relay
+   * sends one G| frame per remote field message; Lua skips silently if the
+   * pid hasn't been created on this peer yet (snapshot will fill it in later).
+   */
+  sendEditorRemoteField(field: unknown): boolean {
+    if (!this.editorBridge) return false
+    this.editorBridge.sendRemoteField(field)
+    return true
+  }
+
+  /** Ask the host Lua to build a snapshot now (Phase 3). */
+  requestEditorSnapshot(snapshotId: string): boolean {
+    if (!this.editorBridge) return false
+    this.editorBridge.requestSnapshot({ snapshotId })
+    return true
+  }
+
+  /** Push one snapshot chunk down to the joiner Lua for reassembly + apply. */
+  sendEditorSnapshotChunk(chunk: unknown): boolean {
+    if (!this.editorBridge) return false
+    this.editorBridge.sendSnapshotChunk(chunk)
+    return true
+  }
+
+  /** Push one remote brush stroke frame down to local Lua (Phase 4). */
+  sendEditorRemoteBrush(brush: unknown): boolean {
+    if (!this.editorBridge) return false
+    this.editorBridge.sendRemoteBrush(brush)
     return true
   }
 

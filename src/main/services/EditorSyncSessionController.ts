@@ -18,10 +18,14 @@
 import { EventEmitter } from 'events'
 import { randomUUID } from 'crypto'
 import type { GameLauncherService } from './GameLauncherService'
-import type { LuaOpEnvelope, LuaPose } from './EditorSyncBridgeSocket'
-import type { OpMsg, WelcomeMsg, PoseMsg } from './transports/SessionFrame'
-import { EditorSyncRelayService } from './EditorSyncRelayService'
+import type { LuaOpEnvelope, LuaPose, LuaEnvObservation, LuaFieldObservation, LuaBrushObservation } from './EditorSyncBridgeSocket'
+import type { OpMsg, WelcomeMsg, PoseMsg, EnvMsg, WelcomeProjectInfo } from './transports/SessionFrame'
+import { EditorSyncRelayService, type RelayAuthMode } from './EditorSyncRelayService'
 import { PeerClient } from './PeerClient'
+import { encodeSessionCode } from '../../shared/sessionCode'
+
+/** Re-exported for the handler layer; mirrors the shared/types.ts shape. */
+export type SessionProjectInfo = WelcomeProjectInfo
 
 export type SessionState = 'idle' | 'hosting' | 'joined' | 'connecting'
 
@@ -40,6 +44,27 @@ export interface SessionStatus {
   /** Total ops we have forwarded to / received from the Lua bridge in this session. */
   opsIn: number
   opsOut: number
+  /** Host-only: current auth mode; `null` when idle or joined. */
+  authMode: RelayAuthMode | null
+  /** Host-only: queue of joiners awaiting host approval. */
+  pendingApprovals: Array<{
+    authorId: string
+    displayName: string
+    beamUsername: string | null
+    remote: string
+  }>
+  /** Optional: shareable session code (set when hosting). */
+  sessionCode: string | null
+  /**
+   * Host side: the project the relay is currently advertising to joiners.
+   * Joiner side: the project the host is offering (what we received in the
+   * welcome frame). `null` on both sides when no project is in play.
+   */
+  project: SessionProjectInfo | null
+  /** Joiner side: download progress of the offered project (0..1). */
+  projectDownload: { received: number; total: number; done: boolean; error?: string } | null
+  /** Joiner side: local path where the downloaded project was extracted. */
+  projectInstalledPath: string | null
 }
 
 interface Events {
@@ -49,12 +74,35 @@ interface Events {
   log: (entry: SessionLogEntry) => void
   peerPose: (pose: PeerPoseEntry) => void
   peerActivity: (act: PeerActivity) => void
+  /** A joiner is waiting in the approval queue; UI should prompt the host. */
+  peerPendingApproval: (peer: {
+    authorId: string
+    displayName: string
+    beamUsername: string | null
+    remote: string
+  }) => void
+  /**
+   * Emitted on the joiner side right after welcome. Tells the UI what level
+   * the host is on + what the host said about its source, so the UI can
+   * compare against the local install and prompt if missing. Fired even if
+   * the level IS installed — the UI decides what to show.
+   */
+  levelRequired: (info: {
+    levelName: string | null
+    levelSource: { builtIn: boolean; modPath?: string; hash?: string } | null
+  }) => void
+  /**
+   * Emitted on the joiner side right after welcome when the host advertised
+   * a project. The UI should show a "Download shared project" prompt.
+   * Not emitted when the host has no active project.
+   */
+  projectOffered: (info: SessionProjectInfo) => void
 }
 
 export interface SessionLogEntry {
   ts: number
   level: 'info' | 'warn' | 'error'
-  source: 'relay' | 'peer' | 'bridge' | 'session'
+  source: 'relay' | 'peer' | 'bridge' | 'session' | 'snapshot'
   message: string
 }
 
@@ -96,6 +144,11 @@ export class EditorSyncSessionController extends EventEmitter {
   private host: string | null = null
   private port: number | null = null
   private sessionId: string | null = null
+  /**
+   * Shareable session code minted in `startHost` once we know the public
+   * address + port. `null` when not hosting.
+   */
+  private sessionCode: string | null = null
   private peers: Array<{ authorId: string; displayName: string; remote?: string }> = []
   private opsIn = 0
   private opsOut = 0
@@ -108,6 +161,14 @@ export class EditorSyncSessionController extends EventEmitter {
   /** Set while leave() is unwinding so we don't log scary warnings for a normal
    *  user-initiated disconnect. */
   private userInitiatedLeave = false
+  /**
+   * Project the host is offering (hosting) or that was advertised to us
+   * (joined). Mirrors `getStatus().project`.
+   */
+  private activeProject: SessionProjectInfo | null = null
+  /** Joiner-side progress + install path for the project transfer. */
+  private projectDownload: { received: number; total: number; done: boolean; error?: string } | null = null
+  private projectInstalledPath: string | null = null
 
   constructor(private readonly gameLauncher: GameLauncherService) {
     super()
@@ -115,6 +176,12 @@ export class EditorSyncSessionController extends EventEmitter {
     gameLauncher.setEditorOpListener((_seq, env) => this.ingestLocalOp(env))
     // Route every Lua pose tick through us (broadcast to peers + expose locally).
     gameLauncher.setEditorPoseListener((pose) => this.ingestLocalPose(pose))
+    // Route every Lua env observation through us (Phase 1 env channel).
+    gameLauncher.setEditorEnvListener((obs) => this.ingestLocalEnv(obs))
+    // Route every Lua field observation through us (Phase 2 field channel).
+    gameLauncher.setEditorFieldListener((obs) => this.ingestLocalField(obs))
+    // Route every Lua brush stroke frame through us (Phase 4 brush channel).
+    gameLauncher.setEditorBrushListener((obs) => this.ingestLocalBrush(obs))
     // Prune stale peer poses every 2 s. Singleton-scoped; we keep the handle so
     // it could be cleared in a future shutdown path, and unref() so it never
     // blocks Electron's main process from exiting.
@@ -134,6 +201,7 @@ export class EditorSyncSessionController extends EventEmitter {
   }
 
   getStatus(): SessionStatus {
+    const relayStatus = this.relay?.status() ?? null
     return {
       state: this.state,
       authorId: this.authorId,
@@ -143,11 +211,17 @@ export class EditorSyncSessionController extends EventEmitter {
       port: this.port,
       token: this.state === 'hosting' ? this.token : null,
       levelName: this.levelName,
-      lastSeq: this.relay?.status().lastSeq ?? this.peer?.getLastSeq() ?? 0,
+      lastSeq: relayStatus?.lastSeq ?? this.peer?.getLastSeq() ?? 0,
       peers: [...this.peers],
       bridgeReady: this.gameLauncher.isEditorBridgeReady(),
       opsIn: this.opsIn,
       opsOut: this.opsOut,
+      authMode: relayStatus?.authMode ?? null,
+      pendingApprovals: relayStatus?.pendingApprovals ?? [],
+      sessionCode: this.sessionCode,
+      project: this.activeProject,
+      projectDownload: this.projectDownload,
+      projectInstalledPath: this.projectInstalledPath,
     }
   }
 
@@ -159,6 +233,14 @@ export class EditorSyncSessionController extends EventEmitter {
     token?: string | null
     levelName?: string | null
     displayName?: string
+    authMode?: RelayAuthMode
+    friendsWhitelist?: string[]
+    levelSource?: { builtIn: boolean; modPath?: string; hash?: string } | null
+    /**
+     * Public-facing host address to embed in the session code. If omitted,
+     * callers (IPC handler) can fill it in afterwards via `setAdvertiseHost`.
+     */
+    advertiseHost?: string | null
   }): Promise<SessionStatus> {
     if (this.state !== 'idle') {
       throw new Error(`cannot host from state ${this.state}`)
@@ -182,6 +264,16 @@ export class EditorSyncSessionController extends EventEmitter {
     })
     // Relay forwards peer poses — update map + emit.
     relay.on('peerPose', (pose) => this.ingestRemotePose(pose))
+    // Approval-mode: surface pending joiners to the renderer so the host
+    // UI can prompt "Accept <name>?".
+    relay.on('peerPendingApproval', (p) => {
+      this.log('info', 'relay', `Peer awaiting approval: ${p.displayName} (${p.remote})`)
+      this.emit('peerPendingApproval', p)
+      this.pushStatus()
+    })
+    relay.on('pendingApprovalsChanged', () => {
+      this.pushStatus()
+    })
     // Every committed op from the relay that wasn't authored by host goes to
     // local Lua for application.
     relay.onBroadcast((op) => {
@@ -191,6 +283,26 @@ export class EditorSyncSessionController extends EventEmitter {
       this.recordActivityFromOp(op)
       this.pushStatus()
     })
+    // Same for env channel — forward peer-authored env messages down to local Lua.
+    relay.onEnvBroadcast((env) => {
+      this.gameLauncher.sendEditorRemoteEnv(env)
+    })
+    // Same for field channel.
+    relay.onFieldBroadcast((field) => {
+      this.gameLauncher.sendEditorRemoteField(field)
+    })
+    // Same for brush channel (Phase 4).
+    relay.onBrushBroadcast((brush) => {
+      this.gameLauncher.sendEditorRemoteBrush(brush)
+    })
+
+    // Phase 3: relay drives snapshot builds via the launcher and accepts
+    // chunks emitted by host Lua. Wire both ends.
+    relay.setGameLauncher(this.gameLauncher)
+    this.gameLauncher.setEditorSnapshotChunkListener((chunk) => relay.ingestSnapshotChunk(chunk))
+    // Host doesn't need snapshotApplied acks from itself; clear the joiner-
+    // side ack hook so a stale callback from a previous join doesn't fire.
+    this.gameLauncher.setEditorSnapshotAppliedListener(null)
 
     this.relay = relay
     this.levelName = opts.levelName ?? null
@@ -204,11 +316,22 @@ export class EditorSyncSessionController extends EventEmitter {
         port: opts.port,
         levelName: this.levelName,
         token: this.token,
+        authMode: opts.authMode,
+        friendsWhitelist: opts.friendsWhitelist,
+        levelSource: opts.levelSource ?? null,
       })
       this.sessionId = st.sessionId
       this.host = `0.0.0.0:${st.port}`
       this.port = st.port
       this.state = 'hosting'
+      this.sessionCode = encodeSessionCode({
+        host: opts.advertiseHost || '0.0.0.0',
+        port: st.port,
+        token: this.token,
+        level: this.levelName,
+        sessionId: st.sessionId,
+        displayName: this.displayName,
+      })
       this.log('info', 'relay', `Hosting on port ${st.port}${this.token ? ' (token required)' : ' (open session)'}`)
       this.pushStatus()
       return this.getStatus()
@@ -218,6 +341,51 @@ export class EditorSyncSessionController extends EventEmitter {
       this.pushStatus()
       throw err
     }
+  }
+
+  /**
+   * Host-only: re-mint the session code for a different advertise-host (e.g.
+   * user flips from Tailscale to Public IP in the UI). No-op when not hosting.
+   */
+  setAdvertiseHost(host: string): void {
+    if (this.state !== 'hosting' || this.port == null) return
+    this.sessionCode = encodeSessionCode({
+      host,
+      port: this.port,
+      token: this.token,
+      level: this.levelName,
+      sessionId: this.sessionId ?? undefined,
+      displayName: this.displayName,
+    })
+    this.pushStatus()
+  }
+
+  /** Host-only: accept a pending approval-mode joiner. */
+  approvePeer(authorId: string): boolean {
+    if (!this.relay) return false
+    return this.relay.approvePeer(authorId)
+  }
+
+  /** Host-only: reject a pending approval-mode joiner. */
+  rejectPeer(authorId: string, reason?: string): boolean {
+    if (!this.relay) return false
+    return this.relay.rejectPeer(authorId, reason)
+  }
+
+  /** Host-only: update the friends whitelist (case-insensitive BeamMP names). */
+  setFriendsWhitelist(usernames: string[]): boolean {
+    if (!this.relay) return false
+    this.relay.setFriendsWhitelist(usernames)
+    this.pushStatus()
+    return true
+  }
+
+  /** Host-only: switch auth mode at runtime. */
+  setAuthMode(mode: RelayAuthMode): boolean {
+    if (!this.relay) return false
+    this.relay.setAuthMode(mode)
+    this.pushStatus()
+    return true
   }
 
   /* ── Join ─────────────────────────────────────────────────────────── */
@@ -243,6 +411,63 @@ export class EditorSyncSessionController extends EventEmitter {
       this.pushStatus()
     })
     client.on('remotePose', (pose) => this.ingestRemotePose(pose))
+    // Env-channel inbound: apply directly to local Lua. Peer→host→us routing
+    // already filtered out our own echoes by authorId.
+    client.on('remoteEnv', (env) => {
+      this.gameLauncher.sendEditorRemoteEnv(env)
+    })
+    client.on('remoteField', (field) => {
+      this.gameLauncher.sendEditorRemoteField(field)
+    })
+    client.on('remoteBrush', (brush) => {
+      this.gameLauncher.sendEditorRemoteBrush(brush)
+    })
+    // Host pushed a new/updated project offer mid-session. If the sha256
+    // differs from what we've installed, expose it to the UI so the user
+    // can re-download + auto-relaunch into the new starting point.
+    client.on('projectOffered', (info) => {
+      const prev = this.activeProject
+      this.activeProject = info
+      if (!prev || prev.sha256 !== info.sha256) {
+        // Clear stale install pointer — the current folder may not match
+        // the new offer. Download progress resets too.
+        this.projectDownload = null
+        this.projectInstalledPath = null
+        this.log(
+          'info',
+          'peer',
+          `Host updated shared project: "${info.name}" ` +
+            `(${info.levelName}, ${Math.round(info.sizeBytes / 1024)} KiB)`
+        )
+        this.emit('projectOffered', info)
+      }
+      this.pushStatus()
+    })
+
+    // Phase 3 — host streams a snapshot to us as snapshotBegin/Chunk*/End.
+    // Forward chunks straight to local Lua for reassembly + apply. The Lua
+    // side acks via Z| frames; the launcher surfaces them via the
+    // snapshotApplied listener (wired below) which we forward back to host.
+    client.on('snapshotBegin', (msg) => {
+      this.log('info', 'snapshot', `Receiving snapshot ${msg.snapshotId.substring(0, 8)} (${msg.total} chunks, ${msg.byteLength} B, baseSeq=${msg.baseSeq})`)
+    })
+    client.on('snapshotChunk', (msg) => {
+      this.gameLauncher.sendEditorSnapshotChunk({
+        snapshotId: msg.snapshotId,
+        index: msg.index,
+        total: msg.total,
+        payload: msg.payload,
+      })
+    })
+    client.on('snapshotEnd', (msg) => {
+      this.log('info', 'snapshot', `Snapshot ${msg.snapshotId.substring(0, 8)} fully received from host; awaiting Lua apply…`)
+    })
+    this.gameLauncher.setEditorSnapshotChunkListener(null)
+    this.gameLauncher.setEditorSnapshotAppliedListener((ack) => {
+      this.log(ack.ok ? 'info' : 'error', 'snapshot',
+        `Local Lua ${ack.ok ? 'applied' : 'failed to apply'} snapshot ${ack.snapshotId.substring(0, 8)}` + (ack.error ? `: ${ack.error}` : ''))
+      client.sendSnapshotApplied(ack.snapshotId, ack.ok, ack.error)
+    })
     client.on('peerLeft', (p) => {
       this.peers = this.peers.filter((x) => x.authorId !== p.authorId)
       this.poses.delete(p.authorId)
@@ -264,6 +489,9 @@ export class EditorSyncSessionController extends EventEmitter {
       this.sessionId = null
       this.levelName = null
       this.token = null
+      this.activeProject = null
+      this.projectDownload = null
+      this.projectInstalledPath = null
       this.pushStatus()
     })
     client.on('error', (err) => {
@@ -294,6 +522,44 @@ export class EditorSyncSessionController extends EventEmitter {
       }))
       this.state = 'joined'
       this.log('info', 'peer', `Connected to ${opts.host}:${opts.port}${welcome.levelName ? ` — level ${welcome.levelName}` : ''}`)
+      // Phase-A: surface level + source info so the joiner UI can decide
+      // whether to prompt for install.
+      this.emit('levelRequired', {
+        levelName: welcome.levelName ?? null,
+        levelSource: welcome.levelSource ?? null,
+      })
+      // Offered-project: host advertised a project zip we can download. We
+      // don't auto-download — renderer prompts the user first.
+      if (welcome.project) {
+        this.activeProject = welcome.project
+        this.projectDownload = null
+        this.projectInstalledPath = null
+        this.log(
+          'info',
+          'peer',
+          `Host is offering project "${welcome.project.name}" ` +
+            `(${welcome.project.levelName}, ${Math.round(welcome.project.sizeBytes / 1024)} KiB)`
+        )
+        this.emit('projectOffered', welcome.project)
+      } else {
+        this.activeProject = null
+      }
+      // Cold-join env: replay every entry from the welcome cache so we
+      // immediately see ToD/weather/gravity/simSpeed without waiting for
+      // a peer to touch a slider. The Lua side will suppress capture so we
+      // don't echo these back as if they were local changes.
+      if (welcome.env && welcome.env.length > 0) {
+        for (const entry of welcome.env) {
+          this.gameLauncher.sendEditorRemoteEnv({
+            type: 'env',
+            authorId: entry.authorId,
+            ts: entry.ts,
+            key: entry.key,
+            value: entry.value,
+          } satisfies EnvMsg)
+        }
+        this.log('info', 'peer', `Applied ${welcome.env.length} env key(s) from host snapshot`)
+      }
       this.pushStatus()
       return this.getStatus()
     } catch (err) {
@@ -349,6 +615,72 @@ export class EditorSyncSessionController extends EventEmitter {
     return s || null
   }
 
+  /* ── Project (host side: advertise; joiner side: download) ───────── */
+
+  /**
+   * Host-only: tell the relay what project folder to advertise to peers.
+   * The relay zips it in memory, hashes it, and starts / keeps the HTTP
+   * download listener alive. Subsequent joiners see the project in their
+   * welcome frame; already-connected peers will learn about it the next
+   * time they open the UI (pull via getStatus) — we don't push retroactive
+   * offers for now to keep the protocol minimal.
+   */
+  async setActiveProject(params: {
+    name: string
+    levelName: string
+    folder: string
+    absDir: string
+  }): Promise<SessionProjectInfo | null> {
+    if (this.state !== 'hosting' || !this.relay) {
+      this.log('warn', 'session', 'setActiveProject: not hosting')
+      return null
+    }
+    const info = await this.relay.setActiveProject(params)
+    this.activeProject = info
+    this.pushStatus()
+    if (info) {
+      this.log('info', 'session', `Advertising project "${info.name}" (${info.sizeBytes} B) on HTTP :${info.httpPort}`)
+    }
+    return info
+  }
+
+  /** Returns the currently-advertised or -offered project, or null. */
+  getActiveProject(): SessionProjectInfo | null {
+    return this.activeProject
+  }
+
+  /**
+   * Joiner-only: progress callback for the renderer / IPC layer to keep
+   * `status.projectDownload` in sync during the HTTP fetch.
+   */
+  reportProjectDownloadProgress(received: number, total: number): void {
+    this.projectDownload = { received, total, done: false }
+    this.pushStatus()
+  }
+
+  /** Joiner-only: called once the downloaded project has been extracted. */
+  reportProjectInstalled(installedPath: string | null, error?: string): void {
+    if (error) {
+      this.projectDownload = {
+        received: this.projectDownload?.received ?? 0,
+        total: this.projectDownload?.total ?? 0,
+        done: true,
+        error,
+      }
+    } else {
+      this.projectDownload = this.projectDownload
+        ? { ...this.projectDownload, done: true }
+        : { received: 0, total: 0, done: true }
+    }
+    this.projectInstalledPath = installedPath
+    this.pushStatus()
+  }
+
+  /** Returns the host ip (without port) for the joined session, or null. */
+  getJoinedHost(): string | null {
+    return this.host ? this.host.split(':')[0] ?? null : null
+  }
+
   /* ── Leave ────────────────────────────────────────────────────────── */
 
   leave(): void {
@@ -380,10 +712,14 @@ export class EditorSyncSessionController extends EventEmitter {
     this.host = null
     this.port = null
     this.sessionId = null
+    this.sessionCode = null
     this.levelName = null
     this.token = null
     this.opsIn = 0
     this.opsOut = 0
+    this.activeProject = null
+    this.projectDownload = null
+    this.projectInstalledPath = null
     this.pushStatus()
   }
 
@@ -415,6 +751,58 @@ export class EditorSyncSessionController extends EventEmitter {
     }
     // idle: drop; the op already executed locally and we're not syncing.
     this.pushStatus()
+  }
+
+  /* ── Env channel ────────────────────────────────────────────────────── */
+
+  /**
+   * Local Lua reported a scene-globals diff (ToD, weather, gravity, …).
+   * Hosting: hand to relay (LWW + broadcast). Joined: forward to host as a
+   * single env frame. Idle: drop on the floor.
+   */
+  private ingestLocalEnv(obs: LuaEnvObservation): void {
+    if (this.state === 'hosting' && this.relay) {
+      this.relay.ingestLocalEnv(obs)
+    } else if (this.state === 'joined' && this.peer) {
+      this.peer.sendEnv({ key: obs.key, value: obs.value, ts: obs.ts })
+    }
+  }
+
+  /**
+   * Local Lua reported a per-object field write (helper or polling diff).
+   * Same hosting/joined routing as env.
+   */
+  private ingestLocalField(obs: LuaFieldObservation): void {
+    if (this.state === 'hosting' && this.relay) {
+      this.relay.ingestLocalField(obs)
+    } else if (this.state === 'joined' && this.peer) {
+      this.peer.sendField({
+        pid: obs.pid,
+        fieldName: obs.fieldName,
+        arrayIndex: obs.arrayIndex,
+        value: obs.value,
+        ts: obs.ts,
+      })
+    }
+  }
+
+  /**
+   * Local Lua reported a brush stroke frame (Phase 4). Same hosting/joined
+   * routing as env/field — host bypasses the wire and feeds the relay
+   * directly; joiner sends it to the host who fans it out.
+   */
+  private ingestLocalBrush(obs: LuaBrushObservation): void {
+    if (this.state === 'hosting' && this.relay) {
+      this.relay.ingestLocalBrush(obs)
+    } else if (this.state === 'joined' && this.peer) {
+      this.peer.sendBrush({
+        strokeId: obs.strokeId,
+        brushType: obs.brushType,
+        kind: obs.kind,
+        payload: obs.payload,
+        ts: obs.ts,
+      })
+    }
   }
 
   /* ── Pose plumbing ─────────────────────────────────────────────────── */

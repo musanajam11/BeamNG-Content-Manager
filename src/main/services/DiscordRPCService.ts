@@ -33,6 +33,8 @@ const PAGE_LABELS: Record<string, string> = {
   'live-gps': 'Live GPS',
   'livery-editor': 'Livery Editor',
   'voice-chat': 'Voice Chat',
+  'world-edit-sync': 'Editing Worlds with Friends',
+  'lua-console': 'Lua Console',
   settings: 'Settings'
 }
 

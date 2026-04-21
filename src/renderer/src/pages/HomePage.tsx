@@ -12,7 +12,8 @@ import {
   ArrowUpCircle,
   Newspaper,
   ExternalLink,
-  Clock
+  Clock,
+  Globe2
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useGameStore } from '../stores/useGameStore'
@@ -221,6 +222,25 @@ export function HomePage(): React.JSX.Element {
               <Monitor size={18} className="text-[var(--accent-primary)]" />
             )}
             {vanillaLaunching ? t('home.launching') : isRunning ? t('home.stopGame') : t('home.startSingleplayer')}
+          </button>
+        )}
+
+        {/* Coop World Editor */}
+        {hasGame && (
+          <button
+            onClick={() => setPage('world-edit-sync')}
+            className="w-full flex items-center gap-3 border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] px-4 py-3 text-left transition"
+          >
+            <Globe2 size={18} className="text-[var(--accent-primary)] shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-[var(--color-text-primary)]">
+                {t('home.coopEditorTitle', { defaultValue: 'Coop World Editor' })}
+              </p>
+              <p className="text-[11px] text-[var(--color-text-muted)]">
+                {t('home.coopEditorSubtitle', { defaultValue: 'Host a session or join with a code — edit maps together' })}
+              </p>
+            </div>
+            <ChevronRight size={14} className="text-[var(--color-text-muted)]" />
           </button>
         )}
 

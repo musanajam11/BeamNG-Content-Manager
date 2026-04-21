@@ -8,6 +8,7 @@ import { useFlagUrl } from '../../utils/flagCache'
 import { BeamMPText } from '../BeamMPText'
 import { parseServerTags } from '../../utils/serverTags'
 import { ServerTagBadge } from './ServerTag'
+import { subscribeWindowResize } from '../../utils/resizeBroadcaster'
 
 interface Props {
   server: ServerInfo
@@ -73,7 +74,9 @@ function ServerListItemImpl({ server, selected, favorite, onSelect, onToggleFavo
     const text = nameTextRef.current
     if (!container || !text) return
     const overflow = text.scrollWidth > container.clientWidth
-    setNameOverflows(overflow)
+    // Only call setState when the boolean actually flips — otherwise every
+    // resize frame schedules N row re-renders for no visible change.
+    setNameOverflows((prev) => (prev === overflow ? prev : overflow))
     if (overflow) {
       text.style.setProperty('--marquee-offset', `${container.clientWidth - text.scrollWidth}px`)
     }
@@ -81,13 +84,11 @@ function ServerListItemImpl({ server, selected, favorite, onSelect, onToggleFavo
 
   useEffect(() => {
     // Initial check after layout settles. We deliberately skip a per-row
-    // ResizeObserver — the row width only changes on window resize (the parent
-    // list isn't user-resizable), so a single window listener is enough and
-    // avoids hundreds of observers on a 500-server list.
+    // ResizeObserver and per-row window listener — instead all rows share a
+    // single rAF-coalesced resize broadcaster, so a window drag triggers at
+    // most one layout-read per row per frame instead of one per resize event.
     checkNameOverflow()
-    const onResize = (): void => checkNameOverflow()
-    window.addEventListener('resize', onResize, { passive: true })
-    return () => window.removeEventListener('resize', onResize)
+    return subscribeWindowResize(checkNameOverflow)
   }, [server.sname, checkNameOverflow])
 
   return (

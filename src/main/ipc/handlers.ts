@@ -34,6 +34,7 @@ import { VoiceMeshService } from '../services/VoiceMeshService'
 import { LuaConsoleService, type LuaScope } from '../services/LuaConsoleService'
 import { BeamUIFilesService } from '../services/BeamUIFilesService'
 import { EditorSyncSessionController, type SessionStatus } from '../services/EditorSyncSessionController'
+import type { SessionProjectInfo } from '../services/EditorSyncSessionController'
 import { setPresence as setDiscordPresence } from '../services/DiscordRPCService'
 import { parseBeamNGJson } from '../utils/parseBeamNGJson'
 import { LRUCache } from '../utils/lruCache'
@@ -161,6 +162,21 @@ export function initializeServices(): {
   editorSession.on('peerActivity', (act) => {
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send('worldEdit:session:peerActivity', act)
+    }
+  })
+  editorSession.on('peerPendingApproval', (p) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('worldEdit:session:peerPendingApproval', p)
+    }
+  })
+  editorSession.on('levelRequired', (info) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('worldEdit:session:levelRequired', info)
+    }
+  })
+  editorSession.on('projectOffered', (info) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('worldEdit:session:projectOffered', info)
     }
   })
   editorSession.on('error', (err) => {
@@ -1144,7 +1160,15 @@ export function registerIpcHandlers(): void {
     'worldEdit:session:host',
     async (
       _event,
-      opts: { port?: number; token?: string | null; levelName?: string | null; displayName?: string }
+      opts: {
+        port?: number
+        token?: string | null
+        levelName?: string | null
+        displayName?: string
+        authMode?: 'open' | 'token' | 'approval' | 'friends'
+        friendsWhitelist?: string[]
+        advertiseHost?: string | null
+      }
     ): Promise<{ success: boolean; error?: string; status?: SessionStatus }> => {
       const userDir = configService.get().gamePaths?.userDir
       if (!userDir) return { success: false, error: 'User data folder not configured' }
@@ -1156,6 +1180,9 @@ export function registerIpcHandlers(): void {
           token: opts.token ?? null,
           levelName: opts.levelName ?? null,
           displayName: opts.displayName,
+          authMode: opts.authMode,
+          friendsWhitelist: opts.friendsWhitelist,
+          advertiseHost: opts.advertiseHost ?? null,
         })
         return { success: true, status }
       } catch (err) {
@@ -1181,6 +1208,185 @@ export function registerIpcHandlers(): void {
       } catch (err) {
         return { success: false, error: `${err}` }
       }
+    }
+  )
+
+  /**
+   * Parse a session code without side effects. Useful for the join UI to
+   * preview what's inside before committing to connect.
+   */
+  ipcMain.handle(
+    'worldEdit:session:decodeCode',
+    async (_event, code: string): Promise<{
+      ok: boolean
+      host?: string
+      port?: number
+      token?: string | null
+      level?: string | null
+      sessionId?: string | null
+      displayName?: string | null
+      error?: string
+    }> => {
+      const { decodeSessionCode } = await import('../../shared/sessionCode')
+      const parsed = decodeSessionCode(code)
+      if (!parsed) return { ok: false, error: 'Invalid session code' }
+      return {
+        ok: true,
+        host: parsed.host,
+        port: parsed.port,
+        token: parsed.token,
+        level: parsed.level,
+        sessionId: parsed.sessionId,
+        displayName: parsed.displayName,
+      }
+    }
+  )
+
+  /** One-click: start hosting AND launch BeamNG into the editor. */
+  ipcMain.handle(
+    'worldEdit:session:hostAndLaunch',
+    async (
+      _event,
+      opts: {
+        port?: number
+        token?: string | null
+        levelName?: string | null
+        displayName?: string
+        authMode?: 'open' | 'token' | 'approval' | 'friends'
+        friendsWhitelist?: string[]
+        advertiseHost?: string | null
+      }
+    ): Promise<{ success: boolean; error?: string; status?: SessionStatus; level?: string }> => {
+      const appConfig = configService.get()
+      const userDir = appConfig.gamePaths?.userDir
+      if (!userDir) return { success: false, error: 'User data folder not configured' }
+      const beamcmDir = join(userDir, 'settings', 'BeamCM')
+      let status: SessionStatus
+      try {
+        status = await editorSession.startHost({
+          beamcmDir,
+          port: opts.port,
+          token: opts.token ?? null,
+          levelName: opts.levelName ?? null,
+          displayName: opts.displayName,
+          authMode: opts.authMode,
+          friendsWhitelist: opts.friendsWhitelist,
+          advertiseHost: opts.advertiseHost ?? null,
+        })
+      } catch (err) {
+        return { success: false, error: `${err}` }
+      }
+      // Launch BeamNG vanilla + editor autostart signal.
+      const prep = editorSession.prepareEditorLaunch({
+        userDir,
+        levelOverride: opts.levelName ?? null,
+      })
+      if (prep.error || !prep.level) {
+        // Session is up, just couldn't launch — report partial success.
+        return { success: true, status, error: prep.error ?? 'No level selected' }
+      }
+      const rendererArgs =
+        appConfig.renderer === 'vulkan' ? ['-gfx', 'vk']
+        : appConfig.renderer === 'dx11' ? ['-gfx', 'dx11']
+        : []
+      const launch = await launcherService.launchVanilla(
+        appConfig.gamePaths,
+        { mode: 'freeroam', level: prep.level },
+        { args: rendererArgs }
+      )
+      if (!launch.success) {
+        return { success: true, status, error: launch.error ?? 'Launch failed', level: prep.level }
+      }
+      return { success: true, status, level: prep.level }
+    }
+  )
+
+  /** One-click: parse session code, join, and launch BeamNG into the editor. */
+  ipcMain.handle(
+    'worldEdit:session:joinCodeAndLaunch',
+    async (
+      _event,
+      opts: { code: string; displayName?: string }
+    ): Promise<{ success: boolean; error?: string; status?: SessionStatus; level?: string }> => {
+      const { decodeSessionCode } = await import('../../shared/sessionCode')
+      const parsed = decodeSessionCode(opts.code)
+      if (!parsed) return { success: false, error: 'Invalid session code' }
+      const appConfig = configService.get()
+      const userDir = appConfig.gamePaths?.userDir
+      if (!userDir) return { success: false, error: 'User data folder not configured' }
+      let status: SessionStatus
+      try {
+        status = await editorSession.startJoin({
+          host: parsed.host,
+          port: parsed.port,
+          token: parsed.token,
+          displayName: opts.displayName,
+        })
+      } catch (err) {
+        return { success: false, error: `${err}` }
+      }
+      // Launch — force host's level, fall back to local choice if missing.
+      const prep = editorSession.prepareEditorLaunch({
+        userDir,
+        levelOverride: parsed.level,
+      })
+      if (prep.error || !prep.level) {
+        return { success: true, status, error: prep.error ?? 'No level available' }
+      }
+      const rendererArgs =
+        appConfig.renderer === 'vulkan' ? ['-gfx', 'vk']
+        : appConfig.renderer === 'dx11' ? ['-gfx', 'dx11']
+        : []
+      const launch = await launcherService.launchVanilla(
+        appConfig.gamePaths,
+        { mode: 'freeroam', level: prep.level },
+        { args: rendererArgs }
+      )
+      if (!launch.success) {
+        return { success: true, status, error: launch.error ?? 'Launch failed', level: prep.level }
+      }
+      return { success: true, status, level: prep.level }
+    }
+  )
+
+  /** Host-only: approve a pending joiner (approval auth mode). */
+  ipcMain.handle(
+    'worldEdit:session:approvePeer',
+    async (_event, authorId: string): Promise<{ success: boolean }> => {
+      return { success: editorSession.approvePeer(authorId) }
+    }
+  )
+
+  /** Host-only: reject a pending joiner (approval auth mode). */
+  ipcMain.handle(
+    'worldEdit:session:rejectPeer',
+    async (_event, opts: { authorId: string; reason?: string }): Promise<{ success: boolean }> => {
+      return { success: editorSession.rejectPeer(opts.authorId, opts.reason) }
+    }
+  )
+
+  /** Host-only: change auth mode at runtime. */
+  ipcMain.handle(
+    'worldEdit:session:setAuthMode',
+    async (_event, mode: 'open' | 'token' | 'approval' | 'friends'): Promise<{ success: boolean }> => {
+      return { success: editorSession.setAuthMode(mode) }
+    }
+  )
+
+  /** Host-only: replace the friends whitelist (BeamMP usernames, case-insensitive). */
+  ipcMain.handle(
+    'worldEdit:session:setFriendsWhitelist',
+    async (_event, usernames: string[]): Promise<{ success: boolean }> => {
+      return { success: editorSession.setFriendsWhitelist(usernames) }
+    }
+  )
+
+  /** Host-only: re-mint session code for a different advertise-host. */
+  ipcMain.handle(
+    'worldEdit:session:setAdvertiseHost',
+    async (_event, host: string): Promise<{ success: boolean }> => {
+      editorSession.setAdvertiseHost(host)
+      return { success: true }
     }
   )
 
@@ -1217,6 +1423,144 @@ export function registerIpcHandlers(): void {
         { args: rendererArgs }
       )
       return { success: res.success, error: res.error, level: prep.level }
+    }
+  )
+
+  /* ── Coop-session project: advertise (host) / download (joiner) ────── */
+
+  /**
+   * Host-only: register a project folder as the one the relay advertises
+   * to joiners. Path is either an absolute folder or one surfaced by
+   * `worldEdit:listProjects` (which has `.path` relative to userDir).
+   */
+  ipcMain.handle(
+    'worldEdit:session:setActiveProject',
+    async (
+      _event,
+      args: { path: string; name: string; levelName: string; folder: string }
+    ): Promise<{ success: boolean; error?: string; project?: SessionProjectInfo | null }> => {
+      try {
+        const { resolve, isAbsolute } = await import('node:path')
+        const appConfig = configService.get()
+        const userDir = appConfig.gamePaths?.userDir
+        const absDir = isAbsolute(args.path)
+          ? args.path
+          : userDir
+            ? resolve(userDir, args.path)
+            : resolve(args.path)
+        const project = await editorSession.setActiveProject({
+          name: args.name,
+          levelName: args.levelName,
+          folder: args.folder,
+          absDir,
+        })
+        return { success: true, project }
+      } catch (err) {
+        return { success: false, error: (err as Error).message }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'worldEdit:session:clearActiveProject',
+    async (): Promise<{ success: boolean }> => {
+      // For now a no-op: clearing means "relay keeps serving until session
+      // ends". We just reset the controller's cached metadata.
+      editorSession.reportProjectInstalled(null)
+      return { success: true }
+    }
+  )
+
+  /**
+   * Joiner-only: fetch the host's advertised project.zip over HTTP,
+   * extract it into `<userDir>/levels/_beamcm_projects/<folder>/`, and
+   * return the local path. Progress is forwarded via `worldEdit:session:status`.
+   */
+  ipcMain.handle(
+    'worldEdit:session:downloadOfferedProject',
+    async (): Promise<{ success: boolean; error?: string; localPath?: string }> => {
+      const info = editorSession.getActiveProject()
+      const hostIp = editorSession.getJoinedHost()
+      if (!info || !hostIp) {
+        return { success: false, error: 'No offered project for current session' }
+      }
+      const appConfig = configService.get()
+      const userDir = appConfig.gamePaths?.userDir
+      if (!userDir) return { success: false, error: 'User data folder not configured' }
+      try {
+        const { join: pjoin } = await import('node:path')
+        const fs = await import('node:fs')
+        const http = await import('node:http')
+        const yauzl = (await import('yauzl')).default
+
+        // Download into memory (projects are typically small; if we ever
+        // see huge ones we'll switch to streaming-to-temp-file).
+        const zipBuf: Buffer = await new Promise((resolve, reject) => {
+          const chunks: Buffer[] = []
+          let received = 0
+          const url = `http://${hostIp}:${info.httpPort}/project.zip`
+          http.get(url, { timeout: 30000 }, (res) => {
+            if (res.statusCode !== 200) {
+              reject(new Error(`HTTP ${res.statusCode}`))
+              res.resume()
+              return
+            }
+            const total = Number(res.headers['content-length']) || info.sizeBytes
+            editorSession.reportProjectDownloadProgress(0, total)
+            res.on('data', (c: Buffer) => {
+              chunks.push(c)
+              received += c.length
+              editorSession.reportProjectDownloadProgress(received, total)
+            })
+            res.on('end', () => resolve(Buffer.concat(chunks)))
+            res.on('error', reject)
+          }).on('error', reject)
+        })
+
+        // Verify hash.
+        const { createHash } = await import('node:crypto')
+        const actualSha = createHash('sha256').update(zipBuf).digest('hex')
+        if (actualSha !== info.sha256) {
+          throw new Error(`project zip hash mismatch (expected ${info.sha256.substring(0, 12)}…, got ${actualSha.substring(0, 12)}…)`)
+        }
+
+        // Extract to <userDir>/levels/_beamcm_projects/<folder>
+        const destDir = pjoin(userDir, 'levels', '_beamcm_projects', info.folder)
+        fs.mkdirSync(destDir, { recursive: true })
+        await new Promise<void>((resolve, reject) => {
+          yauzl.fromBuffer(zipBuf, { lazyEntries: true }, (err, zf) => {
+            if (err || !zf) { reject(err ?? new Error('zip open failed')); return }
+            zf.readEntry()
+            zf.on('entry', (entry) => {
+              const safeName = entry.fileName.replace(/\\/g, '/')
+              if (safeName.includes('..')) { zf.readEntry(); return }
+              const outPath = pjoin(destDir, safeName)
+              if (/\/$/.test(entry.fileName)) {
+                fs.mkdirSync(outPath, { recursive: true })
+                zf.readEntry()
+                return
+              }
+              fs.mkdirSync(pjoin(outPath, '..'), { recursive: true })
+              zf.openReadStream(entry, (err2, rs) => {
+                if (err2 || !rs) { reject(err2 ?? new Error('zip entry read failed')); return }
+                const ws = fs.createWriteStream(outPath)
+                rs.pipe(ws)
+                ws.on('finish', () => zf.readEntry())
+                ws.on('error', reject)
+              })
+            })
+            zf.on('end', () => resolve())
+            zf.on('error', reject)
+          })
+        })
+
+        editorSession.reportProjectInstalled(destDir)
+        return { success: true, localPath: destDir }
+      } catch (err) {
+        const msg = (err as Error).message
+        editorSession.reportProjectInstalled(null, msg)
+        return { success: false, error: msg }
+      }
     }
   )
 
@@ -1262,6 +1606,95 @@ export function registerIpcHandlers(): void {
       } catch (err) {
         return { ip: null, error: `${err}` }
       }
+    }
+  )
+
+  /**
+   * Aggregated host-address candidates for the Coop Editor host wizard.
+   * Returns every plausible address the host could give to a joiner, tagged
+   * by source and whether it should be recommended. Order of preference
+   * (highest first): tailscale → public IP → first LAN → others → loopback.
+   */
+  ipcMain.handle(
+    'worldEdit:session:getHostAddresses',
+    async (): Promise<Array<{
+      kind: 'tailscale' | 'lan' | 'public' | 'loopback'
+      address: string
+      label: string
+      recommended: boolean
+    }>> => {
+      const out: Array<{
+        kind: 'tailscale' | 'lan' | 'public' | 'loopback'
+        address: string
+        label: string
+        recommended: boolean
+      }> = []
+
+      // Tailscale — probe non-fatally (service might not be installed).
+      try {
+        const st = await tailscaleService.getStatus()
+        if (st.installed && st.running && st.ip) {
+          out.push({
+            kind: 'tailscale',
+            address: st.ip,
+            label: st.hostname ? `Tailscale (${st.hostname})` : 'Tailscale',
+            recommended: true,
+          })
+        }
+      } catch { /* non-fatal */ }
+
+      // Public IP — best-effort. Many users will want this for internet hosts.
+      try {
+        const https = await import('node:https')
+        const ip = await new Promise<string>((resolve, reject) => {
+          const req = https.get('https://api.ipify.org', { timeout: 3000 }, (res) => {
+            if (res.statusCode !== 200) { reject(new Error(`HTTP ${res.statusCode}`)); return }
+            let buf = ''
+            res.on('data', (c) => (buf += c))
+            res.on('end', () => resolve(buf.trim()))
+            res.on('error', reject)
+          })
+          req.on('error', reject)
+          req.on('timeout', () => req.destroy(new Error('timeout')))
+        })
+        if (/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) {
+          out.push({
+            kind: 'public',
+            address: ip,
+            label: 'Public IP (requires port-forward)',
+            recommended: out.length === 0,
+          })
+        }
+      } catch { /* non-fatal */ }
+
+      // LAN — always include so the host can choose for LAN sessions.
+      try {
+        const nets = (await import('node:os')).networkInterfaces()
+        let firstLan = true
+        for (const [name, ifaces] of Object.entries(nets)) {
+          if (!ifaces) continue
+          for (const info of ifaces) {
+            if (info.family === 'IPv4' && !info.internal) {
+              out.push({
+                kind: 'lan',
+                address: info.address,
+                label: `LAN (${name})`,
+                recommended: out.length === 0 && firstLan,
+              })
+              firstLan = false
+            }
+          }
+        }
+      } catch { /* non-fatal */ }
+
+      // Loopback last — useful for same-machine testing only.
+      out.push({
+        kind: 'loopback',
+        address: '127.0.0.1',
+        label: 'This machine (same-PC testing)',
+        recommended: false,
+      })
+      return out
     }
   )
 
@@ -1326,6 +1759,12 @@ export function registerIpcHandlers(): void {
         return { success: false, error: 'Invalid port' }
       }
       const displayName = `BeamMP CM World Editor Sync (${port})`
+      // We now bind a secondary HTTP listener on port+1 to serve project
+      // download zips, so the rule needs to cover both ports. Feeding
+      // `-LocalPort "A,B"` to New-NetFirewallRule adds the rule once for
+      // both; -DisplayName stays the same so `checkFirewallHole(port)` keeps
+      // working.
+      const portsArg = `${port},${port + 1}`
       try {
         const { spawn } = await import('node:child_process')
         // The elevated child script. Encoded as Base64-UTF16LE and passed via
@@ -1335,7 +1774,7 @@ export function registerIpcHandlers(): void {
           `if (-not (Get-NetFirewallRule -DisplayName '${displayName}' -ErrorAction SilentlyContinue)) {` +
           ` New-NetFirewallRule -DisplayName '${displayName}'` +
           ` -Description 'Allows BeamMP Content Manager to host World-Editor co-op sessions'` +
-          ` -Direction Inbound -Protocol TCP -LocalPort ${port}` +
+          ` -Direction Inbound -Protocol TCP -LocalPort ${portsArg}` +
           ` -Action Allow -Profile Any | Out-Null` +
           `}`
         const childEncoded = Buffer.from(childScript, 'utf16le').toString('base64')

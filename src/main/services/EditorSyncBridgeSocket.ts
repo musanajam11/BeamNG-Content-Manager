@@ -12,6 +12,24 @@
  *   A|<clientOpId>|<seq>|<status>\n     CM → Lua: ack for a previously sent O frame
  *                                       status = "ok" | "rejected:<reason>"
  *   R|<opEnvelopeJson>\n                CM → Lua: a remote op for Lua to apply
+ *   N|<envBatchJson>\n                  Lua → CM: batched scene-globals diffs
+ *                                       payload = { batch: [{key,value,ts}…] }
+ *   M|<envObservationJson>\n            CM → Lua: a single remote env observation
+ *                                       payload = { authorId, ts, key, value }
+ *   F|<fieldBatchJson>\n                Lua → CM: batched per-object field writes
+ *                                       payload = { batch: [{pid,fieldName,arrayIndex,value,ts}…] }
+ *   G|<fieldWriteJson>\n                CM → Lua: a single remote field write
+ *                                       payload = { authorId, ts, pid, fieldName, arrayIndex, value }
+ *   Z|<requestJson>\n                   CM → host Lua: build a snapshot now
+ *                                       payload = { snapshotId? } (optional id to correlate)
+ *                                   OR: joiner Lua → CM: snapshot apply ack
+ *                                       payload = { snapshotId, ok, error? }
+ *   Y|<chunkJson>\n                     host Lua → CM: one snapshot chunk
+ *                                       payload = { snapshotId, index, total, byteLength, payload, levelName?, createdTs }
+ *   B|<chunkJson>\n                     CM → joiner Lua: one snapshot chunk to apply
+ *                                       payload = { snapshotId, index, total, payload, baseSeq?, levelName? }
+ *   T|<brushJson>\n                     either direction: one brush stroke frame (Phase 4)
+ *                                       payload = { strokeId, brushType, kind:'begin'|'tick'|'end', payload, ts, authorId? }
  *   P|\n                                ping (either direction)
  *   Q|\n                                pong (either direction)
  *   E|<msg>\n                           soft error (informational)
@@ -87,10 +105,84 @@ export interface LuaPose {
   levelName?: string | null
 }
 
+/**
+ * Single env observation as the Lua side reports it inside an N| batch
+ * payload (`{ batch: [LuaEnvObservation, …] }`). The bridge socket emits one
+ * `env` event per batch entry — fan-out happens here so downstream code only
+ * has to handle the per-key shape.
+ */
+export interface LuaEnvObservation {
+  /** Registered ENV_KEYS entry, e.g. "tod", "weather", "gravity", "simSpeed". */
+  key: string
+  /** Opaque per-key value (number for tod/gravity/simSpeed, string for weather, …). */
+  value: unknown
+  /** Wall-clock ms, Lua-side. */
+  ts: number
+}
+
+/**
+ * Single per-object field write as reported inside an F| batch payload
+ * (`{ batch: [LuaFieldObservation, …] }`). Captured either by the
+ * `cmSetField` helper or the 1 Hz polling diff (TRACKED_FIELDS).
+ */
+export interface LuaFieldObservation {
+  /** Target object's BeamNG persistentId (UUID string). */
+  pid: string
+  fieldName: string
+  /** Default 0 — only relevant for vector/array-typed fields. */
+  arrayIndex: number
+  /** Opaque per-field value. */
+  value: unknown
+  /** Wall-clock ms, Lua-side. */
+  ts: number
+}
+
+/**
+ * One chunk of a snapshot as reported by the host Lua over a Y| frame.
+ * The bridge socket emits one event per chunk; the relay accumulates by
+ * `snapshotId` until it has `total` chunks, then forwards as session frames.
+ */
+export interface LuaSnapshotChunk {
+  snapshotId: string
+  index: number
+  total: number
+  byteLength: number
+  payload: string
+  levelName?: string | null
+  createdTs: number
+}
+
+/** Joiner-side Lua reports snapshot apply success/failure via Z| from Lua. */
+export interface LuaSnapshotAck {
+  snapshotId: string
+  ok: boolean
+  error?: string
+}
+
+/**
+ * One brush stroke frame as captured by host or joiner Lua via the
+ * `cmBrushBegin`/`cmBrushTick`/`cmBrushEnd` helpers (Phase 4).
+ */
+export interface LuaBrushObservation {
+  strokeId: string
+  brushType: string
+  kind: 'begin' | 'tick' | 'end'
+  payload: unknown
+  ts: number
+}
+
 interface Events {
   hello: (info: LuaHello) => void
   op: (env: LuaOpEnvelope) => void
   pose: (pose: LuaPose) => void
+  env: (obs: LuaEnvObservation) => void
+  field: (obs: LuaFieldObservation) => void
+  /** A snapshot chunk arrived from host Lua — forward to relay for caching. */
+  snapshotChunk: (chunk: LuaSnapshotChunk) => void
+  /** Joiner-side: local Lua acked a snapshot apply. */
+  snapshotApplied: (ack: LuaSnapshotAck) => void
+  /** Phase 4: a single brush-stroke frame (begin/tick/end) emitted by Lua. */
+  brush: (obs: LuaBrushObservation) => void
   ack: (ack: BridgeAck) => void
   /** Lua connected (after first frame, not just TCP accept). */
   ready: () => void
@@ -199,6 +291,51 @@ export class EditorSyncBridgeSocket extends EventEmitter {
     this.write('S|' + JSON.stringify(pose) + '\n')
   }
 
+  /**
+   * Push a single remote env observation down to Lua for application. The
+   * relay calls this once per peer per env-key change; Lua suppresses the
+   * apply path's own re-capture so we don't echo.
+   */
+  sendRemoteEnv(env: unknown): void {
+    this.write('M|' + JSON.stringify(env) + '\n')
+  }
+
+  /**
+   * Push a single remote field write down to Lua for application. The relay
+   * already filtered echoes by authorId; Lua sets suppressFieldCapture during
+   * apply to stop the polling diff from re-emitting the value next tick.
+   */
+  sendRemoteField(field: unknown): void {
+    this.write('G|' + JSON.stringify(field) + '\n')
+  }
+
+  /**
+   * Ask the host Lua to build a snapshot. The returned snapshot arrives as
+   * one or more `snapshotChunk` events. Caller passes a snapshotId so it can
+   * correlate the response with its outstanding request.
+   */
+  requestSnapshot(req: { snapshotId: string }): void {
+    this.write('Z|' + JSON.stringify(req) + '\n')
+  }
+
+  /**
+   * Push a snapshot chunk down to a joiner-side Lua for reassembly + apply.
+   * The joiner Lua replies via a Z| frame (emitted as `snapshotApplied`)
+   * once all chunks have arrived and been applied (success or failure).
+   */
+  sendSnapshotChunk(chunk: unknown): void {
+    this.write('B|' + JSON.stringify(chunk) + '\n')
+  }
+
+  /**
+   * Push a single remote brush frame down to Lua for replay (Phase 4).
+   * Same letter (T|) is used in both directions — the relay filters echoes
+   * by authorId so the originator's Lua never receives its own frames.
+   */
+  sendRemoteBrush(brush: unknown): void {
+    this.write('T|' + JSON.stringify(brush) + '\n')
+  }
+
   /** Send a soft error message (Lua will log it). */
   sendError(msg: string): void {
     this.write('E|' + msg.replace(/[\r\n]/g, ' ') + '\n')
@@ -279,6 +416,99 @@ export class EditorSyncBridgeSocket extends EventEmitter {
         return
       }
       this.emit('pose', pose)
+      return
+    }
+
+    // N — env-channel batch (ephemeral, low volume — 4 Hz max). Fan out the
+    // batch into one `env` event per entry so the relay can do per-key LWW.
+    if (type === 0x4e /* N */) {
+      const json = line.substring(2)
+      let payload: { batch?: unknown }
+      try {
+        payload = JSON.parse(json) as { batch?: unknown }
+      } catch (err) {
+        console.warn('[EditorSyncBridge] malformed N frame', err)
+        return
+      }
+      const batch = Array.isArray(payload?.batch) ? payload.batch : []
+      for (const raw of batch) {
+        if (!raw || typeof raw !== 'object') continue
+        const obs = raw as LuaEnvObservation
+        if (typeof obs.key !== 'string' || typeof obs.ts !== 'number') continue
+        this.emit('env', obs)
+      }
+      return
+    }
+
+    // F — field-channel batch (4 Hz max). Same fan-out pattern as N.
+    if (type === 0x46 /* F */) {
+      const json = line.substring(2)
+      let payload: { batch?: unknown }
+      try {
+        payload = JSON.parse(json) as { batch?: unknown }
+      } catch (err) {
+        console.warn('[EditorSyncBridge] malformed F frame', err)
+        return
+      }
+      const batch = Array.isArray(payload?.batch) ? payload.batch : []
+      for (const raw of batch) {
+        if (!raw || typeof raw !== 'object') continue
+        const obs = raw as LuaFieldObservation
+        if (typeof obs.pid !== 'string' || typeof obs.fieldName !== 'string') continue
+        if (typeof obs.ts !== 'number') continue
+        if (typeof obs.arrayIndex !== 'number') obs.arrayIndex = 0
+        this.emit('field', obs)
+      }
+      return
+    }
+
+    // Y — snapshot chunk emitted by host Lua in response to a Z| request.
+    if (type === 0x59 /* Y */) {
+      const json = line.substring(2)
+      let chunk: LuaSnapshotChunk
+      try {
+        chunk = JSON.parse(json) as LuaSnapshotChunk
+      } catch (err) {
+        console.warn('[EditorSyncBridge] malformed Y frame', err)
+        return
+      }
+      if (typeof chunk.snapshotId !== 'string' || typeof chunk.index !== 'number') return
+      if (typeof chunk.total !== 'number' || typeof chunk.payload !== 'string') return
+      this.emit('snapshotChunk', chunk)
+      return
+    }
+
+    // Z (from Lua) — snapshot apply ack from a joiner-side Lua.
+    if (type === 0x5a /* Z */) {
+      const json = line.substring(2)
+      let ack: LuaSnapshotAck
+      try {
+        ack = JSON.parse(json) as LuaSnapshotAck
+      } catch (err) {
+        console.warn('[EditorSyncBridge] malformed Z frame', err)
+        return
+      }
+      if (typeof ack.snapshotId !== 'string') return
+      this.emit('snapshotApplied', ack)
+      return
+    }
+
+    // T — Phase 4 brush stroke frame from Lua. Begin/Tick/End discriminated
+    // by `kind`. The relay broadcasts to peers (filtering out the originator
+    // by authorId) and applies a 30 Hz tick cap on top of Lua's own.
+    if (type === 0x54 /* T */) {
+      const json = line.substring(2)
+      let obs: LuaBrushObservation
+      try {
+        obs = JSON.parse(json) as LuaBrushObservation
+      } catch (err) {
+        console.warn('[EditorSyncBridge] malformed T frame', err)
+        return
+      }
+      if (typeof obs.strokeId !== 'string' || typeof obs.brushType !== 'string') return
+      if (obs.kind !== 'begin' && obs.kind !== 'tick' && obs.kind !== 'end') return
+      if (typeof obs.ts !== 'number') return
+      this.emit('brush', obs)
       return
     }
 

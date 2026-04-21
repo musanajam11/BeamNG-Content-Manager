@@ -20,7 +20,9 @@ import { EventEmitter } from 'events'
 import { randomUUID } from 'crypto'
 import {
   FrameDecoder, sendMessage,
-  type SessionMessage, type OpMsg, type WelcomeMsg, type PoseMsg,
+  type SessionMessage, type OpMsg, type WelcomeMsg, type PoseMsg, type EnvMsg, type FieldMsg,
+  type SnapshotBeginMsg, type SnapshotChunkMsg, type SnapshotEndMsg, type SnapshotAppliedMsg,
+  type BrushMsg, type WelcomeProjectInfo,
 } from './transports/SessionFrame'
 
 export interface PeerClientConfig {
@@ -38,6 +40,20 @@ interface Events {
   ready: (welcome: WelcomeMsg) => void
   remoteOp: (op: OpMsg) => void
   remotePose: (pose: PoseMsg) => void
+  /** A peer (or the host) updated a scene-globals key (Phase 1 env channel). */
+  remoteEnv: (env: EnvMsg) => void
+  /** A peer (or the host) wrote a per-object field (Phase 2 field channel). */
+  remoteField: (field: FieldMsg) => void
+  /** Phase 3: host is starting to ship us a snapshot. */
+  snapshotBegin: (msg: SnapshotBeginMsg) => void
+  /** Phase 3: one chunk of an in-flight snapshot. */
+  snapshotChunk: (msg: SnapshotChunkMsg) => void
+  /** Phase 3: host has finished shipping snapshot chunks. */
+  snapshotEnd: (msg: SnapshotEndMsg) => void
+  /** Phase 4: a brush stroke frame from a peer (begin/tick/end). */
+  remoteBrush: (brush: BrushMsg) => void
+  /** Host pushed a new/updated project offer mid-session. */
+  projectOffered: (info: WelcomeProjectInfo) => void
   ack: (info: { clientOpId: string; seq: number; status: string }) => void
   peerLeft: (info: { authorId: string; reason?: string }) => void
   closed: (reason: string) => void
@@ -196,6 +212,67 @@ export class PeerClient extends EventEmitter {
     return sendMessage(this.socket, { type: 'pose', authorId: this.authorId, ...pose })
   }
 
+  /**
+   * Send a single env-channel observation to the host. Author + ts are
+   * stamped here; host re-stamps authorId for trust-but-verify and applies
+   * LWW before broadcasting. Best-effort — dropped if not ready.
+   */
+  sendEnv(obs: { key: string; value: unknown; ts: number }): boolean {
+    if (!this.socket || !this.ready) return false
+    const env: EnvMsg = {
+      type: 'env',
+      authorId: this.authorId,
+      ts: obs.ts,
+      key: obs.key,
+      value: obs.value,
+    }
+    return sendMessage(this.socket, env)
+  }
+
+  /**
+   * Send a single field-channel write to the host. Same trust model as env
+   * — host re-stamps authorId and applies LWW before broadcasting.
+   */
+  sendField(obs: {
+    pid: string; fieldName: string; arrayIndex?: number; value: unknown; ts: number
+  }): boolean {
+    if (!this.socket || !this.ready) return false
+    const field: FieldMsg = {
+      type: 'field',
+      authorId: this.authorId,
+      ts: obs.ts,
+      pid: obs.pid,
+      fieldName: obs.fieldName,
+      arrayIndex: obs.arrayIndex ?? 0,
+      value: obs.value,
+    }
+    return sendMessage(this.socket, field)
+  }
+
+  /** Phase 3: tell the host our local Lua applied (or failed to apply) a snapshot. */
+  sendSnapshotApplied(snapshotId: string, ok: boolean, error?: string): boolean {
+    if (!this.socket) return false
+    const msg: SnapshotAppliedMsg = { type: 'snapshotApplied', snapshotId, ok, error }
+    return sendMessage(this.socket, msg)
+  }
+
+  /** Phase 4: send one brush stroke frame to the host. */
+  sendBrush(obs: {
+    strokeId: string; brushType: string; kind: 'begin' | 'tick' | 'end'; payload: unknown; ts: number
+  }): boolean {
+    if (!this.socket || !this.ready) return false
+    const msg: BrushMsg = {
+      type: 'brush',
+      authorId: this.authorId,
+      ts: obs.ts,
+      strokeId: obs.strokeId,
+      kind: obs.kind,
+      brushType: obs.brushType,
+      payload: obs.payload,
+    }
+    return sendMessage(this.socket, msg)
+  }
+
   private dispatch(msg: SessionMessage): void {
     switch (msg.type) {
       case 'op':
@@ -204,6 +281,27 @@ export class PeerClient extends EventEmitter {
         return
       case 'pose':
         this.emit('remotePose', msg)
+        return
+      case 'env':
+        this.emit('remoteEnv', msg)
+        return
+      case 'field':
+        this.emit('remoteField', msg)
+        return
+      case 'snapshotBegin':
+        this.emit('snapshotBegin', msg)
+        return
+      case 'snapshotChunk':
+        this.emit('snapshotChunk', msg)
+        return
+      case 'snapshotEnd':
+        this.emit('snapshotEnd', msg)
+        return
+      case 'brush':
+        this.emit('remoteBrush', msg)
+        return
+      case 'projectOffer':
+        this.emit('projectOffered', msg.project)
         return
       case 'ack':
         this.emit('ack', { clientOpId: msg.clientOpId, seq: msg.seq, status: msg.status })
