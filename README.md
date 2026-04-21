@@ -188,12 +188,22 @@ Manage mods, vehicles, maps, servers, friends, career saves, and more — from a
 <table>
   <tr>
     <td align="center" width="50%">
-      <img src="docs/screenshots/CareerMP-Saves.jpg" alt="CareerMP saves" /><br>
-      <sub><b>Saves</b> — cloud-style slot manager</sub>
+      <img src="docs/screenshots/CareerMP-Saves.jpg" alt="CareerMP profile list" /><br>
+      <sub><b>Profile list</b> — every career profile with deploy state</sub>
     </td>
     <td align="center" width="50%">
       <img src="docs/screenshots/CareerMP-Mods.jpg" alt="CareerMP mods" /><br>
       <sub><b>Mods</b> — per-career mod sets</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/CareerMP-Saves0.jpg" alt="CareerMP save slots" /><br>
+      <sub><b>Save slots</b> — autosaves with money, level &amp; vehicle preview</sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/CareerMP-Saves1.jpg" alt="CareerMP save detail" /><br>
+      <sub><b>Save detail</b> — stats, reputation, owned vehicles at a glance</sub>
     </td>
   </tr>
 </table>
