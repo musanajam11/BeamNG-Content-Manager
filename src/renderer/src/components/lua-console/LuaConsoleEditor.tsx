@@ -223,10 +223,17 @@ export function LuaConsoleEditor(p: Props): React.JSX.Element {
         onMount={handleMount}
         theme="beammp-devtools"
         options={{
+          // Console++ — keep syntax niceties (ligatures, bracket colorization,
+          // folding, smooth scroll) but drop the heavy IDE chrome (minimap +
+          // overview ruler) so it reads like a prompt, not an editor viewport.
           fontSize: 13,
           fontFamily: "'JetBrains Mono', 'Cascadia Code', 'Fira Code', Consolas, 'Courier New', monospace",
           fontLigatures: true,
-          minimap: { enabled: true },
+          minimap: { enabled: false },
+          overviewRulerLanes: 0,
+          overviewRulerBorder: false,
+          hideCursorInOverviewRuler: true,
+          scrollbar: { vertical: 'auto', verticalScrollbarSize: 10, horizontalScrollbarSize: 10, useShadows: false },
           scrollBeyondLastLine: false,
           wordWrap: p.wordWrap ? 'on' : 'off',
           automaticLayout: true,

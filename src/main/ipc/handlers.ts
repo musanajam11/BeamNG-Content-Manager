@@ -33,6 +33,7 @@ import { VoiceChatService } from '../services/VoiceChatService'
 import { VoiceMeshService } from '../services/VoiceMeshService'
 import { LuaConsoleService, type LuaScope } from '../services/LuaConsoleService'
 import { BeamUIFilesService } from '../services/BeamUIFilesService'
+import { EditorSyncSessionController, type SessionStatus } from '../services/EditorSyncSessionController'
 import { parseBeamNGJson } from '../utils/parseBeamNGJson'
 import { LRUCache } from '../utils/lruCache'
 import type { AppConfig, GamePaths, ServerInfo, RepoSortOrder, VehicleDetail, VehicleConfigInfo, VehicleConfigData, VehicleEditorData, SlotInfo, VariableInfo, WheelPlacement, ActiveMeshResult, HostedServerConfig, GPSRoute, ScheduledTask, MapRichMetadata } from '../../shared/types'
@@ -58,6 +59,7 @@ let voiceMeshService: VoiceMeshService
 let luaConsoleService: LuaConsoleService
 let beamUIFilesService: BeamUIFilesService
 let careerSaveService: CareerSaveService
+let editorSession: EditorSyncSessionController
 
 // ── Server ↔ career-save tracking state ──
 // On join we snapshot the most-recent lastSaved per deployed profile.
@@ -109,6 +111,38 @@ export function initializeServices(): {
   beamUIFilesService = new BeamUIFilesService()
   registryService.setModManager(modManagerService)
 
+  // World-editor collaborative session controller. Hooks into the
+  // GameLauncher's editor bridge and exposes host/join/leave to the renderer.
+  editorSession = new EditorSyncSessionController(launcherService)
+  editorSession.on('statusChanged', (st: SessionStatus) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('worldEdit:session:status', st)
+    }
+  })
+  editorSession.on('opBroadcast', (op) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('worldEdit:session:op', op)
+    }
+  })
+  editorSession.on('log', (entry) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('worldEdit:session:log', entry)
+    }
+  })
+  editorSession.on('peerPose', (pose) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('worldEdit:session:peerPose', pose)
+    }
+  })
+  editorSession.on('peerActivity', (act) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send('worldEdit:session:peerActivity', act)
+    }
+  })
+  editorSession.on('error', (err) => {
+    console.warn('[EditorSession]', err.message)
+  })
+
   // Auto-deploy/undeploy voice bridge on server join/leave.
   // Always re-run deployBridge on relay-true so the embedded Lua source
   // overwrites any stale beamcmVoice.lua left over from an older CM build.
@@ -129,6 +163,34 @@ export function initializeServices(): {
     const wins = BrowserWindow.getAllWindows()
     for (const win of wins) {
       try { win.webContents.send('voice:relayState', { inRelay }) } catch { /* ignore */ }
+    }
+  })
+
+  // Auto-undeploy every CM-owned BeamNG extension when the game exits, so
+  // the userDir is left clean and no beamcm*.lua files linger to produce
+  // orphan logs / poll signal files when CM is not running. Each service
+  // is responsible for removing its own .lua + signal artefacts; the
+  // launcher already sweeps its own (bridge, GPS, World Editor Sync).
+  launcherService.onGameExit((userDir) => {
+    try {
+      if (voiceChatService.isDeployed()) {
+        void voiceChatService.disable().catch(() => { /* best-effort */ })
+        voiceChatService.undeployBridge()
+      }
+    } catch (err) {
+      console.warn('[GameExit] Voice bridge cleanup failed:', err)
+    }
+    try {
+      if (luaConsoleService.isDeployed()) {
+        luaConsoleService.undeploy()
+      }
+    } catch (err) {
+      console.warn('[GameExit] Lua console cleanup failed:', err)
+    }
+    // Notify the renderer so pages that show a "deployed" badge can refresh.
+    const wins = BrowserWindow.getAllWindows()
+    for (const win of wins) {
+      try { win.webContents.send('game:cleanedUp', { userDir }) } catch { /* ignore */ }
     }
   })
 
@@ -965,6 +1027,220 @@ export function registerIpcHandlers(): void {
     return launcherService.getGPSTelemetry()
   })
 
+  // ── World Editor Sync (Phase 0 spike) ──
+  //
+  // Capture-only extension that wraps editor.history and writes captured
+  // actions to settings/BeamCM/we_capture.log. No networking yet — this is
+  // the validation gate for the broader design in Project/Docs/WORLD-EDITOR-SYNC.md.
+
+  ipcMain.handle('worldEdit:deploy', async (): Promise<{ success: boolean; error?: string }> => {
+    const userDir = configService.get().gamePaths?.userDir
+    if (!userDir) return { success: false, error: 'User data folder not configured' }
+    return launcherService.deployEditorSync(userDir)
+  })
+
+  ipcMain.handle('worldEdit:undeploy', async (): Promise<{ success: boolean; error?: string }> => {
+    const userDir = configService.get().gamePaths?.userDir
+    if (!userDir) return { success: false, error: 'User data folder not configured' }
+    return launcherService.undeployEditorSync(userDir)
+  })
+
+  ipcMain.handle('worldEdit:isDeployed', async (): Promise<boolean> => {
+    return launcherService.isEditorSyncDeployed()
+  })
+
+  ipcMain.handle(
+    'worldEdit:signal',
+    async (
+      _event,
+      action:
+        | 'start'
+        | 'stop'
+        | 'replay'
+        | 'install'
+        | 'uninstall'
+        | 'undo'
+        | 'redo'
+        | 'save'
+        | 'saveAs'
+        | 'saveProject'
+        | 'loadProject',
+      payload?: { path?: string }
+    ): Promise<{ success: boolean; error?: string }> => {
+      const userDir = configService.get().gamePaths?.userDir
+      if (!userDir) return { success: false, error: 'User data folder not configured' }
+      return launcherService.editorSyncSignal(userDir, action, payload)
+    }
+  )
+
+  ipcMain.handle('worldEdit:getStatus', async () => {
+    return launcherService.getEditorSyncStatus()
+  })
+
+  ipcMain.handle('worldEdit:readCapture', async (_event, tail?: number) => {
+    const userDir = configService.get().gamePaths?.userDir
+    if (!userDir) return { entries: [], total: 0 }
+    return launcherService.readEditorSyncCapture(userDir, tail ?? 100)
+  })
+
+  ipcMain.handle('worldEdit:listProjects', async () => {
+    const userDir = configService.get().gamePaths?.userDir
+    if (!userDir) return []
+    return launcherService.listEditorProjects(userDir)
+  })
+
+  ipcMain.handle(
+    'worldEdit:saveProject',
+    async (_event, levelName: string, projectName: string) => {
+      const userDir = configService.get().gamePaths?.userDir
+      if (!userDir) return { success: false, error: 'User data folder not configured' }
+      return launcherService.saveEditorProject(userDir, levelName, projectName)
+    }
+  )
+
+  ipcMain.handle('worldEdit:loadProject', async (_event, levelPath: string) => {
+    const userDir = configService.get().gamePaths?.userDir
+    if (!userDir) return { success: false, error: 'User data folder not configured' }
+    return launcherService.loadEditorProject(userDir, levelPath)
+  })
+
+  ipcMain.handle('worldEdit:deleteProject', async (_event, absolutePath: string) => {
+    const userDir = configService.get().gamePaths?.userDir
+    if (!userDir) return { success: false, error: 'User data folder not configured' }
+    return launcherService.deleteEditorProject(userDir, absolutePath)
+  })
+
+  // ── World Editor Session (Phase 2/3: host + join) ──
+
+  ipcMain.handle('worldEdit:session:getStatus', async () => {
+    return editorSession.getStatus()
+  })
+
+  ipcMain.handle(
+    'worldEdit:session:host',
+    async (
+      _event,
+      opts: { port?: number; token?: string | null; levelName?: string | null; displayName?: string }
+    ): Promise<{ success: boolean; error?: string; status?: SessionStatus }> => {
+      const userDir = configService.get().gamePaths?.userDir
+      if (!userDir) return { success: false, error: 'User data folder not configured' }
+      const beamcmDir = join(userDir, 'settings', 'BeamCM')
+      try {
+        const status = await editorSession.startHost({
+          beamcmDir,
+          port: opts.port,
+          token: opts.token ?? null,
+          levelName: opts.levelName ?? null,
+          displayName: opts.displayName,
+        })
+        return { success: true, status }
+      } catch (err) {
+        return { success: false, error: `${err}` }
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'worldEdit:session:join',
+    async (
+      _event,
+      opts: { host: string; port: number; token?: string | null; displayName?: string }
+    ): Promise<{ success: boolean; error?: string; status?: SessionStatus }> => {
+      try {
+        const status = await editorSession.startJoin({
+          host: opts.host,
+          port: opts.port,
+          token: opts.token ?? null,
+          displayName: opts.displayName,
+        })
+        return { success: true, status }
+      } catch (err) {
+        return { success: false, error: `${err}` }
+      }
+    }
+  )
+
+  ipcMain.handle('worldEdit:session:leave', async () => {
+    editorSession.leave()
+    return { success: true }
+  })
+
+  ipcMain.handle(
+    'worldEdit:session:launchIntoEditor',
+    async (
+      _event,
+      opts?: { levelOverride?: string | null }
+    ): Promise<{ success: boolean; error?: string; level?: string }> => {
+      const appConfig = configService.get()
+      const userDir = appConfig.gamePaths?.userDir
+      if (!userDir) return { success: false, error: 'User data folder not configured' }
+      const prep = editorSession.prepareEditorLaunch({
+        userDir,
+        levelOverride: opts?.levelOverride ?? null,
+      })
+      if (prep.error || !prep.level) {
+        return { success: false, error: prep.error ?? 'No level available' }
+      }
+      const rendererArgs =
+        appConfig.renderer === 'vulkan'
+          ? ['-gfx', 'vk']
+          : appConfig.renderer === 'dx11'
+            ? ['-gfx', 'dx11']
+            : []
+      const res = await launcherService.launchVanilla(
+        appConfig.gamePaths,
+        { mode: 'freeroam', level: prep.level },
+        { args: rendererArgs }
+      )
+      return { success: res.success, error: res.error, level: prep.level }
+    }
+  )
+
+  ipcMain.handle('worldEdit:session:getLanIps', async (): Promise<string[]> => {
+    const nets = (await import('node:os')).networkInterfaces()
+    const out: string[] = []
+    for (const ifaces of Object.values(nets)) {
+      if (!ifaces) continue
+      for (const info of ifaces) {
+        if (info.family === 'IPv4' && !info.internal) out.push(info.address)
+      }
+    }
+    return out
+  })
+
+  ipcMain.handle(
+    'worldEdit:session:getPublicIp',
+    async (): Promise<{ ip: string | null; error?: string }> => {
+      try {
+        // ipify is the lightest no-auth public-IP echo service; BeamMP launcher
+        // does something equivalent to discover its own public-facing address.
+        const https = await import('node:https')
+        const ip = await new Promise<string>((resolve, reject) => {
+          const req = https.get('https://api.ipify.org', { timeout: 5000 }, (res) => {
+            if (res.statusCode !== 200) {
+              reject(new Error(`HTTP ${res.statusCode}`))
+              return
+            }
+            let buf = ''
+            res.on('data', (c) => (buf += c))
+            res.on('end', () => resolve(buf.trim()))
+            res.on('error', reject)
+          })
+          req.on('error', reject)
+          req.on('timeout', () => {
+            req.destroy(new Error('timeout'))
+          })
+        })
+        if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) {
+          return { ip: null, error: `unexpected response: ${ip.slice(0, 60)}` }
+        }
+        return { ip }
+      } catch (err) {
+        return { ip: null, error: `${err}` }
+      }
+    }
+  )
+
   // ── Voice Chat ──
 
   ipcMain.handle('voice:enable', async () => {
@@ -1124,6 +1400,12 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('beamUI:readFile', async (_event, payload: { rootId: string; subPath: string }) => {
     return beamUIFilesService.readFile(payload.rootId, payload.subPath)
+  })
+  ipcMain.handle('beamUI:readFileSmart', async (_event, payload: { rootId: string; subPath: string; maxBytes?: number }) => {
+    return beamUIFilesService.readFileSmart(payload.rootId, payload.subPath, payload.maxBytes)
+  })
+  ipcMain.handle('beamUI:readBinaryDataUrl', async (_event, payload: { rootId: string; subPath: string; mime: string; maxBytes?: number }) => {
+    return beamUIFilesService.readBinaryDataUrl(payload.rootId, payload.subPath, payload.mime, payload.maxBytes)
   })
   ipcMain.handle('beamUI:writeFile', async (_event, payload: { rootId: string; subPath: string; content: string }) => {
     await beamUIFilesService.writeFile(payload.rootId, payload.subPath, payload.content)

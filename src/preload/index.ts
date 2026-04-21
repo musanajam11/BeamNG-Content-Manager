@@ -663,6 +663,120 @@ const api = {
   gpsGetMapPOIs: (mapName: string) =>
     ipcRenderer.invoke('gps:getMapPOIs', mapName) as Promise<import('../shared/types').GPSMapPOI[]>,
 
+  // World Editor Sync (Phase 0 spike)
+  worldEditDeploy: () =>
+    ipcRenderer.invoke('worldEdit:deploy') as Promise<{ success: boolean; error?: string }>,
+  worldEditUndeploy: () =>
+    ipcRenderer.invoke('worldEdit:undeploy') as Promise<{ success: boolean; error?: string }>,
+  worldEditIsDeployed: () =>
+    ipcRenderer.invoke('worldEdit:isDeployed') as Promise<boolean>,
+  worldEditSignal: (
+    action:
+      | 'start'
+      | 'stop'
+      | 'replay'
+      | 'install'
+      | 'uninstall'
+      | 'undo'
+      | 'redo'
+      | 'save'
+      | 'saveAs'
+      | 'saveProject'
+      | 'loadProject',
+    payload?: { path?: string }
+  ) =>
+    ipcRenderer.invoke('worldEdit:signal', action, payload) as Promise<{ success: boolean; error?: string }>,
+  worldEditGetStatus: () =>
+    ipcRenderer.invoke('worldEdit:getStatus') as Promise<import('../shared/types').EditorSyncStatus | null>,
+  worldEditReadCapture: (tail?: number) =>
+    ipcRenderer.invoke('worldEdit:readCapture', tail) as Promise<{
+      entries: import('../shared/types').EditorSyncCaptureEntry[]
+      total: number
+    }>,
+  worldEditListProjects: () =>
+    ipcRenderer.invoke('worldEdit:listProjects') as Promise<
+      import('../shared/types').EditorProject[]
+    >,
+  worldEditSaveProject: (levelName: string, projectName: string) =>
+    ipcRenderer.invoke('worldEdit:saveProject', levelName, projectName) as Promise<{
+      success: boolean
+      error?: string
+      levelPath?: string
+    }>,
+  worldEditLoadProject: (levelPath: string) =>
+    ipcRenderer.invoke('worldEdit:loadProject', levelPath) as Promise<{
+      success: boolean
+      error?: string
+    }>,
+  worldEditDeleteProject: (absolutePath: string) =>
+    ipcRenderer.invoke('worldEdit:deleteProject', absolutePath) as Promise<{
+      success: boolean
+      error?: string
+    }>,
+
+  // World-Editor Session (host/join/leave)
+  worldEditSessionGetStatus: () =>
+    ipcRenderer.invoke('worldEdit:session:getStatus') as Promise<import('../shared/types').SessionStatus>,
+  worldEditSessionHost: (opts: {
+    port?: number
+    token?: string | null
+    levelName?: string | null
+    displayName?: string
+  }) =>
+    ipcRenderer.invoke('worldEdit:session:host', opts) as Promise<{
+      success: boolean
+      error?: string
+      status?: import('../shared/types').SessionStatus
+    }>,
+  worldEditSessionJoin: (opts: {
+    host: string
+    port: number
+    token?: string | null
+    displayName?: string
+  }) =>
+    ipcRenderer.invoke('worldEdit:session:join', opts) as Promise<{
+      success: boolean
+      error?: string
+      status?: import('../shared/types').SessionStatus
+    }>,
+  worldEditSessionLeave: () =>
+    ipcRenderer.invoke('worldEdit:session:leave') as Promise<{ success: boolean }>,
+  worldEditSessionLaunchIntoEditor: (opts?: { levelOverride?: string | null }) =>
+    ipcRenderer.invoke('worldEdit:session:launchIntoEditor', opts) as Promise<{
+      success: boolean
+      error?: string
+      level?: string
+    }>,
+  worldEditSessionGetLanIps: () =>
+    ipcRenderer.invoke('worldEdit:session:getLanIps') as Promise<string[]>,
+  worldEditSessionGetPublicIp: () =>
+    ipcRenderer.invoke('worldEdit:session:getPublicIp') as Promise<{ ip: string | null; error?: string }>,
+  onWorldEditSessionStatus: (cb: (status: import('../shared/types').SessionStatus) => void) => {
+    const handler = (_e: unknown, status: import('../shared/types').SessionStatus): void => cb(status)
+    ipcRenderer.on('worldEdit:session:status', handler)
+    return () => ipcRenderer.removeListener('worldEdit:session:status', handler)
+  },
+  onWorldEditSessionOp: (cb: (op: import('../shared/types').SessionOp) => void) => {
+    const handler = (_e: unknown, op: import('../shared/types').SessionOp): void => cb(op)
+    ipcRenderer.on('worldEdit:session:op', handler)
+    return () => ipcRenderer.removeListener('worldEdit:session:op', handler)
+  },
+  onWorldEditSessionLog: (cb: (entry: import('../shared/types').SessionLogEntry) => void) => {
+    const handler = (_e: unknown, entry: import('../shared/types').SessionLogEntry): void => cb(entry)
+    ipcRenderer.on('worldEdit:session:log', handler)
+    return () => ipcRenderer.removeListener('worldEdit:session:log', handler)
+  },
+  onWorldEditSessionPeerPose: (cb: (pose: import('../shared/types').PeerPoseEntry) => void) => {
+    const handler = (_e: unknown, pose: import('../shared/types').PeerPoseEntry): void => cb(pose)
+    ipcRenderer.on('worldEdit:session:peerPose', handler)
+    return () => ipcRenderer.removeListener('worldEdit:session:peerPose', handler)
+  },
+  onWorldEditSessionPeerActivity: (cb: (act: import('../shared/types').PeerActivity) => void) => {
+    const handler = (_e: unknown, act: import('../shared/types').PeerActivity): void => cb(act)
+    ipcRenderer.on('worldEdit:session:peerActivity', handler)
+    return () => ipcRenderer.removeListener('worldEdit:session:peerActivity', handler)
+  },
+
   // Voice Chat
   voiceEnable: () =>
     ipcRenderer.invoke('voice:enable') as Promise<{ success: boolean; error?: string }>,
@@ -786,6 +900,10 @@ const api = {
     ipcRenderer.invoke('beamUI:listDir', payload) as Promise<Array<{ name: string; isDirectory: boolean; size: number; modifiedMs: number }>>,
   beamUIReadFile: (payload: { rootId: string; subPath: string }) =>
     ipcRenderer.invoke('beamUI:readFile', payload) as Promise<string>,
+  beamUIReadFileSmart: (payload: { rootId: string; subPath: string; maxBytes?: number }) =>
+    ipcRenderer.invoke('beamUI:readFileSmart', payload) as Promise<{ kind: 'text' | 'binary'; content: string; size: number; truncated: boolean }>,
+  beamUIReadBinaryDataUrl: (payload: { rootId: string; subPath: string; mime: string; maxBytes?: number }) =>
+    ipcRenderer.invoke('beamUI:readBinaryDataUrl', payload) as Promise<{ dataUrl: string; size: number; truncated: boolean }>,
   beamUIWriteFile: (payload: { rootId: string; subPath: string; content: string }) =>
     ipcRenderer.invoke('beamUI:writeFile', payload) as Promise<{ success: boolean }>,
   beamUICreateFolder: (payload: { rootId: string; subPath: string }) =>

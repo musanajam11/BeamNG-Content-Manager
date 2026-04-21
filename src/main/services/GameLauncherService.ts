@@ -8,7 +8,9 @@ import {
   unlinkSync,
   renameSync,
   createReadStream,
-  readdirSync
+  readdirSync,
+  statSync,
+  rmSync
 } from 'fs'
 import { join, extname, basename } from 'path'
 import {
@@ -25,6 +27,7 @@ import { createHash } from 'crypto'
 import { homedir } from 'os'
 import { app, BrowserWindow, safeStorage } from 'electron'
 import type { GamePaths, GameStatus } from '../../shared/types'
+import { EditorSyncBridgeSocket, type LuaOpEnvelope, type LuaHello, type LuaPose } from './EditorSyncBridgeSocket'
 
 interface ModInfo {
   file_name: string
@@ -120,11 +123,38 @@ local function pollConsoleSignal(dt)
   end
 end
 
+-- ── World Editor Sync hot-load support ──
+local editorSyncSignalFile = "settings/BeamCM/editorsync_signal.json"
+local editorSyncTimer = 0
+local editorSyncPollInterval = 0.5
+local editorSyncLoaded = false
+
+local function pollEditorSyncSignal(dt)
+  editorSyncTimer = editorSyncTimer + dt
+  if editorSyncTimer < editorSyncPollInterval then return end
+  editorSyncTimer = 0
+  local sig = jsonReadFile(editorSyncSignalFile)
+  if not sig or sig.processed then return end
+  jsonWriteFile(editorSyncSignalFile, {action = sig.action, processed = true})
+  if sig.action == "load" and not editorSyncLoaded then
+    log('I', 'beammpCMBridge', 'Hot-loading World Editor Sync extension')
+    extensions.load('beamcmEditorSync')
+    setExtensionUnloadMode('beamcmEditorSync', 'manual')
+    editorSyncLoaded = true
+  elseif sig.action == "unload" and editorSyncLoaded then
+    log('I', 'beammpCMBridge', 'Unloading World Editor Sync extension')
+    extensions.unload('beamcmEditorSync')
+    editorSyncLoaded = false
+  end
+end
+
 local function onUpdate(dt)
   -- GPS hot-load polling always runs
   pollGpsSignal(dt)
   -- Lua console hot-load polling always runs
   pollConsoleSignal(dt)
+  -- World Editor Sync hot-load polling always runs
+  pollEditorSyncSignal(dt)
 
   if joined then return end
   timer = timer + dt
@@ -286,11 +316,37 @@ local function pollConsoleSignal(dt)
   end
 end
 
+-- ── World Editor Sync hot-load support ──
+local editorSyncSignalFile = "settings/BeamCM/editorsync_signal.json"
+local editorSyncTimer = 0
+local editorSyncPollInterval = 0.5
+local editorSyncLoaded = false
+
+local function pollEditorSyncSignal(dt)
+  editorSyncTimer = editorSyncTimer + dt
+  if editorSyncTimer < editorSyncPollInterval then return end
+  editorSyncTimer = 0
+  local sig = jsonReadFile(editorSyncSignalFile)
+  if not sig or sig.processed then return end
+  jsonWriteFile(editorSyncSignalFile, {action = sig.action, processed = true})
+  if sig.action == "load" and not editorSyncLoaded then
+    log('I', 'beamcmBridge', 'Hot-loading World Editor Sync extension')
+    extensions.load('beamcmEditorSync')
+    setExtensionUnloadMode('beamcmEditorSync', 'manual')
+    editorSyncLoaded = true
+  elseif sig.action == "unload" and editorSyncLoaded then
+    log('I', 'beamcmBridge', 'Unloading World Editor Sync extension')
+    extensions.unload('beamcmEditorSync')
+    editorSyncLoaded = false
+  end
+end
+
 local origOnUpdate = onUpdate
 local function onUpdateWithGps(dt)
   origOnUpdate(dt)
   pollGpsSignal(dt)
   pollConsoleSignal(dt)
+  pollEditorSyncSignal(dt)
 end
 
 M.onExtensionLoaded = onExtensionLoaded
@@ -406,6 +462,1288 @@ M.onUpdate = onUpdate
 return M
 `
 
+// ── World Editor Sync (Phase 0 spike) ─────────────────────────────────────────
+//
+// This is the read-only capture/replay extension used to validate that we can
+// wrap `editor.history:commitAction` without destabilising the BeamNG world
+// editor. It does NOT do any networking. It writes captured actions as JSON
+// lines to settings/BeamCM/we_capture.log and supports a one-shot replay mode
+// triggered by writing settings/BeamCM/we_capture_signal.json with
+// `{action:"replay", processed:false}`.
+//
+// Once Phase 0 confirms the hook is stable, this extension grows to add the
+// TCP bridge (Phase 1+) and the apply path for remote ops. See
+// Project/Docs/WORLD-EDITOR-SYNC.md for the full design.
+
+const EDITOR_SYNC_GE_LUA = `
+local M = {}
+local logFile = "settings/BeamCM/we_capture.log"
+local signalFile = "settings/BeamCM/we_capture_signal.json"
+local statusFile = "settings/BeamCM/we_capture_status.json"
+local portFile = "settings/BeamCM/we_port.txt"
+
+-- LuaSocket (shipped with BeamNG).
+local socket = nil
+do
+  local ok, s = pcall(require, "socket")
+  if ok then socket = s end
+end
+
+-- Capture state
+local hooked = false
+local origCommitAction = nil
+local origUndo = nil
+local origRedo = nil
+local origBeginTx = nil
+local origEndTx = nil
+local capturing = false
+local suppressCapture = false  -- true while replaying so we don't re-capture
+local captureCount = 0
+local sessionStart = 0
+local pollTimer = 0
+local pollInterval = 0.5
+
+-- Replay state
+local replayQueue = nil
+local replayIndex = 0
+local replayDelay = 0.1  -- seconds between replayed actions
+local replayTimer = 0
+
+-- ── TCP bridge to CM (Phase 1+) ───────────────────────────────────────────────
+-- CM writes its listening port to we_port.txt. We connect, send an H|
+-- handshake, then push O| frames for every captured op and receive R| remote
+-- ops + A| acks. Reconnection is attempted every ~2s if disconnected.
+local cmHost = "127.0.0.1"
+local cmPort = nil
+local cmClient = nil          -- LuaSocket client
+local cmBuf = ""              -- receive buffer for line framing
+local cmReconnectTimer = 0
+local cmReconnectInterval = 2 -- seconds between reconnect attempts
+local cmPingTimer = 0
+local cmPingInterval = 5
+local cmGreeted = false       -- received K| reply from CM
+local cmInflight = {}         -- clientOpId -> true, awaiting A| ack
+local opsSent = 0
+local opsRcvd = 0
+local acksRcvd = 0
+
+-- Pose tick state (presence awareness for peers in a session).
+local cmPoseTimer = 0
+local cmPoseInterval = 0.2    -- seconds between V| pose frames (~5 Hz)
+
+-- In-game ghost markers for peers. Populated by S| frames from CM, drawn
+-- every frame in onPreRender. Stale entries (>5 s) are skipped; CM also
+-- prunes its own pose map at 10 s so we usually stop receiving updates well
+-- before then.
+local cmPeerPoses = {}        -- authorId -> { x,y,z, heading?, name, vehicle?, levelName?, ts }
+local CM_GHOST_TTL_MS = 5000
+
+-- Editor autostart state. CM writes editor_autostart.json before launch;
+-- we open the World Editor automatically once the level is loaded so the
+-- user doesn't have to press F11.
+local editorAutostartFile = "settings/BeamCM/editor_autostart.json"
+local editorAutostartArmed = false
+local editorAutostartHandled = false
+
+-- Apply queue for remote ops received via R|. Drained in onUpdate to spread
+-- work across frames (max APPLY_PER_FRAME each tick).
+local applyQueue = {}
+local APPLY_PER_FRAME = 8
+
+local function uuidv4()
+  -- Not cryptographically strong — advisory correlation id only.
+  local function hex(n) return string.format("%x", math.random(0, n)) end
+  return string.format(
+    "%s%s%s%s-%s%s-4%s%s-%s%s%s-%s%s%s%s%s%s",
+    hex(15),hex(15),hex(15),hex(15),
+    hex(15),hex(15),
+    hex(15),hex(15),
+    hex(3+8),hex(15),hex(15),
+    hex(15),hex(15),hex(15),hex(15),hex(15),hex(15)
+  )
+end
+
+local function readCmPort()
+  local f = io.open(portFile, "r")
+  if not f then return nil end
+  local txt = f:read("*l")
+  f:close()
+  if not txt then return nil end
+  local n = tonumber(txt)
+  if not n or n <= 0 then return nil end
+  return n
+end
+
+local function cmDisconnect(reason)
+  if not cmClient then return end
+  pcall(function() cmClient:close() end)
+  cmClient = nil
+  cmBuf = ""
+  cmGreeted = false
+  -- Clear all peer-tied state so a fresh reconnect doesn't see ghosts at
+  -- stale positions or try to apply ops queued for a previous session.
+  cmPeerPoses = {}
+  applyQueue = {}
+  cmInflight = {}
+  -- Reset cadence timers so the first tick after reconnect doesn't immediately
+  -- fire a pose+ping just because the timers grew unbounded while disconnected.
+  cmPoseTimer = 0
+  cmPingTimer = 0
+  cmReconnectTimer = 0
+  log('W', 'beamcmEditorSync', 'CM bridge disconnected: ' .. tostring(reason))
+end
+
+local function cmSendLine(line)
+  if not cmClient then return false end
+  local _, err = cmClient:send(line)
+  if err and err ~= "timeout" then
+    cmDisconnect(err)
+    return false
+  end
+  return true
+end
+
+local function cmTryConnect()
+  if cmClient or not socket then return end
+  if not cmPort then
+    cmPort = readCmPort()
+    if not cmPort then return end
+    log('I', 'beamcmEditorSync', 'Read CM port ' .. tostring(cmPort) .. ' from ' .. portFile)
+  end
+  local sock = socket.tcp()
+  sock:settimeout(0.05)
+  local ok, err = sock:connect(cmHost, cmPort)
+  if not ok and err ~= "already connected" then
+    sock:close()
+    cmPort = nil  -- re-read the port file next attempt; CM may have restarted
+    return
+  end
+  sock:settimeout(0)
+  sock:setoption("tcp-nodelay", true)
+  cmClient = sock
+  cmBuf = ""
+  cmGreeted = false
+  log('I', 'beamcmEditorSync', 'Connected to CM bridge at ' .. cmHost .. ':' .. tostring(cmPort))
+
+  -- Send handshake with what we know right now. CM replies with K|.
+  local hello = {
+    beamngBuild = (beamng_buildinfo and beamng_buildinfo.version) or nil,
+    editorActive = (editor ~= nil and editor.isEditorActive and editor.isEditorActive()) or false,
+    levelName = (editor and editor.getLevelName) and editor.getLevelName() or nil,
+    hooked = hooked,
+    capturing = capturing,
+  }
+  local helloJson = jsonEncode(hello) or "{}"
+  cmSendLine("H|" .. helloJson .. "\\n")
+end
+
+-- Send an op envelope over TCP. Returns clientOpId so the caller can await ack
+-- if desired; Phase 1 is fire-and-forget.
+local function cmSendOp(entry)
+  if not cmClient then return nil end
+  local cid = uuidv4()
+  entry.clientOpId = cid
+  local json = jsonEncode(entry)
+  if not json then return nil end
+  if cmSendLine("O|" .. json .. "\\n") then
+    cmInflight[cid] = true
+    opsSent = opsSent + 1
+    return cid
+  end
+  return nil
+end
+
+-- Gather camera + active-vehicle pose and send a V| frame. Ephemeral, best
+-- effort — if the APIs aren't available we just skip this tick.
+local function cmSendPose()
+  if not cmClient or not cmGreeted then return end
+  -- Millisecond timestamps via LuaSocket (already required); os.time() is
+  -- only second-precision and would make idle detection coarse.
+  local pose = { ts = math.floor((socket and socket.gettime and socket.gettime() or os.time()) * 1000) }
+  -- Camera position (falls back to player vehicle if camera API absent).
+  local px, py, pz = nil, nil, nil
+  if core_camera and core_camera.getPosition then
+    local ok, pos = pcall(core_camera.getPosition)
+    if ok and pos and pos.x then
+      px, py, pz = pos.x, pos.y, pos.z
+    end
+  end
+  -- Active vehicle (optional; gives peers a richer presence signal).
+  if be and be.getPlayerVehicle then
+    local ok, veh = pcall(function() return be:getPlayerVehicle(0) end)
+    if ok and veh and veh.getPosition then
+      local vok, vpos = pcall(function() return veh:getPosition() end)
+      if vok and vpos and vpos.x then
+        if not px then px, py, pz = vpos.x, vpos.y, vpos.z end
+        pose.inVehicle = true
+        if veh.getJBeamFilename then
+          local jok, jb = pcall(function() return veh:getJBeamFilename() end)
+          if jok and type(jb) == "string" then pose.vehicle = jb end
+        end
+        -- Heading from vehicle directionVec if available.
+        if veh.getDirectionVector then
+          local dok, dir = pcall(function() return veh:getDirectionVector() end)
+          if dok and dir and dir.x then
+            pose.heading = math.atan2(dir.y, dir.x)
+          end
+        end
+      end
+    end
+  end
+  if not px then return end
+  pose.x, pose.y, pose.z = px, py, pz
+  -- Level name (helps detect mismatches on the peer side).
+  if getMissionFilename then
+    local ok, m = pcall(getMissionFilename)
+    if ok and type(m) == "string" and m ~= "" then pose.levelName = m end
+  end
+  local json = jsonEncode(pose)
+  if not json then return end
+  cmSendLine("V|" .. json .. "\\n")
+end
+
+-- Drain readable bytes, dispatch complete lines. Non-blocking.
+local function cmPump()
+  if not cmClient then return end
+  while true do
+    local data, err, partial = cmClient:receive(8192)
+    if data then
+      cmBuf = cmBuf .. data
+    elseif partial and #partial > 0 then
+      cmBuf = cmBuf .. partial
+    end
+    if err == "closed" then
+      cmDisconnect("peer closed")
+      return
+    end
+    while true do
+      local nl = string.find(cmBuf, "\\n", 1, true)
+      if not nl then break end
+      local line = string.sub(cmBuf, 1, nl - 1)
+      cmBuf = string.sub(cmBuf, nl + 1)
+      if #line > 0 then
+        local t = string.sub(line, 1, 1)
+        if t == "K" then
+          cmGreeted = true
+        elseif t == "A" then
+          -- A|clientOpId|seq|status
+          local p1 = string.find(line, "|", 3, true)
+          local p2 = p1 and string.find(line, "|", p1 + 1, true) or nil
+          local p3 = p2 and string.find(line, "|", p2 + 1, true) or nil
+          if p1 and p2 then
+            local cid = string.sub(line, 3, p1 - 1)
+            cmInflight[cid] = nil
+            acksRcvd = acksRcvd + 1
+          end
+        elseif t == "R" then
+          -- R|<json> — queue for application on the editor thread
+          local json = string.sub(line, 3)
+          local ok, env = pcall(jsonDecode, json)
+          if ok and type(env) == "table" then
+            table.insert(applyQueue, env)
+            opsRcvd = opsRcvd + 1
+          else
+            log('W', 'beamcmEditorSync', 'malformed R frame: ' .. tostring(json))
+          end
+        elseif t == "S" then
+          -- S|<json> — peer pose for in-world ghost markers (ephemeral).
+          local json = string.sub(line, 3)
+          local ok, p = pcall(jsonDecode, json)
+          if ok and type(p) == "table" and type(p.authorId) == "string" and p.x and p.y and p.z then
+            cmPeerPoses[p.authorId] = {
+              x = p.x, y = p.y, z = p.z,
+              heading = p.heading,
+              name = p.displayName or string.sub(p.authorId, 1, 8),
+              vehicle = p.vehicle,
+              inVehicle = p.inVehicle,
+              levelName = p.levelName,
+              ts = math.floor((socket and socket.gettime and socket.gettime() or os.time()) * 1000),
+            }
+          end
+        elseif t == "P" then
+          cmSendLine("Q|\\n")
+        elseif t == "E" then
+          log('W', 'beamcmEditorSync', 'CM soft error: ' .. string.sub(line, 3))
+        end
+      end
+    end
+    if err == "timeout" or not data then break end
+  end
+end
+
+-- Apply at most APPLY_PER_FRAME queued remote ops. Phase 1 is a stub that just
+-- logs — full apply path with netId resolution + suppressCapture is Phase 2.
+local function cmDrainApplyQueue()
+  local budget = APPLY_PER_FRAME
+  while budget > 0 and #applyQueue > 0 do
+    local env = table.remove(applyQueue, 1)
+    budget = budget - 1
+    applyRemoteOp(env)
+  end
+end
+
+-- ── NetId / persistentId translation (Phase 2) ────────────────────────────────
+-- BeamNG scene objects carry a stable persistentId (UUID string) that survives
+-- save/load. We use it as the cross-instance identity — the "netId".
+-- Outgoing ops: known id fields in \`data\` are rewritten from sim ids to
+-- { __pid = "<uuid>" } tables. Inbound ops: reverse. Unknown pids are dropped.
+
+local function simToPid(simId)
+  local n = tonumber(simId)
+  if not n then return nil end
+  if not scenetree or not scenetree.findObjectById then return nil end
+  local obj = scenetree.findObjectById(n)
+  if not obj then return nil end
+  local pid = nil
+  if obj.getField then
+    local ok, v = pcall(function() return obj:getField('persistentId', 0) end)
+    if ok and v and v ~= '' then pid = v end
+  end
+  if (not pid or pid == '') and obj.persistentId then pid = obj.persistentId end
+  return (pid and pid ~= '') and pid or nil
+end
+
+local function pidToSim(pid)
+  if type(pid) ~= 'string' or #pid == 0 then return nil end
+  if scenetree and scenetree.findObjectByPersistentId then
+    local obj = scenetree.findObjectByPersistentId(pid)
+    if obj and obj.getId then return obj:getId() end
+  end
+  return nil
+end
+
+-- Known id-bearing key paths in action data. These are the shapes observed in
+-- describeAction plus a few extras from the BeamNG editor source audit.
+local ID_KEYS_SCALAR = {
+  objectId = true, objectID = true,
+  roadId = true, roadID = true,
+  meshID = true, meshId = true,
+  matId = true,
+  instanceId = true, instanceID = true,
+  parentId = true, parentID = true,
+  newGroup = true,
+  id = true,
+}
+local ID_KEYS_ARRAY = {
+  objectIds = true, objectIDs = true,
+  ids = true,
+  arrayRoadIDs = true,
+}
+
+-- Recursively rewrite ids in \`data\`. outbound: sim→{__pid=...}. !outbound: reverse.
+-- Returns \`data\` (same reference, mutated) or nil if a required pid was unresolvable.
+local function rewriteIds(data, outbound, depth)
+  depth = depth or 0
+  if depth > 10 or type(data) ~= 'table' then return data end
+  local unresolved = false
+  for k, v in pairs(data) do
+    if ID_KEYS_SCALAR[k] then
+      if outbound then
+        if type(v) == 'number' then
+          local pid = simToPid(v)
+          if pid then data[k] = { __pid = pid } end
+          -- else leave numeric as-is; may be a group/local id
+        end
+      else
+        if type(v) == 'table' and v.__pid then
+          local sim = pidToSim(v.__pid)
+          if sim then data[k] = sim else unresolved = true end
+        end
+      end
+    elseif ID_KEYS_ARRAY[k] and type(v) == 'table' then
+      for i, id in ipairs(v) do
+        if outbound then
+          if type(id) == 'number' then
+            local pid = simToPid(id)
+            if pid then v[i] = { __pid = pid } end
+          end
+        else
+          if type(id) == 'table' and id.__pid then
+            local sim = pidToSim(id.__pid)
+            if sim then v[i] = sim else unresolved = true end
+          end
+        end
+      end
+    elseif type(v) == 'table' then
+      local r = rewriteIds(v, outbound, depth + 1)
+      if r == nil then unresolved = true end
+    end
+  end
+  return unresolved and nil or data
+end
+
+-- ── Remote op apply path ──────────────────────────────────────────────────────
+-- Given an op envelope from the wire, attempt to reproduce it locally without
+-- re-capturing. Best-effort: unknown or unresolvable actions are logged and
+-- skipped. Applied via editor.history:commitAction(name, data) which looks up
+-- the registered action — BeamNG's built-in handler then performs do/undo.
+function applyRemoteOp(env)
+  if type(env) ~= 'table' or not env.kind then return end
+
+  -- Never echo-capture while applying remote state.
+  suppressCapture = true
+  local ok, err = pcall(function()
+    if env.kind == 'do' then
+      if type(env.name) ~= 'string' then return end
+      local data = env.data
+      if type(data) == 'table' then
+        local rewritten = rewriteIds(data, false)
+        if rewritten == nil then
+          log('W', 'beamcmEditorSync', 'remote op skipped (unresolved pid): ' .. tostring(env.name))
+          return
+        end
+        data = rewritten
+      end
+      if editor and editor.history and editor.history.commitAction then
+        editor.history:commitAction(env.name, data or {})
+      else
+        log('W', 'beamcmEditorSync', 'editor.history.commitAction unavailable; cannot apply')
+      end
+    elseif env.kind == 'undo' then
+      if editor and editor.history and editor.history.undo then
+        editor.history:undo()
+      end
+    elseif env.kind == 'redo' then
+      if editor and editor.history and editor.history.redo then
+        editor.history:redo()
+      end
+    end
+  end)
+  suppressCapture = false
+  if not ok then
+    log('E', 'beamcmEditorSync', 'remote op apply failed: ' .. tostring(err))
+  end
+end
+
+-- ── helpers ───────────────────────────────────────────────────────────────────
+
+local function nowMs()
+  return math.floor((os.clock() - sessionStart) * 1000)
+end
+
+local function appendCaptureLine(entry)
+  -- Forward every op over TCP when the bridge is connected (low-latency path
+  -- for the multiplayer session). File logging is only done when the user
+  -- explicitly started the local capture from the Sync page — otherwise the
+  -- \`we_capture.log\` would grow unbounded on every collaborative edit.
+  if cmClient then
+    pcall(cmSendOp, entry)
+  end
+  if not capturing then return end
+  local serialized = jsonEncode(entry)
+  if not serialized then return end
+  local f = io.open(logFile, "a")
+  if not f then
+    log('E', 'beamcmEditorSync', 'Failed to open capture log for write: ' .. tostring(logFile))
+    return
+  end
+  f:write(serialized)
+  f:write("\\n")
+  f:close()
+end
+
+local function writeStatus()
+  local levelName = nil
+  if editor and editor.getLevelName then
+    local ok, ln = pcall(function() return editor.getLevelName() end)
+    if ok and ln and ln ~= "" then levelName = ln end
+  end
+  jsonWriteFile(statusFile, {
+    capturing = capturing,
+    captureCount = captureCount,
+    replayActive = replayQueue ~= nil,
+    replayIndex = replayIndex,
+    replayTotal = replayQueue and #replayQueue or 0,
+    hooked = hooked,
+    editorPresent = (editor ~= nil and editor.history ~= nil),
+    levelName = levelName,
+  })
+end
+
+local function readCaptureLog()
+  local f = io.open(logFile, "r")
+  if not f then return nil end
+  local entries = {}
+  for line in f:lines() do
+    if line and #line > 0 then
+      local ok, decoded = pcall(jsonDecode, line)
+      if ok and decoded then
+        table.insert(entries, decoded)
+      end
+    end
+  end
+  f:close()
+  return entries
+end
+
+-- Strip non-serialisable content from \`data\` so jsonEncode can succeed.
+-- Returns the cleaned table plus a list of stripped field names for logging.
+local function sanitise(data, depth)
+  depth = depth or 0
+  if depth > 8 then return nil end
+  local t = type(data)
+  if t == "nil" or t == "boolean" or t == "number" or t == "string" then
+    return data
+  end
+  if t == "table" then
+    local out = {}
+    for k, v in pairs(data) do
+      local kt = type(k)
+      if kt == "string" or kt == "number" then
+        local cleaned = sanitise(v, depth + 1)
+        if cleaned ~= nil then out[k] = cleaned end
+      end
+    end
+    return out
+  end
+  -- function, userdata, thread → drop silently
+  return nil
+end
+
+-- ── hooks ─────────────────────────────────────────────────────────────────────
+
+-- Summarise a single action's data for human-readable display on the CM side.
+-- Returns: detail (string or nil), targets (array of numeric ids or nil)
+--
+-- Coverage based on a full audit of BeamNG editor commitAction call-sites:
+-- objects (createObjectTool, assetBrowser drag-drop, sceneTree, inspector),
+-- forest, terrain, decals, decal-roads, mesh-roads, rivers, splines, materials,
+-- groups. Any unrecognised action falls through to a generic key dump so
+-- nothing ever shows blank in the CM UI.
+local function describeAction(name, data)
+  if type(data) ~= "table" then
+    return nil, nil
+  end
+
+  -- Look up an object by id and produce "#id Class 'name'" — works even when
+  -- the action data only carried an objectId (e.g. asset-browser CreateObject).
+  local function objInfo(id)
+    if not id then return nil end
+    local obj = scenetree and scenetree.findObjectById and scenetree.findObjectById(id)
+    if not obj then return "#" .. tostring(id) end
+    local cls = (obj.getClassName and obj:getClassName()) or "?"
+    local nm  = (obj.getName and obj:getName()) or ""
+    if nm ~= "" then
+      return "#" .. tostring(id) .. " " .. tostring(cls) .. " '" .. tostring(nm) .. "'"
+    end
+    return "#" .. tostring(id) .. " " .. tostring(cls)
+  end
+
+  -- Compact "x,y,z" from a vec3-ish table or MatrixF.getColumn4F result.
+  local function vecStr(v)
+    if not v then return nil end
+    if type(v) == "table" then
+      local x = v.x or v[1]
+      local y = v.y or v[2]
+      local z = v.z or v[3]
+      if x and y and z then
+        return string.format("%.2f,%.2f,%.2f", x, y, z)
+      end
+    end
+    -- Try MatrixF: it may have :getColumn4F() for translation
+    if type(v) == "userdata" or (type(v) == "table" and v.getColumn4F) then
+      local ok, col = pcall(function() return v:getColumn4F(3) end)
+      if ok and col then
+        return string.format("%.2f,%.2f,%.2f", col.x or 0, col.y or 0, col.z or 0)
+      end
+    end
+    return nil
+  end
+
+  local function shorten(s, n)
+    s = tostring(s)
+    if #s <= n then return s end
+    return s:sub(1, n - 1) .. "…"
+  end
+
+  -- ─── Selection ──────────────────────────────────────────────────────────
+  if name == "SelectObjects" then
+    -- newSelection may be a flat array of ids OR a class-bucketed table
+    local sel = data.newSelection or {}
+    local ids = {}
+    if sel[1] then
+      for _, v in ipairs(sel) do table.insert(ids, v) end
+    elseif type(sel) == "table" then
+      for _, bucket in pairs(sel) do
+        if type(bucket) == "table" then
+          for _, v in ipairs(bucket) do table.insert(ids, v) end
+        end
+      end
+    end
+    local n = #ids
+    if n == 0 then return "cleared selection", {} end
+    if n == 1 then return "sel " .. (objInfo(ids[1]) or "?"), { ids[1] } end
+    return "sel " .. tostring(n) .. " objs (" .. (objInfo(ids[1]) or "?") .. ", …)", ids
+  end
+
+  -- ─── Transforms ─────────────────────────────────────────────────────────
+  if name == "SetObjectTransform" or name == "SetObjectScale" then
+    local id = data.objectId
+    local label = objInfo(id) or "?"
+    local newPos = vecStr(data.newTransform) or vecStr(data.newPosition) or vecStr(data.newScale)
+    if newPos then label = label .. " → " .. newPos end
+    return label, id and { id } or nil
+  end
+
+  if name == "PositionRoadNode" or name == "PositionMeshNode" then
+    local roadCount, nodeCount = 0, 0
+    local ids = {}
+    for roadID, nodes in pairs(data.roadAndNodeIDs or {}) do
+      roadCount = roadCount + 1
+      table.insert(ids, tonumber(roadID) or roadID)
+      if type(nodes) == "table" then nodeCount = nodeCount + #nodes end
+    end
+    if data.meshID then
+      table.insert(ids, data.meshID)
+      roadCount = 1
+      nodeCount = #(data.nodeIDs or {})
+    end
+    return string.format("moved %d node(s) on %d road(s)", nodeCount, roadCount), ids
+  end
+
+  -- ─── Field changes ──────────────────────────────────────────────────────
+  if name == "ChangeField" or name == "ChangeDynField" or name == "ChangeFieldMultipleValues" then
+    local ids = data.objectIds or {}
+    local field = data.fieldName or "?"
+    local preview = data.newFieldValue or data.newValue
+    if preview == nil then
+      local nv = data.newFieldValues or data.newValues
+      if type(nv) == "table" then preview = nv[1] end
+    end
+    local previewStr = preview ~= nil and " = " .. shorten(preview, 40) or ""
+    if #ids == 1 then
+      return field .. previewStr .. " on " .. (objInfo(ids[1]) or "?"), ids
+    end
+    return field .. previewStr .. " on " .. tostring(#ids) .. " objs", ids
+  end
+
+  -- Material editor: "SetMaterialProperty_<prop>_layer<N>"
+  local prop, layer = name:match("^SetMaterialProperty_(.+)_layer(%d+)$")
+  if prop then
+    local label = "mat." .. prop .. "[L" .. layer .. "]"
+    if data.newValue ~= nil then label = label .. " = " .. shorten(data.newValue, 40) end
+    if data.objectId then label = label .. " on " .. (objInfo(data.objectId) or "?") end
+    return label, data.objectId and { data.objectId } or nil
+  end
+
+  if name == "SwapMaterialLayers" then
+    local id = data.matId
+    return string.format("swap layers %s↔%s on %s", tostring(data.layer1), tostring(data.layer2),
+      objInfo(id) or "?"), id and { id } or nil
+  end
+
+  -- ─── Object lifecycle ───────────────────────────────────────────────────
+  if name == "CreateObject" then
+    -- Two payload shapes: createObjectTool {classname,name,objectID,transform}
+    -- and assetBrowser drop {objectId} (look up the object that was created).
+    local id = data.objectId or data.objectID
+    -- Prefer scenetree lookup (most accurate, includes prefab/group class)
+    local lookup = objInfo(id)
+    if lookup then
+      local pos = vecStr(data.transform)
+      return lookup .. (pos and " @ " .. pos or ""), id and { id } or nil
+    end
+    -- Fall back to data fields if scenetree miss (e.g. mid-undo)
+    local cls = data.classname or data.className or "?"
+    local nm  = data.name or ""
+    local label = (id and ("#" .. tostring(id) .. " ") or "") .. cls
+    if nm ~= "" then label = label .. " '" .. nm .. "'" end
+    return label, id and { id } or nil
+  end
+
+  if name == "DeleteObject" then
+    local id = data.objectId
+    return "del " .. (objInfo(id) or ("#" .. tostring(id))), id and { id } or nil
+  end
+
+  if name == "DeleteSelectedObjects" then
+    local ids = {}
+    for _, e in ipairs(data.objects or {}) do
+      if e.objectId then table.insert(ids, e.objectId) end
+    end
+    return "del " .. tostring(#ids) .. " objs", ids
+  end
+
+  if name == "CreateGroup" then
+    local n = #(data.objects or {})
+    return string.format("group %d obj(s) → parent #%s", n, tostring(data.parentId or "?")),
+      data.newGroup and { data.newGroup } or nil
+  end
+
+  if name == "ChangeOrder" then
+    return string.format("reparent %d obj(s) → #%s",
+      #(data.objects or {}), tostring(data.newGroup or "?")), data.objects
+  end
+
+  -- ─── Forest editor ──────────────────────────────────────────────────────
+  if name == "AddForestItems" then
+    return "add " .. tostring(#(data.items or {})) .. " forest item(s)", data.itemIds
+  end
+  if name == "RemoveForestItems" then
+    return "remove " .. tostring(#(data.items or {})) .. " forest item(s)", nil
+  end
+  if name == "SetForestItemTransform" or name == "MoveForestItem"
+    or name == "RotateForestItem" or name == "ScaleForestItem" then
+    return string.format("%s × %d", name:gsub("ForestItem", "Forest"), #(data.items or {})), nil
+  end
+
+  -- ─── Decal editor ───────────────────────────────────────────────────────
+  if name == "CreateDecalInstance" then
+    local d = data.instanceData or {}
+    local pos = vecStr(d.position)
+    local label = "decal" .. (d.id and " #" .. tostring(d.id) or "")
+    if pos then label = label .. " @ " .. pos end
+    return label, d.id and { d.id } or nil
+  end
+  if name == "DeleteDecalInstance" or name == "DuplicateDecalInstances" then
+    local n = type(data.instancesData) == "table"
+      and (data.instancesData[1] and #data.instancesData or 0) or 0
+    if n == 0 and type(data.instancesData) == "table" then
+      for _ in pairs(data.instancesData) do n = n + 1 end
+    end
+    return name:lower():gsub("decalinstances?", "decal") .. " × " .. tostring(n), nil
+  end
+  if name == "PositionDecalInstances" or name == "RotateDecalInstances"
+    or name == "ChangeDecalInstancesSize" then
+    local n = 0
+    for _ in pairs(data.newPositions or data.newSizes or {}) do n = n + 1 end
+    return name .. " × " .. tostring(n), nil
+  end
+
+  -- ─── Decal-road editor ──────────────────────────────────────────────────
+  if name == "CreateRoad" then
+    return "road #" .. tostring(data.roadID) .. " (" .. tostring(#(data.nodes or {})) .. " nodes)",
+      data.roadID and { data.roadID } or nil
+  end
+  if name == "InsertRoadNode" then
+    local n = 0
+    for _ in pairs(data.roadInfos or {}) do n = n + 1 end
+    return "insert " .. tostring(n) .. " node(s)", nil
+  end
+  if name == "FlipRoadDirection" then
+    local ids = {}
+    for _, r in ipairs(data.roads or {}) do
+      if r.id then table.insert(ids, r.id) end
+    end
+    return "flip " .. tostring(#ids) .. " road(s)", ids
+  end
+  if name == "PasteRoad" then
+    return "paste fields → #" .. tostring(data.roadId), data.roadId and { data.roadId } or nil
+  end
+  if name == "SetRoadNodesWidth" then
+    local n = 0
+    for _ in pairs(data.newWidths or {}) do n = n + 1 end
+    return "set width on " .. tostring(n) .. " road(s)", nil
+  end
+  if name == "DeleteSelection" then
+    local n = 0
+    for _ in pairs(data.roadInfos or {}) do n = n + 1 end
+    return "delete " .. tostring(n) .. " road(s)", nil
+  end
+  if name == "DuplicateRoad" then
+    return "dup × " .. tostring(#(data.arrayRoadIDs or {})), data.arrayRoadIDs
+  end
+  if name == "SplitRoad" or name == "FuseRoads" then
+    return name, nil
+  end
+
+  -- ─── MeshRoad / River ───────────────────────────────────────────────────
+  if name == "CreateMesh" then
+    return "mesh #" .. tostring(data.meshID) .. " (" .. tostring(#(data.nodes or {})) .. " nodes)",
+      data.meshID and { data.meshID } or nil
+  end
+  if name == "DeleteMesh" then
+    return "del mesh #" .. tostring(data.meshID), data.meshID and { data.meshID } or nil
+  end
+  if name == "InsertMeshNode" or name == "DeleteMeshNode" then
+    return name .. " × " .. tostring(#(data.nodeInfos or {})) .. " on #" .. tostring(data.meshID),
+      data.meshID and { data.meshID } or nil
+  end
+  if name == "SetAllMeshNodesWidth" or name == "SetAllMeshNodesDepth" or name == "SetMeshNodeWidthDepth" then
+    return name .. " #" .. tostring(data.meshID), data.meshID and { data.meshID } or nil
+  end
+
+  -- ─── Terrain ────────────────────────────────────────────────────────────
+  if name == "TerrainEditor" or name == "Terrain_AutoPaint" then
+    return name .. " (delegated to EUndoManager)", nil
+  end
+
+  -- ─── Generic fallback: show top-level data keys so nothing is silent ───
+  local id = data.objectId or data.objectID or data.roadId or data.roadID or data.meshID or data.matId
+  if id then
+    return objInfo(id) or ("#" .. tostring(id)), { id }
+  end
+  local keys = {}
+  for k in pairs(data) do
+    table.insert(keys, tostring(k))
+    if #keys >= 5 then break end
+  end
+  if #keys > 0 then
+    return "data: {" .. table.concat(keys, ",") .. "}", nil
+  end
+  return nil, nil
+end
+
+local function installHooks()
+  if hooked then return true end
+  if not editor or not editor.history then
+    log('W', 'beamcmEditorSync', 'editor.history not available yet; will retry on editor activation')
+    return false
+  end
+
+  origCommitAction = editor.history.commitAction
+  origUndo = editor.history.undo
+  origRedo = editor.history.redo
+
+  if type(origCommitAction) ~= "function" then
+    log('E', 'beamcmEditorSync', 'editor.history.commitAction is not a function — incompatible BeamNG build?')
+    return false
+  end
+
+  editor.history.commitAction = function(self, name, data, undoFn, redoFn, ...)
+    local result = origCommitAction(self, name, data, undoFn, redoFn, ...)
+    if not suppressCapture then
+      local cleaned = sanitise(data)
+      -- Translate any sim ids → persistentIds so the op is portable.
+      if type(cleaned) == 'table' then
+        rewriteIds(cleaned, true)
+      end
+      local detail, targets = describeAction(name, data)
+      local entry = {
+        kind = "do",
+        name = tostring(name),
+        data = cleaned,
+        detail = detail,
+        targets = targets,
+        ts = nowMs(),
+        seq = captureCount + 1,
+      }
+      local ok, err = pcall(appendCaptureLine, entry)
+      if ok then
+        captureCount = captureCount + 1
+      else
+        log('E', 'beamcmEditorSync', 'capture write failed: ' .. tostring(err))
+      end
+    end
+    return result
+  end
+
+  if type(origUndo) == "function" then
+    editor.history.undo = function(self, ...)
+      local result = origUndo(self, ...)
+      if not suppressCapture then
+        pcall(appendCaptureLine, { kind = "undo", ts = nowMs(), seq = captureCount + 1 })
+        captureCount = captureCount + 1
+      end
+      return result
+    end
+  end
+
+  if type(origRedo) == "function" then
+    editor.history.redo = function(self, ...)
+      local result = origRedo(self, ...)
+      if not suppressCapture then
+        pcall(appendCaptureLine, { kind = "redo", ts = nowMs(), seq = captureCount + 1 })
+        captureCount = captureCount + 1
+      end
+      return result
+    end
+  end
+
+  -- Transaction boundaries (multi-step operations group their commits inside
+  -- a beginTransaction/endTransaction pair, e.g. inspector field edits or
+  -- the asset-browser drop sequence). Logging the boundaries makes it
+  -- obvious in the CM UI which actions belong together.
+  if type(editor.history.beginTransaction) == "function" then
+    origBeginTx = editor.history.beginTransaction
+    editor.history.beginTransaction = function(self, txName, ...)
+      local result = origBeginTx(self, txName, ...)
+      if not suppressCapture then
+        pcall(appendCaptureLine, {
+          kind = "tx-begin",
+          name = tostring(txName),
+          ts = nowMs(),
+          seq = captureCount + 1,
+        })
+        captureCount = captureCount + 1
+      end
+      return result
+    end
+  end
+  if type(editor.history.endTransaction) == "function" then
+    origEndTx = editor.history.endTransaction
+    editor.history.endTransaction = function(self, ...)
+      local result = origEndTx(self, ...)
+      if not suppressCapture then
+        pcall(appendCaptureLine, { kind = "tx-end", ts = nowMs(), seq = captureCount + 1 })
+        captureCount = captureCount + 1
+      end
+      return result
+    end
+  end
+
+  hooked = true
+  log('I', 'beamcmEditorSync', 'Installed editor.history hooks')
+  writeStatus()
+  return true
+end
+
+local function uninstallHooks()
+  if not hooked then return end
+  if origCommitAction then editor.history.commitAction = origCommitAction end
+  if origUndo then editor.history.undo = origUndo end
+  if origRedo then editor.history.redo = origRedo end
+  if origBeginTx then editor.history.beginTransaction = origBeginTx end
+  if origEndTx then editor.history.endTransaction = origEndTx end
+  origCommitAction = nil
+  origUndo = nil
+  origRedo = nil
+  origBeginTx = nil
+  origEndTx = nil
+  hooked = false
+  log('I', 'beamcmEditorSync', 'Uninstalled editor.history hooks')
+  writeStatus()
+end
+
+-- ── capture lifecycle ─────────────────────────────────────────────────────────
+
+local function startCapture()
+  if not hooked and not installHooks() then
+    log('W', 'beamcmEditorSync', 'Cannot start capture — hooks not installed')
+    return false
+  end
+  -- Truncate log
+  local f = io.open(logFile, "w")
+  if f then f:close() end
+  capturing = true
+  captureCount = 0
+  sessionStart = os.clock()
+  log('I', 'beamcmEditorSync', 'Capture started → ' .. logFile)
+  writeStatus()
+  return true
+end
+
+local function stopCapture()
+  capturing = false
+  log('I', 'beamcmEditorSync', 'Capture stopped (' .. tostring(captureCount) .. ' actions)')
+  writeStatus()
+end
+
+-- ── replay ────────────────────────────────────────────────────────────────────
+
+local function startReplay()
+  if not hooked and not installHooks() then
+    log('W', 'beamcmEditorSync', 'Cannot start replay — hooks not installed')
+    return false
+  end
+  local entries = readCaptureLog()
+  if not entries or #entries == 0 then
+    log('W', 'beamcmEditorSync', 'No capture log to replay')
+    return false
+  end
+  replayQueue = entries
+  replayIndex = 0
+  replayTimer = 0
+  log('I', 'beamcmEditorSync', 'Replay started: ' .. tostring(#entries) .. ' actions')
+  writeStatus()
+  return true
+end
+
+local function stepReplay()
+  if not replayQueue then return end
+  replayIndex = replayIndex + 1
+  if replayIndex > #replayQueue then
+    log('I', 'beamcmEditorSync', 'Replay complete (' .. tostring(replayIndex - 1) .. ' actions)')
+    replayQueue = nil
+    replayIndex = 0
+    writeStatus()
+    return
+  end
+  local entry = replayQueue[replayIndex]
+  if not entry or not entry.kind then return end
+
+  suppressCapture = true
+  if entry.kind == "do" then
+    -- For Phase 0 we don't try to reconstruct undo/redo functions for the
+    -- replayed entries; we just log what we *would* commit. This is enough
+    -- to prove the loop is healthy. Phase 1+ wires real apply via adapters.
+    log('D', 'beamcmEditorSync', 'replay step ' .. tostring(replayIndex) .. ': do ' .. tostring(entry.name))
+  elseif entry.kind == "undo" then
+    if origUndo then pcall(origUndo, editor.history) end
+    log('D', 'beamcmEditorSync', 'replay step ' .. tostring(replayIndex) .. ': undo')
+  elseif entry.kind == "redo" then
+    if origRedo then pcall(origRedo, editor.history) end
+    log('D', 'beamcmEditorSync', 'replay step ' .. tostring(replayIndex) .. ': redo')
+  end
+  suppressCapture = false
+  writeStatus()
+end
+
+-- ── signal polling ────────────────────────────────────────────────────────────
+
+local function pollSignal(dt)
+  pollTimer = pollTimer + dt
+  if pollTimer < pollInterval then return end
+  pollTimer = 0
+  -- Refresh the status file on every poll tick so captureCount/levelName
+  -- stay live in the CM UI without needing per-action writes.
+  writeStatus()
+  local sig = jsonReadFile(signalFile)
+  if not sig or sig.processed then return end
+  jsonWriteFile(signalFile, { action = sig.action, processed = true })
+  if sig.action == "start" then
+    startCapture()
+  elseif sig.action == "stop" then
+    stopCapture()
+  elseif sig.action == "replay" then
+    startReplay()
+  elseif sig.action == "uninstall" then
+    uninstallHooks()
+  elseif sig.action == "install" then
+    installHooks()
+  elseif sig.action == "undo" then
+    if editor and editor.history and editor.history.undo then
+      pcall(function() editor.history:undo(1) end)
+      log('I', 'beamcmEditorSync', 'Triggered editor.history:undo')
+    else
+      log('W', 'beamcmEditorSync', 'undo requested but editor.history unavailable')
+    end
+  elseif sig.action == "redo" then
+    if editor and editor.history and editor.history.redo then
+      pcall(function() editor.history:redo(1) end)
+      log('I', 'beamcmEditorSync', 'Triggered editor.history:redo')
+    else
+      log('W', 'beamcmEditorSync', 'redo requested but editor.history unavailable')
+    end
+  elseif sig.action == "save" then
+    if editor and editor.doSaveLevel then
+      local ok, err = pcall(function() editor.doSaveLevel() end)
+      if ok then
+        log('I', 'beamcmEditorSync', 'editor.doSaveLevel() invoked')
+      else
+        log('E', 'beamcmEditorSync', 'save failed: ' .. tostring(err))
+      end
+    else
+      log('W', 'beamcmEditorSync', 'save requested but editor.doSaveLevel unavailable')
+    end
+  elseif sig.action == "saveAs" then
+    local targetPath = sig.path
+    if not targetPath or targetPath == "" then
+      log('E', 'beamcmEditorSync', 'saveAs requested without path')
+    elseif editor and editor.saveLevelAs then
+      local ok, err = pcall(function() editor.saveLevelAs(targetPath) end)
+      if ok then
+        log('I', 'beamcmEditorSync', 'editor.saveLevelAs(' .. tostring(targetPath) .. ') invoked')
+      else
+        log('E', 'beamcmEditorSync', 'saveAs failed: ' .. tostring(err))
+      end
+    else
+      log('W', 'beamcmEditorSync', 'saveAs requested but editor.saveLevelAs unavailable')
+    end
+  elseif sig.action == "saveProject" then
+    -- Same mechanism as saveAs, but CM pre-computes the project directory so
+    -- we just need to call saveLevelAs. CM will drop info.json afterwards.
+    local targetPath = sig.path
+    if not targetPath or targetPath == "" then
+      log('E', 'beamcmEditorSync', 'saveProject requested without path')
+    elseif editor and editor.saveLevelAs then
+      local ok, err = pcall(function() editor.saveLevelAs(targetPath) end)
+      if ok then
+        log('I', 'beamcmEditorSync', 'saveProject → editor.saveLevelAs(' .. tostring(targetPath) .. ')')
+      else
+        log('E', 'beamcmEditorSync', 'saveProject failed: ' .. tostring(err))
+      end
+    else
+      log('W', 'beamcmEditorSync', 'saveProject requested but editor.saveLevelAs unavailable')
+    end
+  elseif sig.action == "loadProject" then
+    -- Shuts down the editor, reloads the mission at sig.path, and reactivates
+    -- the editor on the new level via the onClientStartMission hook.
+    local targetPath = sig.path
+    if not targetPath or targetPath == "" then
+      log('E', 'beamcmEditorSync', 'loadProject requested without path')
+    elseif editor and editor.openLevel then
+      local ok, err = pcall(function() editor.openLevel(targetPath) end)
+      if ok then
+        log('I', 'beamcmEditorSync', 'loadProject → editor.openLevel(' .. tostring(targetPath) .. ')')
+      else
+        log('E', 'beamcmEditorSync', 'loadProject failed: ' .. tostring(err))
+      end
+    else
+      log('W', 'beamcmEditorSync', 'loadProject requested but editor.openLevel unavailable')
+    end
+  else
+    log('W', 'beamcmEditorSync', 'Unknown capture signal: ' .. tostring(sig.action))
+  end
+end
+
+-- ── extension lifecycle ───────────────────────────────────────────────────────
+
+-- Called once a level finishes loading. We use it to (a) open the World Editor
+-- automatically when CM has armed the autostart signal, and (b) reset
+-- per-mission state.
+local function onClientStartMission(missionFile)
+  -- Editor autostart: CM wrote {open=true} into editor_autostart.json before
+  -- launch. Open the World Editor and mark the signal processed so we don't
+  -- re-trigger on subsequent mission loads in the same game session.
+  if editorAutostartArmed and not editorAutostartHandled then
+    editorAutostartHandled = true
+    if editor and editor.setEditorActive then
+      local ok, err = pcall(function() editor.setEditorActive(true) end)
+      if ok then
+        log('I', 'beamcmEditorSync', 'World Editor auto-opened on mission load')
+      else
+        log('W', 'beamcmEditorSync', 'editor.setEditorActive failed: ' .. tostring(err))
+      end
+    elseif editor and editor.toggleEditor then
+      pcall(function() editor.toggleEditor(true) end)
+      log('I', 'beamcmEditorSync', 'World Editor toggled on mission load')
+    else
+      log('W', 'beamcmEditorSync', 'editor API unavailable, cannot autostart')
+    end
+    -- Delete the autostart file outright now that we've acted on it. Leaving
+    -- the file behind (even with processed=true) means a future cold launch
+    -- has to read+parse stale state. Falls back to overwriting if delete
+    -- fails (read-only FS, virus scanner lock, etc.).
+    if not pcall(function() os.remove(editorAutostartFile) end) then
+      pcall(function()
+        jsonWriteFile(editorAutostartFile, { open = true, processed = true })
+      end)
+    end
+  end
+  -- Clear stale ghost markers from the previous mission, plus any queued
+  -- remote ops that targeted it (they would fail to resolve after a level
+  -- swap and just spam the log).
+  cmPeerPoses = {}
+  applyQueue = {}
+  cmInflight = {}
+end
+
+-- Poll for the editor_autostart signal. Done once shortly after the extension
+-- loads (signal is one-shot per launch).
+local function pollEditorAutostartOnce()
+  if editorAutostartArmed then return end
+  local sig = jsonReadFile(editorAutostartFile)
+  if sig and sig.open and not sig.processed then
+    editorAutostartArmed = true
+    log('I', 'beamcmEditorSync', 'Editor autostart armed - will open editor at mission start')
+  end
+end
+
+-- ── In-world ghost markers ────────────────────────────────────────────────────
+-- Drawn every render frame. We use the global 'debugDrawer' (BeamNG GE-side
+-- debug helper). All draw calls are pcalled so an API-shape change in a
+-- BeamNG update never breaks the editor sync extension.
+local function cmDrawGhosts()
+  if not debugDrawer then return end
+  local nowMs = math.floor((socket and socket.gettime and socket.gettime() or os.time()) * 1000)
+  for authorId, p in pairs(cmPeerPoses) do
+    if (nowMs - (p.ts or 0)) <= CM_GHOST_TTL_MS then
+      pcall(function()
+        local pos = vec3(p.x, p.y, p.z)
+        local color = ColorF(0.2, 0.9, 1.0, 0.7)
+        local headColor = ColorF(0.1, 0.6, 1.0, 0.9)
+        local textBg = ColorI(0, 0, 0, 180)
+        local textFg = ColorF(1, 1, 1, 1)
+        -- Body sphere at ground level + a smaller "head" sphere ~1.7m up so
+        -- the marker reads as a person from any angle.
+        debugDrawer:drawSphere(pos, 0.7, color)
+        debugDrawer:drawSphere(vec3(p.x, p.y, p.z + 1.7), 0.35, headColor)
+        -- Heading line if we have one.
+        if p.heading then
+          local hx = math.cos(p.heading) * 2
+          local hy = math.sin(p.heading) * 2
+          debugDrawer:drawLine(
+            vec3(p.x, p.y, p.z + 1.0),
+            vec3(p.x + hx, p.y + hy, p.z + 1.0),
+            color
+          )
+        end
+        -- Floating name label above the head. Older BeamNG builds required
+        -- the engine String() wrapper for drawTextAdvanced; modern (>=0.30)
+        -- builds accept a plain Lua string. Use whichever is available so
+        -- the label renders on every supported version.
+        local label = p.name or string.sub(authorId, 1, 8)
+        if p.inVehicle then label = label .. " (driving)" end
+        local labelArg = (type(String) == 'function') and String(label) or label
+        debugDrawer:drawTextAdvanced(
+          vec3(p.x, p.y, p.z + 2.4),
+          labelArg,
+          textFg, true, false, textBg
+        )
+      end)
+    end
+  end
+end
+
+local function onPreRender(dtReal, dtSim, dtRaw)
+  cmDrawGhosts()
+end
+
+local function onExtensionLoaded()
+  log('I', 'beamcmEditorSync', 'BeamCM World Editor Sync (Phase 0 spike) loaded')
+  -- Try to install hooks immediately. If editor not ready, pollSignal /
+  -- onEditorActivated will retry.
+  installHooks()
+  writeStatus()
+  -- Pick up the editor autostart signal once at load time.
+  pollEditorAutostartOnce()
+  -- Attempt initial CM bridge connect; onUpdate will retry every ~2s if this fails.
+  cmTryConnect()
+end
+
+local function onExtensionUnloaded()
+  if capturing then stopCapture() end
+  uninstallHooks()
+  cmDisconnect("extension unloaded")
+  log('I', 'beamcmEditorSync', 'BeamCM World Editor Sync unloaded')
+end
+
+local function onEditorActivated()
+  if not hooked then installHooks() end
+end
+
+local function onUpdate(dt)
+  pollSignal(dt)
+  -- TCP bridge: reconnect if dropped, pump frames, drain apply queue, ping.
+  if not cmClient then
+    cmReconnectTimer = cmReconnectTimer + dt
+    if cmReconnectTimer >= cmReconnectInterval then
+      cmReconnectTimer = 0
+      cmTryConnect()
+    end
+  else
+    cmPump()
+    cmDrainApplyQueue()
+    cmPingTimer = cmPingTimer + dt
+    if cmPingTimer >= cmPingInterval then
+      cmPingTimer = 0
+      cmSendLine("P|\\n")
+    end
+    cmPoseTimer = cmPoseTimer + dt
+    if cmPoseTimer >= cmPoseInterval then
+      cmPoseTimer = 0
+      cmSendPose()
+    end
+  end
+  if replayQueue then
+    replayTimer = replayTimer + dt
+    if replayTimer >= replayDelay then
+      replayTimer = 0
+      stepReplay()
+    end
+  end
+end
+
+M.onExtensionLoaded = onExtensionLoaded
+M.onExtensionUnloaded = onExtensionUnloaded
+M.onEditorActivated = onEditorActivated
+M.onUpdate = onUpdate
+M.onClientStartMission = onClientStartMission
+M.onPreRender = onPreRender
+return M
+`
+
 // CRC-32 lookup table (standard polynomial 0xEDB88320)
 const CRC32_TABLE = new Uint32Array(256)
 for (let i = 0; i < 256; i++) {
@@ -432,6 +1770,8 @@ export class GameLauncherService {
   private httpProxyPort: number = 0
   private corePort: number = 4444
   private statusListeners: Array<(status: GameStatus) => void> = []
+  /** Subscribers notified when the game process exits (either multiplayer or vanilla). */
+  private exitListeners: Array<(userDir: string) => void> = []
 
   // Proton/Steam Deck: the `steam` CLI exits immediately while the game
   // is still launching.  Track this so we don't tear down servers prematurely.
@@ -505,6 +1845,20 @@ export class GameLauncherService {
   private gpsFilePoller: ReturnType<typeof setInterval> | null = null
   private gpsTrackerDeployed: boolean = false
   private latestGpsTelemetry: import('../../shared/types').GPSTelemetry | null = null
+
+  // World Editor Sync (Phase 0 spike)
+  private editorSyncDeployed: boolean = false
+  private editorSyncStatusPoller: ReturnType<typeof setInterval> | null = null
+  private latestEditorSyncStatus: import('../../shared/types').EditorSyncStatus | null = null
+
+  // World Editor Sync (Phase 1+: TCP loopback bridge to Lua)
+  private editorBridge: EditorSyncBridgeSocket | null = null
+  private editorBridgeReady: boolean = false
+  private editorOpSeq: number = 0
+  /** Optional listener for ops arriving from Lua (Phase 2 relay will set this). */
+  private onLuaOp: ((seq: number, env: LuaOpEnvelope) => void) | null = null
+  /** Optional listener for pose ticks arriving from Lua (presence awareness). */
+  private onLuaPose: ((pose: LuaPose) => void) | null = null
 
   // Callback fired when serverInRelay state changes (true = joined server, false = disconnected)
   private onRelayStateChangeCallback: ((inRelay: boolean) => void) | null = null
@@ -630,6 +1984,27 @@ export class GameLauncherService {
     const status = this.getStatus()
     for (const listener of this.statusListeners) {
       listener(status)
+    }
+  }
+
+  /**
+   * Subscribe to game-process exit. Called once per teardown regardless of
+   * launch mode (multiplayer or vanilla). Listeners should synchronously
+   * undeploy any Lua extensions / bridges they own so nothing stale is left
+   * in the BeamNG userDir.
+   */
+  onGameExit(listener: (userDir: string) => void): void {
+    this.exitListeners.push(listener)
+  }
+
+  private notifyGameExit(): void {
+    if (!this.gameUserDir) return
+    for (const listener of this.exitListeners) {
+      try {
+        listener(this.gameUserDir)
+      } catch (err) {
+        this.log(`WARNING: game-exit listener threw: ${err}`)
+      }
     }
   }
 
@@ -2101,11 +3476,33 @@ export class GameLauncherService {
       return { success: false, error: 'User data folder not found' }
     }
 
+    // Remember where the game lives so shutdown() can clean up after exit.
+    this.gameUserDir = paths.userDir
+
     // Deploy the singleplayer bridge mod
     try {
       this.deployVanillaBridge(paths.userDir)
     } catch (err) {
       this.log(`WARNING: Failed to deploy vanilla bridge: ${err}`)
+    }
+
+    // If BeamMP.zip is present, re-patch it so the MP bridge (which is what
+    // BeamNG actually auto-loads from the mod zip) has the latest signal
+    // polling code — including hot-load for GPS, Lua console, and World
+    // Editor Sync. Without this, stale zips from an earlier CM version will
+    // silently ignore new signal files.
+    try {
+      const beammpZipPath = join(paths.userDir, 'mods', 'multiplayer', 'BeamMP.zip')
+      if (existsSync(beammpZipPath)) {
+        const sourceZip = readFileSync(beammpZipPath)
+        const patchedZip = this.patchBeamMPZip(sourceZip)
+        if (patchedZip.length !== sourceZip.length || !patchedZip.equals(sourceZip)) {
+          writeFileSync(beammpZipPath, patchedZip)
+          this.log('Re-patched BeamMP.zip on vanilla launch (bridge updated)')
+        }
+      }
+    } catch (err) {
+      this.log(`WARNING: Failed to re-patch BeamMP.zip for vanilla launch: ${err}`)
     }
 
     // Write launch signal so the bridge knows what to load
@@ -2147,12 +3544,14 @@ export class GameLauncherService {
       this.gameProcess.on('exit', (code) => {
         this.log(`BeamNG.drive (vanilla) exited with code ${code}`)
         this.gameProcess = null
+        this.shutdown()
         this.notifyStatusChange()
       })
 
       this.gameProcess.on('error', (err) => {
         this.log(`ERROR: Failed to launch BeamNG.drive (vanilla): ${err}`)
         this.gameProcess = null
+        this.shutdown()
         this.notifyStatusChange()
       })
 
@@ -2792,6 +4191,451 @@ export class GameLauncherService {
     return this.latestGpsTelemetry
   }
 
+  // ── World Editor Sync (Phase 0 spike) ──
+  //
+  // Deploys the capture-only beamcmEditorSync.lua extension and exposes
+  // capture/replay control via signal files. No networking yet.
+
+  deployEditorSync(userDir: string): { success: boolean; error?: string } {
+    try {
+      const extDir = join(userDir, 'lua', 'ge', 'extensions')
+      mkdirSync(extDir, { recursive: true })
+      writeFileSync(join(extDir, 'beamcmEditorSync.lua'), EDITOR_SYNC_GE_LUA.trim())
+      const signalDir = join(userDir, 'settings', 'BeamCM')
+      mkdirSync(signalDir, { recursive: true })
+      // Hot-load: tell the running bridge to load the extension
+      writeFileSync(
+        join(signalDir, 'editorsync_signal.json'),
+        JSON.stringify({ action: 'load', processed: false })
+      )
+      // Clear stale capture log + status from any previous spike run
+      const stale = ['we_capture.log', 'we_capture_status.json', 'we_capture_signal.json']
+      for (const name of stale) {
+        const p = join(signalDir, name)
+        if (existsSync(p)) {
+          try { unlinkSync(p) } catch { /* ignore */ }
+        }
+      }
+      this.latestEditorSyncStatus = null
+      this.editorSyncDeployed = true
+      this.startEditorSyncStatusPoller(userDir)
+      // Bring up the Phase 1+ TCP loopback bridge (writes we_port.txt).
+      // Failure here is non-fatal — the file-IPC capture log still works.
+      void this.startEditorBridge(signalDir)
+      this.log('World Editor Sync extension deployed to ' + join(extDir, 'beamcmEditorSync.lua'))
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: `Failed to deploy World Editor Sync: ${err}` }
+    }
+  }
+
+  undeployEditorSync(userDir: string): { success: boolean; error?: string } {
+    try {
+      const signalDir = join(userDir, 'settings', 'BeamCM')
+      mkdirSync(signalDir, { recursive: true })
+      writeFileSync(
+        join(signalDir, 'editorsync_signal.json'),
+        JSON.stringify({ action: 'unload', processed: false })
+      )
+      const extPath = join(userDir, 'lua', 'ge', 'extensions', 'beamcmEditorSync.lua')
+      if (existsSync(extPath)) unlinkSync(extPath)
+      // Leave we_capture.log on disk so it can be inspected after the spike;
+      // status file goes since it's stale once the extension is gone.
+      const statusPath = join(signalDir, 'we_capture_status.json')
+      if (existsSync(statusPath)) {
+        try { unlinkSync(statusPath) } catch { /* ignore */ }
+      }
+      this.editorSyncDeployed = false
+      this.latestEditorSyncStatus = null
+      this.stopEditorSyncStatusPoller()
+      this.stopEditorBridge()
+      this.log('World Editor Sync extension undeployed')
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: `Failed to undeploy World Editor Sync: ${err}` }
+    }
+  }
+
+  isEditorSyncDeployed(): boolean {
+    return this.editorSyncDeployed
+  }
+
+  /**
+   * Send a one-shot control signal to the deployed extension.
+   * Action is one of: "start", "stop", "replay", "install", "uninstall",
+   * "undo", "redo", "save", "saveAs".
+   * For "saveAs", `payload.path` must be the level path (e.g. "/levels/mymap/").
+   */
+  editorSyncSignal(
+    userDir: string,
+    action:
+      | 'start'
+      | 'stop'
+      | 'replay'
+      | 'install'
+      | 'uninstall'
+      | 'undo'
+      | 'redo'
+      | 'save'
+      | 'saveAs'
+      | 'saveProject'
+      | 'loadProject',
+    payload?: { path?: string }
+  ): { success: boolean; error?: string } {
+    try {
+      const signalDir = join(userDir, 'settings', 'BeamCM')
+      mkdirSync(signalDir, { recursive: true })
+      const body: Record<string, unknown> = { action, processed: false }
+      if (payload?.path) body.path = payload.path
+      writeFileSync(
+        join(signalDir, 'we_capture_signal.json'),
+        JSON.stringify(body)
+      )
+      this.log(`World Editor Sync signal sent: ${action}${payload?.path ? ` path=${payload.path}` : ''}`)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: `Failed to send editor-sync signal: ${err}` }
+    }
+  }
+
+  // ── Editor Sync TCP Bridge (Phase 1+) ──
+  //
+  // Loopback TCP listener. The Lua extension reads `we_port.txt` and connects
+  // back; ops then flow over the socket instead of the file polling loop. The
+  // file path is still maintained as a fallback / capture log for the UI.
+
+  private async startEditorBridge(signalDir: string): Promise<void> {
+    if (this.editorBridge) return
+    const bridge = new EditorSyncBridgeSocket()
+    bridge.on('hello', (info: LuaHello) => {
+      this.editorBridgeReady = true
+      this.log(`[EditorBridge] Lua handshake: editor=${info.editorActive ?? '?'} level=${info.levelName ?? '?'} build=${info.beamngBuild ?? '?'}`)
+      // Greet back. Phase 1 has no real session yet — Phase 2+ will fill this
+      // in with sessionId/peerId/role/seq cursor.
+      bridge.greet({ phase: 1, cmTs: Date.now() })
+    })
+    bridge.on('disconnect', () => {
+      this.editorBridgeReady = false
+      this.log('[EditorBridge] Lua disconnected')
+    })
+    bridge.on('luaError', (msg) => {
+      console.warn('[EditorBridge] Lua error:', msg)
+    })
+    bridge.on('op', (env: LuaOpEnvelope) => {
+      const seq = ++this.editorOpSeq
+      // Phase 1 ack semantics: optimistic ack from the (single) host. Phase 2
+      // will route through the relay and only ack after the seq is committed.
+      bridge.ack(env.clientOpId, seq, 'ok')
+      try {
+        this.onLuaOp?.(seq, env)
+      } catch (err) {
+        console.error('[EditorBridge] onLuaOp listener threw:', err)
+      }
+    })
+    bridge.on('pose', (pose: LuaPose) => {
+      try {
+        this.onLuaPose?.(pose)
+      } catch (err) {
+        console.error('[EditorBridge] onLuaPose listener threw:', err)
+      }
+    })
+    try {
+      const port = await bridge.start(signalDir)
+      this.editorBridge = bridge
+      this.log(`[EditorBridge] listening on 127.0.0.1:${port} (port file: ${join(signalDir, 'we_port.txt')})`)
+    } catch (err) {
+      this.log(`[EditorBridge] start failed: ${err}`)
+    }
+  }
+
+  private stopEditorBridge(): void {
+    if (this.editorBridge) {
+      try { this.editorBridge.stop() } catch { /* ignore */ }
+      this.editorBridge = null
+    }
+    this.editorBridgeReady = false
+    this.editorOpSeq = 0
+  }
+
+  /** Phase 2 hook: relay registers here to receive every op the Lua sends. */
+  setEditorOpListener(cb: ((seq: number, env: LuaOpEnvelope) => void) | null): void {
+    this.onLuaOp = cb
+  }
+
+  /** Presence hook: controller registers here to receive pose ticks from Lua. */
+  setEditorPoseListener(cb: ((pose: LuaPose) => void) | null): void {
+    this.onLuaPose = cb
+  }
+
+  /** Push a remote op down to Lua for application. No-op if bridge not connected. */
+  sendEditorRemoteOp(env: unknown): boolean {
+    if (!this.editorBridge) return false
+    this.editorBridge.sendRemoteOp(env)
+    return true
+  }
+
+  /**
+   * Push a peer's pose down to Lua so it can draw a ghost marker (sphere +
+   * name label) at that position. Best-effort — silently no-ops if the bridge
+   * isn't up yet (BeamNG not running, or editor extension not loaded).
+   */
+  sendEditorRemotePose(pose: unknown): boolean {
+    if (!this.editorBridge) return false
+    this.editorBridge.sendRemotePose(pose)
+    return true
+  }
+
+  /**
+   * Write a one-shot signal that tells the deployed editor-sync Lua extension
+   * to open the World Editor automatically once `onClientStartMission` fires.
+   * Used by the "Launch BeamNG into editor" button on the session page.
+   *
+   * Accepts an explicit userDir so it can be written *before* launch (when
+   * `gameUserDir` may not yet be set), and falls back to the post-launch
+   * value otherwise.
+   */
+  writeEditorAutostartSignal(userDirOverride?: string): void {
+    const userDir = userDirOverride ?? this.gameUserDir
+    if (!userDir) return
+    try {
+      const signalDir = join(userDir, 'settings', 'BeamCM')
+      mkdirSync(signalDir, { recursive: true })
+      writeFileSync(
+        join(signalDir, 'editor_autostart.json'),
+        JSON.stringify({ open: true, processed: false })
+      )
+      this.log('Editor autostart signal written')
+    } catch (err) {
+      this.log(`WARNING: failed to write editor_autostart signal: ${err}`)
+    }
+  }
+
+  isEditorBridgeReady(): boolean {
+    return this.editorBridgeReady
+  }
+
+  // ── Editor projects ──
+  //
+  // A "project" is a full snapshot of a level with user edits applied, saved
+  // to <userDir>/levels/_beamcm_projects/<levelName>__<projectName>/. Under
+  // the hood it uses editor.saveLevelAs + editor.openLevel, so loading is a
+  // full mission reload (you come back into the editor with the saved state).
+
+  private readonly PROJECTS_DIR_NAME = '_beamcm_projects'
+  private readonly PROJECT_NAME_RE = /^[A-Za-z0-9._-]{1,48}$/
+
+  private sanitiseLevelName(name: string): string {
+    return name.replace(/[^A-Za-z0-9._-]/g, '_')
+  }
+
+  private projectFolderName(levelName: string, projectName: string): string {
+    return `${this.sanitiseLevelName(levelName)}__${projectName}`
+  }
+
+  /**
+   * Save the current editor state as a CM-managed project. Scaffolds a
+   * minimal info.json so BeamNG will recognise it as a level.
+   * Requires the editor to be active (call after hooks installed).
+   */
+  saveEditorProject(
+    userDir: string,
+    levelName: string,
+    projectName: string
+  ): { success: boolean; error?: string; levelPath?: string } {
+    if (!this.PROJECT_NAME_RE.test(projectName)) {
+      return {
+        success: false,
+        error: 'Invalid project name. Use letters, digits, dot, dash, underscore (max 48 chars).',
+      }
+    }
+    if (!levelName || levelName === '') {
+      return { success: false, error: 'No level currently loaded' }
+    }
+    try {
+      const folder = this.projectFolderName(levelName, projectName)
+      const absDir = join(userDir, 'levels', this.PROJECTS_DIR_NAME, folder)
+      mkdirSync(absDir, { recursive: true })
+      // BeamNG path form (forward slashes, leading slash, trailing slash)
+      const levelPath = `/levels/${this.PROJECTS_DIR_NAME}/${folder}/`
+
+      // Drop a minimal info.json so BeamNG's level loader recognises the
+      // project as a level. editor.saveLevelAs writes MissionGroup into
+      // main/, but not the level-level metadata.
+      const infoPath = join(absDir, 'info.json')
+      if (!existsSync(infoPath)) {
+        const info = {
+          title: `${projectName} (CM project: ${levelName})`,
+          description: `CM editor project saved from ${levelName}.`,
+          authors: 'BeamMP Content Manager',
+          roads: 'Unknown',
+          size: [1024, 1024],
+          country: 'UN',
+          biome: 'Unknown',
+          previews: [],
+          levelName,
+          cmProject: true,
+          cmProjectName: projectName,
+          cmSourceLevel: levelName,
+          cmCreatedAt: Date.now(),
+        }
+        writeFileSync(infoPath, JSON.stringify(info, null, 2))
+      }
+
+      // Fire Lua signal to do the actual editor.saveLevelAs
+      const sig = this.editorSyncSignal(userDir, 'saveProject', { path: levelPath })
+      if (!sig.success) return { success: false, error: sig.error }
+      return { success: true, levelPath }
+    } catch (err) {
+      return { success: false, error: `Failed to save project: ${err}` }
+    }
+  }
+
+  /** Signal Lua to open a project as the active level (full mission reload). */
+  loadEditorProject(
+    userDir: string,
+    projectLevelPath: string
+  ): { success: boolean; error?: string } {
+    if (!projectLevelPath.startsWith(`/levels/${this.PROJECTS_DIR_NAME}/`)) {
+      return { success: false, error: 'Path is not inside the projects directory' }
+    }
+    return this.editorSyncSignal(userDir, 'loadProject', { path: projectLevelPath })
+  }
+
+  /** Enumerate all saved editor projects under <userDir>/levels/_beamcm_projects/. */
+  listEditorProjects(userDir: string): import('../../shared/types').EditorProject[] {
+    const base = join(userDir, 'levels', this.PROJECTS_DIR_NAME)
+    if (!existsSync(base)) return []
+    const out: import('../../shared/types').EditorProject[] = []
+    let entries: string[] = []
+    try { entries = readdirSync(base) } catch { return [] }
+    for (const folder of entries) {
+      const abs = join(base, folder)
+      let stat: ReturnType<typeof statSync>
+      try { stat = statSync(abs) } catch { continue }
+      if (!stat.isDirectory()) continue
+
+      // Parse "<levelName>__<projectName>" (levelName is sanitised so __ is a clean separator)
+      const sep = folder.indexOf('__')
+      if (sep <= 0) continue
+      const levelName = folder.slice(0, sep)
+      const projectName = folder.slice(sep + 2)
+
+      let sizeBytes = 0
+      try {
+        for (const f of this.walkFiles(abs, 3)) sizeBytes += f.size
+      } catch { /* ignore */ }
+
+      out.push({
+        name: projectName,
+        levelName,
+        path: abs,
+        levelPath: `/levels/${this.PROJECTS_DIR_NAME}/${folder}/`,
+        mtime: stat.mtimeMs,
+        sizeBytes,
+      })
+    }
+    out.sort((a, b) => b.mtime - a.mtime)
+    return out
+  }
+
+  /**
+   * Walk a directory up to `maxDepth`, yielding {size} for each file.
+   * Used only for project size totals — bounded depth keeps it cheap.
+   */
+  private *walkFiles(dir: string, maxDepth: number): Generator<{ size: number }> {
+    if (maxDepth < 0) return
+    let entries: string[] = []
+    try { entries = readdirSync(dir) } catch { return }
+    for (const name of entries) {
+      const p = join(dir, name)
+      let s: ReturnType<typeof statSync>
+      try { s = statSync(p) } catch { continue }
+      if (s.isDirectory()) {
+        yield* this.walkFiles(p, maxDepth - 1)
+      } else if (s.isFile()) {
+        yield { size: s.size }
+      }
+    }
+  }
+
+  /** Delete a project folder. Guards against paths outside the projects root. */
+  deleteEditorProject(
+    userDir: string,
+    projectPath: string
+  ): { success: boolean; error?: string } {
+    const base = join(userDir, 'levels', this.PROJECTS_DIR_NAME)
+    const norm = projectPath.replace(/\\/g, '/')
+    const baseNorm = base.replace(/\\/g, '/')
+    if (!norm.startsWith(baseNorm + '/') || norm === baseNorm) {
+      return { success: false, error: 'Refusing to delete path outside projects directory' }
+    }
+    try {
+      rmSync(projectPath, { recursive: true, force: true })
+      this.log(`Deleted editor project: ${projectPath}`)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: `Failed to delete project: ${err}` }
+    }
+  }
+
+  getEditorSyncStatus(): import('../../shared/types').EditorSyncStatus | null {
+    return this.latestEditorSyncStatus
+  }
+
+  /**
+   * Read the most recent N captured entries from we_capture.log.
+   * Returns the last `tail` parsed entries (chronological order). Used by the
+   * World Editor Sync UI to show a live capture preview.
+   */
+  readEditorSyncCapture(
+    userDir: string,
+    tail: number = 100
+  ): { entries: import('../../shared/types').EditorSyncCaptureEntry[]; total: number } {
+    const logPath = join(userDir, 'settings', 'BeamCM', 'we_capture.log')
+    if (!existsSync(logPath)) return { entries: [], total: 0 }
+    try {
+      const raw = readFileSync(logPath, 'utf-8')
+      const lines = raw.split(/\r?\n/).filter((l) => l.length > 0)
+      const slice = tail > 0 ? lines.slice(-tail) : lines
+      const entries: import('../../shared/types').EditorSyncCaptureEntry[] = []
+      for (const line of slice) {
+        try {
+          entries.push(JSON.parse(line))
+        } catch {
+          // skip malformed line
+        }
+      }
+      return { entries, total: lines.length }
+    } catch {
+      return { entries: [], total: 0 }
+    }
+  }
+
+  private startEditorSyncStatusPoller(userDir: string): void {
+    if (this.editorSyncStatusPoller) return
+    const statusPath = join(userDir, 'settings', 'BeamCM', 'we_capture_status.json')
+    this.editorSyncStatusPoller = setInterval(() => {
+      try {
+        if (!existsSync(statusPath)) {
+          if (this.latestEditorSyncStatus) this.latestEditorSyncStatus = null
+          return
+        }
+        const raw = readFileSync(statusPath, 'utf-8')
+        const parsed = JSON.parse(raw) as import('../../shared/types').EditorSyncStatus
+        this.latestEditorSyncStatus = parsed
+      } catch {
+        // Swallow — partial writes from Lua are expected occasionally.
+      }
+    }, 500)
+  }
+
+  private stopEditorSyncStatusPoller(): void {
+    if (this.editorSyncStatusPoller) {
+      clearInterval(this.editorSyncStatusPoller)
+      this.editorSyncStatusPoller = null
+    }
+  }
+
   private startGpsFilePoller(userDir: string): void {
     if (this.gpsFilePoller) return
     const telemetryPath = join(userDir, 'settings', 'BeamCM', 'gps_telemetry.json')
@@ -2855,7 +4699,31 @@ export class GameLauncherService {
   }
 
   private shutdown(): void {
+    // Auto-undeploy our own extensions so nothing stale is left on disk.
+    // Subscribed services (VoiceChatService, LuaConsoleService, ...) handle
+    // their own cleanup via notifyGameExit() below.
+    if (this.gameUserDir) {
+      if (this.gpsTrackerDeployed) {
+        try { this.undeployGPSTracker(this.gameUserDir) } catch (err) { this.log(`GPS undeploy on exit failed: ${err}`) }
+      }
+      if (this.editorSyncDeployed) {
+        try { this.undeployEditorSync(this.gameUserDir) } catch (err) { this.log(`World Editor Sync undeploy on exit failed: ${err}`) }
+      }
+      // Also sweep the bridge extension(s) — they're harmless if left, but
+      // they poll for signals and spam the BeamNG log when CM isn't running.
+      try {
+        const extDir = join(this.gameUserDir, 'lua', 'ge', 'extensions')
+        for (const name of ['beamcmBridge.lua', 'beammpCMBridge.lua']) {
+          const p = join(extDir, name)
+          if (existsSync(p)) unlinkSync(p)
+        }
+      } catch (err) {
+        this.log(`Bridge sweep on exit failed: ${err}`)
+      }
+    }
+    this.notifyGameExit()
     this.stopGpsFilePoller()
+    this.stopEditorSyncStatusPoller()
     this.netReset()
     if (this.protonShutdownTimer) {
       clearTimeout(this.protonShutdownTimer)

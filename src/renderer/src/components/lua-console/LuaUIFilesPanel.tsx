@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
-import { ChevronRight, ChevronDown, FileText, Folder, RefreshCw, Save, RotateCcw, FolderOpen, Settings as SettingsIcon, GitCommit, Undo2, FolderPlus, Trash2 } from 'lucide-react'
+import { ChevronRight, ChevronDown, FileText, Folder, RefreshCw, Save, RotateCcw, FolderOpen, Settings as SettingsIcon, GitCommit, Undo2, FolderPlus, Trash2, WrapText, Map as MapIcon } from 'lucide-react'
 import { useToastStore } from '@renderer/stores/useToastStore'
 import { useDevEditorStore } from '@renderer/stores/useDevEditorStore'
 import { STORAGE_KEYS, loadJSON, saveJSON } from './luaConsoleShared'
@@ -22,7 +22,47 @@ interface TreeNode {
   children?: TreeNode[]
 }
 
-const EDITABLE_EXT = new Set(['html','htm','js','mjs','cjs','jsx','ts','tsx','css','scss','sass','less','json','vue','yaml','yml','lua','txt','log','md','markdown','toml','ini','cfg','conf','xml','svg','glsl','vert','frag','sh','bat','ps1'])
+// Hard block-list: known binary formats the Monaco editor can't do anything
+// useful with. Anything outside this list is attempted as text (with a runtime
+// null-byte sniff on read — see `beamUIReadFileSmart`).
+const BINARY_EXT = new Set([
+  // BeamNG-specific binaries
+  'cdae','dds','uft','pma',
+  // Archives / packages
+  'zip','7z','rar','gz','tar','bz2','xz','jar','apk','pk3','pk7','cab','iso',
+  // Executables / native libs
+  'exe','dll','so','dylib','com','msi','bin','o','a','lib','class',
+  // Databases
+  'db','sqlite','sqlite3','ldb','db-journal','mdb',
+  // Media (non-image)
+  'mp3','wav','ogg','flac','m4a','mp4','mov','avi','mkv','webm','mpg','mpeg','aac','opus',
+  // 3D / game
+  'kn5','fbx','obj','gltf','glb','stl','bam','uasset','pkm',
+  // Fonts
+  'ttf','otf','woff','woff2','eot','ttc',
+  // Misc
+  'pdf','psd','ai','indd','eps',
+])
+
+// Images we can preview inline via a data URL (renderer-side <img>).
+const PREVIEWABLE_IMAGE_EXT: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  ico: 'image/x-icon',
+  svg: 'image/svg+xml',
+  avif: 'image/avif',
+}
+
+function classifyFile(name: string): 'image' | 'binary' | 'text' {
+  const e = extOf(name)
+  if (PREVIEWABLE_IMAGE_EXT[e]) return 'image'
+  if (BINARY_EXT.has(e)) return 'binary'
+  return 'text'
+}
 
 function extOf(name: string): string {
   const i = name.lastIndexOf('.')
@@ -30,7 +70,19 @@ function extOf(name: string): string {
 }
 
 function langForFile(name: string): string {
-  const e = extOf(name)
+  // Strip `.old` / `.bak*` suffixes so backup files inherit their stem's language.
+  // (e.g. `foo.json.old` → `json`, `bindings.diff.bak_moneyedit` → `diff`.)
+  let target = name
+  // Repeatedly strip backup-style trailing extensions.
+  while (true) {
+    const e = extOf(target)
+    if (e === 'old' || e.startsWith('bak')) {
+      target = target.slice(0, target.length - e.length - 1)
+      continue
+    }
+    break
+  }
+  const e = extOf(target)
   switch (e) {
     case 'html': case 'htm': return 'html'
     case 'js': case 'mjs': case 'cjs': return 'javascript'
@@ -41,12 +93,33 @@ function langForFile(name: string): string {
     case 'scss': case 'sass': return 'scss'
     case 'less': return 'less'
     case 'json': return 'json'
+    // BeamNG JSON-flavoured formats (JSONC-ish — comments & trailing commas tolerated by Monaco's JSON parser when we just display them as text-ish JSON).
+    case 'jbeam':
+    case 'pc':
+    case 'diff':
+    case 'postfx':
+    case 'flow':
+    case 'flowgraph':
+    case 'mission':
+    case 'materials':
+    case 'forest4':
+    case 'prefab':
+    case 'level':
+      return 'json'
     case 'vue': return 'html'
     case 'yaml': case 'yml': return 'yaml'
     case 'lua': return 'lua'
     case 'md': case 'markdown': return 'markdown'
     case 'xml': case 'svg': return 'xml'
     case 'sh': case 'bash': return 'shell'
+    case 'bat': case 'cmd': return 'bat'
+    case 'ps1': case 'psm1': return 'powershell'
+    case 'ini': case 'cfg': case 'conf': case 'toml': return 'ini'
+    case 'glsl': case 'vert': case 'frag': return 'cpp'
+    // BeamNG `.cs` is TorqueScript, not C#. Monaco has no TorqueScript grammar;
+    // plaintext is safer than mis-highlighting it as C#.
+    case 'cs': return 'plaintext'
+    case 'log': case 'txt': return 'plaintext'
     default: return 'plaintext'
   }
 }
@@ -86,10 +159,26 @@ export function LuaUIFilesPanel({ onReloadUI }: Props): React.JSX.Element {
   const [openFiles, setOpenFiles] = useState<Map<string, OpenFileState>>(
     () => new Map(Object.entries(persistedOpenFiles))
   )
-  // Push every local change into the store so unmount preserves them.
+  // Push every local change into the store so unmount preserves them. Debounced
+  // (500 ms) — avoids serializing every buffer to localStorage on every
+  // keystroke, which becomes expensive once several large files are open. We
+  // always flush the latest value on unmount so nothing is lost when leaving
+  // the page mid-keystroke.
+  const latestOpenFilesRef = useRef(openFiles)
+  latestOpenFilesRef.current = openFiles
   useEffect(() => {
-    persistOpenFiles(Object.fromEntries(openFiles))
+    const h = setTimeout(() => { persistOpenFiles(Object.fromEntries(openFiles)) }, 500)
+    return () => clearTimeout(h)
   }, [openFiles, persistOpenFiles])
+  useEffect(() => {
+    return () => { persistOpenFiles(Object.fromEntries(latestOpenFilesRef.current)) }
+  }, [persistOpenFiles])
+  // Image / binary preview state for the currently-open non-editable file.
+  const [preview, setPreview] = useState<
+    | { kind: 'image'; dataUrl: string; size: number }
+    | { kind: 'binary'; size: number; reason: string }
+    | null
+  >(null)
   // Staged-but-uncommitted set (rootId\0subPath).
   const [stagedKeys, setStagedKeys] = useState<Set<string>>(() => new Set())
   const [loading, setLoading] = useState(false)
@@ -102,6 +191,8 @@ export function LuaUIFilesPanel({ onReloadUI }: Props): React.JSX.Element {
   const [autoRevert, setAutoRevert] = useState<boolean>(false)
   const [diag, setDiag] = useState<{ userDir?: string | null; installDir?: string | null }>({})
   const [treeWidth, setTreeWidth] = useState<number>(() => loadJSON<number>(STORAGE_KEYS.uiFilesTreeWidth, 280) ?? 280)
+  const [wordWrap, setWordWrap] = useState<boolean>(() => loadJSON<boolean>(STORAGE_KEYS.uiFilesWordWrap, true) ?? true)
+  const [minimap, setMinimap] = useState<boolean>(() => loadJSON<boolean>(STORAGE_KEYS.uiFilesMinimap, true) ?? true)
 
   const currentKey = openPath && activeRootId ? fileKey(activeRootId, openPath) : null
   const currentFile = currentKey ? openFiles.get(currentKey) ?? null : null
@@ -116,6 +207,36 @@ export function LuaUIFilesPanel({ onReloadUI }: Props): React.JSX.Element {
   }, [openFiles])
   const uncommittedCount = stagedKeys.size
 
+  // Aggregate dirty/staged markers onto ancestor folder paths for the current root so the
+  // indicator is visible even when the folder is collapsed.
+  const { dirtyFolders, stagedFolders } = useMemo(() => {
+    const dirty = new Set<string>()
+    const staged = new Set<string>()
+    if (!activeRootId) return { dirtyFolders: dirty, stagedFolders: staged }
+    const prefix = `${activeRootId}\u0000`
+    const addAncestors = (target: Set<string>, subPath: string): void => {
+      // Mark every ancestor folder (exclusive of the leaf itself) as containing a marker.
+      let slash = subPath.lastIndexOf('/')
+      while (slash > 0) {
+        target.add(subPath.slice(0, slash))
+        slash = subPath.lastIndexOf('/', slash - 1)
+      }
+      // Root-level files: mark empty path so the root label could show it if desired.
+      if (subPath && subPath.indexOf('/') === -1) target.add('')
+    }
+    openFiles.forEach((f, key) => {
+      if (!key.startsWith(prefix)) return
+      if (f.bufferContent === f.savedContent) return
+      addAncestors(dirty, f.path)
+    })
+    stagedKeys.forEach((key) => {
+      if (!key.startsWith(prefix)) return
+      const subPath = key.slice(prefix.length)
+      addAncestors(staged, subPath)
+    })
+    return { dirtyFolders: dirty, stagedFolders: staged }
+  }, [openFiles, stagedKeys, activeRootId])
+
   const activeRoot = useMemo(() => roots.find((r) => r.id === activeRootId) ?? null, [roots, activeRootId])
 
   useEffect(() => { saveJSON(STORAGE_KEYS.uiFilesAllowInstall, allowInstall) }, [allowInstall])
@@ -124,6 +245,8 @@ export function LuaUIFilesPanel({ onReloadUI }: Props): React.JSX.Element {
   useEffect(() => { saveJSON(STORAGE_KEYS.uiFilesLastPath, openPath) }, [openPath])
   useEffect(() => { saveJSON(STORAGE_KEYS.uiFilesTreeWidth, treeWidth) }, [treeWidth])
   useEffect(() => { saveJSON(STORAGE_KEYS.uiFilesActiveProject, activeProject) }, [activeProject])
+  useEffect(() => { saveJSON(STORAGE_KEYS.uiFilesWordWrap, wordWrap) }, [wordWrap])
+  useEffect(() => { saveJSON(STORAGE_KEYS.uiFilesMinimap, minimap) }, [minimap])
 
   const refreshStaged = useCallback(async () => {
     try {
@@ -221,26 +344,52 @@ export function LuaUIFilesPanel({ onReloadUI }: Props): React.JSX.Element {
   const openFile = useCallback(async (path: string) => {
     if (!activeRoot) return
     const key = fileKey(activeRoot.id, path)
+    setPreview(null)
     // Already in our open buffer — just switch to it (preserves dirty state).
     if (openFiles.has(key)) {
       setOpenPath(path)
       return
     }
+    const kind = classifyFile(path)
     setLoading(true)
     try {
-      const text = await window.api.beamUIReadFile({ rootId: activeRoot.id, subPath: path })
-      setOpenFiles((prev) => {
-        const next = new Map(prev)
-        next.set(key, {
-          path,
-          rootId: activeRoot.id,
-          savedContent: text,
-          bufferContent: text,
-          language: langForFile(path),
-        })
-        return next
-      })
-      setOpenPath(path)
+      if (kind === 'image') {
+        const mime = PREVIEWABLE_IMAGE_EXT[extOf(path)] ?? 'application/octet-stream'
+        const r = await window.api.beamUIReadBinaryDataUrl({ rootId: activeRoot.id, subPath: path, mime, maxBytes: 16 * 1024 * 1024 })
+        if (r.truncated) {
+          setPreview({ kind: 'binary', size: r.size, reason: `File is too large to preview (${(r.size / 1024 / 1024).toFixed(1)} MB).` })
+        } else {
+          setPreview({ kind: 'image', dataUrl: r.dataUrl, size: r.size })
+        }
+        setOpenPath(path)
+      } else if (kind === 'binary') {
+        setPreview({ kind: 'binary', size: 0, reason: 'Binary file — not editable.' })
+        setOpenPath(path)
+      } else {
+        // Use the size-capped text reader + null-byte sniff so unknown-extension
+        // text files still open, while real binaries aren't dumped into Monaco.
+        const r = await window.api.beamUIReadFileSmart({ rootId: activeRoot.id, subPath: path, maxBytes: 4 * 1024 * 1024 })
+        if (r.kind === 'binary') {
+          setPreview({ kind: 'binary', size: r.size, reason: 'File contains binary data (null bytes detected).' })
+          setOpenPath(path)
+        } else {
+          if (r.truncated) {
+            addToast(`Large file truncated to first 4 MB — save will overwrite the whole file.`, 'info')
+          }
+          setOpenFiles((prev) => {
+            const next = new Map(prev)
+            next.set(key, {
+              path,
+              rootId: activeRoot.id,
+              savedContent: r.content,
+              bufferContent: r.content,
+              language: langForFile(path),
+            })
+            return next
+          })
+          setOpenPath(path)
+        }
+      }
     } catch (err) {
       addToast(`Open failed: ${(err as Error).message}`, 'error')
     } finally { setLoading(false) }
@@ -430,7 +579,16 @@ export function LuaUIFilesPanel({ onReloadUI }: Props): React.JSX.Element {
     window.addEventListener('mouseup', up)
   }
 
-  const isEditable = openPath ? EDITABLE_EXT.has(extOf(openPath)) : false
+  // A file is editable when we have a text buffer for it. Images and binaries
+  // are shown via `preview` instead (see render below).
+  const isEditable = !!currentFile
+
+  // Clear the image/binary preview whenever we switch to a text buffer — tabs
+  // only exist for text files, so any navigation into one means we're done
+  // previewing.
+  useEffect(() => {
+    if (currentFile && preview) setPreview(null)
+  }, [currentFile, preview])
 
   return (
     <div className="flex h-full flex-col bg-[var(--color-scrim-10)] text-[var(--color-text-primary)] backdrop-blur-md">
@@ -494,6 +652,16 @@ export function LuaUIFilesPanel({ onReloadUI }: Props): React.JSX.Element {
               } catch (err) { addToast(`Delete failed: ${(err as Error).message}`, 'error') }
             }}
           />
+          <button
+            onClick={() => setWordWrap((v) => !v)}
+            className={`rounded p-1 hover:bg-[var(--color-surface-hover)] ${wordWrap ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-secondary)]'}`}
+            title={wordWrap ? 'Word wrap: on' : 'Word wrap: off'}
+          ><WrapText size={14} /></button>
+          <button
+            onClick={() => setMinimap((v) => !v)}
+            className={`rounded p-1 hover:bg-[var(--color-surface-hover)] ${minimap ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-secondary)]'}`}
+            title={minimap ? 'Minimap: on' : 'Minimap: off'}
+          ><MapIcon size={14} /></button>
           <button onClick={() => setShowSettings((v) => !v)} className="rounded p-1 text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]" title="Settings"><SettingsIcon size={14} /></button>
           {onReloadUI && (
             <button onClick={onReloadUI} className="flex items-center gap-1 rounded bg-amber-700 px-2 py-1 text-xs hover:bg-amber-600" title="Run be:reloadUI() in BeamNG">
@@ -581,6 +749,8 @@ export function LuaUIFilesPanel({ onReloadUI }: Props): React.JSX.Element {
                 openPath={openPath}
                 openFiles={openFiles}
                 stagedKeys={stagedKeys}
+                dirtyFolders={dirtyFolders}
+                stagedFolders={stagedFolders}
               />
             ) : roots.length === 0 ? (
               <div className="space-y-2 p-2 text-zinc-400">
@@ -660,17 +830,66 @@ export function LuaUIFilesPanel({ onReloadUI }: Props): React.JSX.Element {
                     onChange={(v) => setBuffer(v ?? '')}
                     onMount={handleEditorMount}
                     options={{
+                      // Full IDE experience — this is where real file editing happens.
                       fontSize: 13,
-                      minimap: { enabled: false },
+                      fontFamily: "'JetBrains Mono', 'Cascadia Code', 'Fira Code', Consolas, 'Courier New', monospace",
+                      fontLigatures: true,
+                      minimap: { enabled: minimap, renderCharacters: true, showSlider: 'mouseover' },
                       readOnly: !activeRoot?.writable || loading,
                       automaticLayout: true,
-                      wordWrap: 'on',
+                      wordWrap: wordWrap ? 'on' : 'off',
                       tabSize: 2,
+                      scrollBeyondLastLine: true,
+                      renderWhitespace: 'selection',
+                      bracketPairColorization: { enabled: true },
+                      guides: { bracketPairs: true, indentation: true, highlightActiveIndentation: true },
+                      smoothScrolling: true,
+                      cursorBlinking: 'smooth',
+                      cursorSmoothCaretAnimation: 'on',
+                      padding: { top: 8 },
+                      lineNumbersMinChars: 3,
+                      folding: true,
+                      foldingStrategy: 'indentation',
+                      showFoldingControls: 'mouseover',
+                      renderLineHighlight: 'all',
+                      stickyScroll: { enabled: true },
+                      suggest: { showKeywords: true, showSnippets: true, showWords: true },
+                      quickSuggestions: { other: true, comments: false, strings: true },
+                      suggestOnTriggerCharacters: true,
+                      formatOnPaste: true,
+                      formatOnType: false,
+                      mouseWheelZoom: true,
+                      multiCursorModifier: 'ctrlCmd',
+                      linkedEditing: true,
+                      occurrencesHighlight: 'singleFile',
+                      matchBrackets: 'always',
                     }}
                   />
                 </div>
+              ) : preview?.kind === 'image' ? (
+                <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-[var(--color-scrim-50)] p-4">
+                  <div className="flex flex-col items-center gap-2">
+                    <img
+                      src={preview.dataUrl}
+                      alt={openPath}
+                      className="max-h-full max-w-full rounded border border-[var(--color-border)] bg-[repeating-conic-gradient(#00000020_0_25%,transparent_0_50%)] bg-[length:16px_16px] object-contain shadow-lg"
+                    />
+                    <div className="text-[11px] text-[var(--color-text-muted)]">{(preview.size / 1024).toFixed(1)} KB</div>
+                  </div>
+                </div>
+              ) : preview?.kind === 'binary' ? (
+                <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-center text-zinc-500">
+                  <div className="text-sm text-[var(--color-text-secondary)]">{preview.reason}</div>
+                  {preview.size > 0 && <div className="text-xs">{(preview.size / 1024).toFixed(1)} KB</div>}
+                  {activeRoot && (
+                    <button
+                      className="mt-2 rounded border border-[var(--color-border)] bg-[var(--color-scrim-50)] px-3 py-1 text-xs text-[var(--color-text-primary)] hover:bg-[var(--color-surface-hover)]"
+                      onClick={() => void window.api.beamUIRevealInExplorer({ rootId: activeRoot.id, subPath: openPath })}
+                    >Reveal in Explorer</button>
+                  )}
+                </div>
               ) : (
-                <div className="flex flex-1 items-center justify-center text-zinc-500">Binary or unsupported file type</div>
+                <div className="flex flex-1 items-center justify-center text-zinc-500">Loading…</div>
               )}
             </>
           ) : (
@@ -684,12 +903,16 @@ export function LuaUIFilesPanel({ onReloadUI }: Props): React.JSX.Element {
   )
 }
 
-function TreeView({ node, depth, rootId, onToggle, onOpen, openPath, openFiles, stagedKeys }: { node: TreeNode; depth: number; rootId: string; onToggle: (n: TreeNode) => void; onOpen: (path: string) => void; openPath: string | null; openFiles: Map<string, OpenFileState>; stagedKeys: Set<string> }): React.JSX.Element {
+function TreeView({ node, depth, rootId, onToggle, onOpen, openPath, openFiles, stagedKeys, dirtyFolders, stagedFolders }: { node: TreeNode; depth: number; rootId: string; onToggle: (n: TreeNode) => void; onOpen: (path: string) => void; openPath: string | null; openFiles: Map<string, OpenFileState>; stagedKeys: Set<string>; dirtyFolders: Set<string>; stagedFolders: Set<string> }): React.JSX.Element {
   const isRoot = depth === 0
   const key = rootId ? fileKey(rootId, node.path) : ''
   const buf = openFiles.get(key)
   const isDirty = !!buf && buf.bufferContent !== buf.savedContent
   const isStaged = stagedKeys.has(key)
+  // For folders: show the marker if any descendant is dirty/staged. Stays visible
+  // even when the folder is collapsed.
+  const folderHasDirty = node.isDirectory && dirtyFolders.has(node.path)
+  const folderHasStaged = node.isDirectory && stagedFolders.has(node.path)
   return (
     <div>
       {!isRoot && (
@@ -703,12 +926,14 @@ function TreeView({ node, depth, rootId, onToggle, onOpen, openPath, openFiles, 
           <span className="truncate">{node.name}</span>
           {!node.isDirectory && isDirty && <span className="ml-auto text-amber-400" title="Unsaved buffer changes">●</span>}
           {!node.isDirectory && !isDirty && isStaged && <span className="ml-auto text-sky-400" title="Saved but not committed (will revert on game exit)">◆</span>}
+          {node.isDirectory && folderHasDirty && <span className="ml-auto text-amber-400" title="Contains unsaved changes">●</span>}
+          {node.isDirectory && !folderHasDirty && folderHasStaged && <span className="ml-auto text-sky-400" title="Contains uncommitted (staged) changes">◆</span>}
         </button>
       )}
       {(isRoot || node.expanded) && node.children && (
         <div>
           {node.children.map((c) => (
-            <TreeView key={c.path} node={c} depth={depth + 1} rootId={rootId} onToggle={onToggle} onOpen={onOpen} openPath={openPath} openFiles={openFiles} stagedKeys={stagedKeys} />
+            <TreeView key={c.path} node={c} depth={depth + 1} rootId={rootId} onToggle={onToggle} onOpen={onOpen} openPath={openPath} openFiles={openFiles} stagedKeys={stagedKeys} dirtyFolders={dirtyFolders} stagedFolders={stagedFolders} />
           ))}
         </div>
       )}

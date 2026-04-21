@@ -263,6 +263,57 @@ export class BeamUIFilesService {
     return buf.toString('utf8')
   }
 
+  /**
+   * Read a file and probe whether it looks like text or binary.
+   * Returns a size-capped UTF-8 string for text, or a data URL for binary
+   * files that the caller wants to preview (e.g. images).
+   *
+   *   - `kind: 'text'`  → `content` is decoded UTF-8 (truncated if > maxBytes)
+   *   - `kind: 'binary'` → `content` is `''`; caller should use `readBinaryDataUrl`
+   */
+  async readFileSmart(rootId: string, subPath: string, maxBytes = 4 * 1024 * 1024): Promise<{
+    kind: 'text' | 'binary'
+    content: string
+    size: number
+    truncated: boolean
+  }> {
+    const { abs } = this.resolveSafe(rootId, subPath)
+    const stat = await fs.stat(abs)
+    const size = stat.size
+    const readLen = Math.min(size, maxBytes)
+    const buf = Buffer.alloc(readLen)
+    const fh = await fs.open(abs, 'r')
+    try {
+      await fh.read(buf, 0, readLen, 0)
+    } finally {
+      await fh.close()
+    }
+    // Heuristic: null bytes in the first 8 KB → binary. UTF-16 BOM also accepted as text.
+    const sample = buf.subarray(0, Math.min(buf.length, 8192))
+    const hasBom = sample.length >= 2 && ((sample[0] === 0xFF && sample[1] === 0xFE) || (sample[0] === 0xFE && sample[1] === 0xFF) || (sample.length >= 3 && sample[0] === 0xEF && sample[1] === 0xBB && sample[2] === 0xBF))
+    let nullCount = 0
+    for (let i = 0; i < sample.length; i++) { if (sample[i] === 0) nullCount++ }
+    // UTF-16 has ~50% null bytes at ASCII — still considered text if BOM is present.
+    const isBinary = !hasBom && nullCount > 0
+    if (isBinary) return { kind: 'binary', content: '', size, truncated: size > readLen }
+    return { kind: 'text', content: buf.toString('utf8'), size, truncated: size > readLen }
+  }
+
+  /**
+   * Read a file as a data URL (base64) — used for image previews. Caller is
+   * responsible for enforcing a size cap at the IPC layer.
+   */
+  async readBinaryDataUrl(rootId: string, subPath: string, mime: string, maxBytes = 16 * 1024 * 1024): Promise<{ dataUrl: string; size: number; truncated: boolean }> {
+    const { abs } = this.resolveSafe(rootId, subPath)
+    const stat = await fs.stat(abs)
+    const size = stat.size
+    if (size > maxBytes) {
+      return { dataUrl: '', size, truncated: true }
+    }
+    const buf = await fs.readFile(abs)
+    return { dataUrl: `data:${mime};base64,${buf.toString('base64')}`, size, truncated: false }
+  }
+
   async writeFile(rootId: string, subPath: string, content: string): Promise<void> {
     const { root, abs } = this.resolveSafe(rootId, subPath)
     if (!root.writable) {

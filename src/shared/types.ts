@@ -404,6 +404,7 @@ export type AppPage =
   | 'livery-editor'
   | 'voice-chat'
   | 'lua-console'
+  | 'world-edit-sync'
 
 /* ── Hosted Server Manager ── */
 
@@ -605,6 +606,132 @@ export interface GPSMapPOI {
   name: string
   x: number
   y: number
+}
+
+/* ── World Editor Sync (Phase 0 spike) ── */
+
+/**
+ * Status snapshot reported by beamcmEditorSync.lua via
+ * settings/BeamCM/we_capture_status.json. Phase 0 only — Phase 1+ replaces
+ * this with a richer session model.
+ */
+export interface EditorSyncStatus {
+  /** True if hooks are installed and we are recording editor.history actions. */
+  capturing: boolean
+  /** Number of actions captured in the current session. */
+  captureCount: number
+  /** True if a replay is currently being stepped through. */
+  replayActive: boolean
+  /** 1-based index into the replay queue; 0 if not replaying. */
+  replayIndex: number
+  /** Total entries in the replay queue (0 if not replaying). */
+  replayTotal: number
+  /** True if the editor.history wrappers are currently installed. */
+  hooked: boolean
+  /** True if the editor module is present in BeamNG (i.e. world editor is reachable). */
+  editorPresent: boolean
+  /** Currently loaded level name (e.g. "gridmap_v2"), null if not in a level. */
+  levelName?: string | null
+}
+
+/** One line of `we_capture.log` parsed to JSON. */
+export interface EditorSyncCaptureEntry {
+  kind: 'do' | 'undo' | 'redo' | 'tx-begin' | 'tx-end'
+  name?: string
+  data?: unknown
+  /**
+   * Per-action human-readable detail extracted on the Lua side.
+   * E.g. "#1234 TSStatic foo", "field=position on 3 objects", "[12, 14, 19]".
+   * Short, one-line, safe to render in the UI table without further parsing.
+   */
+  detail?: string
+  /** Action-specific target ids (object ids, road ids, ...). Empty if N/A. */
+  targets?: number[]
+  ts: number
+  seq: number
+}
+
+/** A saved editor-session snapshot (a copy of a level with user edits applied). */
+export interface EditorProject {
+  /** Project display name (user-supplied). */
+  name: string
+  /** Source level name the project was forked from, e.g. "gridmap_v2". */
+  levelName: string
+  /** Full absolute path to the project directory under <userDir>/levels/_beamcm_projects/. */
+  path: string
+  /** BeamNG-style level path to feed to core_levels.startLevel, e.g. "/levels/_beamcm_projects/gridmap_v2__foo/". */
+  levelPath: string
+  /** Last-modified timestamp (ms since epoch) of the project folder. */
+  mtime: number
+  /** Approximate size in bytes. */
+  sizeBytes: number
+}
+
+/** Collaborative world-editor session state (mirrors EditorSyncSessionController). */
+export type SessionState = 'idle' | 'hosting' | 'joined' | 'connecting'
+
+export interface SessionStatus {
+  state: SessionState
+  authorId: string
+  displayName: string
+  sessionId: string | null
+  host: string | null
+  port: number | null
+  /** Only populated when hosting — indicates a token is expected from joiners. */
+  token: string | null
+  levelName: string | null
+  lastSeq: number
+  peers: Array<{ authorId: string; displayName: string; remote?: string }>
+  bridgeReady: boolean
+  opsIn: number
+  opsOut: number
+}
+
+/** Op envelope as it crosses the CM-to-CM wire and is surfaced to the renderer. */
+export interface SessionOp {
+  type: 'op'
+  seq: number
+  authorId: string
+  clientOpId?: string
+  kind: 'do' | 'undo' | 'redo'
+  name?: string
+  data?: unknown
+  detail?: string
+  targets?: unknown[]
+  ts?: number
+}
+
+/** Server-log entry surfaced by the session controller to the renderer. */
+export interface SessionLogEntry {
+  ts: number
+  level: 'info' | 'warn' | 'error'
+  source: 'relay' | 'peer' | 'bridge' | 'session'
+  message: string
+}
+
+/** Live pose of a peer (or the local user, marked `self: true`). */
+export interface PeerPoseEntry {
+  authorId: string
+  displayName: string
+  ts: number
+  x: number
+  y: number
+  z: number
+  heading?: number
+  inVehicle?: boolean
+  vehicle?: string
+  levelName?: string | null
+  self?: boolean
+}
+
+/** Most-recent edit performed by a peer (or local user). */
+export interface PeerActivity {
+  authorId: string
+  displayName: string
+  ts: number
+  name?: string
+  kind: 'do' | 'undo' | 'redo'
+  detail?: string
 }
 
 /* ── Mod Load Order ── */

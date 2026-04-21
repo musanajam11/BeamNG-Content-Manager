@@ -43,6 +43,8 @@ export const STORAGE_KEYS = {
   uiFilesTreeWidth: 'luaConsole.uiFilesTreeWidth.v1',
   uiFilesDirty: 'luaConsole.uiFilesDirty.v1',
   uiFilesActiveProject: 'luaConsole.uiFilesActiveProject.v1',
+  uiFilesWordWrap: 'luaConsole.uiFilesWordWrap.v1',
+  uiFilesMinimap: 'luaConsole.uiFilesMinimap.v1',
   luaSplitPct: 'luaConsole.luaSplitPct.v1',
 } as const
 

@@ -591,6 +591,64 @@ interface AppAPI {
   gpsGetTelemetry(): Promise<import('../shared/types').GPSTelemetry | null>
   gpsGetMapPOIs(mapName: string): Promise<import('../shared/types').GPSMapPOI[]>
 
+  // World Editor Sync (Phase 0 spike)
+  worldEditDeploy(): Promise<{ success: boolean; error?: string }>
+  worldEditUndeploy(): Promise<{ success: boolean; error?: string }>
+  worldEditIsDeployed(): Promise<boolean>
+  worldEditSignal(
+    action:
+      | 'start'
+      | 'stop'
+      | 'replay'
+      | 'install'
+      | 'uninstall'
+      | 'undo'
+      | 'redo'
+      | 'save'
+      | 'saveAs'
+      | 'saveProject'
+      | 'loadProject',
+    payload?: { path?: string }
+  ): Promise<{ success: boolean; error?: string }>
+  worldEditGetStatus(): Promise<import('../shared/types').EditorSyncStatus | null>
+  worldEditReadCapture(tail?: number): Promise<{
+    entries: import('../shared/types').EditorSyncCaptureEntry[]
+    total: number
+  }>
+  worldEditListProjects(): Promise<import('../shared/types').EditorProject[]>
+  worldEditSaveProject(
+    levelName: string,
+    projectName: string
+  ): Promise<{ success: boolean; error?: string; levelPath?: string }>
+  worldEditLoadProject(levelPath: string): Promise<{ success: boolean; error?: string }>
+  worldEditDeleteProject(absolutePath: string): Promise<{ success: boolean; error?: string }>
+
+  // World-Editor Session
+  worldEditSessionGetStatus(): Promise<import('../shared/types').SessionStatus>
+  worldEditSessionHost(opts: {
+    port?: number
+    token?: string | null
+    levelName?: string | null
+    displayName?: string
+  }): Promise<{ success: boolean; error?: string; status?: import('../shared/types').SessionStatus }>
+  worldEditSessionJoin(opts: {
+    host: string
+    port: number
+    token?: string | null
+    displayName?: string
+  }): Promise<{ success: boolean; error?: string; status?: import('../shared/types').SessionStatus }>
+  worldEditSessionLeave(): Promise<{ success: boolean }>
+  worldEditSessionLaunchIntoEditor(opts?: {
+    levelOverride?: string | null
+  }): Promise<{ success: boolean; error?: string; level?: string }>
+  worldEditSessionGetLanIps(): Promise<string[]>
+  worldEditSessionGetPublicIp(): Promise<{ ip: string | null; error?: string }>
+  onWorldEditSessionStatus(cb: (status: import('../shared/types').SessionStatus) => void): () => void
+  onWorldEditSessionOp(cb: (op: import('../shared/types').SessionOp) => void): () => void
+  onWorldEditSessionLog(cb: (entry: import('../shared/types').SessionLogEntry) => void): () => void
+  onWorldEditSessionPeerPose(cb: (pose: import('../shared/types').PeerPoseEntry) => void): () => void
+  onWorldEditSessionPeerActivity(cb: (act: import('../shared/types').PeerActivity) => void): () => void
+
   // Voice Chat
   voiceEnable(): Promise<{ success: boolean; error?: string }>
   voiceDisable(): Promise<{ success: boolean; error?: string }>
@@ -641,6 +699,8 @@ interface AppAPI {
   beamUIListRoots(payload: { includeInstall: boolean; installWritable?: boolean }): Promise<{ roots: Array<{ id: string; label: string; path: string; kind: 'userUi' | 'modUi' | 'installUi'; writable: boolean; modName?: string }>; resolvedUserDir: string | null; resolvedInstallDir: string | null }>
   beamUIListDir(payload: { rootId: string; subPath: string }): Promise<Array<{ name: string; isDirectory: boolean; size: number; modifiedMs: number }>>
   beamUIReadFile(payload: { rootId: string; subPath: string }): Promise<string>
+  beamUIReadFileSmart(payload: { rootId: string; subPath: string; maxBytes?: number }): Promise<{ kind: 'text' | 'binary'; content: string; size: number; truncated: boolean }>
+  beamUIReadBinaryDataUrl(payload: { rootId: string; subPath: string; mime: string; maxBytes?: number }): Promise<{ dataUrl: string; size: number; truncated: boolean }>
   beamUIWriteFile(payload: { rootId: string; subPath: string; content: string }): Promise<{ success: boolean }>
   beamUICreateFolder(payload: { rootId: string; subPath: string }): Promise<{ success: boolean }>
   beamUIDelete(payload: { rootId: string; subPath: string }): Promise<{ success: boolean }>

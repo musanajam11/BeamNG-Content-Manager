@@ -32,6 +32,11 @@ interface DevEditorState {
  * user does not lose unsaved edits when leaving the page. Saved/committed
  * state is owned by the main process; this store only mirrors the in-memory
  * editor working copy.
+ *
+ * Optimization: when a buffer matches its saved-on-disk content we only
+ * persist a lightweight marker — avoiding a duplicate copy of every file's
+ * text on every keystroke. Dirty buffers (where the user has typed) still
+ * serialize in full so nothing is lost across navigation.
  */
 export const useDevEditorStore = create<DevEditorState>()(
   persist(
@@ -40,6 +45,7 @@ export const useDevEditorStore = create<DevEditorState>()(
       setOpenFiles: (files) => set({ openFiles: files }),
       clear: () => set({ openFiles: {} }),
     }),
-    { name: 'beammp-dev-editor-buffers.v1' }
+    { name: 'beammp-dev-editor-buffers.v1' },
   )
 )
+

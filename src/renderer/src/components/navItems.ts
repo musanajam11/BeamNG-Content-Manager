@@ -12,7 +12,8 @@ import {
   Navigation2,
   Paintbrush,
   Mic,
-  Code2
+  Code2,
+  Globe2
 } from 'lucide-react'
 import type { AppPage } from '../../../shared/types'
 
@@ -37,4 +38,5 @@ export const ALL_NAV_ITEMS: NavItem[] = [
   { id: 'livery-editor', labelKey: 'sidebar.liveryEditor', icon: Paintbrush },
   { id: 'voice-chat', labelKey: 'sidebar.voiceChat', icon: Mic },
   { id: 'lua-console', labelKey: 'sidebar.luaConsole', icon: Code2 },
+  { id: 'world-edit-sync', labelKey: 'sidebar.worldEditSync', icon: Globe2 },
 ]
