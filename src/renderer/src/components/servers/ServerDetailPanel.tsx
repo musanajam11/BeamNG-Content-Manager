@@ -1,6 +1,5 @@
 import { Play, Star, Package, Users, MapPin, Globe, Gauge, Wifi, Copy, Check, X, Clock, Square, ImageIcon, HardDrive } from 'lucide-react'
 import { useState, useEffect } from 'react'
-import { motion } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
 import type { ServerInfo } from '../../../../shared/types'
 import { countryFlag, cleanMapName } from '../../utils/countryFlags'
@@ -302,10 +301,11 @@ export function ServerDetailPanel({
             <div className="text-xs text-[var(--color-text-secondary)]">{t('servers.percentFull', { percent: Math.round(fillPct) })}</div>
           </div>
           <div className="pop-bar w-full">
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: `${fillPct}%` }}
-              transition={{ duration: 0.4 }}
+            {/* Plain div — the .pop-bar-fill class already has a CSS width transition.
+                Don't double-animate via framer; that fights the CSS transition and
+                stutters when the player count changes. */}
+            <div
+              style={{ width: `${fillPct}%` }}
               className={`pop-bar-fill ${popColor}`}
             />
           </div>

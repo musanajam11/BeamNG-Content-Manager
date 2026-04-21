@@ -30,6 +30,10 @@ interface ServerState {
   toggleQuickFilter: (filter: QuickFilter) => void
 }
 
+// Module-scoped timer used by setSearchQuery to debounce the actual filter
+// recompute (120 ms). Avoids re-running applyFilters on every keystroke.
+let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
 function applyFilters(
   servers: ServerInfo[],
   query: string,
@@ -226,8 +230,15 @@ export const useServerStore = create<ServerState>((set, get) => ({
 
   setSearchQuery: (query) => {
     set({ searchQuery: query })
-    const { servers, filterTab, favorites, sortField, sortDir, quickFilters } = get()
-    set({ filteredServers: applyFilters(servers, query, filterTab, favorites, sortField, sortDir, quickFilters) })
+    // Debounce the (relatively expensive) re-filter so fast typing doesn't
+    // re-allocate `filteredServers` on every keystroke. The input itself stays
+    // controlled, only the filtered list lags ~120ms.
+    if (searchDebounceTimer != null) clearTimeout(searchDebounceTimer)
+    searchDebounceTimer = setTimeout(() => {
+      searchDebounceTimer = null
+      const { servers, searchQuery, filterTab, favorites, sortField, sortDir, quickFilters } = get()
+      set({ filteredServers: applyFilters(servers, searchQuery, filterTab, favorites, sortField, sortDir, quickFilters) })
+    }, 120) as unknown as ReturnType<typeof setTimeout>
   },
 
   selectServer: (server) => set({ selectedServer: server }),

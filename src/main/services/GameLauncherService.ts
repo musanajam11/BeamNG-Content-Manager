@@ -12,6 +12,7 @@ import {
   statSync,
   rmSync
 } from 'fs'
+import { readFile as readFileAsync } from 'fs/promises'
 import { join, extname, basename } from 'path'
 import {
   createServer as createHttpServer,
@@ -4614,18 +4615,26 @@ export class GameLauncherService {
   private startEditorSyncStatusPoller(userDir: string): void {
     if (this.editorSyncStatusPoller) return
     const statusPath = join(userDir, 'settings', 'BeamCM', 'we_capture_status.json')
+    let inFlight = false
     this.editorSyncStatusPoller = setInterval(() => {
-      try {
-        if (!existsSync(statusPath)) {
-          if (this.latestEditorSyncStatus) this.latestEditorSyncStatus = null
-          return
-        }
-        const raw = readFileSync(statusPath, 'utf-8')
-        const parsed = JSON.parse(raw) as import('../../shared/types').EditorSyncStatus
-        this.latestEditorSyncStatus = parsed
-      } catch {
-        // Swallow — partial writes from Lua are expected occasionally.
+      // Re-entrancy guard: if the previous async read is still pending (slow
+      // disk, antivirus stall) skip this tick rather than piling up reads.
+      if (inFlight) return
+      if (!existsSync(statusPath)) {
+        if (this.latestEditorSyncStatus) this.latestEditorSyncStatus = null
+        return
       }
+      inFlight = true
+      readFileAsync(statusPath, 'utf-8')
+        .then((raw) => {
+          try {
+            this.latestEditorSyncStatus = JSON.parse(raw) as import('../../shared/types').EditorSyncStatus
+          } catch {
+            // Partial write from Lua — drop and retry next tick.
+          }
+        })
+        .catch(() => { /* file deleted between exists & read — fine */ })
+        .finally(() => { inFlight = false })
     }, 500)
   }
 
@@ -4641,52 +4650,61 @@ export class GameLauncherService {
     const telemetryPath = join(userDir, 'settings', 'BeamCM', 'gps_telemetry.json')
     let lastT = 0
     let lastUpdateTime = Date.now()
+    let inFlight = false
     const STALE_TIMEOUT = 3000 // 3 seconds with no new data → game is loading/transitioning
     this.gpsFilePoller = setInterval(() => {
-      try {
-        if (!existsSync(telemetryPath)) {
-          // File gone (deleted on deploy or undeploy) — clear telemetry
-          if (this.latestGpsTelemetry) {
-            this.latestGpsTelemetry = null
-            lastT = 0
+      if (inFlight) return
+      if (!existsSync(telemetryPath)) {
+        // File gone (deleted on deploy or undeploy) — clear telemetry
+        if (this.latestGpsTelemetry) {
+          this.latestGpsTelemetry = null
+          lastT = 0
+        }
+        return
+      }
+      inFlight = true
+      readFileAsync(telemetryPath, 'utf-8')
+        .then((raw) => {
+          try {
+            const data = JSON.parse(raw)
+            if (typeof data.x !== 'number' || typeof data.y !== 'number') return
+            // Deduplicate: only update if the Lua-side timestamp changed
+            if (data.t === lastT) {
+              // Stale check: if the Lua side stopped writing (map change / no vehicle), clear telemetry
+              if (this.latestGpsTelemetry && Date.now() - lastUpdateTime > STALE_TIMEOUT) {
+                this.latestGpsTelemetry = null
+              }
+              return
+            }
+            lastT = data.t
+            lastUpdateTime = Date.now()
+            this.latestGpsTelemetry = {
+              x: data.x,
+              y: data.y,
+              z: data.z ?? 0,
+              heading: data.heading ?? 0,
+              speed: data.speed ?? 0,
+              timestamp: Date.now(),
+              map: typeof data.map === 'string' && data.map ? data.map : undefined,
+              vehicleId: typeof data.vehicle === 'string' && data.vehicle ? data.vehicle : undefined,
+              otherPlayers: Array.isArray(data.others) ? data.others.map((o: Record<string, unknown>) => ({
+                x: typeof o.x === 'number' ? o.x : 0,
+                y: typeof o.y === 'number' ? o.y : 0,
+                z: typeof o.z === 'number' ? o.z : 0,
+                heading: typeof o.heading === 'number' ? o.heading : 0,
+                speed: typeof o.speed === 'number' ? o.speed : 0,
+                name: typeof o.name === 'string' ? o.name : ''
+              })) : undefined,
+              navRoute: Array.isArray(data.route) ? data.route.filter((pt: Record<string, unknown>) =>
+                typeof pt.x === 'number' && typeof pt.y === 'number'
+              ).map((pt: Record<string, unknown>) => ({ x: pt.x as number, y: pt.y as number })) : undefined
+            }
+          } catch {
+            /* file may be mid-write, skip this tick */
           }
-          return
-        }
-        const raw = readFileSync(telemetryPath, 'utf-8')
-        const data = JSON.parse(raw)
-        if (typeof data.x !== 'number' || typeof data.y !== 'number') return
-        // Deduplicate: only update if the Lua-side timestamp changed
-        if (data.t === lastT) {
-          // Stale check: if the Lua side stopped writing (map change / no vehicle), clear telemetry
-          if (this.latestGpsTelemetry && Date.now() - lastUpdateTime > STALE_TIMEOUT) {
-            this.latestGpsTelemetry = null
-          }
-          return
-        }
-        lastT = data.t
-        lastUpdateTime = Date.now()
-        this.latestGpsTelemetry = {
-          x: data.x,
-          y: data.y,
-          z: data.z ?? 0,
-          heading: data.heading ?? 0,
-          speed: data.speed ?? 0,
-          timestamp: Date.now(),
-          map: typeof data.map === 'string' && data.map ? data.map : undefined,
-          vehicleId: typeof data.vehicle === 'string' && data.vehicle ? data.vehicle : undefined,
-          otherPlayers: Array.isArray(data.others) ? data.others.map((o: Record<string, unknown>) => ({
-            x: typeof o.x === 'number' ? o.x : 0,
-            y: typeof o.y === 'number' ? o.y : 0,
-            z: typeof o.z === 'number' ? o.z : 0,
-            heading: typeof o.heading === 'number' ? o.heading : 0,
-            speed: typeof o.speed === 'number' ? o.speed : 0,
-            name: typeof o.name === 'string' ? o.name : ''
-          })) : undefined,
-          navRoute: Array.isArray(data.route) ? data.route.filter((pt: Record<string, unknown>) =>
-            typeof pt.x === 'number' && typeof pt.y === 'number'
-          ).map((pt: Record<string, unknown>) => ({ x: pt.x as number, y: pt.y as number })) : undefined
-        }
-      } catch { /* file may be mid-write, skip this tick */ }
+        })
+        .catch(() => { /* deleted between exists & read */ })
+        .finally(() => { inFlight = false })
     }, 100) // 10 Hz polling
     this.log('GPS file poller started on ' + telemetryPath)
   }

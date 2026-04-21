@@ -121,6 +121,9 @@ function App(): React.JSX.Element {
     function startVehiclePoller(serverIdent: string): void {
       if (vehiclePoller) return
       vehiclePoller = setInterval(async () => {
+        // Window is hidden / minimized → Discord-presence freshness doesn't
+        // matter here, skip the IPC roundtrip entirely.
+        if (typeof document !== 'undefined' && document.hidden) return
         try {
           const telemetry = await window.api.gpsGetTelemetry()
           if (!telemetry?.vehicleId || telemetry.vehicleId === lastVehicleId) return

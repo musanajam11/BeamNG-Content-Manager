@@ -488,13 +488,13 @@ async function loadGameTexture(
       return null
     }
     const buffer = await resp.arrayBuffer()
-    console.log('[tex] loaded', cleanPath, buffer.byteLength, 'bytes')
+    // [tex] loaded — silenced; was firing per-texture and stalling devtools.
     const info = parseDDS(buffer, renderer)
     if (!info || info.mipmaps.length === 0) {
       console.warn('[tex] parseDDS failed for', cleanPath, info ? 'no mipmaps' : 'null')
       return null
     }
-    console.log('[tex] parsed', cleanPath, info.width, 'x', info.height, 'fmt=', info.format, 'mips=', info.mipmaps.length)
+    // [tex] parsed — silenced.
 
     const texture = new THREE.CompressedTexture(
       info.mipmaps as unknown as ImageData[],
@@ -547,7 +547,7 @@ async function loadGameNormalMap(
       tex.repeat.set(1, -1)
       tex.offset.set(0, 1)
       tex.needsUpdate = true
-      console.log('[tex] decoded BC5 normal', cleanPath, decoded.width, 'x', decoded.height)
+      // [tex] decoded BC5 normal — silenced.
       return tex
     }
 
@@ -968,7 +968,7 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
             if (skinInfo) {
               globalSkinName = skinInfo.skin
               globalSkinSlotType = skinInfo.slotType
-              console.log('[skin] active globalSkin:', globalSkinName, 'slotType:', globalSkinSlotType)
+              // [skin] active globalSkin — silenced.
             }
           } catch { /* no skin */ }
         }
@@ -1058,7 +1058,7 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
             const skinDef = materialsDB[skinKeyBySlot] || materialsDB[skinKeyFallback]
             if ((skinDef as MatDef | undefined)?.Stages) {
               effectiveDef = skinDef as MatDef
-              console.log('[skin] using skin material:', materialsDB[skinKeyBySlot] ? skinKeyBySlot : skinKeyFallback)
+              // [skin] using skin material — silenced.
             }
           }
 
@@ -1135,7 +1135,7 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
                 colorTex.colorSpace = THREE.SRGBColorSpace
                 mat.map = colorTex
                 mat.needsUpdate = true
-                console.log('[tex] applied baseColor', mapTo)
+                // [tex] applied baseColor — silenced.
               }
             }
 
@@ -1146,7 +1146,7 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
                 mat.normalMap = normalTex
                 mat.normalScale = new THREE.Vector2(1, 1)
                 mat.needsUpdate = true
-                console.log('[tex] normal applied', mapTo)
+                // [tex] normal applied — silenced.
               }
             }
 
@@ -1156,7 +1156,7 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
               if (opacityTex && !cancelled) {
                 mat.alphaMap = opacityTex
                 mat.needsUpdate = true
-                console.log('[tex] opacity/alpha applied', mapTo)
+                // [tex] opacity/alpha applied — silenced.
               }
             }
 
@@ -1253,7 +1253,7 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
                     )
                   }
                   mat.needsUpdate = true
-                  console.log('[paint] palette compositing applied to', mapTo, 'palette:', palettePath)
+                  // [paint] palette compositing — silenced.
                 }
               } else if (hasDirectLivery && paintStageBaseColor) {
                 // ── Direct livery skin (e.g. police) ──
@@ -1263,7 +1263,7 @@ export function VehicleViewer({ vehicleName, parts, paints, className }: Vehicle
                   liveryTex.colorSpace = THREE.SRGBColorSpace
                   mat.map = liveryTex
                   mat.needsUpdate = true
-                  console.log('[skin] direct livery applied to', mapTo)
+                  // [skin] direct livery applied — silenced.
                 }
               } else {
                 // No palette, no livery — simple paint tint on base texture

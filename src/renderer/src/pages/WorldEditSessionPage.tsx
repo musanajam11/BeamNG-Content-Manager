@@ -15,6 +15,7 @@ import {
   ArrowLeft,
 } from 'lucide-react'
 import type { SessionStatus, SessionOp, SessionLogEntry, PeerPoseEntry, PeerActivity } from '../../../shared/types'
+import { useNow } from '../hooks/useNow'
 
 /**
  * World-Editor Multiplayer Session page.
@@ -157,12 +158,8 @@ export function WorldEditSessionPage(): React.JSX.Element {
   const [activity, setActivity] = useState<Record<string, PeerActivity>>({})
   /** "Pulse" timestamp per authorId — drives the yellow flash animation. */
   const [activityPulse, setActivityPulse] = useState<Record<string, number>>({})
-  // Tick once a second so "42s ago" labels stay fresh.
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const h = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(h)
-  }, [])
+  // Tick once a second so "42s ago" labels stay fresh — shared global timer.
+  const now = useNow()
 
   const refresh = useCallback(async () => {
     try {

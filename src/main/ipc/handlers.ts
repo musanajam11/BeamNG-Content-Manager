@@ -34,6 +34,7 @@ import { VoiceMeshService } from '../services/VoiceMeshService'
 import { LuaConsoleService, type LuaScope } from '../services/LuaConsoleService'
 import { BeamUIFilesService } from '../services/BeamUIFilesService'
 import { EditorSyncSessionController, type SessionStatus } from '../services/EditorSyncSessionController'
+import { setPresence as setDiscordPresence } from '../services/DiscordRPCService'
 import { parseBeamNGJson } from '../utils/parseBeamNGJson'
 import { LRUCache } from '../utils/lruCache'
 import type { AppConfig, GamePaths, ServerInfo, RepoSortOrder, VehicleDetail, VehicleConfigInfo, VehicleConfigData, VehicleEditorData, SlotInfo, VariableInfo, WheelPlacement, ActiveMeshResult, HostedServerConfig, GPSRoute, ScheduledTask, MapRichMetadata } from '../../shared/types'
@@ -117,6 +118,29 @@ export function initializeServices(): {
   editorSession.on('statusChanged', (st: SessionStatus) => {
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send('worldEdit:session:status', st)
+    }
+    // Mirror the session into Discord Rich Presence so friends can see what
+    // we're up to. "Editing worlds with Friends" is the marketed phrase.
+    try {
+      if (st.state === 'hosting' || st.state === 'joined') {
+        const peerCount = (st.peers?.length ?? 0) + 1 // +1 for self
+        const role = st.state === 'hosting' ? 'Hosting' : 'Joined'
+        const where = st.levelName ? ` · ${st.levelName.replace(/^\/levels\//, '').replace(/\/info\.json$/, '').replace(/\/$/, '')}` : ''
+        setDiscordPresence({
+          details: 'Editing worlds with Friends',
+          state: `${role}${where} · ${peerCount} player${peerCount === 1 ? '' : 's'}`,
+        })
+      } else if (st.state === 'connecting') {
+        setDiscordPresence({
+          details: 'Editing worlds with Friends',
+          state: 'Connecting…',
+        })
+      } else {
+        // idle — fall back to the generic browsing label
+        setDiscordPresence({ details: 'Browsing content', state: 'Home' })
+      }
+    } catch {
+      /* discord unavailable, ignore */
     }
   })
   editorSession.on('opBroadcast', (op) => {

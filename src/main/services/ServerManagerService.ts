@@ -830,8 +830,16 @@ export class ServerManagerService {
       const pid = child.pid
       if (!pid) return
       pidusage(pid).then((stats) => {
-        entry.memoryBytes = stats.memory
-        entry.cpuPercent = Math.round(stats.cpu * 10) / 10
+        const newMem = stats.memory
+        const newCpu = Math.round(stats.cpu * 10) / 10
+        // Only emit when the values actually shift meaningfully — otherwise a
+        // multi-instance setup re-renders the entire ServerManager tree every
+        // 2 s for nothing. ~2 MiB or ~1 % cpu delta = perceivable change.
+        const memDelta = Math.abs(newMem - entry.memoryBytes)
+        const cpuDelta = Math.abs(newCpu - entry.cpuPercent)
+        if (memDelta < 2 * 1024 * 1024 && cpuDelta < 1.0) return
+        entry.memoryBytes = newMem
+        entry.cpuPercent = newCpu
         this.emitStatusChange(id)
       }).catch(() => {})
     }, 2000)

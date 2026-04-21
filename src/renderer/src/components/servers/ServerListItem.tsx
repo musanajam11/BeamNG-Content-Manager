@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from 'react'
+import { useRef, useState, useCallback, useEffect, useMemo, memo } from 'react'
 import { Star, Shield, Lock, MapPin } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
@@ -51,13 +51,16 @@ const BADGE_TONES: Record<string, string> = {
   default: 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)]',
 }
 
-export function ServerListItem({ server, selected, favorite, onSelect, onToggleFavorite }: Props): React.JSX.Element {
+function ServerListItemImpl({ server, selected, favorite, onSelect, onToggleFavorite }: Props): React.JSX.Element {
   const { t } = useTranslation()
   const playerCount = parseInt(server.players, 10) || 0
   const maxPlayers = parseInt(server.maxplayers, 10) || 0
   const fillPct = getFillPct(server)
-  const tags = getServerTags(server, t)
-  const contentTags = parseServerTags(server.tags)
+  // Memoize tag derivations — these allocate arrays/objects each call and are
+  // re-computed on every list refresh otherwise. Recompute only when the
+  // underlying server fields actually change.
+  const tags = useMemo(() => getServerTags(server, t), [server, t])
+  const contentTags = useMemo(() => parseServerTags(server.tags), [server.tags])
   const flagUrl = useFlagUrl(server.location)
 
   // Marquee: detect if server name overflows its container
@@ -77,12 +80,14 @@ export function ServerListItem({ server, selected, favorite, onSelect, onToggleF
   }, [])
 
   useEffect(() => {
-    const container = nameContainerRef.current
-    if (!container) return
-    const ro = new ResizeObserver(() => checkNameOverflow())
-    ro.observe(container)
+    // Initial check after layout settles. We deliberately skip a per-row
+    // ResizeObserver — the row width only changes on window resize (the parent
+    // list isn't user-resizable), so a single window listener is enough and
+    // avoids hundreds of observers on a 500-server list.
     checkNameOverflow()
-    return () => ro.disconnect()
+    const onResize = (): void => checkNameOverflow()
+    window.addEventListener('resize', onResize, { passive: true })
+    return () => window.removeEventListener('resize', onResize)
   }, [server.sname, checkNameOverflow])
 
   return (
@@ -161,3 +166,27 @@ export function ServerListItem({ server, selected, favorite, onSelect, onToggleF
     </button>
   )
 }
+
+// Memoized so the 30-second auto-refresh of the server list doesn't re-render
+// every row when the underlying values are unchanged. We compare the fields
+// that actually drive the JSX; identity changes on the parent's onSelect /
+// onToggleFavorite callbacks are intentionally ignored (they're recreated each
+// render but always do the same thing for this row).
+export const ServerListItem = memo(ServerListItemImpl, (prev, next) => {
+  if (prev.selected !== next.selected) return false
+  if (prev.favorite !== next.favorite) return false
+  const a = prev.server, b = next.server
+  return (
+    a.ip === b.ip &&
+    a.port === b.port &&
+    a.players === b.players &&
+    a.maxplayers === b.maxplayers &&
+    a.sname === b.sname &&
+    a.tags === b.tags &&
+    a.official === b.official &&
+    a.password === b.password &&
+    a.map === b.map &&
+    a.location === b.location &&
+    a.modstotal === b.modstotal
+  )
+})

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { BarChart3, Users, Clock, Trash2, Loader2, ChevronDown } from 'lucide-react'
 import type { AnalyticsData, DailyStats, PlayerSummary, PlayerSession } from '../../../../shared/types'
 import { useTranslation } from 'react-i18next'
+import { useNow } from '../../hooks/useNow'
 
 interface AnalyticsPanelProps {
   serverId: string
@@ -49,8 +50,18 @@ export function AnalyticsPanel({ serverId }: AnalyticsPanelProps): React.JSX.Ele
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load + polling
     loadData()
-    const interval = setInterval(loadData, 10000)
-    return () => clearInterval(interval)
+    const tick = (): void => {
+      // Skip the IPC + analytics rebuild while the panel/window isn't visible.
+      if (typeof document !== 'undefined' && document.hidden) return
+      loadData()
+    }
+    const interval = setInterval(tick, 10000)
+    const onVis = (): void => { if (!document.hidden) loadData() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVis)
+    }
   }, [loadData])
 
   const handleClear = async (): Promise<void> => {
@@ -315,11 +326,8 @@ function SortHeader({
 }
 
 function ActiveSessionBadge({ session, formatDuration }: { session: PlayerSession; formatDuration: (ms: number) => string }): React.JSX.Element {
-  const [now, setNow] = useState(Date.now)
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(id)
-  }, [])
+  // Shared 1 Hz tick — one global timer for all badges instead of one per row.
+  const now = useNow()
   return (
     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-green-500/10 text-green-400 border border-green-500/20">
       <span className="w-1.5 h-1.5 rounded-full bg-green-500" />

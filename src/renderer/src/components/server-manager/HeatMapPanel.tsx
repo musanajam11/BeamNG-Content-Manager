@@ -41,6 +41,8 @@ export default function HeatMapPanel({ server }: HeatMapPanelProps): React.JSX.E
     }
 
     const poll = (): void => {
+      // Don't burn IPC + redraws while the window/tab isn't visible.
+      if (typeof document !== 'undefined' && document.hidden) return
       window.api
         .hostedServerGetPlayerPositions(server.config.id)
         .then((ps) => {
@@ -65,9 +67,14 @@ export default function HeatMapPanel({ server }: HeatMapPanelProps): React.JSX.E
     }
     poll()
     pollRef.current = setInterval(poll, 1000)
+    // Resume immediately when the window comes back so the map doesn't
+    // look frozen for up to a full second.
+    const onVis = (): void => { if (!document.hidden) poll() }
+    document.addEventListener('visibilitychange', onVis)
 
     return () => {
       if (pollRef.current) clearInterval(pollRef.current)
+      document.removeEventListener('visibilitychange', onVis)
     }
   }, [isRunning, server.config.id])
 
