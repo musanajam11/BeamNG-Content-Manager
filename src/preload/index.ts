@@ -819,6 +819,12 @@ const api = {
       cancelled?: boolean
       error?: string
     }>,
+  worldEditSessionTestReachability: (host: string, port: number) =>
+    ipcRenderer.invoke('worldEdit:session:testReachability', host, port) as Promise<{
+      success: boolean
+      latencyMs?: number
+      error?: string
+    }>,
   onWorldEditSessionStatus: (cb: (status: import('../shared/types').SessionStatus) => void) => {
     const handler = (_e: unknown, status: import('../shared/types').SessionStatus): void => cb(status)
     ipcRenderer.on('worldEdit:session:status', handler)

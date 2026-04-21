@@ -727,6 +727,11 @@ export interface SessionProjectInfo {
   sizeBytes: number
   /** TCP port the host exposes its HTTP download endpoint on. */
   httpPort: number
+  /**
+   * Per-session bearer token the joiner must supply as `?token=…` when
+   * downloading the zip. Minted by the host relay at start time.
+   */
+  authToken: string
 }
 
 /** Op envelope as it crosses the CM-to-CM wire and is surfaced to the renderer. */

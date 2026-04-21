@@ -18,8 +18,14 @@ import {
   FolderPlus,
   X as XIcon,
   RefreshCw,
+  ChevronRight,
+  Undo2,
+  Redo2,
+  Save,
+  Circle,
 } from 'lucide-react'
 import type { SessionStatus, SessionOp, PeerPoseEntry, PeerActivity, EditorProject, SessionProjectInfo } from '../../../shared/types'
+import { ProjectBrowserModal } from '../components/world-edit/ProjectBrowserModal'
 import { useNow } from '../hooks/useNow'
 import { useWorldEditSessionStore } from '../stores/useWorldEditSessionStore'
 
@@ -125,12 +131,37 @@ function formatBytesShort(n: number): string {
   return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
 
-export function WorldEditSessionPage(): React.JSX.Element {
+export interface WorldEditSessionPageProps {
+  /**
+   * Bridge readiness signals from the parent's worldEditGetStatus poll. Used
+   * to drive the project browser modal (gates Load/Capture buttons) and to
+   * label the active-project chip with the current BeamNG level.
+   */
+  bridgeEditorPresent?: boolean
+  bridgeCurrentLevel?: string | null
+  /** Whether the Lua extension is hooked (ready to capture). */
+  bridgeHooked?: boolean
+  /** Whether the Lua extension is currently capturing ops to disk. */
+  bridgeCapturing?: boolean
+}
+
+export function WorldEditSessionPage(
+  props: WorldEditSessionPageProps = {}
+): React.JSX.Element {
+  const {
+    bridgeEditorPresent = false,
+    bridgeCurrentLevel = null,
+    bridgeHooked = false,
+    bridgeCapturing = false,
+  } = props
   const [status, setStatus] = useState<SessionStatus | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   // UX mode: pick host OR join first (clearer than tabs)
   const [mode, setMode] = useState<'choose' | 'host' | 'join'>('choose')
+
+  // Project browser modal — opened from the active-project chip.
+  const [projectBrowserOpen, setProjectBrowserOpen] = useState(false)
 
   // Host-toggleable auth mode (open / token / approval / friends)
   const [authMode, setAuthMode] = useState<'open' | 'token' | 'approval' | 'friends'>('token')
@@ -184,6 +215,17 @@ export function WorldEditSessionPage(): React.JSX.Element {
   const [firewallExists, setFirewallExists] = useState<boolean | null>(null)
   const [firewallBusy, setFirewallBusy] = useState(false)
   const [firewallMsg, setFirewallMsg] = useState<string | null>(null)
+
+  // Reachability self-test — tries a TCP connect to the advertised host:port
+  // so the host can verify packets actually reach the listener before sharing
+  // the invite. Especially useful for Tailscale (hairpin TCP to own 100.x IP
+  // exercises the wintun adapter + firewall exactly like a remote peer).
+  const [reachBusy, setReachBusy] = useState(false)
+  const [reachResult, setReachResult] = useState<
+    | { kind: 'ok'; latencyMs: number }
+    | { kind: 'err'; message: string }
+    | null
+  >(null)
 
   // Tailscale (optional — only shown if installed and running)
   const [tsIp, setTsIp] = useState<string | null>(null)
@@ -488,6 +530,44 @@ export function WorldEditSessionPage(): React.JSX.Element {
     }
   }
 
+  /**
+   * Hairpin-TCP self-test to the advertised host:port. If this fails while
+   * hosting, the listener is bound but packets can't reach it (firewall,
+   * Tailscale not routing, wrong interface, etc.) — a remote joiner won't
+   * get through either. If it succeeds, the invite code is known-good.
+   */
+  const onTestReachability = async (): Promise<void> => {
+    const portNum = Number.parseInt(hostPort, 10)
+    if (!Number.isFinite(portNum) || portNum <= 0) {
+      setReachResult({ kind: 'err', message: 'Invalid port' })
+      return
+    }
+    // Prefer the user-selected advertise address; fall back to session status
+    // host (which may be "0.0.0.0:<port>" when idle), then 127.0.0.1.
+    let targetHost = advertiseHost.trim()
+    if (!targetHost && s?.host) {
+      const parsed = s.host.split(':')[0]
+      if (parsed && parsed !== '0.0.0.0') targetHost = parsed
+    }
+    if (!targetHost) targetHost = '127.0.0.1'
+    setReachBusy(true)
+    setReachResult(null)
+    try {
+      const res = await window.api.worldEditSessionTestReachability?.(targetHost, portNum)
+      if (!res) {
+        setReachResult({ kind: 'err', message: 'Reachability test unavailable — restart CM.' })
+      } else if (res.success) {
+        setReachResult({ kind: 'ok', latencyMs: res.latencyMs ?? 0 })
+      } else {
+        setReachResult({ kind: 'err', message: res.error ?? 'Unknown error' })
+      }
+    } catch (e) {
+      setReachResult({ kind: 'err', message: String(e) })
+    } finally {
+      setReachBusy(false)
+    }
+  }
+
   const hostOpts = (): {
     port?: number
     token: string | null
@@ -742,9 +822,44 @@ export function WorldEditSessionPage(): React.JSX.Element {
 
   return (
     <div className="space-y-4 w-full">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <Radio size={18} className="text-[var(--color-accent)]" />
         <h2 className="text-base font-semibold">Multiplayer session</h2>
+
+        {/* Active project chip — shows what the host is currently sharing
+            (or that nothing is staged), and opens the project browser modal
+            on click. Visible to both hosts (write access) and joiners
+            (read-only — they get whatever the host advertises). */}
+        <button
+          onClick={() => setProjectBrowserOpen(true)}
+          className={`ml-auto group flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+            s?.project
+              ? 'border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-200 hover:bg-fuchsia-500/20'
+              : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]'
+          }`}
+          title={
+            s?.project
+              ? 'Click to browse, swap, or capture another project'
+              : 'Open the coop project browser'
+          }
+        >
+          <FolderOpen size={14} className="shrink-0" />
+          {s?.project ? (
+            <>
+              <span>
+                <span className="opacity-70">{isJoined ? 'Receiving' : 'Sharing'}: </span>
+                <span className="font-semibold">{s.project.name}</span>
+                <span className="opacity-60"> • {s.project.levelName}</span>
+              </span>
+            </>
+          ) : (
+            <span>{isHosting ? 'No project staged — click to share one' : 'Coop projects'}</span>
+          )}
+          <ChevronRight
+            size={12}
+            className="opacity-50 group-hover:translate-x-0.5 transition-transform"
+          />
+        </button>
       </div>
       <p className="text-sm text-[var(--color-text-muted)] max-w-4xl">
         Collaborative world-editor sessions run <strong>peer-to-peer between two CM installs</strong>
@@ -774,6 +889,38 @@ export function WorldEditSessionPage(): React.JSX.Element {
           {pill('Ops received', String(s?.opsOut ?? 0), 'neutral')}
           {pill('Seq', String(s?.lastSeq ?? 0), 'neutral')}
           {s?.host ? pill('Address', s.host, 'neutral') : pill('Address', '—', 'neutral')}
+        </div>
+      )}
+
+      {/* Reachability self-test — host-only. Lets the user confirm packets
+          actually reach the listener on the advertised address before
+          sharing the invite code. Critical for Tailscale: if a hairpin
+          TCP to your own 100.x IP fails, a remote peer won't get through. */}
+      {isHosting && (
+        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 flex flex-wrap items-center gap-3 text-xs">
+          <span className="text-[var(--color-text-muted)]">
+            Reachability test ({advertiseHost || s?.host?.split(':')[0] || '127.0.0.1'}:{hostPort}):
+          </span>
+          <button
+            onClick={() => void onTestReachability()}
+            disabled={reachBusy}
+            className="px-2 py-1 rounded border border-[var(--color-border)] bg-[var(--color-bg)] hover:bg-[var(--color-surface-hover)] inline-flex items-center gap-1 disabled:opacity-50"
+            title="Opens a TCP connection to the advertised host:port. If it fails, the invite code won't work for remote peers either."
+          >
+            {reachBusy ? <Loader2 size={11} className="animate-spin" /> : <Shield size={11} />}
+            Test now
+          </button>
+          {reachResult?.kind === 'ok' && (
+            <span className="text-green-300 inline-flex items-center gap-1">
+              <CheckCircle2 size={11} /> reachable ({reachResult.latencyMs}ms) — invite is good
+            </span>
+          )}
+          {reachResult?.kind === 'err' && (
+            <span className="text-red-300 basis-full">
+              <AlertCircle size={11} className="inline mr-1" />
+              {reachResult.message}
+            </span>
+          )}
         </div>
       )}
 
@@ -1046,9 +1193,10 @@ export function WorldEditSessionPage(): React.JSX.Element {
                 </button>
               </div>
               <p className="text-[11px] text-[var(--color-text-muted)]">
-                Resume from a map you previously saved with <strong>Save as project…</strong> on
-                the Bridge &amp; capture tab. BeamNG will boot into the project folder instead of
-                a stock level.
+                Resume from a map you previously saved. Use the
+                <strong className="mx-1">Coop projects</strong> chip at the top of this page
+                and click <strong>Capture current</strong> while the world editor is open to
+                snapshot new ones. BeamNG will boot into the project folder instead of a stock level.
               </p>
               {projects.length === 0 ? (
                 <div className="text-[11px] text-[var(--color-text-muted)] italic">
@@ -1466,6 +1614,18 @@ export function WorldEditSessionPage(): React.JSX.Element {
         now={now}
       />
 
+      {/* Editor action bar — prominent Undo / Redo / Save controls visible
+          throughout the session so the user never has to dig into Diagnostics
+          for them. Wired straight to the same we_capture_signal.json channel
+          the Diagnostics panel uses. */}
+      {(isHosting || isJoined) && (
+        <EditorActionBar
+          editorPresent={bridgeEditorPresent}
+          hooked={bridgeHooked}
+          capturing={bridgeCapturing}
+        />
+      )}
+
       {/* Op stream */}
       <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]">
         <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border)]">
@@ -1554,9 +1714,9 @@ export function WorldEditSessionPage(): React.JSX.Element {
             <div className="flex-1 overflow-y-auto">
               {projects.length === 0 ? (
                 <div className="px-4 py-8 text-center text-sm text-[var(--color-text-muted)]">
-                  No saved projects yet. Save one from the Bridge &amp; capture tab using
-                  <strong className="mx-1">Save as project…</strong> while BeamNG is in
-                  the world editor.
+                  No saved projects yet. Open the <strong>Coop projects</strong> chip at the top of
+                  the page and click <strong className="mx-1">Capture current</strong> while
+                  BeamNG is in the world editor.
                 </div>
               ) : (
                 <table className="w-full text-xs">
@@ -1599,12 +1759,24 @@ export function WorldEditSessionPage(): React.JSX.Element {
             </div>
             <div className="px-4 py-2 border-t border-[var(--color-border)] text-[11px] text-[var(--color-text-muted)] bg-[var(--color-surface)] flex items-center gap-1">
               <FolderPlus size={11} />
-              Save new projects from the Bridge &amp; capture tab with the
-              <strong className="mx-1 text-[var(--color-text)]">Save as project…</strong> button.
+              Save new projects via the <strong className="mx-1 text-[var(--color-text)]">Coop projects</strong>
+              chip at the top of the page and click <strong className="mx-1 text-[var(--color-text)]">Capture current</strong>.
             </div>
           </div>
         </div>
       )}
+
+      {/* Project browser slide-over — opened from the active-project chip
+          in the page header. Single source of truth for load / share /
+          capture / delete actions across all coop projects. */}
+      <ProjectBrowserModal
+        open={projectBrowserOpen}
+        onClose={() => setProjectBrowserOpen(false)}
+        activeFolder={s?.project?.folder ?? null}
+        isHosting={isHosting}
+        editorPresent={bridgeEditorPresent || s?.bridgeReady === true}
+        currentLevel={bridgeCurrentLevel ?? s?.levelName ?? null}
+      />
     </div>
   )
 }
@@ -1711,6 +1883,135 @@ interface PeersPanelProps {
   /** The local user's current level, for mismatched-level warnings. */
   selfLevel: string | null
   now: number
+}
+
+/**
+ * Prominent in-session toolbar for Undo / Redo / Save.
+ *
+ * Lives above the op stream so users can drive the world editor without
+ * expanding the Diagnostics panel. Every button writes the same
+ * `we_capture_signal.json` that the raw diagnostics controls do, so peers
+ * see the resulting op in their stream via the capture hooks.
+ */
+function EditorActionBar({
+  editorPresent,
+  hooked,
+  capturing,
+}: {
+  editorPresent: boolean
+  hooked: boolean
+  capturing: boolean
+}): React.JSX.Element {
+  const [busy, setBusy] = useState(false)
+  const [flash, setFlash] = useState<{ msg: string; tone: 'ok' | 'err' } | null>(null)
+
+  const send = useCallback(
+    async (
+      action: 'undo' | 'redo' | 'save' | 'start' | 'stop',
+      label: string,
+    ): Promise<void> => {
+      setBusy(true)
+      try {
+        const res = await window.api.worldEditSignal?.(action)
+        if (!res) {
+          setFlash({ msg: 'IPC binding unavailable — restart CM', tone: 'err' })
+        } else if (!res.success) {
+          setFlash({ msg: res.error ?? `${label} failed`, tone: 'err' })
+        } else {
+          setFlash({ msg: `${label} ✓`, tone: 'ok' })
+        }
+      } catch (e) {
+        setFlash({ msg: String(e), tone: 'err' })
+      } finally {
+        setBusy(false)
+        window.setTimeout(() => setFlash((f) => (f && f.msg.startsWith(label) ? null : f)), 1800)
+      }
+    },
+    [],
+  )
+
+  const disabled = busy || !editorPresent || !hooked
+  const disabledReason = !editorPresent
+    ? 'Open BeamNG world editor (F11) first'
+    : !hooked
+      ? 'Editor hooks not installed yet — open the world editor'
+      : busy
+        ? 'Working…'
+        : ''
+
+  const btnBase =
+    'flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed'
+
+  return (
+    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]/70 p-3 flex items-center gap-2 flex-wrap">
+      <button
+        onClick={() => void send('undo', 'Undo')}
+        disabled={disabled}
+        title={disabledReason || 'Undo last edit (Ctrl+Z in-game)'}
+        className={`${btnBase} border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)]`}
+      >
+        <Undo2 size={15} /> Undo
+      </button>
+      <button
+        onClick={() => void send('redo', 'Redo')}
+        disabled={disabled}
+        title={disabledReason || 'Redo last undone edit (Ctrl+Y in-game)'}
+        className={`${btnBase} border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)]`}
+      >
+        <Redo2 size={15} /> Redo
+      </button>
+      <div className="w-px h-6 bg-[var(--color-border)] mx-1" />
+      <button
+        onClick={() => void send('save', 'Save')}
+        disabled={disabled}
+        title={disabledReason || 'Save the current level (in place)'}
+        className={`${btnBase} border-blue-500/40 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20`}
+      >
+        <Save size={15} /> Save level
+      </button>
+
+      <div className="ml-auto flex items-center gap-2 text-[11px]">
+        {/* Capture indicator */}
+        {capturing ? (
+          <button
+            onClick={() => void send('stop', 'Capture paused')}
+            disabled={busy}
+            title="Pause op capture to disk (peers still see live ops)"
+            className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-green-500/40 bg-green-500/10 text-green-300 hover:bg-green-500/20"
+          >
+            <Circle size={8} className="fill-green-400 text-green-400 animate-pulse" />
+            Capturing
+          </button>
+        ) : (
+          <button
+            onClick={() => void send('start', 'Capture started')}
+            disabled={busy || !editorPresent}
+            title={
+              !editorPresent
+                ? 'Open the BeamNG world editor first'
+                : 'Record ops to we_capture.log so edits can be recovered'
+            }
+            className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] disabled:opacity-40"
+          >
+            <Circle size={8} />
+            Start capture
+          </button>
+        )}
+
+        {flash && (
+          <span
+            className={`px-2 py-1 rounded-md font-medium ${
+              flash.tone === 'ok'
+                ? 'bg-green-500/15 text-green-400 border border-green-500/30'
+                : 'bg-red-500/15 text-red-400 border border-red-500/30'
+            }`}
+          >
+            {flash.msg}
+          </span>
+        )}
+      </div>
+    </div>
+  )
 }
 
 /**

@@ -99,6 +99,13 @@ export interface WelcomeProjectInfo {
   sha256: string
   sizeBytes: number
   httpPort: number
+  /**
+   * Opaque bearer token the joiner must present (as `?token=…` query
+   * parameter) when GETting /project.zip. Minted per-session by the host
+   * relay so third parties on the same LAN / Tailscale network can't snarf
+   * the zip without having been welcomed into the session.
+   */
+  authToken: string
 }
 
 /**

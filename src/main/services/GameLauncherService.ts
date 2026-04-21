@@ -194,9 +194,35 @@ local pollInterval = 0.5
 local timer = 0
 local acted = false
 local pendingVehicle = nil
-local startupDelay = 3
+local startupDelay = 2
 local startupTimer = 0
 local ready = false
+-- Retry state for freeroam level loads. core_levels.startLevel occasionally
+-- no-ops silently if called during the wrong engine phase (UI not ready yet,
+-- or a BeamMP-style overlay swallowing the first call) — which was landing
+-- "Launch into editor" in the main menu. We keep retrying every
+-- retryInterval seconds until onClientStartMission fires or we exhaust
+-- retryMax attempts.
+local pendingLevel = nil
+local retryTimer = 0
+local retryInterval = 3
+local retryMax = 6
+local retryAttempts = 0
+
+local function tryStartLevel(level)
+  if core_levels and core_levels.startLevel then
+    local ok, err = pcall(function() core_levels.startLevel(level) end)
+    if ok then
+      log('I', 'beamcmBridge', 'core_levels.startLevel("' .. tostring(level) .. '") dispatched')
+      return true
+    else
+      log('W', 'beamcmBridge', 'core_levels.startLevel failed: ' .. tostring(err))
+    end
+  else
+    log('W', 'beamcmBridge', 'core_levels.startLevel not available yet')
+  end
+  return false
+end
 
 local function onExtensionLoaded()
   log('I', 'beamcmBridge', 'BeamCM singleplayer bridge loaded')
@@ -209,11 +235,43 @@ local function onExtensionLoaded()
     setExtensionUnloadMode('beamcmConsole', 'manual')
     log('I', 'beamcmBridge', 'Auto-loaded beamcmConsole extension')
   end
+  -- Auto-load World Editor Sync if deployed (belt-and-braces: the hot-load
+  -- signal below covers the already-running case; this covers cold-launch
+  -- in case BeamNG's extension auto-discovery doesn't pick up userDir files
+  -- on this build).
+  local esExt = "lua/ge/extensions/beamcmEditorSync.lua"
+  local ef = io.open(esExt, "r")
+  if ef then
+    ef:close()
+    local ok, err = pcall(function() extensions.load('beamcmEditorSync') end)
+    if ok then
+      pcall(function() setExtensionUnloadMode('beamcmEditorSync', 'manual') end)
+      log('I', 'beamcmBridge', 'Auto-loaded beamcmEditorSync extension')
+    else
+      log('W', 'beamcmBridge', 'Failed to auto-load beamcmEditorSync: ' .. tostring(err))
+    end
+  end
 end
 
 local function onUpdate(dt)
+  -- Retry pending freeroam level load until a mission actually starts.
+  if pendingLevel then
+    retryTimer = retryTimer + dt
+    if retryTimer >= retryInterval then
+      retryTimer = 0
+      retryAttempts = retryAttempts + 1
+      if retryAttempts > retryMax then
+        log('W', 'beamcmBridge', 'Giving up on level load after ' .. retryMax .. ' attempts')
+        pendingLevel = nil
+      else
+        log('I', 'beamcmBridge', 'Retrying level load (attempt ' .. retryAttempts .. '/' .. retryMax .. ')')
+        tryStartLevel(pendingLevel)
+      end
+    end
+  end
+
   if acted then return end
-  -- Wait a few seconds after game start so the engine is fully ready
+  -- Wait a couple seconds after game start so the engine is fully ready
   if not ready then
     startupTimer = startupTimer + dt
     if startupTimer < startupDelay then return end
@@ -232,9 +290,10 @@ local function onUpdate(dt)
   if mode == "freeroam" then
     local level = content.level or "/levels/gridmap_v2/info.json"
     log('I', 'beamcmBridge', 'Loading level: ' .. level)
-    if core_levels and core_levels.startLevel then
-      core_levels.startLevel(level)
-    end
+    pendingLevel = level
+    retryTimer = 0
+    retryAttempts = 0
+    tryStartLevel(level)
   else
     -- For game-mode screens, try to navigate via the UI system
     log('I', 'beamcmBridge', 'Navigating to game mode: ' .. mode)
@@ -259,6 +318,11 @@ local function onUpdate(dt)
 end
 
 local function onClientStartMission()
+  -- Mission loaded successfully — cancel any pending level-load retries.
+  if pendingLevel then
+    log('I', 'beamcmBridge', 'Mission loaded, clearing level-load retry')
+    pendingLevel = nil
+  end
   if not pendingVehicle then return end
   local veh = pendingVehicle
   pendingVehicle = nil
@@ -503,6 +567,11 @@ local captureCount = 0
 local sessionStart = 0
 local pollTimer = 0
 local pollInterval = 0.5
+-- Set when the user requested capture before hooks could be installed (e.g.
+-- CM armed auto-capture on deploy but the BeamNG world editor wasn't open
+-- yet). onEditorActivated / installHooks honour this flag so capture
+-- resumes the moment the editor becomes available.
+local pendingStart = false
 
 -- Replay state
 local replayQueue = nil
@@ -641,16 +710,72 @@ local fieldHelperGrace = {}       -- "pid|fieldName" -> ts (ms) of last helper w
 local FIELD_GRACE_MS = 250
 local suppressFieldCapture = false
 
+-- Persistent IDs of every scene object we've observed being mutated during
+-- this session. Used by buildAndSendSnapshot to ship a current state of
+-- each touched object so late-joiners don't have to replay the entire
+-- ops.log to reconstruct the scene. Populated from op captures, field
+-- frames, and brush strokes.
+local cmTouchedPids = {}          -- pid -> true
+-- Cap so a pathological session (e.g. 50k instance placements) can't blow
+-- the snapshot payload past practical limits. When exceeded, we skip
+-- serializing objects into the snapshot and rely on ops.log replay.
+local TOUCHED_PIDS_MAX = 4000
+
+local function markTouchedPid(pid)
+  if type(pid) ~= 'string' or pid == '' then return end
+  cmTouchedPids[pid] = true
+end
+
+-- Recursively walk any table scanning for __pid markers (left behind by
+-- rewriteIds) and bare string pid fields. Cheap (touched-pid rate ≪ edit rate).
+local function markPidsInData(data, depth)
+  depth = depth or 0
+  if depth > 12 or type(data) ~= 'table' then return end
+  if type(data.__pid) == 'string' then markTouchedPid(data.__pid) end
+  for k, v in pairs(data) do
+    if type(v) == 'table' then
+      markPidsInData(v, depth + 1)
+    elseif type(v) == 'string' and (k == 'persistentId' or k == 'pid') then
+      markTouchedPid(v)
+    end
+  end
+end
+
 -- Class → list of field names to watch. Hand-curated; expand as we discover
 -- inspector-only writes that matter for collaborative editing. Every entry
 -- costs (instances × fields) string-keyed reads per poll tick.
 local TRACKED_FIELDS = {
-  TimeOfDay      = { 'time', 'dayLength', 'dayScale', 'nightScale', 'azimuthOverride' },
-  ScatterSky     = { 'sunAzimuth', 'sunElevation', 'colorize', 'brightness' },
-  CloudLayer     = { 'coverage', 'windSpeed', 'baseColor' },
-  Precipitation  = { 'numDrops', 'dropSize', 'splashSize' },
-  WaterPlane     = { 'density', 'waveMagnitude', 'overallWaveMagnitude' },
-  LevelInfo      = { 'gravity', 'fogDensity', 'fogDensityOffset', 'fogColor' },
+  -- Environment / sky
+  TimeOfDay      = { 'time', 'dayLength', 'dayScale', 'nightScale', 'azimuthOverride', 'play' },
+  ScatterSky     = { 'sunAzimuth', 'sunElevation', 'colorize', 'brightness', 'exposure', 'skyBrightness', 'sunSize' },
+  CloudLayer     = { 'coverage', 'windSpeed', 'baseColor', 'windDirection', 'exposure' },
+  Precipitation  = { 'numDrops', 'dropSize', 'splashSize', 'splashMS' },
+  WaterPlane     = { 'density', 'waveMagnitude', 'overallWaveMagnitude', 'baseColor', 'underwaterColor' },
+  LevelInfo      = {
+    'gravity', 'fogDensity', 'fogDensityOffset', 'fogColor', 'canvasClearColor',
+    'ambientLightBlendPhase', 'desiredTimeOfDay', 'visibleDistance',
+  },
+  -- Generic static scene props (lights, meshes, groups, decals, triggers,
+  -- prefabs, markers). Transform (position/rotation/scale) is method-only
+  -- on these classes (getPosition/setPosition etc.) — NOT readable through
+  -- getField — so we leave it out of the polled-field channel and let the
+  -- touched-pid snapshot path serialize it instead. The fields below are
+  -- the inspector-writable knobs that ARE getField-readable.
+  SceneObject            = { 'hidden', 'locked' },
+  TSStatic               = { 'shapeName', 'playAmbient', 'collisionType' },
+  BeamNGObject           = { 'hidden' },
+  ProceduralMesh         = { 'subdivide' },
+  PointLight             = { 'color', 'brightness', 'radius', 'castShadows' },
+  SpotLight              = { 'color', 'brightness', 'range', 'innerAngle', 'outerAngle', 'castShadows' },
+  SimGroup               = { 'hidden', 'locked' },
+  Prefab                 = { 'filename' },
+  DecalRoad              = { 'hidden', 'Material', 'textureLength', 'breakAngle', 'renderPriority' },
+  BeamNGTrigger          = { 'triggerType', 'luaFunction' },
+  MissionGroup           = { 'hidden', 'locked' },
+  -- Forest / terrain meta (per-instance data is streamed via the brush
+  -- channel; meta is per-class config still useful to replicate).
+  ForestItemData         = { 'shapeFile', 'branchAmp', 'mass', 'radius', 'rigidity', 'tightnessCoefficient' },
+  TerrainBlock           = { 'squareSize', 'baseTexSize', 'castShadows' },
 }
 
 local function fieldGraceKey(pid, fieldName) return pid .. '|' .. fieldName end
@@ -904,6 +1029,7 @@ local function queueFieldFrame(entry)
   lastFieldSnapshot[entry.pid] = lastFieldSnapshot[entry.pid] or {}
   lastFieldSnapshot[entry.pid][entry.fieldName] = entry.value
   fieldHelperGrace[fieldGraceKey(entry.pid, entry.fieldName)] = entry.ts
+  markTouchedPid(entry.pid)
 end
 
 -- Path A: opt-in helper. Sets the field via setField+postApply (matches what
@@ -955,6 +1081,7 @@ local function cmPollFields()
                     pid = pid, fieldName = fname,
                     arrayIndex = 0, value = v, ts = now,
                   })
+                  markTouchedPid(pid)
                 end
               end
             end
@@ -1068,6 +1195,64 @@ local function collectFieldSnapshot()
   return out
 end
 
+-- Serialize the current state of every touched object so a joining peer
+-- can jump straight to the "right now" scene instead of replaying the
+-- entire ops.log. Each entry carries:
+--   - pid:       persistent id (stable across builds)
+--   - className: used by the apply side to pick a constructor if absent
+--   - name:      human-readable scene-tree name (optional)
+--   - position/rotation/scale: basic transform (read via getField when
+--     available; falls back to getPosition/getRotation/getScale method
+--     calls on the SimObject).
+-- If we've blown past TOUCHED_PIDS_MAX the snapshot ships objects = {}
+-- and joiners fall back on ops.log replay — correct, just slower.
+local function collectObjectSnapshot()
+  local out = {}
+  local count = 0
+  for pid in pairs(cmTouchedPids) do count = count + 1 end
+  if count == 0 or count > TOUCHED_PIDS_MAX then return out end
+  if not scenetree or not scenetree.findObjectByPersistentId then return out end
+
+  local function readVec3(obj, method)
+    if not obj or not obj[method] then return nil end
+    local ok, v = pcall(function() return obj[method](obj) end)
+    if not ok or v == nil then return nil end
+    if type(v) == 'table' then
+      return { x = v.x or v[1], y = v.y or v[2], z = v.z or v[3] }
+    end
+    return nil
+  end
+
+  for pid in pairs(cmTouchedPids) do
+    local obj = scenetree.findObjectByPersistentId(pid)
+    if obj then
+      local entry = { pid = pid }
+      if obj.getClassName then
+        local cOk, c = pcall(function() return obj:getClassName() end)
+        if cOk then entry.className = c end
+      end
+      if obj.getName then
+        local nOk, n = pcall(function() return obj:getName() end)
+        if nOk and type(n) == 'string' and n ~= '' then entry.name = n end
+      end
+      entry.position = readVec3(obj, 'getPosition')
+      entry.scale    = readVec3(obj, 'getScale')
+      -- Rotation: BeamNG SimObjects expose getRotation() returning a
+      -- quaternion-ish userdata. Best-effort to table form for JSON.
+      if obj.getRotation then
+        local rOk, r = pcall(function() return obj:getRotation() end)
+        if rOk and r then
+          if type(r) == 'table' then
+            entry.rotation = { x = r.x or r[1], y = r.y or r[2], z = r.z or r[3], w = r.w or r[4] }
+          end
+        end
+      end
+      table.insert(out, entry)
+    end
+  end
+  return out
+end
+
 -- Build + emit a snapshot. The Z| request payload may carry a target
 -- snapshotId so the host can correlate this response with its outstanding
 -- request. Chunks are sent synchronously here (no coroutine yield yet — the
@@ -1087,7 +1272,7 @@ local function buildAndSendSnapshot(req)
     createdTs = cmNowMs(),
     env = collectEnvSnapshot(),
     fields = collectFieldSnapshot(),
-    objects = {},        -- v1 stub; extend with touched-pid serialization later
+    objects = collectObjectSnapshot(),
     terrainDelta = nil,  -- Phase 4
     forestDelta = nil,   -- Phase 4
     decalRoadDelta = nil,
@@ -1173,6 +1358,27 @@ local function handleSnapshotChunk(msg)
         end
       end
     end
+    -- Apply touched-object transforms. Objects missing locally (not yet
+    -- created via op replay) are silently skipped; the subsequent ops.log
+    -- replay on the host side will create them and re-apply their state.
+    if type(snapshot.objects) == 'table' and scenetree and scenetree.findObjectByPersistentId then
+      for _, o in ipairs(snapshot.objects) do
+        if type(o) == 'table' and type(o.pid) == 'string' then
+          local obj = scenetree.findObjectByPersistentId(o.pid)
+          if obj then
+            if type(o.position) == 'table' and obj.setPosition then
+              pcall(function() obj:setPosition(o.position) end)
+            end
+            if type(o.scale) == 'table' and obj.setScale then
+              pcall(function() obj:setScale(o.scale) end)
+            end
+            if type(o.rotation) == 'table' and obj.setRotation then
+              pcall(function() obj:setRotation(o.rotation) end)
+            end
+          end
+        end
+      end
+    end
     -- objects/terrainDelta/forestDelta/decalRoadDelta: Phase 4+ hooks.
   end)
   suppressEnvCapture = false
@@ -1192,14 +1398,124 @@ end
 -- at their existing apply cadence. We throttle Tick to 30 Hz here so a
 -- runaway tool can't flood the wire.
 --
--- Apply path is dispatched by brushType. v1 ships the wire/dispatch
--- skeleton + a per-stroke replay context table; per-brushType apply (calling
--- into terrain:applyBrushDelta etc.) is wired in as the corresponding tool
--- module is taught to publish.
+-- Apply path is dispatched by brushType through BRUSH_HANDLERS below. Each
+-- handler is a table with { onBegin, onTick, onEnd } — called under the
+-- suppressBrushCapture flag so the remote-apply doesn't echo back as a
+-- fresh local stroke. Handlers are best-effort against the documented
+-- BeamNG engine/tool APIs; if the API surface changes the handler logs a
+-- warning once and silently no-ops, letting the session keep running on
+-- env/field/op channels.
 local BRUSH_TICK_MIN_INTERVAL_MS = 33  -- ≈30 Hz cap
 local localStrokes = {}                -- strokeId -> { brushType, lastTickMs }
-local remoteStrokes = {}               -- strokeId -> { brushType, settings, authorId }
+local remoteStrokes = {}               -- strokeId -> { brushType, settings, context, authorId }
 local suppressBrushCapture = false
+local brushHandlerWarned = {}          -- brushType -> true (rate-limit warnings)
+
+-- Per-brushType apply dispatcher. Each handler receives st (the
+-- remoteStrokes entry) + msg.payload. Returning nil is success; any
+-- thrown error is caught by the outer pcall and logged once per brushType.
+--
+-- IMPORTANT: the engine method names below (paintHeightAt, paintMaterialAt,
+-- core_forest.addItem, road:addNode, etc.) are based on the BeamNG editor
+-- tool source-code conventions but have NOT been verified against the
+-- shipping public Lua surface. If a method doesn't exist, the handler
+-- silently no-ops via pcall + the missing-method check; we log a one-shot
+-- warning per brushType through brushHandlerWarned. This is the
+-- correct-but-conservative path: brush dispatch + apply skeleton is wired,
+-- but real terrain/forest/road mutation needs in-engine verification of
+-- the exact API names against the running BeamNG version.
+local BRUSH_HANDLERS = {
+  -- Terrain height tool (raise/lower/smooth/set). Engine-side we can
+  -- poke the heightmap via Engine.getTerrain():setHeightInRadius, which
+  -- the stock terrain painter uses internally.
+  terrainHeight = {
+    onBegin = function(st, _payload)
+      st.context = { kind = 'terrainHeight' }
+    end,
+    onTick = function(st, payload)
+      if type(payload) ~= 'table' or type(payload.pos) ~= 'table' then return end
+      local terrain = Engine and Engine.getTerrain and Engine.getTerrain()
+      if not terrain then return end
+      -- Prefer the high-level brush API if present; fall back to the
+      -- direct heightmap write.
+      if terrain.paintHeightAt then
+        terrain:paintHeightAt(payload.pos, payload.radius or 5, payload.strength or 1, payload.op or 'raise')
+      elseif terrain.setHeightInRadius then
+        terrain:setHeightInRadius(payload.pos, payload.radius or 5, payload.height or 0)
+      end
+    end,
+    onEnd = function(st, _payload)
+      -- Rebuild collision / shadowing for the dirtied tiles. Both APIs
+      -- are optional.
+      local terrain = Engine and Engine.getTerrain and Engine.getTerrain()
+      if terrain and terrain.updateGrid then pcall(function() terrain:updateGrid() end) end
+    end,
+  },
+  -- Terrain paint (texture layer blending). Payload carries materialIndex
+  -- + brush footprint.
+  terrainPaint = {
+    onBegin = function(st, payload)
+      st.context = { kind = 'terrainPaint', material = payload and payload.material }
+    end,
+    onTick = function(st, payload)
+      if type(payload) ~= 'table' or type(payload.pos) ~= 'table' then return end
+      local terrain = Engine and Engine.getTerrain and Engine.getTerrain()
+      if not terrain then return end
+      if terrain.paintMaterialAt then
+        terrain:paintMaterialAt(
+          payload.pos, payload.radius or 5,
+          payload.materialIndex or 0, payload.pressure or 1
+        )
+      end
+    end,
+    onEnd = function() end,
+  },
+  -- Forest brush: add/remove forest items. Uses core_forest when present.
+  forestPaint = {
+    onBegin = function(st, payload)
+      st.context = {
+        kind = 'forestPaint',
+        shapeFile = payload and payload.shapeFile,
+        mode = payload and payload.mode or 'add', -- 'add' | 'erase'
+      }
+    end,
+    onTick = function(st, payload)
+      if type(payload) ~= 'table' or type(payload.pos) ~= 'table' then return end
+      local forest = core_forest
+      if not forest then return end
+      if st.context.mode == 'erase' and forest.removeItemsInRadius then
+        forest.removeItemsInRadius(payload.pos, payload.radius or 5)
+      elseif forest.addItem and st.context.shapeFile then
+        forest.addItem(st.context.shapeFile, payload.pos, payload.scale or 1, payload.rotation or 0)
+      end
+    end,
+    onEnd = function() end,
+  },
+  -- Decal road node brush: each tick extends or edits a road's node list.
+  decalRoad = {
+    onBegin = function(st, payload)
+      st.context = { kind = 'decalRoad', pid = payload and payload.pid }
+    end,
+    onTick = function(st, payload)
+      if type(payload) ~= 'table' or type(payload.pos) ~= 'table' then return end
+      if not st.context.pid then return end
+      if not (scenetree and scenetree.findObjectByPersistentId) then return end
+      local road = scenetree.findObjectByPersistentId(st.context.pid)
+      if not road then return end
+      if payload.action == 'addNode' and road.addNode then
+        road:addNode(payload.pos, payload.width or 8)
+      elseif payload.action == 'removeNode' and road.removeNode and payload.nodeIndex then
+        road:removeNode(payload.nodeIndex)
+      end
+    end,
+    onEnd = function(st)
+      if not st.context.pid then return end
+      if not (scenetree and scenetree.findObjectByPersistentId) then return end
+      local road = scenetree.findObjectByPersistentId(st.context.pid)
+      if road and road.postApply then pcall(function() road:postApply() end) end
+    end,
+  },
+}
 
 local function sendBrushFrame(msg)
   if not cmClient or not cmGreeted then return end
@@ -1245,36 +1561,52 @@ local function cmBrushEnd(strokeId, finalSummary)
   })
 end
 
--- Apply one inbound brush frame. v1 dispatches by brushType and logs;
--- per-brushType replay calls (terrain:applyBrushDelta etc.) are inserted
--- here as each editor tool is taught to participate.
+-- Apply one inbound brush frame. Dispatches by brushType through
+-- BRUSH_HANDLERS; unknown types warn once and are ignored.
 local function applyRemoteBrush(msg)
   if type(msg) ~= 'table' or type(msg.strokeId) ~= 'string' then return end
   if type(msg.brushType) ~= 'string' or type(msg.kind) ~= 'string' then return end
   local id = msg.strokeId
+  local handler = BRUSH_HANDLERS[msg.brushType]
+  if not handler then
+    if not brushHandlerWarned[msg.brushType] then
+      brushHandlerWarned[msg.brushType] = true
+      log('W', 'beamcmEditorSync', 'no brush handler for type ' .. tostring(msg.brushType))
+    end
+    return
+  end
+  if not brushHandlerWarned['ok:' .. msg.brushType] then
+    brushHandlerWarned['ok:' .. msg.brushType] = true
+    log('I', 'beamcmEditorSync',
+        'first remote brush stroke for type ' .. msg.brushType .. ' — engine API names UNVERIFIED, watch for silent no-ops')
+  end
   suppressBrushCapture = true
-  local ok = pcall(function()
+  local ok, err = pcall(function()
     if msg.kind == 'begin' then
       remoteStrokes[id] = {
         brushType = msg.brushType,
         settings = msg.payload,
         authorId = msg.authorId,
       }
-      -- TODO: instantiate per-brushType replay context (terrain.beginRemoteStroke etc.)
+      if handler.onBegin then handler.onBegin(remoteStrokes[id], msg.payload) end
     elseif msg.kind == 'tick' then
       local st = remoteStrokes[id]
       if not st then return end
-      -- TODO: dispatch to terrain/forest/decalRoad apply hook by st.brushType.
+      if handler.onTick then handler.onTick(st, msg.payload) end
     elseif msg.kind == 'end' then
       local st = remoteStrokes[id]
-      remoteStrokes[id] = nil
       if not st then return end
-      -- TODO: finalise per-brushType replay context.
+      if handler.onEnd then handler.onEnd(st, msg.payload) end
+      remoteStrokes[id] = nil
     end
   end)
   suppressBrushCapture = false
   if not ok then
-    log('W', 'beamcmEditorSync', 'applyRemoteBrush failed for stroke ' .. id:sub(1, 8))
+    if not brushHandlerWarned[msg.brushType .. ':err'] then
+      brushHandlerWarned[msg.brushType .. ':err'] = true
+      log('W', 'beamcmEditorSync',
+          'brush handler ' .. msg.brushType .. ' errored (stroke ' .. id:sub(1, 8) .. '): ' .. tostring(err))
+    end
   end
 end
 
@@ -1936,6 +2268,9 @@ local function installHooks()
       -- Translate any sim ids → persistentIds so the op is portable.
       if type(cleaned) == 'table' then
         rewriteIds(cleaned, true)
+        -- Remember every pid the op referenced so buildAndSendSnapshot
+        -- can serialize their current state for late-joiners.
+        markPidsInData(cleaned)
       end
       local detail, targets = describeAction(name, data)
       local entry = {
@@ -2038,13 +2373,15 @@ end
 
 local function startCapture()
   if not hooked and not installHooks() then
-    log('W', 'beamcmEditorSync', 'Cannot start capture — hooks not installed')
+    log('W', 'beamcmEditorSync', 'Cannot start capture yet — hooks not installed; will auto-retry when editor opens')
+    pendingStart = true
     return false
   end
   -- Truncate log
   local f = io.open(logFile, "w")
   if f then f:close() end
   capturing = true
+  pendingStart = false
   captureCount = 0
   sessionStart = os.clock()
   log('I', 'beamcmEditorSync', 'Capture started → ' .. logFile)
@@ -2054,6 +2391,7 @@ end
 
 local function stopCapture()
   capturing = false
+  pendingStart = false
   log('I', 'beamcmEditorSync', 'Capture stopped (' .. tostring(captureCount) .. ' actions)')
   writeStatus()
 end
@@ -2093,10 +2431,22 @@ local function stepReplay()
 
   suppressCapture = true
   if entry.kind == "do" then
-    -- For Phase 0 we don't try to reconstruct undo/redo functions for the
-    -- replayed entries; we just log what we *would* commit. This is enough
-    -- to prove the loop is healthy. Phase 1+ wires real apply via adapters.
-    log('D', 'beamcmEditorSync', 'replay step ' .. tostring(replayIndex) .. ': do ' .. tostring(entry.name))
+    -- Replay the captured op through the same apply path remote peers
+    -- use. This re-runs editor.history:commitAction with the original
+    -- name + data (rewriteIds resolves any persistent-id references back
+    -- to live sim objects), so the action genuinely lands on the scene
+    -- instead of just being logged.
+    if entry.name and entry.data then
+      local env = { kind = 'do', name = entry.name, data = entry.data }
+      -- applyRemoteOp installs its own suppressCapture so the nested call
+      -- is safe; it also restores the flag on exit.
+      suppressCapture = false
+      applyRemoteOp(env)
+      suppressCapture = true
+      log('D', 'beamcmEditorSync', 'replay step ' .. tostring(replayIndex) .. ': do ' .. tostring(entry.name))
+    else
+      log('D', 'beamcmEditorSync', 'replay step ' .. tostring(replayIndex) .. ': do (no payload, skipped)')
+    end
   elseif entry.kind == "undo" then
     if origUndo then pcall(origUndo, editor.history) end
     log('D', 'beamcmEditorSync', 'replay step ' .. tostring(replayIndex) .. ': undo')
@@ -2330,6 +2680,11 @@ end
 
 local function onEditorActivated()
   if not hooked then installHooks() end
+  -- Honour a deferred capture request (CM armed it before the editor was open).
+  if pendingStart and hooked and not capturing then
+    log('I', 'beamcmEditorSync', 'Editor activated — resuming auto-armed capture')
+    startCapture()
+  end
 end
 
 local function onUpdate(dt)
@@ -4891,6 +5246,21 @@ export class GameLauncherService {
       // Bring up the Phase 1+ TCP loopback bridge (writes we_port.txt).
       // Failure here is non-fatal — the file-IPC capture log still works.
       void this.startEditorBridge(signalDir)
+      // Auto-arm capture so the user never loses editor progress just because
+      // they forgot to click "Start capture". The Lua side handles three
+      // cases: (a) editor already open → hooks install inline + capture starts,
+      // (b) editor not open yet → `pendingStart` flag is set and honored by
+      // onEditorActivated once the user opens the editor (F11), and (c) the
+      // game hasn't launched yet → the signal file waits on disk and Lua
+      // picks it up when the extension is hot-loaded by the bridge.
+      try {
+        writeFileSync(
+          join(signalDir, 'we_capture_signal.json'),
+          JSON.stringify({ action: 'start', processed: false }),
+        )
+      } catch (err) {
+        this.log(`WARNING: failed to arm auto-capture signal: ${err}`)
+      }
       this.log('World Editor Sync extension deployed to ' + join(extDir, 'beamcmEditorSync.lua'))
       return { success: true }
     } catch (err) {

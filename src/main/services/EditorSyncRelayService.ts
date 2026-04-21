@@ -37,6 +37,13 @@ import {
 import type { GameLauncherService } from './GameLauncherService'
 import type { LuaOpEnvelope, LuaEnvObservation, LuaFieldObservation, LuaSnapshotChunk, LuaBrushObservation } from './EditorSyncBridgeSocket'
 
+/**
+ * Max number of snapshot rebuild+resend cycles per joiner before we give
+ * up and release their gate. 3 covers transient Lua-side failures
+ * (inspector busy, editor not yet active) without stalling forever.
+ */
+const MAX_SNAPSHOT_RETRIES = 3
+
 interface Peer {
   authorId: string
   displayName: string
@@ -52,6 +59,13 @@ interface Peer {
   snapshotPending: boolean
   /** True when we've issued a build request and are awaiting the chunks. */
   snapshotInFlight: boolean
+  /**
+   * Number of snapshot apply attempts for this peer. Bumped each time we
+   * send a snapshot; if the joiner reports `ok=false` we retry up to
+   * MAX_SNAPSHOT_RETRIES before giving up (and only then releasing the
+   * gate so they at least get live ops).
+   */
+  snapshotAttempts: number
   /** Captured between Welcome and SnapshotApplied so we can drain after ack. */
   pendingQueue: SessionMessage[]
   /**
@@ -135,6 +149,11 @@ export class EditorSyncRelayService extends EventEmitter {
   private sessionDir: string | null = null
   private readonly authorId = 'host'
   private sessionId = ''
+  /**
+   * Random per-session bearer token embedded in every welcome/projectOffer
+   * frame and required as `?token=…` on project.zip downloads.
+   */
+  private projectAuthToken = ''
   private levelName: string | null = null
   private expectedToken: string | null = null
   private authMode: RelayAuthMode = 'open'
@@ -270,6 +289,7 @@ export class EditorSyncRelayService extends EventEmitter {
   }): Promise<RelayStatus> {
     if (this.server) return this.status()
     this.sessionId = randomUUID()
+    this.projectAuthToken = randomUUID().replace(/-/g, '')
     this.seq = 0
     this.peers.clear()
     this.recentOps = []
@@ -322,6 +342,7 @@ export class EditorSyncRelayService extends EventEmitter {
     this.server = null
     this.port = 0
     this.sessionId = ''
+    this.projectAuthToken = ''
     this.opsLogPath = null
     this.sessionDir = null
     this.recentOps = []
@@ -400,6 +421,7 @@ export class EditorSyncRelayService extends EventEmitter {
       sha256: this.activeProject.sha256,
       sizeBytes: this.activeProject.sizeBytes,
       httpPort: this.httpPort,
+      authToken: this.projectAuthToken,
     }
   }
 
@@ -425,6 +447,19 @@ export class EditorSyncRelayService extends EventEmitter {
         }
         if (!url.startsWith('/project.zip')) {
           res.writeHead(404); res.end(); return
+        }
+        // Enforce per-session bearer token (passed as ?token=… query
+        // parameter). Joiners get the token via their Welcome frame; third
+        // parties on the same LAN/Tailscale network without a session seat
+        // can't download the zip.
+        const q = url.indexOf('?')
+        const qs = q >= 0 ? url.substring(q + 1) : ''
+        const params = new URLSearchParams(qs)
+        const supplied = params.get('token') ?? ''
+        if (!this.projectAuthToken || supplied !== this.projectAuthToken) {
+          res.writeHead(401, { 'content-type': 'text/plain' })
+          res.end('invalid or missing session token')
+          return
         }
         const { zipPath, sha256, name, sizeBytes } = this.activeProject
         if (!existsSync(zipPath)) {
@@ -859,6 +894,7 @@ export class EditorSyncRelayService extends EventEmitter {
     }
     console.log(`[EditorRelay] snapshot ${chunk.snapshotId.substring(0, 8)} ready (${box.total} chunks, ${box.byteLength} B, baseSeq=${box.baseSeq})`)
     this.persistSnapshotToDisk()
+    this.snapshotBuildInFlight = false
     // Flush to any peer that was waiting for a snapshot.
     for (const p of this.peers.values()) {
       if (p.snapshotPending && !p.snapshotInFlight) this.sendOrBuildSnapshotFor(p)
@@ -867,6 +903,15 @@ export class EditorSyncRelayService extends EventEmitter {
 
   /** Outstanding `requestSnapshot` calls keyed by snapshotId → baseSeq. */
   private pendingSnapshotRequests = new Map<string, number>()
+
+  /**
+   * True while at least one snapshot build request is outstanding to Lua.
+   * Prevents two concurrent joiners from each issuing their own Z|request
+   * (which would trigger two redundant builds and race each other into
+   * `currentSnapshot`). Cleared when chunks for the tracked request arrive
+   * or when the request errors out.
+   */
+  private snapshotBuildInFlight = false
 
   /**
    * For a peer in `snapshotPending` state, either send the cached snapshot
@@ -880,13 +925,19 @@ export class EditorSyncRelayService extends EventEmitter {
     }
     if (peer.snapshotInFlight) return
     peer.snapshotInFlight = true
+    // Coalesce: if a build is already running for another peer, just wait
+    // — ingestSnapshotChunk's flush-all-pending loop will wake us up when
+    // the chunks arrive.
+    if (this.snapshotBuildInFlight) return
     if (!this.gameLauncher) return
     const id = randomUUID()
     this.pendingSnapshotRequests.set(id, this.seq)
+    this.snapshotBuildInFlight = true
     const ok = this.gameLauncher.requestEditorSnapshot(id)
     if (!ok) {
       // Lua bridge isn't up — give up gating; release the peer ungated.
       this.pendingSnapshotRequests.delete(id)
+      this.snapshotBuildInFlight = false
       peer.snapshotInFlight = false
       peer.snapshotPending = false
       this.flushPendingQueue(peer)
@@ -894,6 +945,7 @@ export class EditorSyncRelayService extends EventEmitter {
   }
 
   private sendSnapshotToPeer(peer: Peer, snap: NonNullable<EditorSyncRelayService['currentSnapshot']>): void {
+    peer.snapshotAttempts += 1
     const begin: SnapshotBeginMsg = {
       type: 'snapshotBegin',
       snapshotId: snap.id,
@@ -921,9 +973,20 @@ export class EditorSyncRelayService extends EventEmitter {
 
   private handleSnapshotApplied(peer: Peer, msg: SnapshotAppliedMsg): void {
     if (!msg.ok) {
-      console.warn(`[EditorRelay] peer ${peer.authorId} reported snapshot apply failure: ${msg.error ?? 'unknown'}`)
-      // Leave the gate down anyway — the peer is presumably doomed; force
-      // ungate so they at least get live ops.
+      console.warn(`[EditorRelay] peer ${peer.authorId} reported snapshot apply failure: ${msg.error ?? 'unknown'} (attempt ${peer.snapshotAttempts})`)
+      // Retry a fresh build before giving up. Peer stays gated so live ops
+      // aren't applied on top of a half-baked scene. We cap attempts so a
+      // persistently-broken peer eventually receives live ops instead of
+      // being stuck in a silent stall.
+      if (peer.snapshotAttempts < MAX_SNAPSHOT_RETRIES) {
+        // Invalidate cached snapshot so we genuinely rebuild (the cached
+        // one presumably had the issue that made apply fail).
+        this.currentSnapshot = null
+        peer.snapshotInFlight = false
+        this.sendOrBuildSnapshotFor(peer)
+        return
+      }
+      console.warn(`[EditorRelay] peer ${peer.authorId} exceeded snapshot retries; releasing gate with partial state`)
     }
     peer.snapshotPending = false
     peer.snapshotInFlight = false
@@ -967,6 +1030,7 @@ export class EditorSyncRelayService extends EventEmitter {
       remote,
       snapshotPending: false,
       snapshotInFlight: false,
+      snapshotAttempts: 0,
       pendingQueue: [],
       authState: 'pending',
       decoder: new FrameDecoder(

@@ -1498,7 +1498,7 @@ export function registerIpcHandlers(): void {
         const zipBuf: Buffer = await new Promise((resolve, reject) => {
           const chunks: Buffer[] = []
           let received = 0
-          const url = `http://${hostIp}:${info.httpPort}/project.zip`
+          const url = `http://${hostIp}:${info.httpPort}/project.zip?token=${encodeURIComponent(info.authToken)}`
           http.get(url, { timeout: 30000 }, (res) => {
             if (res.statusCode !== 200) {
               reject(new Error(`HTTP ${res.statusCode}`))
@@ -1743,9 +1743,23 @@ export function registerIpcHandlers(): void {
 
   // Create a Windows Firewall inbound TCP allow-rule for the session port.
   // Spawns an elevated PowerShell via UAC; the user must accept the prompt.
-  // Using a port-based rule (Profile=Any) so it covers Tailscale's wintun
-  // interface as well as LAN — Electron's auto-prompt only covers the host
-  // app's binary on the active network profile and misses Tailscale.
+  //
+  // We need TWO things to make Tailscale work reliably:
+  //
+  //   1. A port-based Allow rule (Profile=Any, covers wintun adapter).
+  //   2. Per-program Allow rules for our exe — and removal of any
+  //      auto-created Block rules for the same exe. This is the hidden
+  //      gotcha: the very first time Electron binds a listener, Windows
+  //      pops a "Allow on Public networks?" dialog. If the user dismissed
+  //      it (or only allowed Private), Windows silently created an inbound
+  //      Block rule for our binary, and that Block beats the port Allow on
+  //      the wintun (Public-classified) interface — so Tailscale joiners
+  //      time out at TCP-SYN even though the port rule looks fine.
+  //
+  // So we build a script that:
+  //   a) Removes every inbound TCP Block rule whose Program = our exe
+  //   b) Adds a per-program Allow rule for our exe (Profile=Any) if missing
+  //   c) Adds the port Allow rule for `port,port+1` if missing
   ipcMain.handle(
     'worldEdit:session:openFirewallHole',
     async (
@@ -1758,29 +1772,40 @@ export function registerIpcHandlers(): void {
       if (!Number.isInteger(port) || port < 1 || port > 65535) {
         return { success: false, error: 'Invalid port' }
       }
-      const displayName = `BeamMP CM World Editor Sync (${port})`
-      // We now bind a secondary HTTP listener on port+1 to serve project
-      // download zips, so the rule needs to cover both ports. Feeding
-      // `-LocalPort "A,B"` to New-NetFirewallRule adds the rule once for
-      // both; -DisplayName stays the same so `checkFirewallHole(port)` keeps
-      // working.
+      const portRuleName = `BeamMP CM World Editor Sync (${port})`
+      const programRuleName = 'BeamMP CM World Editor Sync (program)'
       const portsArg = `${port},${port + 1}`
+      // Resolve the actual exe path Windows Firewall sees.
+      const { app } = await import('electron')
+      const exePath = app.getPath('exe').replace(/'/g, "''")
       try {
         const { spawn } = await import('node:child_process')
-        // The elevated child script. Encoded as Base64-UTF16LE and passed via
-        // -EncodedCommand to dodge every layer of PowerShell quote-escaping
-        // hell. Idempotent: skips creation if the rule already exists.
-        const childScript =
-          `if (-not (Get-NetFirewallRule -DisplayName '${displayName}' -ErrorAction SilentlyContinue)) {` +
-          ` New-NetFirewallRule -DisplayName '${displayName}'` +
-          ` -Description 'Allows BeamMP Content Manager to host World-Editor co-op sessions'` +
-          ` -Direction Inbound -Protocol TCP -LocalPort ${portsArg}` +
-          ` -Action Allow -Profile Any | Out-Null` +
-          `}`
+        // Elevated child script. Idempotent.
+        const childScript = [
+          // (a) Remove auto-created inbound Block rules for our exe.
+          `try {`,
+          `  $blockers = Get-NetFirewallApplicationFilter -Program '${exePath}' -ErrorAction SilentlyContinue |`,
+          `    Get-NetFirewallRule -ErrorAction SilentlyContinue |`,
+          `    Where-Object { $_.Direction -eq 'Inbound' -and $_.Action -eq 'Block' };`,
+          `  if ($blockers) { $blockers | Remove-NetFirewallRule -ErrorAction SilentlyContinue }`,
+          `} catch {}`,
+          // (b) Per-program Allow rule (Profile=Any) for the exe.
+          `if (-not (Get-NetFirewallRule -DisplayName '${programRuleName}' -ErrorAction SilentlyContinue)) {`,
+          `  New-NetFirewallRule -DisplayName '${programRuleName}'`,
+          `    -Description 'Allow BeamMP CM (Coop World Editor) on all profiles'`,
+          `    -Direction Inbound -Action Allow -Profile Any`,
+          `    -Program '${exePath}' | Out-Null`,
+          `}`,
+          // (c) Port-based Allow rule.
+          `if (-not (Get-NetFirewallRule -DisplayName '${portRuleName}' -ErrorAction SilentlyContinue)) {`,
+          `  New-NetFirewallRule -DisplayName '${portRuleName}'`,
+          `    -Description 'BeamMP CM World-Editor coop session ports'`,
+          `    -Direction Inbound -Protocol TCP -LocalPort ${portsArg}`,
+          `    -Action Allow -Profile Any | Out-Null`,
+          `}`,
+        ].join(' ')
         const childEncoded = Buffer.from(childScript, 'utf16le').toString('base64')
-        // The outer (non-elevated) script that triggers the UAC prompt.
-        // Start-Process throws when the user clicks "No" on UAC; we map that
-        // to exit code 2 so the renderer can show a friendlier message.
+        // Outer (non-elevated) script that triggers the UAC prompt.
         const outerScript =
           `try {` +
           ` Start-Process powershell.exe -Verb RunAs -WindowStyle Hidden -Wait` +
@@ -1811,6 +1836,59 @@ export function registerIpcHandlers(): void {
       } catch (err) {
         return { success: false, error: `${err}` }
       }
+    }
+  )
+
+  // Reachability self-test: try a TCP connect to the host's own advertised
+  // IP:port. If it fails, surface a specific error so the host can fix the
+  // issue (firewall block, wrong IP, listener crashed, etc.) before sharing
+  // the invite. Tailscale hairpin: connecting to your own 100.x address from
+  // the same machine traverses the wintun adapter, so this is a real
+  // smoke-test — if a SYN can't reach the listener locally over Tailscale,
+  // a remote peer won't get through either.
+  ipcMain.handle(
+    'worldEdit:session:testReachability',
+    async (
+      _event,
+      host: string,
+      port: number
+    ): Promise<{ success: boolean; latencyMs?: number; error?: string }> => {
+      if (typeof host !== 'string' || !host.trim()) {
+        return { success: false, error: 'No host address' }
+      }
+      if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        return { success: false, error: 'Invalid port' }
+      }
+      const net = await import('node:net')
+      const TIMEOUT_MS = 5000
+      const t0 = Date.now()
+      return new Promise((resolve) => {
+        let settled = false
+        const sock = net.createConnection({ host, port })
+        const done = (r: { success: boolean; latencyMs?: number; error?: string }): void => {
+          if (settled) return
+          settled = true
+          try { sock.destroy() } catch { /* ignore */ }
+          resolve(r)
+        }
+        const timer = setTimeout(() => {
+          done({
+            success: false,
+            error: `TCP connect timed out after ${TIMEOUT_MS}ms — firewall is dropping SYN packets to ${host}:${port}. ` +
+              `If this is your own Tailscale IP, Windows Firewall is blocking the listener on the wintun adapter ` +
+              `(usually a stale per-binary Block rule from the first launch). Click "Open firewall hole" again — ` +
+              `the new script removes any blocking rules.`,
+          })
+        }, TIMEOUT_MS)
+        sock.once('connect', () => {
+          clearTimeout(timer)
+          done({ success: true, latencyMs: Date.now() - t0 })
+        })
+        sock.once('error', (err) => {
+          clearTimeout(timer)
+          done({ success: false, error: `${(err as Error & { code?: string }).code ?? 'ERR'}: ${err.message}` })
+        })
+      })
     }
   )
 

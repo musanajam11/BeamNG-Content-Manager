@@ -588,13 +588,53 @@ export class EditorSyncSessionController extends EventEmitter {
     userDir: string
     levelOverride?: string | null
   }): { level: string | null; error: string | null } {
-    const level = opts.levelOverride ?? this.normalizeLevelName(this.levelName)
+    // Priority order for the level to boot into:
+    //   1. Explicit `levelOverride` from the caller (e.g. joiner's auto-launch
+    //      after project download hands in `_beamcm_projects/<folder>`).
+    //   2. The currently-advertised / -offered coop project — boot straight
+    //      into its own map so a host clicking "Launch into editor" always
+    //      lands in the same world as any connected peers, regardless of
+    //      whatever unrelated level the bridge last reported.
+    //   3. The bridge-reported level name (what BeamNG is currently sitting
+    //      on if the game is already running).
+    let level = opts.levelOverride ?? null
+    if (!level && this.activeProject && this.activeProject.folder) {
+      // VFS sub-path form that `launchVanilla` appends `.../info.json` onto.
+      level = `_beamcm_projects/${this.activeProject.folder}`
+      this.log(
+        'info',
+        'session',
+        `prepareEditorLaunch: using active coop project "${this.activeProject.name}" → ${level}`,
+      )
+    }
+    if (!level) {
+      level = this.normalizeLevelName(this.levelName)
+    }
     if (!level) {
       return {
         level: null,
         error:
           'No level known for this session yet. Either the host has not loaded a level or the bridge has not reported one.',
       }
+    }
+    // Ensure the editor-sync extension is on disk BEFORE the game starts so
+    // BeamNG auto-loads it on launch. Without this, `editor_autostart.json`
+    // below gets written but nothing ever reads it → the editor never opens
+    // and the player sits in plain freeroam (or, depending on BeamMP mod
+    // load ordering, stays in the main menu). deployEditorSync is idempotent
+    // and also writes `editorsync_signal.json = {action:'load'}`, which
+    // covers the "game already running" case via the bridge's hot-load poll.
+    try {
+      const deploy = this.gameLauncher.deployEditorSync(opts.userDir)
+      if (!deploy.success) {
+        this.log(
+          'warn',
+          'session',
+          `deployEditorSync failed (editor may not auto-open): ${deploy.error ?? 'unknown'}`,
+        )
+      }
+    } catch (err) {
+      this.log('warn', 'session', `deployEditorSync threw: ${err}`)
     }
     this.gameLauncher.writeEditorAutostartSignal(opts.userDir)
     this.log('info', 'session', `Launching BeamNG into World Editor on level "${level}"`)
@@ -637,6 +677,17 @@ export class EditorSyncSessionController extends EventEmitter {
     }
     const info = await this.relay.setActiveProject(params)
     this.activeProject = info
+    if (info) {
+      // Project's level is authoritative now — snap our adopted levelName
+      // to it in case a transient pose frame already adopted the wrong
+      // value before the project was registered. Future poses won't
+      // overwrite this thanks to the activeProject guard in ingestLocalPose.
+      const projectLevel = `levels/_beamcm_projects/${info.folder}/info.json`
+      if (this.levelName !== projectLevel) {
+        this.levelName = projectLevel
+        this.relay.setLevelName(projectLevel)
+      }
+    }
     this.pushStatus()
     if (info) {
       this.log('info', 'session', `Advertising project "${info.name}" (${info.sizeBytes} B) on HTTP :${info.httpPort}`)
@@ -827,12 +878,19 @@ export class EditorSyncSessionController extends EventEmitter {
     this.emit('peerPose', entry)
     // Host-side: adopt the Lua-reported level into the relay/status the
     // first time we see it (or whenever it changes), so future joiners get
-    // the right `welcome.levelName`.
+    // the right `welcome.levelName`. BUT: if we have an active coop project
+    // (advertised via setActiveProject), the project's levelName is
+    // authoritative — don't let a transient pose frame (e.g. from the
+    // freeroam menu before the editor loaded the coop project) overwrite
+    // it. Pose frames are observational; only explicit setActiveProject /
+    // setLevelName changes should move the advertised level.
+    const activeProject = this.relay?.getActiveProject()
     if (
       this.state === 'hosting' &&
       this.relay &&
       pose.levelName &&
-      this.levelName !== pose.levelName
+      this.levelName !== pose.levelName &&
+      !activeProject
     ) {
       this.levelName = pose.levelName
       this.relay.setLevelName(pose.levelName)

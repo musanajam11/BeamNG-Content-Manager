@@ -689,6 +689,11 @@ interface AppAPI {
     cancelled?: boolean
     error?: string
   }>
+  worldEditSessionTestReachability(host: string, port: number): Promise<{
+    success: boolean
+    latencyMs?: number
+    error?: string
+  }>
   onWorldEditSessionStatus(cb: (status: import('../shared/types').SessionStatus) => void): () => void
   onWorldEditSessionOp(cb: (op: import('../shared/types').SessionOp) => void): () => void
   onWorldEditSessionLog(cb: (entry: import('../shared/types').SessionLogEntry) => void): () => void
