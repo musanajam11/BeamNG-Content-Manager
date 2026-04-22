@@ -1702,6 +1702,149 @@ local function collectObjectSnapshot()
   return out
 end
 
+-- ── Tier 4 Phase 4: forest snapshot ──
+-- Walks every item in core_forest and serializes it as
+-- { dataName, transform = {16 floats column-major}, scale }.
+-- The dataName matches the ForestItemData object's internal name (the
+-- shape file is referenced by name, not raw path, because that's what
+-- forestEditor.lua's createNewItem() takes — it looks the data up by
+-- name via scenetree). Hard-capped at FOREST_SNAPSHOT_MAX_ITEMS so a
+-- pathological map can't blow the snapshot wire budget.
+local FOREST_SNAPSHOT_MAX_ITEMS = 50000
+local function collectForestSnapshot()
+  if not cmTier4Flags.terrainForest then return nil end
+  if not core_forest then return nil end
+  local fOk, forest = pcall(function() return core_forest.getForestObject() end)
+  if not fOk or not forest then return nil end
+  local dOk, data = pcall(function() return forest:getData() end)
+  if not dOk or not data or not data.getItems then return nil end
+  local iOk, items = pcall(function() return data:getItems() end)
+  if not iOk or type(items) ~= 'table' then return nil end
+  local out = { items = {}, truncated = false }
+  for _, item in ipairs(items) do
+    if #out.items >= FOREST_SNAPSHOT_MAX_ITEMS then
+      out.truncated = true
+      break
+    end
+    local entry = {}
+    -- Data id: the ForestItemData SimObject the item references. We
+    -- send its internalName so the joiner can re-resolve via scenetree.
+    pcall(function()
+      local idata = item:getData()
+      if idata then
+        if idata.getInternalName then entry.dataName = idata:getInternalName() end
+        if (not entry.dataName or entry.dataName == '') and idata.getName then
+          entry.dataName = idata:getName()
+        end
+      end
+    end)
+    if not entry.dataName or entry.dataName == '' then
+      -- Item with no resolvable data — skip; we can't recreate it.
+      goto continue_item
+    end
+    -- Transform: MatrixF (16 floats). BeamNG exposes asTable() on matrices.
+    pcall(function()
+      local mtx = item:getTransform()
+      if mtx then
+        if mtx.asTable then entry.transform = mtx:asTable()
+        elseif type(mtx) == 'table' then entry.transform = mtx end
+      end
+    end)
+    pcall(function()
+      local s = item:getScale()
+      if type(s) == 'number' then entry.scale = s
+      elseif type(s) == 'table' then entry.scale = s.x or s[1] end
+    end)
+    if entry.transform and entry.scale then
+      table.insert(out.items, entry)
+    end
+    ::continue_item::
+  end
+  return out
+end
+
+-- ── Tier 4 Phase 4: terrain snapshot ──
+-- BeamNG's TerrainBlock stores its heightmap + material layer maps in a
+-- .ter binary file on disk. The editor's "save terrain" path flushes
+-- the in-memory edits back to that file. We use that as the canonical
+-- snapshot: ask the engine to save, then read the file off disk and
+-- ship it as base64. Joiner writes the bytes to its own copy and
+-- re-points the TerrainBlock at it (the engine reloads heightmap +
+-- materials as part of changing the terrainFile field).
+--
+-- Hard-capped at TERRAIN_SNAPSHOT_MAX_BYTES so a 1-km² 8k heightmap
+-- can't break the wire. Typical maps land in the 2-32 MB range; the
+-- snapshotChunk path on the TS side already gzips, so wire cost is
+-- ~half that.
+local TERRAIN_SNAPSHOT_MAX_BYTES = 96 * 1024 * 1024
+local function collectTerrainSnapshot()
+  if not cmTier4Flags.terrainForest then return nil end
+  if not core_terrain then return nil end
+  local tOk, terrain = pcall(function() return core_terrain.getTerrain() end)
+  if not tOk or not terrain then return nil end
+  -- Resolve the .ter file path the engine has loaded.
+  local terrainFile = nil
+  pcall(function()
+    if terrain.getField then
+      local v = terrain:getField('terrainFile', 0)
+      if type(v) == 'string' and v ~= '' then terrainFile = v end
+    end
+  end)
+  if not terrainFile then
+    pcall(function()
+      if terrain.terrainFile and type(terrain.terrainFile) == 'string' then
+        terrainFile = terrain.terrainFile
+      end
+    end)
+  end
+  if not terrainFile then return nil end
+  -- Flush in-memory edits to disk so what we read includes the host's
+  -- live changes. save() on TerrainBlock is the canonical path; if it
+  -- fails we still try to ship the existing file.
+  pcall(function()
+    if terrain.save then terrain:save() end
+  end)
+  -- Read the file via VFS (FS:openFile honours BeamNG's mounted
+  -- gamedir + userdir overlay).
+  local raw = nil
+  pcall(function()
+    if FS and FS.openFile then
+      local f = FS:openFile(terrainFile, 'r')
+      if f then
+        raw = f:readAllBytes and f:readAllBytes() or f:readAllText()
+        f:close()
+      end
+    end
+  end)
+  if not raw then
+    -- Fallback: readFile global if present.
+    pcall(function()
+      if readFile then raw = readFile(terrainFile) end
+    end)
+  end
+  if type(raw) ~= 'string' or #raw == 0 then return nil end
+  if #raw > TERRAIN_SNAPSHOT_MAX_BYTES then
+    log('W', 'beamcmEditorSync',
+        'terrain too large for snapshot (' .. tostring(#raw) ..
+        ' B > ' .. tostring(TERRAIN_SNAPSHOT_MAX_BYTES) .. ' B); skipping')
+    return nil
+  end
+  -- base64 encode for safe JSON transport.
+  local b64 = nil
+  if base64encode then
+    b64 = base64encode(raw)
+  elseif crypto and crypto.encodeBase64 then
+    b64 = crypto.encodeBase64(raw)
+  end
+  if not b64 then return nil end
+  return {
+    terrainFile = terrainFile,
+    byteLength = #raw,
+    payload = b64,
+    encoding = 'base64',
+  }
+end
+
 -- ── Tier 4 Phase 2: full scene snapshot ──
 -- Walks the scene graph starting from MissionGroup (or whichever root the
 -- current level exposes) and serializes every SimGroup + SimObject with
@@ -1935,8 +2078,11 @@ local function snapshotBuildBody(req)
     env = collectEnvSnapshot(),
     fields = collectFieldSnapshot(),
     objects = collectObjectSnapshot(),
-    terrainDelta = nil,  -- Phase 4
-    forestDelta = nil,   -- Phase 4
+    -- Phase 4: terrain heightmap + materials + forest items. Each is
+    -- nil when the Tier 4 terrainForest flag is off or when the
+    -- engine surface (core_terrain / core_forest) isn't ready.
+    terrain = collectTerrainSnapshot(),
+    forest = collectForestSnapshot(),
     decalRoadDelta = nil,
   }
   if cmTier4Flags.fullSnapshot then
@@ -2186,6 +2332,130 @@ local function applyFullSceneSnapshot(graph)
   end
 end
 
+-- ── Tier 4 Phase 4: forest apply ──
+-- Mirror-style: wipe the joiner's existing forest items, then recreate
+-- every item the host shipped via the canonical createNewItem() path
+-- used by forestEditor.lua. We reuse the host's authored ForestItemData
+-- by name resolution (scenetree.findObject) — the data objects ship in
+-- the level's main.level.json, so they're guaranteed present on the
+-- joiner once the level is loaded.
+local function applyForestSnapshot(snap)
+  if type(snap) ~= 'table' or type(snap.items) ~= 'table' then return end
+  if not core_forest then return end
+  local fOk, forest = pcall(function() return core_forest.getForestObject() end)
+  if not fOk or not forest then return end
+  local dOk, data = pcall(function() return forest:getData() end)
+  if not dOk or not data then return end
+  -- Wipe existing items so we don't leave host-deleted trees behind.
+  pcall(function()
+    if data.getItems then
+      local existing = data:getItems()
+      if type(existing) == 'table' then
+        for _, item in ipairs(existing) do
+          pcall(function() data:removeItem(item) end)
+        end
+      end
+    end
+  end)
+  local created, skipped = 0, 0
+  for _, entry in ipairs(snap.items) do
+    if type(entry) == 'table' and type(entry.dataName) == 'string' and entry.transform then
+      local idata = nil
+      pcall(function() idata = scenetree.findObject(entry.dataName) end)
+      if idata then
+        local mtx = nil
+        pcall(function()
+          if MatrixF and type(entry.transform) == 'table' then
+            mtx = MatrixF(true)
+            if mtx.setFromTable then mtx:setFromTable(entry.transform)
+            elseif editor and editor.tableToMatrix then mtx = editor.tableToMatrix(entry.transform) end
+          elseif editor and editor.tableToMatrix then
+            mtx = editor.tableToMatrix(entry.transform)
+          end
+        end)
+        if mtx then
+          local ok = pcall(function()
+            data:createNewItem(idata, mtx, entry.scale or 1)
+          end)
+          if ok then created = created + 1 else skipped = skipped + 1 end
+        else
+          skipped = skipped + 1
+        end
+      else
+        skipped = skipped + 1
+      end
+    end
+  end
+  log('I', 'beamcmEditorSync',
+      'forest apply: created=' .. tostring(created) ..
+      ' skipped=' .. tostring(skipped) ..
+      (snap.truncated and ' (truncated)' or ''))
+end
+
+-- ── Tier 4 Phase 4: terrain apply ──
+-- The host shipped the raw .ter file bytes (heightmap + material maps).
+-- We write them to the joiner's terrain file path and force the engine
+-- to reload by re-assigning the terrainFile field. The TerrainBlock
+-- C++ side handles heightmap + materials reload as part of that
+-- field-change side-effect.
+local function applyTerrainSnapshot(snap)
+  if type(snap) ~= 'table' or type(snap.payload) ~= 'string' then return end
+  if not core_terrain then return end
+  local tOk, terrain = pcall(function() return core_terrain.getTerrain() end)
+  if not tOk or not terrain then return end
+  -- Decode payload.
+  local raw = nil
+  if snap.encoding == 'base64' then
+    if base64decode then raw = base64decode(snap.payload)
+    elseif crypto and crypto.decodeBase64 then raw = crypto.decodeBase64(snap.payload) end
+  end
+  if type(raw) ~= 'string' or #raw == 0 then return end
+  -- Resolve target path: prefer the joiner's currently-loaded terrainFile
+  -- so we don't accidentally overwrite a sibling map's terrain.
+  local targetFile = nil
+  pcall(function()
+    if terrain.getField then
+      local v = terrain:getField('terrainFile', 0)
+      if type(v) == 'string' and v ~= '' then targetFile = v end
+    end
+  end)
+  if not targetFile then targetFile = snap.terrainFile end
+  if type(targetFile) ~= 'string' or targetFile == '' then return end
+  -- Write the bytes via VFS (writes land in BeamNG's userdir overlay).
+  local wrote = false
+  pcall(function()
+    if FS and FS.openFile then
+      local f = FS:openFile(targetFile, 'w')
+      if f then
+        if f.writeBytes then f:writeBytes(raw) else f:writeText(raw) end
+        f:close()
+        wrote = true
+      end
+    elseif writeFile then
+      writeFile(targetFile, raw)
+      wrote = true
+    end
+  end)
+  if not wrote then
+    log('W', 'beamcmEditorSync', 'terrain apply: write failed for ' .. tostring(targetFile))
+    return
+  end
+  -- Force the engine to re-read the file. Re-assigning the terrainFile
+  -- field triggers the C++ reload of heightmap + material maps.
+  pcall(function()
+    if terrain.setField then
+      terrain:setField('terrainFile', 0, targetFile)
+      if terrain.postApply then terrain:postApply() end
+    end
+  end)
+  -- Rebuild collision/shadowing.
+  pcall(function()
+    if terrain.updateGrid then terrain:updateGrid() end
+  end)
+  log('I', 'beamcmEditorSync',
+      'terrain apply: wrote ' .. tostring(#raw) .. ' B to ' .. tostring(targetFile))
+end
+
 -- Apply a chunk pushed down by CM (B| frames). Buffers until all 'total'
 -- chunks present, then parses + applies.
 local function handleSnapshotChunk(msg)
@@ -2284,15 +2554,17 @@ local function handleSnapshotChunk(msg)
         end
       end
     end
-    -- 5. Terrain (Phase 4): heightmap + materialMaps. No-op until the
-    -- capture/apply Lua lands — the slot is wired so the gate predicate
-    -- ordering is final.
+    -- 5. Terrain (Phase 4): heightmap + materialMaps shipped as the
+    -- raw .ter file bytes. Applied before forest because forest items
+    -- are placed relative to terrain height and we want the new ground
+    -- under them when they spawn.
     if type(snapshot.terrain) == 'table' and cmTier4Flags.terrainForest then
-      -- TODO Phase 4: applyTerrainSnapshot(snapshot.terrain)
+      applyTerrainSnapshot(snapshot.terrain)
     end
-    -- 6. Forest (Phase 4): instance groups.
+    -- 6. Forest (Phase 4): instance items. Mirror-style apply (wipes
+    -- existing items first, then recreates from snapshot).
     if type(snapshot.forest) == 'table' and cmTier4Flags.terrainForest then
-      -- TODO Phase 4: applyForestSnapshot(snapshot.forest)
+      applyForestSnapshot(snapshot.forest)
     end
   end)
   suppressEnvCapture = false

@@ -78,10 +78,10 @@ const DEFAULT_CONFIG: AppConfig = {
   worldEditSync: {
     enabled: true,
     tier4: {
-      reflectiveFields: false,
-      fullSnapshot: false,
-      modInventory: false,
-      terrainForest: false
+      reflectiveFields: true,
+      fullSnapshot: true,
+      modInventory: true,
+      terrainForest: true
     },
     modSync: {
       confirmThresholdBytes: 500 * 1024 * 1024
