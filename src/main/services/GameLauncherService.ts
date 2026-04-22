@@ -4199,6 +4199,7 @@ export class GameLauncherService {
 
   // World Editor Sync (Phase 1+: TCP loopback bridge to Lua)
   private editorBridge: EditorSyncBridgeSocket | null = null
+  private editorBridgeStarting: boolean = false
   private editorBridgeReady: boolean = false
   private editorOpSeq: number = 0
   /** Optional listener for ops arriving from Lua (Phase 2 relay will set this). */
@@ -6026,9 +6027,43 @@ export class GameLauncherService {
         })
       }
 
+      this.isProtonLaunch = !!paths.isProton
+
       this.gameProcess.on('exit', (code) => {
         this.log(`BeamNG.drive (vanilla) exited with code ${code}`)
         this.gameProcess = null
+
+        if (paths.isProton) {
+          // Steam Deck / Proton: the `steam -applaunch` CLI exits immediately
+          // after dispatching to the running Steam client — the actual BeamNG
+          // process starts seconds later. If we tear down here we'd delete
+          // `beamcmEditorSync.lua` before BeamNG even reads it, leaving the
+          // joiner stranded in the main menu with no extension. Use the Lua
+          // editor bridge handshake as the "game is actually alive" signal,
+          // mirroring what `launch()` does with the Core socket for BeamMP.
+          if (this.editorBridgeReady) {
+            this.isProtonLaunch = false
+            this.shutdown()
+            this.notifyStatusChange()
+            return
+          }
+          this.log('Proton: Steam CLI exited (vanilla) — waiting for in-game Lua bridge handshake...')
+          if (this.protonShutdownTimer) clearTimeout(this.protonShutdownTimer)
+          this.protonShutdownTimer = setTimeout(() => {
+            this.protonShutdownTimer = null
+            if (!this.editorBridgeReady) {
+              this.log('Proton: Timed out waiting for in-game Lua bridge — shutting down (vanilla)')
+              this.isProtonLaunch = false
+              this.shutdown()
+              this.notifyStatusChange()
+            } else {
+              this.log('Proton: in-game Lua bridge alive — leaving extension deployed (vanilla)')
+            }
+          }, this.protonConnectTimeout)
+          this.notifyStatusChange()
+          return
+        }
+
         this.shutdown()
         this.notifyStatusChange()
       })
@@ -6036,6 +6071,7 @@ export class GameLauncherService {
       this.gameProcess.on('error', (err) => {
         this.log(`ERROR: Failed to launch BeamNG.drive (vanilla): ${err}`)
         this.gameProcess = null
+        this.isProtonLaunch = false
         this.shutdown()
         this.notifyStatusChange()
       })
@@ -6805,7 +6841,14 @@ export class GameLauncherService {
   // file path is still maintained as a fallback / capture log for the UI.
 
   private async startEditorBridge(signalDir: string): Promise<void> {
-    if (this.editorBridge) return
+    // Sync guard: bridge.start() is async, so two near-simultaneous callers
+    // (e.g. prepareEditorLaunch + launchVanilla both invoking deployEditorSync)
+    // would both pass the `if (this.editorBridge) return` check before either
+    // assigns this.editorBridge, leaking a second listener and causing a race
+    // on the we_port.txt write — the Lua side then connects to whichever
+    // port was written last while the other socket sits orphaned.
+    if (this.editorBridge || this.editorBridgeStarting) return
+    this.editorBridgeStarting = true
     const bridge = new EditorSyncBridgeSocket()
     bridge.on('hello', (info: LuaHello) => {
       this.editorBridgeReady = true
@@ -6886,6 +6929,8 @@ export class GameLauncherService {
       this.log(`[EditorBridge] listening on 127.0.0.1:${port} (port file: ${join(signalDir, 'we_port.txt')})`)
     } catch (err) {
       this.log(`[EditorBridge] start failed: ${err}`)
+    } finally {
+      this.editorBridgeStarting = false
     }
   }
 
@@ -6894,6 +6939,7 @@ export class GameLauncherService {
       try { this.editorBridge.stop() } catch { /* ignore */ }
       this.editorBridge = null
     }
+    this.editorBridgeStarting = false
     this.editorBridgeReady = false
     this.editorOpSeq = 0
   }
