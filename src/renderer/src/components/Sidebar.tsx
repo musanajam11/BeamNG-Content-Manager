@@ -48,9 +48,16 @@ export function Sidebar(): React.JSX.Element {
     return ordered
   }, [appearance.sidebarOrder, appearance.sidebarHidden])
 
-  const renderItem = ({ id, labelKey, icon: Icon }: NavItem): React.JSX.Element => {
+  const renderItem = ({ id, labelKey, icon: Icon, wip }: NavItem): React.JSX.Element => {
     const active = currentPage === id
     const label = t(labelKey)
+    const titleText = wip
+      ? sidebarCollapsed
+        ? `${label} (WIP)`
+        : 'Work in progress'
+      : sidebarCollapsed
+        ? label
+        : undefined
     return (
       <button
         key={id}
@@ -62,11 +69,26 @@ export function Sidebar(): React.JSX.Element {
             ? 'bg-[var(--color-accent-subtle)] text-[var(--color-accent-text-muted)] border border-[var(--color-accent-25)]'
             : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-hover)] border border-transparent'
         }`}
-        title={sidebarCollapsed ? label : undefined}
+        title={titleText}
       >
-        <Icon size={sidebarCollapsed ? 18 : 16} className="shrink-0" />
+        <span className="relative shrink-0">
+          <Icon size={sidebarCollapsed ? 18 : 16} className="shrink-0" />
+          {wip && sidebarCollapsed && (
+            <span
+              className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-amber-400 ring-1 ring-[var(--color-surface)]"
+              aria-hidden="true"
+            />
+          )}
+        </span>
         {!sidebarCollapsed && (
-          <span className="text-[13px] font-medium truncate">{label}</span>
+          <>
+            <span className="text-[13px] font-medium truncate">{label}</span>
+            {wip && (
+              <span className="ml-auto text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-amber-400/15 text-amber-500 border border-amber-400/30 leading-none">
+                WIP
+              </span>
+            )}
+          </>
         )}
       </button>
     )

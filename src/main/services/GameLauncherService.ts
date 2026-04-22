@@ -1811,7 +1811,8 @@ local function collectTerrainSnapshot()
     if FS and FS.openFile then
       local f = FS:openFile(terrainFile, 'r')
       if f then
-        raw = f:readAllBytes and f:readAllBytes() or f:readAllText()
+        if f.readAllBytes then raw = f:readAllBytes()
+        elseif f.readAllText then raw = f:readAllText() end
         f:close()
       end
     end
