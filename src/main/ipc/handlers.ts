@@ -1,6 +1,6 @@
 import { ipcMain, BrowserWindow, app, shell, dialog, session, nativeImage } from 'electron'
 import { readFile, writeFile, mkdir, access, readdir, unlink, rename as fsRename, stat, copyFile } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
+import { existsSync, unlinkSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import net from 'node:net'
 import { get as httpsGet, request as httpsRequest } from 'node:https'
@@ -289,29 +289,35 @@ export function initializeServices(): {
     console.error('[Registry] Init failed:', err)
   )
 
-  // Eagerly refresh the voice chat artifacts on startup so embedded source
-  // updates propagate without requiring the user to toggle voice off+on:
+  // Eagerly REFRESH (not deploy) the voice chat artifacts on startup so
+  // embedded source updates propagate without requiring the user to toggle
+  // voice off+on. We only overwrite payloads that are already on disk; we
+  // never freshly inject anything at app boot, so unused servers / userDirs
+  // stay clean until something actually triggers a real deploy:
   //   1. Client bridge Lua at <userDir>/lua/ge/extensions/beamcmVoice.lua
-  //      (without this a CM update can leave the previous build's bridge in
-  //       place — the game then runs an old extension lacking _G.BeamCMVoice,
-  //       worldReady gating, vc_audio handler, etc.; vc_enable never reaches
-  //       the server and signals are silently dropped).
-  //   2. Server plugin at every managed hosted server.
+  //      (so a CM update can't leave the previous build's bridge in place)
+  //   2. Server plugin + client overlay zip at every managed hosted server
+  //      that already has the plugin from a prior session.
   try {
     const cfg = configService.get()
     if (cfg.voiceChat?.enabled) {
       if (cfg.gamePaths?.userDir) {
-        const r = voiceChatService.deployBridge(cfg.gamePaths.userDir)
-        if (!r.success) console.warn('[VoiceChat] Startup bridge refresh failed:', r.error)
+        const bridgePath = join(cfg.gamePaths.userDir, 'lua', 'ge', 'extensions', 'beamcmVoice.lua')
+        if (existsSync(bridgePath)) {
+          const r = voiceChatService.deployBridge(cfg.gamePaths.userDir)
+          if (!r.success) console.warn('[VoiceChat] Startup bridge refresh failed:', r.error)
+        }
       }
-      // Refresh server plugin + client overlay on every managed server.
-      // Fire-and-forget; logged individually on failure so one bad server
-      // never blocks app boot.
+      // Refresh server plugin + client overlay only on managed servers that
+      // already have the plugin. Servers that have never had voice deployed
+      // stay untouched until they're started (see setOnServerStart below).
       serverManagerService
         .listServers()
         .then(async (servers) => {
           for (const s of servers) {
             try {
+              const alreadyDeployed = await serverManagerService.isVoicePluginDeployed(s.config.id)
+              if (!alreadyDeployed) continue
               const serverDir = serverManagerService.getServerDir(s.config.id)
               await voiceChatService.deployServerPlugin(serverDir, s.config.resourceFolder)
               console.log(`[VoiceChat] Refreshed server plugin + overlay for "${s.config.name}" (${s.config.id})`)
@@ -325,6 +331,18 @@ export function initializeServices(): {
   } catch (err) {
     console.warn('[VoiceChat] Startup refresh threw:', err)
   }
+
+  // Lazily deploy the voice chat server plugin + client overlay when a
+  // managed server is actually started, instead of carpet-bombing every
+  // server folder at CM startup. Servers that never run never receive the
+  // injected files.
+  serverManagerService.setOnServerStart((id, serverDir, resourceFolder) => {
+    const cfg = configService.get()
+    if (!cfg.voiceChat?.enabled) return
+    void voiceChatService.deployServerPlugin(serverDir, resourceFolder)
+      .then(() => console.log(`[VoiceChat] Deployed server plugin + overlay for server ${id}`))
+      .catch((err) => console.warn(`[VoiceChat] Per-start deploy failed for ${id}:`, err))
+  })
 
   return {
     config: configService,
@@ -863,7 +881,51 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('config:update', async (_event, partial: Partial<AppConfig>): Promise<AppConfig> => {
-    return configService.update(partial)
+    const before = configService.get()
+    const after = await configService.update(partial)
+
+    // If voice chat was just disabled, undeploy every CM-injected voice
+    // artifact so nothing is left polling / loading on next game launch and
+    // managed server folders shed the plugin + client overlay.
+    const wasEnabled = !!before.voiceChat?.enabled
+    const isEnabled = !!after.voiceChat?.enabled
+    if (wasEnabled && !isEnabled) {
+      try {
+        if (voiceChatService.isDeployed()) {
+          await voiceChatService.disable().catch(() => { /* best-effort */ })
+          voiceChatService.undeployBridge()
+        } else if (after.gamePaths?.userDir) {
+          // Bridge may have been written by a previous session even if the
+          // service isn't currently "active" — sweep the on-disk artefact
+          // directly so it doesn't keep polling on the next game launch.
+          try {
+            const stalePath = join(after.gamePaths.userDir, 'lua', 'ge', 'extensions', 'beamcmVoice.lua')
+            if (existsSync(stalePath)) unlinkSync(stalePath)
+          } catch (err) {
+            console.warn('[VoiceChat] Stale bridge sweep failed:', err)
+          }
+        }
+      } catch (err) {
+        console.warn('[VoiceChat] Bridge undeploy on disable failed:', err)
+      }
+      try {
+        const servers = await serverManagerService.listServers()
+        for (const s of servers) {
+          try {
+            if (await serverManagerService.isVoicePluginDeployed(s.config.id)) {
+              await serverManagerService.undeployVoicePlugin(s.config.id)
+              console.log(`[VoiceChat] Undeployed server plugin from "${s.config.name}" (${s.config.id}) — voice chat disabled`)
+            }
+          } catch (err) {
+            console.warn(`[VoiceChat] Undeploy failed for ${s.config.id}:`, err)
+          }
+        }
+      } catch (err) {
+        console.warn('[VoiceChat] listServers during disable cleanup failed:', err)
+      }
+    }
+
+    return after
   })
 
   ipcMain.handle('config:markSetupComplete', async (): Promise<void> => {

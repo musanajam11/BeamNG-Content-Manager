@@ -83,6 +83,7 @@ export class ServerManagerService {
   private exePath: string | null = null
   private downloading = false
   private customExeResolver: (() => string | null) | null = null
+  private onServerStartCallback: ((id: string, serverDir: string, resourceFolder: string) => void) | null = null
 
   constructor() {
     const base = join(app.getPath('appData'), 'BeamMP-ContentManager')
@@ -93,6 +94,16 @@ export class ServerManagerService {
   /** Set a callback that returns the custom server exe path from config (or null for default) */
   setCustomExeResolver(resolver: () => string | null): void {
     this.customExeResolver = resolver
+  }
+
+  /**
+   * Set a callback fired right after a managed server process spawns. Used by
+   * the IPC layer to lazily inject per-server payloads (e.g. the voice chat
+   * plugin) only into servers that are actually being run, so unrun server
+   * folders stay clean.
+   */
+  setOnServerStart(cb: (id: string, serverDir: string, resourceFolder: string) => void): void {
+    this.onServerStartCallback = cb
   }
 
   /** Resolve the effective exe path: custom override > built-in managed copy */
@@ -905,6 +916,15 @@ export class ServerManagerService {
         this.emitStatusChange(id)
       }
     }, 5000)
+
+    // Notify subscribers (e.g. voice chat) so they can deploy any per-server
+    // payloads on demand instead of bloating every managed server folder at
+    // CM startup.
+    try {
+      this.onServerStartCallback?.(id, serverDir, config.resourceFolder)
+    } catch (err) {
+      console.warn('[ServerManager] onServerStart callback failed:', err)
+    }
 
     this.emitStatusChange(id)
     return { success: true }
