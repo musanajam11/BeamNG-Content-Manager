@@ -382,19 +382,30 @@ export function BeamMPNameEditor({ value, onChange, error }: BeamMPNameEditorPro
             <Palette size={13} />
           </button>
           {showColors && (
-            <div className="absolute top-full left-0 mt-1 z-50 p-2 rounded border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg">
-              <div className="grid grid-cols-8 gap-1 overflow-hidden p-0.5">
-                {COLORS.map(({ code, hex, label }) => (
-                  <button
-                    key={code}
-                    type="button"
-                    onMouseDown={prevent}
-                    onClick={() => applyColor(code)}
-                    title={`${label} (^${code})`}
-                    className="w-5 h-5 rounded border border-[var(--color-border-hover)] hover:scale-125 transition-transform"
-                    style={{ backgroundColor: hex }}
-                  />
-                ))}
+            <div className="absolute top-full left-0 mt-1 z-50 p-2 rounded border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg w-[244px]">
+              <div className="grid grid-cols-4 gap-1.5">
+                {COLORS.map(({ code, hex, label }) => {
+                  // pick readable text colour against swatch background
+                  const r = parseInt(hex.slice(1, 3), 16)
+                  const g = parseInt(hex.slice(3, 5), 16)
+                  const b = parseInt(hex.slice(5, 7), 16)
+                  const luma = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+                  const fg = luma > 0.55 ? '#000' : '#fff'
+                  return (
+                    <button
+                      key={code}
+                      type="button"
+                      onMouseDown={prevent}
+                      onClick={() => applyColor(code)}
+                      title={`${label} (^${code})`}
+                      className="flex flex-col items-center justify-center rounded border border-[var(--color-border-hover)] hover:ring-2 hover:ring-[var(--color-accent)] transition-all px-1 py-1.5"
+                      style={{ backgroundColor: hex, color: fg }}
+                    >
+                      <span className="text-[11px] font-mono font-bold leading-none">^{code}</span>
+                      <span className="text-[9px] leading-tight mt-1 opacity-90 truncate max-w-full">{label}</span>
+                    </button>
+                  )
+                })}
               </div>
             </div>
           )}
