@@ -336,6 +336,18 @@ export class EditorSyncBridgeSocket extends EventEmitter {
     this.write('T|' + JSON.stringify(brush) + '\n')
   }
 
+  /**
+   * Tier 4 Phase 3 mod sync: tell the joiner-side Lua to (re)load a set of
+   * mods that were just staged into `mods/multiplayer/session-*`. The Lua
+   * side runs `core_modmanager.initDB()` then a `workOffChangedMod` per
+   * entry, and writes a result signal file the JS side polls. No ack
+   * frame — the JS side reads the signal file (set by Lua) to surface a
+   * "restart required" prompt if the in-flight reload failed.
+   */
+  sendModReload(payload: { mods: Array<{ key: string; fullpath: string }> }): void {
+    this.write('D|' + JSON.stringify(payload) + '\n')
+  }
+
   /** Send a soft error message (Lua will log it). */
   sendError(msg: string): void {
     this.write('E|' + msg.replace(/[\r\n]/g, ' ') + '\n')

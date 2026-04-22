@@ -101,7 +101,7 @@ Manage mods, vehicles, maps, servers, friends, career saves, and more — from a
   <tr>
     <td align="center" colspan="2">
       <img src="docs/screenshots/CoopEditor4.png" alt="Shared project sync" width="720" /><br>
-      <sub><b>Shared project sync</b> — joiners auto-download the host's project &amp; relaunch into it</sub>
+      <sub><b>Shared project sync</b> — joiners auto-download the host's project, then launch into it on demand</sub>
     </td>
   </tr>
 </table>
@@ -506,8 +506,8 @@ Peer-to-peer collaborative World Editor that mirrors object placement, terrain e
 - **Tailscale-Aware Addressing** — automatically surfaces your Tailnet IP alongside LAN and public IPs; tailnet entries are marked as recommended for zero-config cross-network play
 - **Level Sync & Install Prompt** — the host's current level is advertised in the session code; joiners get a banner showing the required level and whether it's a built-in BeamNG map or a mod (with install hint when missing)
 - **Shared Starting Project** — the host auto-provisions a coop project (`coop_<date>`) on session start, captures the current editor state into it, and exposes it to joiners as a downloadable snapshot so both sides start from an identical map state
-- **Auto Project Download & Launch** — joiners pull the host's project zip over HTTP (sha256-verified), extract it into `levels/_beamcm_projects/<folder>/`, then Content Manager automatically relaunches BeamNG into the synced project — mirroring BeamMP's "download required mods before joining" flow
-- **Mid-Session Project Push** — when the host swaps projects during a live session, a new offer is broadcast to every connected peer; joiners auto-download the new sha and relaunch into it without manual intervention
+- **Auto Project Download** — joiners pull the host's project zip over HTTP (sha256-verified) and extract it into `levels/_beamcm_projects/<folder>/` the moment it's advertised; the joiner then presses "Launch into Editor" themselves so we never alt-tab their game without consent
+- **Mid-Session Project Push** — when the host swaps projects during a live session, a new offer is broadcast to every connected peer; joiners auto-download the new sha in the background and switch into it on their next manual launch
 - **On-Disk Zip Cache** — the host's project zip is streamed to a dotfile next to the project folder (`.<folder>.coop.zip`) with on-the-fly sha256 hashing and served via `createReadStream`; cleaned up when the session stops
 - **Load Project Picker** — pick any existing coop project from disk as the starting state when hosting, instead of relying on auto-provisioning
 - **Live Op Stream** — every editor action (create/modify/delete object, brush stroke, field edit, terrain paint, undo, redo) is serialized and broadcast with author IDs, sequence numbers, and timestamps
@@ -515,6 +515,8 @@ Peer-to-peer collaborative World Editor that mirrors object placement, terrain e
 - **Peer Presence** — see other participants' editor camera positions, active tool, and selected object in real time with per-author color coding
 - **Windows Firewall Helper** — one-click rule creation for the listen port **and** the project-zip HTTP port in a single UAC prompt (covers Tailscale's wintun interface that Electron's auto-prompt misses)
 - **Discord Rich Presence** — shows "Editing Worlds with Friends" when you're on the coop editor page
+- **Phase-Toggle Settings** — Settings → General → World Editor Sync exposes a master enable switch plus four per-phase capability toggles (reflective-field capture, full snapshot replay, mod-inventory handshake, terrain/forest baseline). Disabling a phase makes the host skip that channel entirely and joiners fall through to the lighter Tier-3 fallback. The master switch hides Host/Join from the editor page without uninstalling the bridge.
+- **Per-Session `.beamcmworld` Saves** — every session writes an append-only op log + periodic snapshots to `Content/sessions/<id>.beamcmworld` so a session can be resumed after a crash or replayed offline.
 
 </details>
 

@@ -797,6 +797,49 @@ const api = {
     }>>,
   worldEditSessionLeave: () =>
     ipcRenderer.invoke('worldEdit:session:leave') as Promise<{ success: boolean }>,
+  /** §D undo/redo. Empty stack returns ok:false; renderer disables button. */
+  worldEditSessionUndo: () =>
+    ipcRenderer.invoke('worldEdit:session:undo') as Promise<{ ok: boolean; reason?: string; name?: string }>,
+  worldEditSessionRedo: () =>
+    ipcRenderer.invoke('worldEdit:session:redo') as Promise<{ ok: boolean; reason?: string; name?: string }>,
+  worldEditSessionUndoDepths: () =>
+    ipcRenderer.invoke('worldEdit:session:undoDepths') as Promise<{ undo: number; redo: number }>,
+
+  /* §E world save / load / convert */
+  worldSaveSave: (opts?: { destPath?: string; title?: string; description?: string; includeOpLog?: boolean; previewPngPath?: string; forceBuildSnapshot?: boolean }) =>
+    ipcRenderer.invoke('worldSave:save', opts ?? {}) as Promise<
+      { success: true; path: string; bytes: number; title: string }
+      | { success: false; cancelled?: true; error?: string }
+    >,
+  worldSaveInspect: (sourcePath?: string) =>
+    ipcRenderer.invoke('worldSave:inspect', sourcePath) as Promise<
+      { success: true; manifest: unknown; compressedBytes: number; uncompressedBytes: number; entryCount: number }
+      | { success: false; cancelled?: true; error?: string }
+    >,
+  worldSaveLoad: (opts?: { sourcePath?: string }) =>
+    ipcRenderer.invoke('worldSave:load', opts ?? {}) as Promise<
+      { success: true; levelName: string; worldId: string; stagedModsPath: string | null; modCount: number; hasSnapshot: boolean; opLogCount: number; seededIntoRelay: boolean }
+      | { success: false; cancelled?: true; error?: string }
+    >,
+  worldSaveConvertProjectToWorld: (opts: {
+    sourceProjectZip?: string
+    destPath?: string
+    levelName: string
+    title?: string
+    description?: string
+    authorId: string
+    authorDisplayName: string
+    beamngBuild?: string
+  }) =>
+    ipcRenderer.invoke('worldSave:convertProjectToWorld', opts) as Promise<
+      { success: true; path: string; bytes: number }
+      | { success: false; cancelled?: true; error?: string }
+    >,
+  worldSaveConvertWorldToProject: (opts?: { sourceWorld?: string; destProjectZip?: string }) =>
+    ipcRenderer.invoke('worldSave:convertWorldToProject', opts ?? {}) as Promise<
+      { success: true; path: string; bytes: number }
+      | { success: false; cancelled?: true; error?: string }
+    >,
   worldEditSessionLaunchIntoEditor: (opts?: { levelOverride?: string | null }) =>
     ipcRenderer.invoke('worldEdit:session:launchIntoEditor', opts) as Promise<{
       success: boolean

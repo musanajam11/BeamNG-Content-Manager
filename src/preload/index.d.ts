@@ -674,6 +674,51 @@ interface AppAPI {
     recommended: boolean
   }>>
   worldEditSessionLeave(): Promise<{ success: boolean }>
+  /** §D undo/redo. ok:false + reason='empty-stack'|'unsupported'|'no-session'. */
+  worldEditSessionUndo(): Promise<{ ok: boolean; reason?: string; name?: string }>
+  worldEditSessionRedo(): Promise<{ ok: boolean; reason?: string; name?: string }>
+  worldEditSessionUndoDepths(): Promise<{ undo: number; redo: number }>
+
+  /* §E world save / load / convert */
+  worldSaveSave(opts?: {
+    destPath?: string
+    title?: string
+    description?: string
+    includeOpLog?: boolean
+    previewPngPath?: string
+    forceBuildSnapshot?: boolean
+  }): Promise<
+    | { success: true; path: string; bytes: number; title: string }
+    | { success: false; cancelled?: true; error?: string }
+  >
+  worldSaveInspect(sourcePath?: string): Promise<
+    | { success: true; manifest: unknown; compressedBytes: number; uncompressedBytes: number; entryCount: number }
+    | { success: false; cancelled?: true; error?: string }
+  >
+  worldSaveLoad(opts?: { sourcePath?: string }): Promise<
+    | { success: true; levelName: string; worldId: string; stagedModsPath: string | null; modCount: number; hasSnapshot: boolean; opLogCount: number; seededIntoRelay: boolean }
+    | { success: false; cancelled?: true; error?: string }
+  >
+  worldSaveConvertProjectToWorld(opts: {
+    sourceProjectZip?: string
+    destPath?: string
+    levelName: string
+    title?: string
+    description?: string
+    authorId: string
+    authorDisplayName: string
+    beamngBuild?: string
+  }): Promise<
+    | { success: true; path: string; bytes: number }
+    | { success: false; cancelled?: true; error?: string }
+  >
+  worldSaveConvertWorldToProject(opts?: {
+    sourceWorld?: string
+    destProjectZip?: string
+  }): Promise<
+    | { success: true; path: string; bytes: number }
+    | { success: false; cancelled?: true; error?: string }
+  >
   worldEditSessionLaunchIntoEditor(opts?: {
     levelOverride?: string | null
   }): Promise<{ success: boolean; error?: string; level?: string }>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { FolderOpen, Globe, Check, AlertCircle, Package, Download, Upload, Palette, RotateCcw, Monitor, Type, Layers, Maximize2, PanelLeft, Eye, EyeOff, Image, X, Plus, Shuffle, Network, Languages, Terminal, Server, GripVertical, Wrench, Trash2, Shield, HardDriveDownload, Loader2, Sun, Moon, SlidersHorizontal, Sparkles, Square, Circle, MousePointer, Zap } from 'lucide-react'
+import { FolderOpen, Globe, Globe2, Check, AlertCircle, Package, Download, Upload, Palette, RotateCcw, Monitor, Type, Layers, Maximize2, PanelLeft, Eye, EyeOff, Image, X, Plus, Shuffle, Network, Languages, Terminal, Server, GripVertical, Wrench, Trash2, Shield, HardDriveDownload, Loader2, Sun, Moon, SlidersHorizontal, Sparkles, Square, Circle, MousePointer, Zap } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/useAppStore'
 import { useThemeStore, ACCENT_PRESETS, BG_STYLES, DEFAULT_SIDEBAR_ORDER } from '../stores/useThemeStore'
@@ -522,6 +522,9 @@ function GeneralSettings({ config }: { config: ReturnType<typeof useAppStore.get
               )}
             </div>
           </section>
+
+          {/* World Editor Sync (Phase 5) */}
+          <WorldEditSyncSettingsSection />
         </div>
       </div>
   )
@@ -1648,6 +1651,110 @@ function SidebarLayoutSection({ appearance, update }: {
         <RotateCcw size={12} />
         {t('settings.resetSidebar')}
       </button>
+    </section>
+  )
+}
+
+// ── World Editor Sync Settings (Phase 5) ──
+
+/**
+ * Surfaces the master `worldEditSync.enabled` flag plus the four Tier 4
+ * phase toggles and the mod-sync confirmation threshold. Kept in the
+ * General tab to live next to other peer-to-peer features (modpack
+ * import/export). All writes go through `saveConfig` which persists +
+ * notifies the main process; main consults the same fields via
+ * `setWorldEditSyncTier4Resolver` and `setModSyncThresholdResolver`.
+ */
+function WorldEditSyncSettingsSection(): React.JSX.Element {
+  const config = useAppStore((s) => s.config)
+  const wes = config?.worldEditSync
+  const enabled = wes?.enabled ?? true
+  const tier4 = wes?.tier4 ?? { reflectiveFields: false, fullSnapshot: false, modInventory: false, terrainForest: false }
+  const thresholdMb = Math.round(((wes?.modSync.confirmThresholdBytes ?? 500 * 1024 * 1024) / (1024 * 1024)))
+
+  const update = (patch: { enabled?: boolean; tier4?: Partial<typeof tier4>; thresholdBytes?: number }): void => {
+    void useAppStore.getState().saveConfig({
+      worldEditSync: {
+        enabled: patch.enabled ?? enabled,
+        tier4: { ...tier4, ...(patch.tier4 ?? {}) },
+        modSync: { confirmThresholdBytes: patch.thresholdBytes ?? wes?.modSync.confirmThresholdBytes ?? 500 * 1024 * 1024 },
+      },
+    })
+  }
+
+  return (
+    <section>
+      <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
+        <Globe2 size={16} />
+        World Editor Sync
+      </h2>
+
+      <div className="space-y-3">
+        {/* Master switch */}
+        <label className="flex items-start gap-3 p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] cursor-pointer hover:bg-[var(--color-surface-hover)] transition-colors">
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => update({ enabled: e.target.checked })}
+            className="mt-0.5 accent-[var(--color-accent)]"
+          />
+          <div className="flex-1">
+            <div className="text-sm font-medium text-[var(--color-text-primary)]">Enable World Editor Sync</div>
+            <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+              Master switch for collaborative world editing. When off, the page becomes read-only
+              and the Lua extension will not deploy or hook into the editor.
+            </p>
+          </div>
+        </label>
+
+        {/* Tier 4 phase toggles — only meaningful while enabled */}
+        <div className={`space-y-2 ${enabled ? '' : 'opacity-50 pointer-events-none'}`}>
+          <div className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide pl-1">
+            Tier 4 — Full-fidelity sync (advanced)
+          </div>
+          {([
+            ['reflectiveFields', 'Reflective fields (Phase 1)', 'Capture every editor field via getFieldList instead of the small TRACKED_FIELDS allow-list. Higher CPU but no missed property edits.'],
+            ['fullSnapshot', 'Full scenetree snapshot (Phase 2)', 'Send the host\u2019s entire scenetree on join instead of a delta-only baseline. Slower joins but bit-identical state.'],
+            ['modInventory', 'Mod inventory + on-demand shipment (Phase 3)', 'Negotiate mods at join and stream missing zips from the host so joiners don\u2019t need them pre-installed.'],
+            ['terrainForest', 'Terrain heightmap + forest (Phase 4)', 'Replicate terrain edits and forest instances. Adds a terrain/forest baseline transfer to the join handshake.'],
+          ] as const).map(([key, label, desc]) => (
+            <label key={key} className="flex items-start gap-3 p-2 pl-3 rounded-md border border-[var(--color-border)]/60 bg-[var(--color-surface)]/60 cursor-pointer hover:bg-[var(--color-surface-hover)] transition-colors">
+              <input
+                type="checkbox"
+                checked={tier4[key]}
+                onChange={(e) => update({ tier4: { [key]: e.target.checked } })}
+                className="mt-0.5 accent-[var(--color-accent)]"
+              />
+              <div className="flex-1">
+                <div className="text-sm text-[var(--color-text-primary)]">{label}</div>
+                <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{desc}</p>
+              </div>
+            </label>
+          ))}
+        </div>
+
+        {/* Mod-sync confirm threshold */}
+        <div className={`p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] ${enabled ? '' : 'opacity-50 pointer-events-none'}`}>
+          <div className="text-sm font-medium text-[var(--color-text-primary)]">Mod download confirmation threshold</div>
+          <p className="text-xs text-[var(--color-text-muted)] mt-0.5 mb-2">
+            Show a confirmation dialog before downloading mod payloads larger than this size on join. Set to 0 to always confirm.
+          </p>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={0}
+              max={10000}
+              value={thresholdMb}
+              onChange={(e) => {
+                const mb = Math.max(0, Math.min(10000, Number(e.target.value) || 0))
+                update({ thresholdBytes: mb * 1024 * 1024 })
+              }}
+              className="w-24 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-md px-2 py-1 text-sm text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-accent)]"
+            />
+            <span className="text-xs text-[var(--color-text-muted)]">MiB</span>
+          </div>
+        </div>
+      </div>
     </section>
   )
 }

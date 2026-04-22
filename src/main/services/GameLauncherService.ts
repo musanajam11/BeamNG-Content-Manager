@@ -149,6 +149,90 @@ local function pollEditorSyncSignal(dt)
   end
 end
 
+-- ── Launch signal (freeroam level autostart) ──
+-- The vanilla \`beamcmBridge\` extension reads this file on startup to load a
+-- map for users launching via the CM "Host & Launch" / "Launch into editor"
+-- buttons. When BeamMP is installed it pre-empts that bridge with this one,
+-- so we need to mirror the same launch_signal.json polling here or the
+-- editor session lands on the main menu with no level loaded.
+local launchSignalFile = "settings/BeamCM/launch_signal.json"
+local launchTimer = 0
+local launchPollInterval = 0.5
+local launchActed = false
+local launchPendingLevel = nil
+local launchRetryTimer = 0
+local launchRetryInterval = 3
+local launchRetryAttempts = 0
+local launchRetryMax = 6
+local launchStartupDelay = 2
+local launchStartupTimer = 0
+local launchReady = false
+
+local function tryStartLevel(level)
+  if core_levels and core_levels.startLevel then
+    local ok, err = pcall(function() core_levels.startLevel(level) end)
+    if ok then
+      log('I', 'beammpCMBridge', 'core_levels.startLevel("' .. tostring(level) .. '") dispatched')
+      return true
+    else
+      log('W', 'beammpCMBridge', 'core_levels.startLevel failed: ' .. tostring(err))
+    end
+  else
+    log('W', 'beammpCMBridge', 'core_levels.startLevel not available yet')
+  end
+  return false
+end
+
+local function pollLaunchSignal(dt)
+  -- Retry loop for in-flight level loads (covers the "called while UI not
+  -- ready" silent-noop case the vanilla bridge already handles).
+  if launchPendingLevel then
+    launchRetryTimer = launchRetryTimer + dt
+    if launchRetryTimer >= launchRetryInterval then
+      launchRetryTimer = 0
+      launchRetryAttempts = launchRetryAttempts + 1
+      if launchRetryAttempts > launchRetryMax then
+        log('W', 'beammpCMBridge', 'Giving up on level load after ' .. launchRetryMax .. ' attempts')
+        launchPendingLevel = nil
+      else
+        log('I', 'beammpCMBridge', 'Retrying level load (attempt ' .. launchRetryAttempts .. '/' .. launchRetryMax .. ')')
+        tryStartLevel(launchPendingLevel)
+      end
+    end
+  end
+
+  if launchActed then return end
+  if not launchReady then
+    launchStartupTimer = launchStartupTimer + dt
+    if launchStartupTimer < launchStartupDelay then return end
+    launchReady = true
+  end
+  launchTimer = launchTimer + dt
+  if launchTimer < launchPollInterval then return end
+  launchTimer = 0
+  local content = jsonReadFile(launchSignalFile)
+  if not content or content.processed then return end
+  jsonWriteFile(launchSignalFile, {processed = true})
+  launchActed = true
+  local mode = content.mode or "freeroam"
+  log('I', 'beammpCMBridge', 'CM launch signal: mode=' .. mode)
+  if mode == "freeroam" then
+    local level = content.level or "/levels/gridmap_v2/info.json"
+    log('I', 'beammpCMBridge', 'Loading level: ' .. level)
+    launchPendingLevel = level
+    launchRetryTimer = 0
+    launchRetryAttempts = 0
+    tryStartLevel(level)
+  end
+end
+
+local function onClientStartMission()
+  if launchPendingLevel then
+    log('I', 'beammpCMBridge', 'Mission loaded, clearing level-load retry')
+    launchPendingLevel = nil
+  end
+end
+
 local function onUpdate(dt)
   -- GPS hot-load polling always runs
   pollGpsSignal(dt)
@@ -156,6 +240,10 @@ local function onUpdate(dt)
   pollConsoleSignal(dt)
   -- World Editor Sync hot-load polling always runs
   pollEditorSyncSignal(dt)
+  -- Freeroam launch-signal polling always runs (covers the "BeamMP installed
+  -- but launching into singleplayer / editor" path the vanilla bridge would
+  -- otherwise own).
+  pollLaunchSignal(dt)
 
   if joined then return end
   timer = timer + dt
@@ -182,6 +270,7 @@ end
 
 M.onExtensionLoaded = onExtensionLoaded
 M.onUpdate = onUpdate
+M.onClientStartMission = onClientStartMission
 return M
 `
 
@@ -225,7 +314,8 @@ local function tryStartLevel(level)
 end
 
 local function onExtensionLoaded()
-  log('I', 'beamcmBridge', 'BeamCM singleplayer bridge loaded')
+  log('I', 'beamcmBridge', '===== BeamCM singleplayer bridge loaded (v0.3.47) =====')
+  log('I', 'beamcmBridge', 'signal file: ' .. signalFile)
   -- Auto-load Lua console bridge if deployed
   local consoleExt = "lua/ge/extensions/beamcmConsole.lua"
   local cf = io.open(consoleExt, "r")
@@ -561,6 +651,11 @@ local origUndo = nil
 local origRedo = nil
 local origBeginTx = nil
 local origEndTx = nil
+local origDeleteObject = nil
+-- True only while origCommitAction is executing. Used by the editor.deleteObject
+-- wrapper to avoid double-capturing the delete that commitAction("DeleteObject")
+-- triggers internally via deleteObjectRedo.
+local inCommitAction = false
 local capturing = false
 local suppressCapture = false  -- true while replaying so we don't re-capture
 local captureCount = 0
@@ -595,7 +690,20 @@ local cmGreeted = false       -- received K| reply from CM
 local cmInflight = {}         -- clientOpId -> true, awaiting A| ack
 local opsSent = 0
 local opsRcvd = 0
+local opsApplied = 0
 local acksRcvd = 0
+
+-- Tier 4 feature flags — populated from the K| session greet payload. All
+-- default to false; the CM writes whichever are enabled in its config. Lua
+-- code paths gated on these flags remain dormant until a host with a matching
+-- capability greets. Changing a flag in CM config requires re-deploying the
+-- editor-sync extension (or reconnecting the bridge) to take effect.
+local cmTier4Flags = {
+  reflectiveFields = false,
+  fullSnapshot     = false,
+  modInventory     = false,
+  terrainForest    = false,
+}
 
 -- Pose tick state (presence awareness for peers in a session).
 local cmPoseTimer = 0
@@ -615,6 +723,15 @@ local cmEnvFlushInterval = 0.25 -- seconds between N| batch flushes (4 Hz)
 local cmEnvOutQueue = {}        -- pending {key, value, ts} entries to flush
 local lastSentEnv = {}          -- key -> last value we observed/applied
 local suppressEnvCapture = false
+-- §C.4 — joiner-side gate. Set true while applyFullSceneSnapshot /
+-- applyTerrainSnapshot etc. are running on a joiner so any local user
+-- op captured by the editor hooks is parked in pendingLocalOps
+-- instead of being shipped to CM with a lamport that pre-dates the
+-- snapshot the host built. Drained at the end of handleSnapshotChunk.
+local snapshotApplyInProgress = false
+local pendingLocalOps = {}
+local snapshotApplyInProgress = false
+local pendingLocalOps = {}
 
 local function envEqual(a, b)
   if type(a) ~= type(b) then return false end
@@ -624,6 +741,95 @@ local function envEqual(a, b)
     return jsonEncode(a) == jsonEncode(b)
   end
   return a == b
+end
+
+-- ── Value normalisation (Tier 4 Phase 1) ──
+-- BeamNG's getField returns engine-native string encodings for vectors,
+-- quaternions, colors, transforms, and filenames. Two peers may emit the
+-- same logical value with different whitespace / precision ("1 2 3" vs
+-- "1.0 2.0 3.0"), which breaks naïve diffing and causes ping-pong echoes
+-- across the wire. normalizeFieldValue() collapses every scalar to a
+-- canonical form (6 significant digits, single-space separators, forward
+-- slashes in filenames) so the diff cache and the wire traffic see a
+-- single representation per logical value.
+local function canonNum(n)
+  if type(n) ~= 'number' then return nil end
+  if n ~= n then return '0' end  -- NaN guard
+  if n == math.huge or n == -math.huge then return '0' end
+  -- Snap near-zero to 0 and round to 6 significant digits. Format with %g
+  -- so integers stay integer-looking ("2" not "2.000000").
+  if math.abs(n) < 1e-6 then return '0' end
+  return string.format('%.6g', n)
+end
+
+-- Recognise numeric tokens inside a space-separated string. Returns a
+-- list of canonicalised number strings if every token parses as a float,
+-- else nil. Pure numeric lists cover vec2/vec3/vec4/quat/rgba/matrix.
+local function parseNumericTokens(s)
+  if type(s) ~= 'string' then return nil end
+  local tokens = {}
+  for tok in s:gmatch('%S+') do table.insert(tokens, tok) end
+  if #tokens == 0 or #tokens > 16 then return nil end
+  local out = {}
+  for i, tok in ipairs(tokens) do
+    local n = tonumber(tok)
+    if n == nil then return nil end
+    out[i] = canonNum(n) or '0'
+  end
+  return out
+end
+
+-- Normalise a filesystem-flavoured string (paths, filenames, material
+-- references). Backslashes → forward slashes, strip trailing whitespace,
+-- strip a leading "game:/" or "./" prefix so every peer sees the same
+-- relative form. userDir-anchored paths get left alone (BeamNG resolves
+-- them consistently) — we just uniform the slash style.
+local function normalizeFilename(s)
+  if type(s) ~= 'string' then return s end
+  local out = s:gsub('\\\\', '/'):gsub('^%s+', ''):gsub('%s+$', '')
+  if out:sub(1,2) == './' then out = out:sub(3) end
+  return out
+end
+
+-- Top-level normaliser called on every value in and out of the field cache.
+-- Booleans/numbers get passed through unchanged (no whitespace ambiguity
+-- to resolve); strings get parsed for numeric shapes first, then filename
+-- normalisation; tables get recursively normalised on known keys.
+local function normalizeFieldValue(v)
+  local t = type(v)
+  if t == 'number' then
+    local c = canonNum(v)
+    if c then return tonumber(c) end
+    return v
+  end
+  if t == 'string' then
+    local nums = parseNumericTokens(v)
+    if nums then return table.concat(nums, ' ') end
+    -- Heuristic: strings containing "/" or "\\\\" or ending in known asset
+    -- extensions are path-like. Normalise slashes so one peer's
+    -- "folder\\\\asset.dae" matches another's "folder/asset.dae".
+    if v:find('[/\\\\]') or v:match('%.[A-Za-z0-9]+$') then
+      return normalizeFilename(v)
+    end
+    return v
+  end
+  if t == 'table' then
+    -- Clone to avoid mutating engine-owned tables; apply canonNum to any
+    -- numeric leaf entries (covers {x=,y=,z=}, {r=,g=,b=,a=}, {0,1,2,...}).
+    local out = {}
+    for k, val in pairs(v) do
+      if type(val) == 'number' then
+        local c = canonNum(val)
+        out[k] = c and tonumber(c) or val
+      elseif type(val) == 'string' or type(val) == 'table' then
+        out[k] = normalizeFieldValue(val)
+      else
+        out[k] = val
+      end
+    end
+    return out
+  end
+  return v
 end
 
 -- Registered env keys. Each entry has \`get\` and \`set\` callbacks; either may
@@ -701,7 +907,7 @@ local ENV_KEYS = {
 -- Helper-driven changes mark a 250 ms grace window so the next poll doesn't
 -- redundantly re-emit the same value.
 local cmFieldPollTimer = 0
-local cmFieldPollInterval = 1.0   -- seconds between polling sweeps
+local cmFieldPollInterval = 0.5   -- seconds between polling sweeps (fast-tier cadence)
 local cmFieldFlushTimer = 0
 local cmFieldFlushInterval = 0.25 -- seconds between F| batch flushes
 local cmFieldOutQueue = {}        -- pending field frames to flush
@@ -709,6 +915,19 @@ local lastFieldSnapshot = {}      -- pid -> { fieldName -> last value }
 local fieldHelperGrace = {}       -- "pid|fieldName" -> ts (ms) of last helper write
 local FIELD_GRACE_MS = 250
 local suppressFieldCapture = false
+
+-- Selection-priority + dirty-bit polling state (Tier 4 Phase 1).
+-- Every pid gets a per-pid last-poll timestamp; selected/dirty pids use the
+-- fast 500 ms cadence, everything else the slow 5 s cadence. This lets us
+-- react to a live slider scrub on the selected object immediately while
+-- keeping idle-scene cost ~flat as scene size grows.
+local cmPidLastPoll   = {}        -- pid -> last poll ts (ms)
+local cmDirtyPids     = {}        -- pid -> true; cleared after next successful poll
+local cmSelectedPids  = {}        -- pid -> true; refreshed once per tick from editor API
+local cmSelectionRefreshTs = 0
+local CM_POLL_FAST_MS = 500       -- selected / dirty
+local CM_POLL_SLOW_MS = 5000      -- everything else
+local CM_SELECTION_REFRESH_MS = 250
 
 -- Persistent IDs of every scene object we've observed being mutated during
 -- this session. Used by buildAndSendSnapshot to ship a current state of
@@ -724,6 +943,9 @@ local TOUCHED_PIDS_MAX = 4000
 local function markTouchedPid(pid)
   if type(pid) ~= 'string' or pid == '' then return end
   cmTouchedPids[pid] = true
+  -- Any op/field/brush that touches a pid also elevates it to the fast-poll
+  -- tier for the next cadence window. Cleared on the subsequent poll.
+  cmDirtyPids[pid] = true
 end
 
 -- Recursively walk any table scanning for __pid markers (left behind by
@@ -778,13 +1000,115 @@ local TRACKED_FIELDS = {
   TerrainBlock           = { 'squareSize', 'baseTexSize', 'castShadows' },
 }
 
+-- ── Tier 4 Phase 1 reflective capture ──
+-- Classes to sweep when \`cmTier4Flags.reflectiveFields\` is on. Superset of
+-- TRACKED_FIELDS keys: any class whose fields we want to replicate must
+-- appear here so \`scenetree.findClassObjects\` can enumerate instances. The
+-- set of fields is NOT hard-coded — it's discovered via \`obj:getFieldList()\`
+-- once per class and cached in \`cmClassSchemaCache\`. This way we replicate
+-- EVERY inspector-writable field (including ones we never thought to list)
+-- without paying the schema-probe cost on every poll tick.
+local REFLECT_CLASSES = {
+  'TimeOfDay','ScatterSky','CloudLayer','Precipitation','WaterPlane','LevelInfo',
+  'SceneObject','TSStatic','BeamNGObject','ProceduralMesh',
+  'PointLight','SpotLight',
+  'SimGroup','Prefab','MissionGroup',
+  'DecalRoad','DecalInstance','BeamNGTrigger',
+  'ForestItemData','TerrainBlock',
+  -- Additional classes that commonly hold inspector-writable state but
+  -- weren't in the Tier-3 hand-curated TRACKED_FIELDS:
+  'BeamNGVehicle','BeamNGPointOfInterest','BeamNGWaypoint','Marker',
+  'AccumulationVolume','SFXEmitter','SFXSpace','ScriptObject','Trigger',
+  'Player','Camera','Sun','BasicClouds',
+}
+
+-- (className, fieldName) pairs we refuse to replicate. Populated with fields
+-- that either (a) carry giant binary blobs (textures, meshes), (b) contain
+-- authoring-time metadata that doesn't belong over the wire, or (c) are
+-- known to crash the sim when set from a non-editor context.
+local EDITOR_SYNC_FIELD_BLOCKLIST = {
+  ['TerrainBlock|heightMap']       = true,  -- megabytes of raw elevation; Phase 4 ships this via T|
+  ['TerrainBlock|materialMap']     = true,  -- raw material index grid; Phase 4
+  ['ForestItemData|instanceData']  = true,  -- per-instance forest data; brush channel owns this
+  ['ForestBrushElement|shapeFile'] = true,  -- resolved at ForestItemData level
+  -- Common in-engine state that's computed, not authored:
+  ['SceneObject|internalName']     = true,
+  ['SimObject|internalName']       = true,
+  ['SimObject|className']          = true,
+  ['SimObject|superClass']         = true,
+  ['SimObject|parentGroup']        = true,
+  ['SimObject|canSave']            = true,
+  ['SimObject|canSaveDynamicFields'] = true,
+  -- persistentId is our routing key; never overwrite remotely.
+  ['SimObject|persistentId']       = true,
+  ['SceneObject|persistentId']     = true,
+}
+
+-- className → { fieldName = true } of fields we allow through reflective
+-- capture. Built lazily on first sight of each class (and retained for the
+-- life of the bridge — classes don't change schema at runtime).
+local cmClassSchemaCache = {}
+
+-- Field-level usage codes we consider authoring-relevant. BeamNG tags a
+-- field with \`usage == 'EditorHidden'\` (or similar engine-only markers) to
+-- keep it out of the inspector; we honour that signal so the sweep stays
+-- aligned with what a human editor could edit.
+local function isReflectableUsage(usage)
+  if usage == nil or usage == '' then return true end
+  if type(usage) ~= 'string' then return false end
+  if usage:find('EditorHidden', 1, true) then return false end
+  if usage:find('Internal', 1, true) then return false end
+  return true
+end
+
+-- Probe \`obj:getFieldList()\` once per class. Returns an array of { name,
+-- usage } tuples (already filtered through the blocklist + usage rules).
+-- Failures (class lacks reflection, object errored out) are cached as an
+-- empty array so we don't re-probe on every tick.
+local function getClassFieldSchema(className, obj)
+  local cached = cmClassSchemaCache[className]
+  if cached ~= nil then return cached end
+  local schema = {}
+  if obj and obj.getFieldList then
+    local ok, list = pcall(function() return obj:getFieldList() end)
+    if ok and type(list) == 'table' then
+      for _, entry in ipairs(list) do
+        if type(entry) == 'table' and type(entry.name) == 'string' then
+          local fname = entry.name
+          local key = className .. '|' .. fname
+          local baseKey = 'SimObject|' .. fname
+          local sceneKey = 'SceneObject|' .. fname
+          if not EDITOR_SYNC_FIELD_BLOCKLIST[key]
+             and not EDITOR_SYNC_FIELD_BLOCKLIST[baseKey]
+             and not EDITOR_SYNC_FIELD_BLOCKLIST[sceneKey]
+             and isReflectableUsage(entry.usage) then
+            table.insert(schema, { name = fname, usage = entry.usage })
+          end
+        elseif type(entry) == 'string' then
+          -- Some engine builds return a flat list of names.
+          local key = className .. '|' .. entry
+          if not EDITOR_SYNC_FIELD_BLOCKLIST[key]
+             and not EDITOR_SYNC_FIELD_BLOCKLIST['SimObject|' .. entry]
+             and not EDITOR_SYNC_FIELD_BLOCKLIST['SceneObject|' .. entry] then
+            table.insert(schema, { name = entry, usage = '' })
+          end
+        end
+      end
+    end
+  end
+  cmClassSchemaCache[className] = schema
+  return schema
+end
+
 local function fieldGraceKey(pid, fieldName) return pid .. '|' .. fieldName end
 
 local function readObjField(obj, fieldName, arrayIndex)
   if not obj or not obj.getField then return nil end
   local ok, v = pcall(function() return obj:getField(fieldName, arrayIndex or 0) end)
-  if ok then return v end
-  return nil
+  if not ok then return nil end
+  -- Canonicalise before the diff cache sees it so whitespace/precision
+  -- variants of the same logical value collapse to one representation.
+  return normalizeFieldValue(v)
 end
 
 local function getObjPid(obj)
@@ -904,7 +1228,19 @@ end
 -- Send an op envelope over TCP. Returns clientOpId so the caller can await ack
 -- if desired; Phase 1 is fire-and-forget.
 local function cmSendOp(entry)
-  if not cmClient then return nil end
+  if not cmClient then
+    if opsSent == 0 then log('W', 'beamcmEditorSync', 'cmSendOp: no cmClient — op NOT sent to CM (kind=' .. tostring(entry.kind) .. ' name=' .. tostring(entry.name) .. ')') end
+    return nil
+  end
+  -- §C.4: while a snapshot apply is in progress on this joiner, hold any
+  -- locally-captured op in pendingLocalOps and ship it after the apply
+  -- completes. Stops the joiner from emitting an edit "before they've seen
+  -- the world", which would land at the host with a lamport behind the
+  -- snapshot baseSeq and either be dropped by §C.1 or re-ordered awkwardly.
+  if snapshotApplyInProgress then
+    pendingLocalOps[#pendingLocalOps + 1] = entry
+    return nil
+  end
   local cid = uuidv4()
   entry.clientOpId = cid
   local json = jsonEncode(entry)
@@ -912,6 +1248,9 @@ local function cmSendOp(entry)
   if cmSendLine("O|" .. json .. "\\n") then
     cmInflight[cid] = true
     opsSent = opsSent + 1
+    if opsSent <= 3 or opsSent % 25 == 0 then
+      log('I', 'beamcmEditorSync', 'O-frame sent to CM #' .. tostring(opsSent) .. ' kind=' .. tostring(entry.kind) .. ' name=' .. tostring(entry.name))
+    end
     return cid
   end
   return nil
@@ -1030,6 +1369,10 @@ local function queueFieldFrame(entry)
   lastFieldSnapshot[entry.pid][entry.fieldName] = entry.value
   fieldHelperGrace[fieldGraceKey(entry.pid, entry.fieldName)] = entry.ts
   markTouchedPid(entry.pid)
+  -- Dirty-bit: any path-A write elevates the pid to the fast-poll tier so
+  -- subsequent coupled-field side-effects (e.g. setField('color') also
+  -- changing 'brightness' via postApply) land on the wire within ~500 ms.
+  cmDirtyPids[entry.pid] = true
 end
 
 -- Path A: opt-in helper. Sets the field via setField+postApply (matches what
@@ -1047,18 +1390,81 @@ local function cmSetField(obj, fieldName, value, arrayIndex)
   if not pid then return end
   queueFieldFrame({
     pid = pid, fieldName = fieldName,
-    arrayIndex = arrayIndex, value = value, ts = cmNowMs(),
+    arrayIndex = arrayIndex,
+    value = normalizeFieldValue(value),
+    ts = cmNowMs(),
   })
 end
 
--- Path B: 1 Hz polling diff. Iterates TRACKED_FIELDS, queues changed values.
--- Skips entries inside their helper grace window (path A already handled them).
+-- Path B: polling diff. Iterates TRACKED_FIELDS (or reflective class schema
+-- under Tier 4), queues changed values. Skips entries inside their helper
+-- grace window (path A already handled them). Per-pid cadence split:
+-- selected + dirty pids poll every CM_POLL_FAST_MS, others every
+-- CM_POLL_SLOW_MS — so we react immediately to the object the user is
+-- editing without re-sweeping thousands of idle props.
+local function refreshSelectionSet()
+  local now = cmNowMs()
+  if (now - cmSelectionRefreshTs) < CM_SELECTION_REFRESH_MS then return end
+  cmSelectionRefreshTs = now
+  cmSelectedPids = {}
+  if type(editor) ~= 'table' then return end
+  -- BeamNG exposes the editor selection under a few different shapes across
+  -- versions. Try each in turn; treat misses as "no selection".
+  local ids = nil
+  if type(editor.selection) == 'table' then
+    ids = editor.selection
+  elseif type(editor.getSelection) == 'function' then
+    local ok, sel = pcall(editor.getSelection)
+    if ok and type(sel) == 'table' then ids = sel end
+  elseif type(editor.selectedObjectIds) == 'table' then
+    ids = editor.selectedObjectIds
+  end
+  if type(ids) ~= 'table' then return end
+  for _, entry in pairs(ids) do
+    local obj = nil
+    if scenetree and scenetree.findObject then
+      local ok, o = pcall(function() return scenetree.findObject(entry) end)
+      if ok then obj = o end
+    end
+    local pid = getObjPid(obj)
+    if pid then cmSelectedPids[pid] = true end
+  end
+end
+
+-- Decide whether a given pid is due for a poll this tick. Fast cadence for
+-- selected or dirty-marked objects; slow cadence otherwise. First sight of
+-- a pid (no cmPidLastPoll entry) always polls so newly-created objects get
+-- their initial baseline emitted promptly.
+local function shouldPollPid(pid, now)
+  local last = cmPidLastPoll[pid]
+  if not last then return true end
+  local elapsed = now - last
+  if cmDirtyPids[pid] or cmSelectedPids[pid] then
+    return elapsed >= CM_POLL_FAST_MS
+  end
+  return elapsed >= CM_POLL_SLOW_MS
+end
+
 local function cmPollFields()
   if suppressFieldCapture then return end
   if not cmClient or not cmGreeted then return end
   if not scenetree or not scenetree.findClassObjects then return end
   local now = cmNowMs()
-  for className, fields in pairs(TRACKED_FIELDS) do
+  refreshSelectionSet()
+  -- When Tier 4 reflective capture is enabled, sweep every REFLECT_CLASSES
+  -- class via getFieldList instead of the hand-curated TRACKED_FIELDS table.
+  -- Both paths share the same cmFieldOutQueue / lastFieldSnapshot state, so
+  -- a mid-session flag flip degrades gracefully (subsequent ticks pick up
+  -- the other path without losing pending frames).
+  local useReflect = cmTier4Flags.reflectiveFields == true
+  local classList
+  if useReflect then
+    classList = REFLECT_CLASSES
+  else
+    classList = {}
+    for className, _ in pairs(TRACKED_FIELDS) do table.insert(classList, className) end
+  end
+  for _, className in ipairs(classList) do
     local ok, ids = pcall(function() return scenetree.findClassObjects(className) end)
     if ok and type(ids) == 'table' then
       for _, idOrName in ipairs(ids) do
@@ -1069,9 +1475,18 @@ local function cmPollFields()
         end
         if obj then
           local pid = getObjPid(obj)
-          if pid then
+          if pid and shouldPollPid(pid, now) then
             local snap = lastFieldSnapshot[pid] or {}
-            for _, fname in ipairs(fields) do
+            local fieldsToSweep
+            if useReflect then
+              fieldsToSweep = {}
+              for _, entry in ipairs(getClassFieldSchema(className, obj)) do
+                table.insert(fieldsToSweep, entry.name)
+              end
+            else
+              fieldsToSweep = TRACKED_FIELDS[className] or {}
+            end
+            for _, fname in ipairs(fieldsToSweep) do
               local graceTs = fieldHelperGrace[fieldGraceKey(pid, fname)]
               if not graceTs or (now - graceTs) > FIELD_GRACE_MS then
                 local v = readObjField(obj, fname, 0)
@@ -1086,6 +1501,8 @@ local function cmPollFields()
               end
             end
             lastFieldSnapshot[pid] = snap
+            cmPidLastPoll[pid] = now
+            cmDirtyPids[pid] = nil
           end
         end
       end
@@ -1126,6 +1543,18 @@ local function applyRemoteField(msg)
   if not scenetree or not scenetree.findObjectByPersistentId then return end
   local obj = scenetree.findObjectByPersistentId(msg.pid)
   if not obj then return end
+  -- Defense-in-depth: refuse to apply a blocklisted field even if a peer
+  -- somehow emitted one (e.g. legacy CM version with no blocklist, or a
+  -- misbehaving tool). Keyed by class + base-class wildcards.
+  local fname = msg.fieldName
+  local className = nil
+  if obj.getClassName then
+    local okCn, cn = pcall(function() return obj:getClassName() end)
+    if okCn then className = cn end
+  end
+  if className and EDITOR_SYNC_FIELD_BLOCKLIST[className .. '|' .. fname] then return end
+  if EDITOR_SYNC_FIELD_BLOCKLIST['SimObject|' .. fname] then return end
+  if EDITOR_SYNC_FIELD_BLOCKLIST['SceneObject|' .. fname] then return end
   suppressFieldCapture = true
   local ok = pcall(function()
     obj:setField(msg.fieldName, msg.arrayIndex or 0, msg.value)
@@ -1134,8 +1563,9 @@ local function applyRemoteField(msg)
   suppressFieldCapture = false
   if not ok then return end
   -- Seed snapshot cache so the next poll doesn't re-emit a remote-set value.
+  -- Normalise so the cached entry matches what readObjField would return.
   lastFieldSnapshot[msg.pid] = lastFieldSnapshot[msg.pid] or {}
-  lastFieldSnapshot[msg.pid][msg.fieldName] = msg.value
+  lastFieldSnapshot[msg.pid][msg.fieldName] = normalizeFieldValue(msg.value)
 end
 
 -- ── Snapshot exchange (Phase 3) ──
@@ -1166,7 +1596,17 @@ end
 local function collectFieldSnapshot()
   local out = {}
   if not scenetree or not scenetree.findClassObjects then return out end
-  for className, fields in pairs(TRACKED_FIELDS) do
+  -- Mirror cmPollFields: reflective sweep when the Tier 4 flag is on, else
+  -- fall back to the Tier 3 hand-curated TRACKED_FIELDS list.
+  local useReflect = cmTier4Flags.reflectiveFields == true
+  local classList
+  if useReflect then
+    classList = REFLECT_CLASSES
+  else
+    classList = {}
+    for className, _ in pairs(TRACKED_FIELDS) do table.insert(classList, className) end
+  end
+  for _, className in ipairs(classList) do
     local ok, ids = pcall(function() return scenetree.findClassObjects(className) end)
     if ok and type(ids) == 'table' then
       for _, idOrName in ipairs(ids) do
@@ -1178,7 +1618,16 @@ local function collectFieldSnapshot()
         if obj then
           local pid = getObjPid(obj)
           if pid then
-            for _, fname in ipairs(fields) do
+            local fieldsToSweep
+            if useReflect then
+              fieldsToSweep = {}
+              for _, entry in ipairs(getClassFieldSchema(className, obj)) do
+                table.insert(fieldsToSweep, entry.name)
+              end
+            else
+              fieldsToSweep = TRACKED_FIELDS[className] or {}
+            end
+            for _, fname in ipairs(fieldsToSweep) do
               local v = readObjField(obj, fname, 0)
               if v ~= nil then
                 table.insert(out, {
@@ -1253,12 +1702,225 @@ local function collectObjectSnapshot()
   return out
 end
 
--- Build + emit a snapshot. The Z| request payload may carry a target
--- snapshotId so the host can correlate this response with its outstanding
--- request. Chunks are sent synchronously here (no coroutine yield yet — the
--- v1 payload is small enough that it doesn't matter; a coroutine becomes
--- necessary once we serialize touched-object lists and brush deltas).
-local function buildAndSendSnapshot(req)
+-- ── Tier 4 Phase 2: full scene snapshot ──
+-- Walks the scene graph starting from MissionGroup (or whichever root the
+-- current level exposes) and serializes every SimGroup + SimObject with
+-- its complete reflective field set. The result is a tree of:
+--   { pid, className, name, transform, fields = {...}, children = {...} }
+-- where \`children\` is populated only on group-like classes. Joiners apply
+-- this via applyFullSceneSnapshot (Phase 2 #12) to reconstruct the entire
+-- scene without op replay.
+--
+-- Cost: O(objects × fields). Coroutine yielding comes in Phase 2 #11; for
+-- v1 we rely on the SNAPSHOT_GATE_TIMEOUT_MS watchdog to catch pathological
+-- cases, and on FULL_SNAPSHOT_MAX_NODES to hard-cap the walk.
+local function simObjTransform(obj)
+  local function readVec3(method)
+    if not obj or not obj[method] then return nil end
+    local ok, v = pcall(function() return obj[method](obj) end)
+    if not ok or v == nil then return nil end
+    if type(v) == 'table' then
+      return { x = v.x or v[1], y = v.y or v[2], z = v.z or v[3] }
+    end
+    return nil
+  end
+  local out = { position = readVec3('getPosition'), scale = readVec3('getScale') }
+  if obj and obj.getRotation then
+    local rOk, r = pcall(function() return obj:getRotation() end)
+    if rOk and type(r) == 'table' then
+      out.rotation = { x = r.x or r[1], y = r.y or r[2], z = r.z or r[3], w = r.w or r[4] }
+    end
+  end
+  return out
+end
+
+-- Classes treated as "groups" for the tree walk. Any entry here has its
+-- children recursed into; others are leaves with just fields + transform.
+local GROUP_CLASSES = {
+  SimGroup = true, MissionGroup = true, Prefab = true, SimSet = true,
+}
+
+-- Read the full reflective field set for one object into a flat map of
+-- fieldName → value. Honours the blocklist + usage filter from Phase 1.
+local function readFullFieldSet(obj, className)
+  local out = {}
+  if not obj then return out end
+  for _, entry in ipairs(getClassFieldSchema(className, obj)) do
+    local v = readObjField(obj, entry.name, 0)
+    if v ~= nil then out[entry.name] = v end
+  end
+  return out
+end
+
+local FULL_SNAPSHOT_MAX_DEPTH = 32
+local FULL_SNAPSHOT_MAX_NODES = 20000
+
+local function walkGroup(obj, depth, counter)
+  if not obj or depth > FULL_SNAPSHOT_MAX_DEPTH then return nil end
+  if counter.n >= FULL_SNAPSHOT_MAX_NODES then return nil end
+  counter.n = counter.n + 1
+  local node = {}
+  local className = nil
+  if obj.getClassName then
+    local cOk, c = pcall(function() return obj:getClassName() end)
+    if cOk then className = c end
+  end
+  node.className = className
+  node.pid = getObjPid(obj)
+  if obj.getName then
+    local nOk, n = pcall(function() return obj:getName() end)
+    if nOk and type(n) == 'string' and n ~= '' then node.name = n end
+  end
+  node.transform = simObjTransform(obj)
+  if className then
+    node.fields = readFullFieldSet(obj, className)
+  end
+  if className and GROUP_CLASSES[className] then
+    node.children = {}
+    -- SimGroup exposes getObject(i) + a count accessor. Try the common
+    -- names across engine builds; fall back to objectList table if present.
+    local count = nil
+    if obj.getCount then
+      local kOk, k = pcall(function() return obj:getCount() end)
+      if kOk then count = k end
+    end
+    if not count and obj.size then
+      local kOk, k = pcall(function() return obj:size() end)
+      if kOk then count = k end
+    end
+    if count then
+      for i = 0, count - 1 do
+        local childOk, child = pcall(function() return obj:getObject(i) end)
+        if childOk and child then
+          local sub = walkGroup(child, depth + 1, counter)
+          if sub then table.insert(node.children, sub) end
+        end
+      end
+    elseif type(obj.objectList) == 'table' then
+      for _, child in ipairs(obj.objectList) do
+        local sub = walkGroup(child, depth + 1, counter)
+        if sub then table.insert(node.children, sub) end
+      end
+    end
+  end
+  return node
+end
+
+local function collectFullSceneSnapshot()
+  if not scenetree then return nil end
+  local root = nil
+  if scenetree.findObject then
+    local okR, r = pcall(function() return scenetree.findObject('MissionGroup') end)
+    if okR then root = r end
+  end
+  if not root and scenetree.getRootGroup then
+    local okR, r = pcall(function() return scenetree.getRootGroup() end)
+    if okR then root = r end
+  end
+  if not root then return nil end
+  local counter = { n = 0 }
+  local tree = walkGroup(root, 0, counter)
+  return {
+    nodeCount = counter.n,
+    truncated = counter.n >= FULL_SNAPSHOT_MAX_NODES,
+    tree = tree,
+  }
+end
+
+-- ── Coroutine-yielded snapshot build (Tier 4 Phase 2) ──
+-- When Tier 4 fullSnapshot is enabled the scene-graph walk can serialize
+-- thousands of objects. Running it synchronously inside one onUpdate tick
+-- would stall the sim for hundreds of ms. Instead we drive the build from
+-- a coroutine resumed every tick with a wall-clock budget. The coroutine
+-- yields between node batches (every SNAPSHOT_YIELD_EVERY nodes) and
+-- between outbound Y| chunks so the network pipe doesn't also block the
+-- tick. Falls back to sync when \`cmTier4Flags.fullSnapshot\` is off (no
+-- scene walk → no risk of a long stall).
+local cmSnapshotCo = nil
+local cmSnapshotReq = nil
+local SNAPSHOT_YIELD_EVERY = 50            -- yield after walking this many nodes
+local SNAPSHOT_TICK_BUDGET_MS = 6          -- resume budget per onUpdate tick
+
+local function maybeYieldSnapshot(counter)
+  if not cmSnapshotCo then return end       -- running synchronously, don't yield
+  if (counter.n % SNAPSHOT_YIELD_EVERY) == 0 then coroutine.yield() end
+end
+
+-- Coroutine-aware variant of walkGroup used only by the async path. The
+-- sync version (walkGroup above) is reused when fullSnapshot is off.
+local function walkGroupAsync(obj, depth, counter)
+  if not obj or depth > FULL_SNAPSHOT_MAX_DEPTH then return nil end
+  if counter.n >= FULL_SNAPSHOT_MAX_NODES then return nil end
+  counter.n = counter.n + 1
+  maybeYieldSnapshot(counter)
+  local node = {}
+  local className = nil
+  if obj.getClassName then
+    local cOk, c = pcall(function() return obj:getClassName() end)
+    if cOk then className = c end
+  end
+  node.className = className
+  node.pid = getObjPid(obj)
+  if obj.getName then
+    local nOk, n = pcall(function() return obj:getName() end)
+    if nOk and type(n) == 'string' and n ~= '' then node.name = n end
+  end
+  node.transform = simObjTransform(obj)
+  if className then node.fields = readFullFieldSet(obj, className) end
+  if className and GROUP_CLASSES[className] then
+    node.children = {}
+    local count = nil
+    if obj.getCount then
+      local kOk, k = pcall(function() return obj:getCount() end)
+      if kOk then count = k end
+    end
+    if not count and obj.size then
+      local kOk, k = pcall(function() return obj:size() end)
+      if kOk then count = k end
+    end
+    if count then
+      for i = 0, count - 1 do
+        local childOk, child = pcall(function() return obj:getObject(i) end)
+        if childOk and child then
+          local sub = walkGroupAsync(child, depth + 1, counter)
+          if sub then table.insert(node.children, sub) end
+        end
+      end
+    elseif type(obj.objectList) == 'table' then
+      for _, child in ipairs(obj.objectList) do
+        local sub = walkGroupAsync(child, depth + 1, counter)
+        if sub then table.insert(node.children, sub) end
+      end
+    end
+  end
+  return node
+end
+
+local function collectFullSceneSnapshotAsync()
+  if not scenetree then return nil end
+  local root = nil
+  if scenetree.findObject then
+    local okR, r = pcall(function() return scenetree.findObject('MissionGroup') end)
+    if okR then root = r end
+  end
+  if not root and scenetree.getRootGroup then
+    local okR, r = pcall(function() return scenetree.getRootGroup() end)
+    if okR then root = r end
+  end
+  if not root then return nil end
+  local counter = { n = 0 }
+  local tree = walkGroupAsync(root, 0, counter)
+  return {
+    nodeCount = counter.n,
+    truncated = counter.n >= FULL_SNAPSHOT_MAX_NODES,
+    tree = tree,
+  }
+end
+
+-- Body of the snapshot build. Runs synchronously by default; when called
+-- inside a coroutine it yields at strategic points (between node batches,
+-- between outbound chunks) to spread cost across ticks.
+local function snapshotBuildBody(req)
   if not cmClient or not cmGreeted then return end
   local snapshot = {
     snapshotId = (req and req.snapshotId) or uuidv4(),
@@ -1277,14 +1939,26 @@ local function buildAndSendSnapshot(req)
     forestDelta = nil,   -- Phase 4
     decalRoadDelta = nil,
   }
+  if cmTier4Flags.fullSnapshot then
+    local ok, graph
+    if cmSnapshotCo then
+      ok, graph = pcall(collectFullSceneSnapshotAsync)
+    else
+      ok, graph = pcall(collectFullSceneSnapshot)
+    end
+    if ok and type(graph) == 'table' then
+      -- Live-session snapshots are always additive; mirror is reserved for
+      -- authoritative .beamcmworld restore (§E save/load).
+      graph.reconcileMode = 'additive'
+      snapshot.sceneGraph = graph
+    end
+  end
   local json = jsonEncode(snapshot)
   if not json then
     log('W', 'beamcmEditorSync', 'snapshot encode failed')
     return
   end
   local total = math.max(1, math.ceil(#json / SNAPSHOT_CHUNK_BYTES))
-  -- Emit each chunk as one Y| frame. The host CM accumulates all 'total'
-  -- chunks (matched by snapshotId) before forwarding to joiners.
   for i = 1, total do
     local lo = (i - 1) * SNAPSHOT_CHUNK_BYTES + 1
     local hi = math.min(i * SNAPSHOT_CHUNK_BYTES, #json)
@@ -1299,6 +1973,216 @@ local function buildAndSendSnapshot(req)
     }
     local cjson = jsonEncode(chunk)
     if cjson then cmSendLine("Y|" .. cjson .. "\\n") end
+    -- Yield between chunks so a multi-MB payload doesn't drown the tick
+    -- with a burst of synchronous cmSendLine calls.
+    if cmSnapshotCo and i < total then coroutine.yield() end
+  end
+end
+
+local function buildAndSendSnapshot(req)
+  if not cmClient or not cmGreeted then return end
+  -- If a previous snapshot build is still in flight, drop the new request.
+  -- The host CM will retry after SNAPSHOT_GATE_TIMEOUT_MS elapses.
+  if cmSnapshotCo and coroutine.status(cmSnapshotCo) ~= 'dead' then
+    log('W', 'beamcmEditorSync', 'snapshot already in flight; ignoring duplicate request')
+    return
+  end
+  -- Tier 3 path (no scene walk) fits comfortably in one tick — stay sync.
+  if not cmTier4Flags.fullSnapshot then
+    snapshotBuildBody(req)
+    return
+  end
+  -- Tier 4 path: run inside a coroutine driven by onUpdate under a wall-clock
+  -- budget so the scene walk + chunk emission spreads across multiple ticks.
+  cmSnapshotReq = req
+  cmSnapshotCo = coroutine.create(function() snapshotBuildBody(cmSnapshotReq) end)
+end
+
+-- Drive the in-flight snapshot coroutine forward with a per-tick budget.
+-- Called from onUpdate. Respects SNAPSHOT_TICK_BUDGET_MS to leave room for
+-- rendering + sim work on the same frame.
+local function driveSnapshotCoroutine()
+  if not cmSnapshotCo then return end
+  local status = coroutine.status(cmSnapshotCo)
+  if status == 'dead' then
+    cmSnapshotCo = nil
+    cmSnapshotReq = nil
+    return
+  end
+  local startMs = cmNowMs()
+  while cmSnapshotCo and coroutine.status(cmSnapshotCo) == 'suspended' do
+    local ok, err = coroutine.resume(cmSnapshotCo)
+    if not ok then
+      log('E', 'beamcmEditorSync', 'snapshot coroutine error: ' .. tostring(err))
+      cmSnapshotCo = nil
+      cmSnapshotReq = nil
+      return
+    end
+    if (cmNowMs() - startMs) >= SNAPSHOT_TICK_BUDGET_MS then break end
+  end
+  if cmSnapshotCo and coroutine.status(cmSnapshotCo) == 'dead' then
+    cmSnapshotCo = nil
+    cmSnapshotReq = nil
+  end
+end
+
+-- ── Tier 4 Phase 2: apply full scene snapshot ──
+-- Two-phase apply so children never reference a parent that hasn't been
+-- created yet:
+--   Phase A: walk the tree depth-first, create every group-class node
+--            (SimGroup, MissionGroup, Prefab, SimSet) under its parent.
+--   Phase B: walk again, create every leaf node, apply full field set and
+--            transform.
+-- Existing pids are matched via scenetree.findObjectByPersistentId and
+-- updated in place; missing pids are constructed via createObject + register.
+-- Both phases run under suppress* flags so the apply path doesn't echo.
+local function ensureObjectFromNode(node, parentGroup)
+  if not node or type(node.pid) ~= 'string' or type(node.className) ~= 'string' then
+    return nil
+  end
+  if scenetree and scenetree.findObjectByPersistentId then
+    local existing = scenetree.findObjectByPersistentId(node.pid)
+    if existing then return existing end
+  end
+  -- Construct. Some classes cannot be created from Lua (engine-only); those
+  -- fail silently and we rely on ops.log replay to materialise them later.
+  local okC, newObj
+  if _G.createObject then
+    okC, newObj = pcall(function() return createObject(node.className) end)
+  end
+  if not okC or not newObj then return nil end
+  -- persistentId MUST be stamped before registerObject so the engine's
+  -- internal scenetree indexes it correctly.
+  pcall(function() newObj:setField('persistentId', 0, node.pid) end)
+  pcall(function() newObj:registerObject(node.name or '') end)
+  if parentGroup and parentGroup.addObject then
+    pcall(function() parentGroup:addObject(newObj) end)
+  end
+  return newObj
+end
+
+local function applyNodeFieldsAndTransform(obj, node)
+  if not obj or type(node) ~= 'table' then return end
+  if type(node.fields) == 'table' then
+    for fname, fval in pairs(node.fields) do
+      -- Respect blocklist on the apply side too so a malicious or buggy
+      -- peer can't overwrite local-only bookkeeping fields.
+      local cn = node.className or ''
+      if not EDITOR_SYNC_FIELD_BLOCKLIST[cn .. '|' .. fname]
+         and not EDITOR_SYNC_FIELD_BLOCKLIST['SimObject|' .. fname]
+         and not EDITOR_SYNC_FIELD_BLOCKLIST['SceneObject|' .. fname] then
+        pcall(function()
+          obj:setField(fname, 0, fval)
+          if obj.postApply then obj:postApply() end
+        end)
+        lastFieldSnapshot[node.pid] = lastFieldSnapshot[node.pid] or {}
+        lastFieldSnapshot[node.pid][fname] = normalizeFieldValue(fval)
+      end
+    end
+  end
+  if type(node.transform) == 'table' then
+    local t = node.transform
+    if type(t.position) == 'table' and obj.setPosition then
+      pcall(function() obj:setPosition(t.position) end)
+    end
+    if type(t.scale) == 'table' and obj.setScale then
+      pcall(function() obj:setScale(t.scale) end)
+    end
+    if type(t.rotation) == 'table' and obj.setRotation then
+      pcall(function() obj:setRotation(t.rotation) end)
+    end
+  end
+end
+
+local function applyFullSceneSnapshot(graph)
+  if type(graph) ~= 'table' or type(graph.tree) ~= 'table' then return end
+  if not scenetree then return end
+  local root = nil
+  if scenetree.findObject then
+    local ok, r = pcall(function() return scenetree.findObject('MissionGroup') end)
+    if ok then root = r end
+  end
+  if not root and scenetree.getRootGroup then
+    local ok, r = pcall(function() return scenetree.getRootGroup() end)
+    if ok then root = r end
+  end
+  if not root then return end
+  -- Reconcile mode:
+  --   'additive' (default) — only create/update from the snapshot; objects
+  --   the local peer owns that aren't in the snapshot are preserved. This
+  --   is the right default for live coop so mid-session joiners don't
+  --   clobber authoring a peer just started.
+  --   'mirror' — after phase B, walk the local scene and delete any pid
+  --   not present in the snapshot. Used for authoritative restore from a
+  --   .beamcmworld save (§E), not live sessions.
+  local mode = graph.reconcileMode
+  if mode ~= 'mirror' then mode = 'additive' end
+  local seenPids = {}
+  local function phaseA(node, parent)
+    if type(node) ~= 'table' then return end
+    local obj = nil
+    if node.className and GROUP_CLASSES[node.className] then
+      obj = ensureObjectFromNode(node, parent)
+    end
+    if type(node.children) == 'table' then
+      for _, child in ipairs(node.children) do
+        phaseA(child, obj or parent)
+      end
+    end
+  end
+  phaseA(graph.tree, root)
+  local function phaseB(node, parent)
+    if type(node) ~= 'table' then return end
+    local obj = ensureObjectFromNode(node, parent)
+    if obj then
+      applyNodeFieldsAndTransform(obj, node)
+      if type(node.pid) == 'string' then seenPids[node.pid] = true end
+    end
+    if type(node.children) == 'table' then
+      for _, child in ipairs(node.children) do
+        phaseB(child, obj or parent)
+      end
+    end
+  end
+  phaseB(graph.tree, root)
+  -- Mirror-mode GC: collect every pid reachable from root and delete any
+  -- that isn't in seenPids. Only runs for authoritative restores (saves).
+  if mode == 'mirror' then
+    local toDelete = {}
+    local function collectLocalPids(obj, depth)
+      if not obj or depth > FULL_SNAPSHOT_MAX_DEPTH then return end
+      local pid = getObjPid(obj)
+      if pid and not seenPids[pid] then table.insert(toDelete, pid) end
+      local count = nil
+      if obj.getCount then
+        local kOk, k = pcall(function() return obj:getCount() end)
+        if kOk then count = k end
+      end
+      if not count and obj.size then
+        local kOk, k = pcall(function() return obj:size() end)
+        if kOk then count = k end
+      end
+      if count then
+        for i = 0, count - 1 do
+          local childOk, child = pcall(function() return obj:getObject(i) end)
+          if childOk and child then collectLocalPids(child, depth + 1) end
+        end
+      end
+    end
+    collectLocalPids(root, 0)
+    for _, pid in ipairs(toDelete) do
+      local obj = scenetree.findObjectByPersistentId(pid)
+      if obj and obj.delete then
+        pcall(function() obj:delete() end)
+      end
+      cmTouchedPids[pid] = nil
+      lastFieldSnapshot[pid] = nil
+      cmPidLastPoll[pid] = nil
+    end
+    if #toDelete > 0 then
+      log('I', 'beamcmEditorSync',
+          'mirror-mode GC removed ' .. tostring(#toDelete) .. ' local pid(s)')
+    end
   end
 end
 
@@ -1331,16 +2215,27 @@ local function handleSnapshotChunk(msg)
   -- the apply back to the host as fresh observations.
   suppressEnvCapture = true
   suppressFieldCapture = true
+  snapshotApplyInProgress = true
+  -- §B "strict apply order" (see Docs/WORLD-EDITOR-SYNC.md §B): the
+  -- joiner must apply snapshot pieces in a fixed sequence so a brush
+  -- stroke or live op queued behind the snapshot gate never lands on
+  -- a half-built world. Order:
+  --   1. groupStructure / sceneGraph (Phase 2) — must come first so
+  --      later object lookups succeed against newly-created objects.
+  --   2. fields (Phase 2 reflective field maps).
+  --   3. objects (touched-object transforms).
+  --   4. env (Phase 1 / Tier 3 — cheap, last so any field-driven env
+  --      side-effects already happened).
+  --   5. terrain (Phase 4) — heightmap + materialMaps.
+  --   6. forest (Phase 4) — instance groups.
+  -- Steps 5/6 are no-ops until the Tier 4 Phase 4 capture lands; the
+  -- shape is wired now so the gate predicate ordering is locked in.
   local applyOk, applyErr = pcall(function()
-    if type(snapshot.env) == 'table' then
-      for key, value in pairs(snapshot.env) do
-        local entry = ENV_KEYS[key]
-        if entry and entry.set then
-          pcall(entry.set, value)
-          lastSentEnv[key] = value
-        end
-      end
+    -- 1. Scene-graph first so later steps can find newly-created objects.
+    if type(snapshot.sceneGraph) == 'table' and cmTier4Flags.fullSnapshot then
+      applyFullSceneSnapshot(snapshot.sceneGraph)
     end
+    -- 2. Reflective field writes per existing object.
     if type(snapshot.fields) == 'table' then
       for _, f in ipairs(snapshot.fields) do
         if type(f) == 'table' and type(f.pid) == 'string' and type(f.fieldName) == 'string' then
@@ -1358,9 +2253,9 @@ local function handleSnapshotChunk(msg)
         end
       end
     end
-    -- Apply touched-object transforms. Objects missing locally (not yet
-    -- created via op replay) are silently skipped; the subsequent ops.log
-    -- replay on the host side will create them and re-apply their state.
+    -- 3. Touched-object transforms (position/scale/rotation). Objects
+    -- missing locally are silently skipped — op-log catch-up (§C.2)
+    -- will create them and re-apply state.
     if type(snapshot.objects) == 'table' and scenetree and scenetree.findObjectByPersistentId then
       for _, o in ipairs(snapshot.objects) do
         if type(o) == 'table' and type(o.pid) == 'string' then
@@ -1379,10 +2274,40 @@ local function handleSnapshotChunk(msg)
         end
       end
     end
-    -- objects/terrainDelta/forestDelta/decalRoadDelta: Phase 4+ hooks.
+    -- 4. Env (cheap, last so field-driven env side-effects already happened).
+    if type(snapshot.env) == 'table' then
+      for key, value in pairs(snapshot.env) do
+        local entry = ENV_KEYS[key]
+        if entry and entry.set then
+          pcall(entry.set, value)
+          lastSentEnv[key] = value
+        end
+      end
+    end
+    -- 5. Terrain (Phase 4): heightmap + materialMaps. No-op until the
+    -- capture/apply Lua lands — the slot is wired so the gate predicate
+    -- ordering is final.
+    if type(snapshot.terrain) == 'table' and cmTier4Flags.terrainForest then
+      -- TODO Phase 4: applyTerrainSnapshot(snapshot.terrain)
+    end
+    -- 6. Forest (Phase 4): instance groups.
+    if type(snapshot.forest) == 'table' and cmTier4Flags.terrainForest then
+      -- TODO Phase 4: applyForestSnapshot(snapshot.forest)
+    end
   end)
   suppressEnvCapture = false
   suppressFieldCapture = false
+  snapshotApplyInProgress = false
+  -- §C.4 drain: ship every op the user produced *while* the apply was
+  -- running. Their lamports are now correctly post-baseline and the host
+  -- relay's §C.1 vector clock will accept them in monotonic order.
+  if #pendingLocalOps > 0 then
+    local drain = pendingLocalOps
+    pendingLocalOps = {}
+    for _, entry in ipairs(drain) do cmSendOp(entry) end
+    log('I', 'beamcmEditorSync',
+        'snapshot drain: shipped ' .. tostring(#drain) .. ' parked op(s)')
+  end
   -- Ack to CM either way; CM relays the Ack back up to the originating peer.
   cmSendLine("Z|" .. jsonEncode({
     snapshotId = id, ok = applyOk, error = applyOk and nil or tostring(applyErr),
@@ -1633,6 +2558,23 @@ local function cmPump()
         local t = string.sub(line, 1, 1)
         if t == "K" then
           cmGreeted = true
+          -- Parse session greet payload (Tier 4 feature flags, cmTs, phase,
+          -- etc). Absent / malformed fields leave flags at their defaults.
+          local kjson = string.sub(line, 3)
+          if #kjson > 0 then
+            local okK, kmsg = pcall(jsonDecode, kjson)
+            if okK and type(kmsg) == "table" and type(kmsg.tier4Flags) == "table" then
+              cmTier4Flags.reflectiveFields = kmsg.tier4Flags.reflectiveFields == true
+              cmTier4Flags.fullSnapshot     = kmsg.tier4Flags.fullSnapshot == true
+              cmTier4Flags.modInventory     = kmsg.tier4Flags.modInventory == true
+              cmTier4Flags.terrainForest    = kmsg.tier4Flags.terrainForest == true
+              log('I', 'beamcmEditorSync',
+                'Tier 4 flags: reflective=' .. tostring(cmTier4Flags.reflectiveFields)
+                .. ' snapshot=' .. tostring(cmTier4Flags.fullSnapshot)
+                .. ' mods=' .. tostring(cmTier4Flags.modInventory)
+                .. ' terrain=' .. tostring(cmTier4Flags.terrainForest))
+            end
+          end
         elseif t == "A" then
           -- A|clientOpId|seq|status
           local p1 = string.find(line, "|", 3, true)
@@ -1650,6 +2592,9 @@ local function cmPump()
           if ok and type(env) == "table" then
             table.insert(applyQueue, env)
             opsRcvd = opsRcvd + 1
+            if opsRcvd <= 3 or opsRcvd % 25 == 0 then
+              log('I', 'beamcmEditorSync', 'R-frame rcvd from CM #' .. tostring(opsRcvd) .. ' kind=' .. tostring(env.kind) .. ' name=' .. tostring(env.name) .. ' author=' .. tostring(env.authorId))
+            end
           else
             log('W', 'beamcmEditorSync', 'malformed R frame: ' .. tostring(json))
           end
@@ -1715,6 +2660,64 @@ local function cmPump()
           if ok and type(msg) == "table" then
             applyRemoteBrush(msg)
           end
+        elseif t == "D" then
+          -- D|<json> — Tier 4 Phase 3 mod live-reload. CM has just staged
+          -- one or more mod zips into mods/multiplayer/session-* and is
+          -- asking us to hot-load them without a restart.
+          -- Best-effort: if core_modmanager.workOffChangedMod is missing
+          -- (older BeamNG) or pcall fails, we write a signal file flagging
+          -- that a restart is required. CM polls that file to surface a
+          -- UI prompt.
+          local json = string.sub(line, 3)
+          local ok, msg = pcall(jsonDecode, json)
+          if ok and type(msg) == "table" and type(msg.mods) == "table" then
+            local mm = core_modmanager
+            local restartRequired = false
+            local reloaded = 0
+            local failed = {}
+            if mm and type(mm.initDB) == "function" then
+              pcall(function() mm.initDB() end)
+            end
+            if mm and type(mm.workOffChangedMod) == "function" then
+              for _, e in ipairs(msg.mods) do
+                if type(e) == "table" and type(e.key) == "string" then
+                  local okReload = pcall(mm.workOffChangedMod, e.key, "added")
+                  if okReload then
+                    reloaded = reloaded + 1
+                  else
+                    restartRequired = true
+                    table.insert(failed, e.key)
+                  end
+                end
+              end
+            else
+              restartRequired = true
+              for _, e in ipairs(msg.mods) do
+                if type(e) == "table" and type(e.key) == "string" then
+                  table.insert(failed, e.key)
+                end
+              end
+            end
+            -- Write the signal file so the CM side can read the outcome.
+            local userDir = (FS and FS.getUserPath and FS.getUserPath()) or ''
+            if userDir ~= '' then
+              local path = userDir .. '/settings/BeamCM/editorsync_modreload.json'
+              local payload = jsonEncode({
+                reloaded = reloaded,
+                failed = failed,
+                restartRequired = restartRequired,
+                ts = os.time(),
+              })
+              pcall(function()
+                local f = io.open(path, 'w')
+                if f then f:write(payload); f:close() end
+              end)
+            end
+            log('I', 'beamcmEditorSync',
+              'mod live-reload: reloaded=' .. tostring(reloaded)
+                .. ' failed=' .. tostring(#failed)
+                .. ' restart=' .. tostring(restartRequired))
+          end
         elseif t == "P" then
           cmSendLine("Q|\\n")
         elseif t == "E" then
@@ -1733,6 +2736,10 @@ local function cmDrainApplyQueue()
   while budget > 0 and #applyQueue > 0 do
     local env = table.remove(applyQueue, 1)
     budget = budget - 1
+    opsApplied = (opsApplied or 0) + 1
+    if opsApplied <= 3 or opsApplied % 25 == 0 then
+      log('I', 'beamcmEditorSync', 'applyRemoteOp #' .. tostring(opsApplied) .. ' kind=' .. tostring(env.kind) .. ' name=' .. tostring(env.name) .. ' editorActive=' .. tostring(editor and editor.isEditorActive and editor.isEditorActive() or 'nil'))
+    end
     applyRemoteOp(env)
   end
 end
@@ -2262,7 +3269,15 @@ local function installHooks()
   end
 
   editor.history.commitAction = function(self, name, data, undoFn, redoFn, ...)
-    local result = origCommitAction(self, name, data, undoFn, redoFn, ...)
+    inCommitAction = true
+    local result
+    local ok, errOrResult = pcall(origCommitAction, self, name, data, undoFn, redoFn, ...)
+    inCommitAction = false
+    if not ok then
+      -- Re-raise after clearing the flag so we don't strand it set on error.
+      error(errOrResult)
+    end
+    result = errOrResult
     if not suppressCapture then
       local cleaned = sanitise(data)
       -- Translate any sim ids → persistentIds so the op is portable.
@@ -2346,6 +3361,43 @@ local function installHooks()
     end
   end
 
+  -- Direct editor.deleteObject(id) calls bypass the history system entirely
+  -- (BeamNG's scene-tree right-click "Delete Selection" path takes this
+  -- shortcut — see editor/api/object.lua:deleteSelectedObjects). Wrapping
+  -- editor.deleteObject lets us synthesize a portable DeleteObject op so
+  -- remote peers still see the deletion. We only synthesize when the call
+  -- is NOT nested inside our commitAction wrapper (which already captures
+  -- DeleteObject through commitAction → deleteObjectRedo → editor.deleteObject).
+  if type(editor.deleteObject) == "function" then
+    origDeleteObject = editor.deleteObject
+    editor.deleteObject = function(objectId, ...)
+      local pid = nil
+      if not inCommitAction and not suppressCapture and scenetree and scenetree.findObjectById then
+        local ok, obj = pcall(scenetree.findObjectById, objectId)
+        if ok and obj then pid = getObjPid(obj) end
+      end
+      local result = origDeleteObject(objectId, ...)
+      if pid and not inCommitAction and not suppressCapture then
+        local entry = {
+          kind = "do",
+          name = "DeleteObject",
+          data = { objectId = { __pid = pid } },
+          detail = "sceneTree delete pid " .. tostring(pid),
+          targets = { objectId },
+          ts = nowMs(),
+          seq = captureCount + 1,
+        }
+        local ok, err = pcall(appendCaptureLine, entry)
+        if ok then
+          captureCount = captureCount + 1
+        else
+          log('E', 'beamcmEditorSync', 'sceneTree-delete capture write failed: ' .. tostring(err))
+        end
+      end
+      return result
+    end
+  end
+
   hooked = true
   log('I', 'beamcmEditorSync', 'Installed editor.history hooks')
   writeStatus()
@@ -2359,11 +3411,14 @@ local function uninstallHooks()
   if origRedo then editor.history.redo = origRedo end
   if origBeginTx then editor.history.beginTransaction = origBeginTx end
   if origEndTx then editor.history.endTransaction = origEndTx end
+  if origDeleteObject then editor.deleteObject = origDeleteObject end
   origCommitAction = nil
   origUndo = nil
   origRedo = nil
   origBeginTx = nil
   origEndTx = nil
+  origDeleteObject = nil
+  inCommitAction = false
   hooked = false
   log('I', 'beamcmEditorSync', 'Uninstalled editor.history hooks')
   writeStatus()
@@ -2729,6 +3784,8 @@ local function onUpdate(dt)
       cmFieldFlushTimer = 0
       cmFlushFields()
     end
+    -- Drive any in-flight async snapshot build (Tier 4 Phase 2 fullSnapshot).
+    driveSnapshotCoroutine()
   end
   if replayQueue then
     replayTimer = replayTimer + dt
@@ -2749,6 +3806,11 @@ M.cmSetField = cmSetField
 M.cmBrushBegin = cmBrushBegin
 M.cmBrushTick = cmBrushTick
 M.cmBrushEnd = cmBrushEnd
+-- Dirty-bit hook: external Lua (or our own op-capture wrappers) can call
+-- this to flag a pid for fast-tier polling on the next cmPollFields tick.
+M.cmMarkDirty = function(pid)
+  if type(pid) == 'string' and pid ~= '' then cmDirtyPids[pid] = true end
+end
 return M
 `
 
@@ -2848,6 +3910,9 @@ export class GameLauncherService {
   private readonly maxLogLines: number = 2000
   private backendUrlResolver: (() => string) | null = null
   private authUrlResolver: (() => string) | null = null
+  private worldEditSyncTier4Resolver:
+    | (() => import('../../shared/types').WorldEditSyncSettings['tier4'])
+    | null = null
 
   // GPS tracker
   private gpsFilePoller: ReturnType<typeof setInterval> | null = null
@@ -2894,6 +3959,34 @@ export class GameLauncherService {
   /** Set a callback that returns the configured auth URL */
   setAuthUrlResolver(resolver: () => string): void {
     this.authUrlResolver = resolver
+  }
+
+  /**
+   * Set a callback that returns the current World Editor Sync Tier 4 feature
+   * flags. Flags are read once per Lua handshake and included in the K| greet
+   * frame; toggling a flag therefore requires re-deploying editor sync (or
+   * reconnecting the bridge) to take effect in-game.
+   */
+  setWorldEditSyncTier4Resolver(
+    resolver: () => import('../../shared/types').WorldEditSyncSettings['tier4']
+  ): void {
+    this.worldEditSyncTier4Resolver = resolver
+  }
+
+  /** Resolve the current Tier 4 flags, falling back to all-false defaults. */
+  private getTier4Flags(): import('../../shared/types').WorldEditSyncSettings['tier4'] {
+    try {
+      const f = this.worldEditSyncTier4Resolver?.()
+      if (f && typeof f === 'object') return f
+    } catch {
+      /* ignore */
+    }
+    return {
+      reflectiveFields: false,
+      fullSnapshot: false,
+      modInventory: false,
+      terrainForest: false,
+    }
   }
 
   /** Resolve the backend base URL (without trailing slash) */
@@ -4456,11 +5549,80 @@ export class GameLauncherService {
   // ── Singleplayer bridge deployment ──
 
   private deployVanillaBridge(userDir: string): void {
-    // Deploy to <userDir>/lua/ge/extensions/ — BeamNG auto-discovers extensions here
-    const bridgeDir = join(userDir, 'lua', 'ge', 'extensions')
-    mkdirSync(bridgeDir, { recursive: true })
-    writeFileSync(join(bridgeDir, 'beamcmBridge.lua'), VANILLA_BRIDGE_LUA.trim())
-    this.log('Vanilla bridge deployed to ' + join(bridgeDir, 'beamcmBridge.lua'))
+    // BeamNG does NOT auto-execute files dropped under
+    // `<userDir>/lua/ge/extensions/` — they're available to `extensions.load()`
+    // but nothing calls it for us. The reliable convention is to ship the
+    // bridge as an unpacked mod whose `modScript.lua` runs on game boot and
+    // explicitly loads our extension. That's what the BeamMP-context bridge
+    // does (it's loaded by the patched `BeamMP/modScript.lua`); we mirror
+    // the same pattern for the singleplayer / vanilla launch path so the
+    // bridge actually wakes up and processes `launch_signal.json`. Without
+    // this, "Launch into Editor" landed in the main menu because the level
+    // signal was never read.
+    const modRoot = join(userDir, 'mods', 'unpacked', 'beamcm_bridge')
+    const extDir = join(modRoot, 'lua', 'ge', 'extensions')
+    const scriptsDir = join(modRoot, 'scripts', 'beamcm_bridge')
+    mkdirSync(extDir, { recursive: true })
+    mkdirSync(scriptsDir, { recursive: true })
+
+    writeFileSync(join(extDir, 'beamcmBridge.lua'), VANILLA_BRIDGE_LUA.trim())
+
+    // Auto-loader: BeamNG runs `scripts/<modname>/modScript.lua` for every
+    // unpacked mod on load. We use it to bring up the bridge extension
+    // (which then drives `settings/BeamCM/launch_signal.json` polling) and
+    // to eagerly load `beamcmEditorSync` if its source file is present so
+    // the world editor sync extension survives even when the bridge's own
+    // io.open()-based discovery misses the userDir VFS overlay.
+    const modScript =
+      '-- Auto-generated by BeamMP Content Manager. Loads the singleplayer\n' +
+      '-- bridge + sibling CM extensions so they are alive before the user\n' +
+      "-- presses 'Launch into Editor'. Do not edit by hand — overwritten on\n" +
+      '-- every game launch.\n' +
+      "local function tryLoad(name)\n" +
+      "  local ok, err = pcall(function() extensions.load(name) end)\n" +
+      "  if ok then\n" +
+      "    pcall(function() setExtensionUnloadMode(name, 'manual') end)\n" +
+      "    log('I', 'beamcmBridge', 'Auto-loaded ' .. name)\n" +
+      "  else\n" +
+      "    log('W', 'beamcmBridge', 'Auto-load ' .. name .. ' failed: ' .. tostring(err))\n" +
+      "  end\n" +
+      "end\n" +
+      "tryLoad('beamcmBridge')\n" +
+      "tryLoad('beamcmEditorSync')\n"
+    writeFileSync(join(scriptsDir, 'modScript.lua'), modScript)
+
+    // Minimal `mod_info.json` so BeamNG recognises the folder as an
+    // installed mod and runs its modScript on boot. Fields mirror what the
+    // mod manager writes for installed-from-zip mods.
+    const modInfo = {
+      name: 'beamcm_bridge',
+      modname: 'beamcm_bridge',
+      title: 'BeamCM Bridge',
+      description:
+        'Singleplayer / vanilla bridge for the BeamMP Content Manager. ' +
+        'Polls signal files under settings/BeamCM/ to load levels, open ' +
+        'the world editor, and forward sync events. Auto-managed.',
+      version: '0.3.47',
+      author: 'BeamMP Content Manager',
+      tag_line: 'BeamCM bridge',
+      tags: ['utility'],
+      unpacked: true,
+      active: 'true',
+    }
+    writeFileSync(join(modRoot, 'mod_info.json'), JSON.stringify(modInfo, null, 2))
+
+    // Belt-and-braces legacy drop: we used to write the bridge here too.
+    // Keep writing it so any modScript that still references the old path
+    // (e.g. a stale BeamMP.zip patched by an older CM build) still finds
+    // the file. Remove the legacy copy once we're confident no shipping
+    // build references it any more.
+    const legacyDir = join(userDir, 'lua', 'ge', 'extensions')
+    try {
+      mkdirSync(legacyDir, { recursive: true })
+      writeFileSync(join(legacyDir, 'beamcmBridge.lua'), VANILLA_BRIDGE_LUA.trim())
+    } catch { /* legacy path may be read-only on some installs */ }
+
+    this.log('Vanilla bridge deployed as unpacked mod at ' + modRoot)
   }
 
   private writeVanillaSignal(userDir: string, config: { mode: string; level?: string; vehicle?: string }): void {
@@ -4504,6 +5666,20 @@ export class GameLauncherService {
       this.log(`WARNING: Failed to deploy vanilla bridge: ${err}`)
     }
 
+    // Make sure the World Editor Sync extension file is on disk before the
+    // game starts so the bridge's `tryLoad('beamcmEditorSync')` in our
+    // unpacked-mod modScript actually finds it. `deployEditorSync` is
+    // idempotent and is the same call the session controller makes from
+    // `prepareEditorLaunch`; calling it here as well guarantees the
+    // extension is present even on launch paths that don't go through the
+    // session controller (e.g. plain `game:launchVanilla` from HomePage).
+    try {
+      const dep = this.deployEditorSync(paths.userDir)
+      if (!dep.success) this.log(`WARNING: deployEditorSync failed: ${dep.error}`)
+    } catch (err) {
+      this.log(`WARNING: deployEditorSync threw: ${err}`)
+    }
+
     // If BeamMP.zip is present, re-patch it so the MP bridge (which is what
     // BeamNG actually auto-loads from the mod zip) has the latest signal
     // polling code — including hot-load for GPS, Lua console, and World
@@ -4527,11 +5703,23 @@ export class GameLauncherService {
     // (`core_levels.startLevel`) expects the canonical VFS path with the
     // leading `/levels/` prefix; passing just `<name>/info.json` silently
     // no-ops on current BeamNG builds, which is why "Launch into editor"
-    // was landing in the main menu.
+    // was landing in the main menu. We also strip any caller-supplied
+    // `levels/` prefix or trailing `/info.json` so we never double-up the
+    // path (an older bug surfaced as `levels/levels/gridmap_v2/info.json`
+    // in the BeamNG log when the renderer started passing already-rooted
+    // names).
+    const normalizeLevel = (raw: string): string => {
+      let s = raw.trim().replace(/^\/+/, '')
+      s = s.replace(/^levels\/+/i, '')
+      s = s.replace(/\/+info\.json$/i, '')
+      s = s.replace(/\/+$/, '')
+      return s
+    }
+    const normalizedLevel = config?.level ? normalizeLevel(config.level) : undefined
     if (config?.mode) {
       this.writeVanillaSignal(paths.userDir, {
         mode: config.mode,
-        level: config.level ? `/levels/${config.level}/info.json` : undefined,
+        level: normalizedLevel ? `/levels/${normalizedLevel}/info.json` : undefined,
         vehicle: config.vehicle
       })
     }
@@ -4541,8 +5729,8 @@ export class GameLauncherService {
     // slash variant is rejected by the option parser, so we keep it relative
     // here even though the Lua signal uses `/levels/...`).
     const args: string[] = [...(options?.args ?? [])]
-    if (config?.mode === 'freeroam' && config.level) {
-      args.push('-level', `levels/${config.level}/info.json`)
+    if (config?.mode === 'freeroam' && normalizedLevel) {
+      args.push('-level', `levels/${normalizedLevel}/info.json`)
     }
 
     try {
@@ -5350,8 +6538,14 @@ export class GameLauncherService {
       this.editorBridgeReady = true
       this.log(`[EditorBridge] Lua handshake: editor=${info.editorActive ?? '?'} level=${info.levelName ?? '?'} build=${info.beamngBuild ?? '?'}`)
       // Greet back. Phase 1 has no real session yet — Phase 2+ will fill this
-      // in with sessionId/peerId/role/seq cursor.
-      bridge.greet({ phase: 1, cmTs: Date.now() })
+      // in with sessionId/peerId/role/seq cursor. Tier 4 feature flags are
+      // included here so Lua knows which reflective / snapshot / mod-inventory
+      // / terrain-forest code paths are enabled for this session.
+      bridge.greet({
+        phase: 1,
+        cmTs: Date.now(),
+        tier4Flags: this.getTier4Flags(),
+      })
     })
     bridge.on('disconnect', () => {
       this.editorBridgeReady = false
@@ -5536,6 +6730,18 @@ export class GameLauncherService {
   sendEditorRemoteBrush(brush: unknown): boolean {
     if (!this.editorBridge) return false
     this.editorBridge.sendRemoteBrush(brush)
+    return true
+  }
+
+  /**
+   * Tier 4 Phase 3: tell the joiner-side Lua to live-reload a set of newly
+   * staged mods via `core_modmanager.workOffChangedMod`. Fire-and-forget;
+   * Lua surfaces success/failure via the editorsync_modreload.json signal
+   * file (caller polls that to decide whether to prompt for restart).
+   */
+  sendEditorModReload(mods: Array<{ key: string; fullpath: string }>): boolean {
+    if (!this.editorBridge) return false
+    this.editorBridge.sendModReload({ mods })
     return true
   }
 

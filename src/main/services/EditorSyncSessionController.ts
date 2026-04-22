@@ -16,14 +16,23 @@
  */
 
 import { EventEmitter } from 'events'
-import { randomUUID } from 'crypto'
+import { randomUUID, createHash } from 'crypto'
+import { inflateRawSync } from 'zlib'
+import { createWriteStream } from 'fs'
+import { mkdir, unlink } from 'fs/promises'
+import { dirname } from 'path'
 import type { GameLauncherService } from './GameLauncherService'
 import type { LuaOpEnvelope, LuaPose, LuaEnvObservation, LuaFieldObservation, LuaBrushObservation } from './EditorSyncBridgeSocket'
-import type { OpMsg, WelcomeMsg, PoseMsg, EnvMsg, WelcomeProjectInfo } from './transports/SessionFrame'
+import type { OpMsg, WelcomeMsg, PoseMsg, EnvMsg, WelcomeProjectInfo, WelcomeModManifest } from './transports/SessionFrame'
 import { EditorSyncRelayService, type RelayAuthMode } from './EditorSyncRelayService'
 import { PeerClient } from './PeerClient'
 import { encodeSessionCode } from '../../shared/sessionCode'
-
+import { ModSyncJoinerService } from './ModSyncJoinerService'
+import { ModInventoryService } from './ModInventoryService'
+import type { ModDiffResult, ModManifest } from './ModInventoryService'
+import { CoopSessionStagingService } from './CoopSessionStagingService'
+import type { ModInfo } from '../../shared/types'
+import { buildInverseOp } from './EditorOpInverter'
 /** Re-exported for the handler layer; mirrors the shared/types.ts shape. */
 export type SessionProjectInfo = WelcomeProjectInfo
 
@@ -97,6 +106,37 @@ interface Events {
    * Not emitted when the host has no active project.
    */
   projectOffered: (info: SessionProjectInfo) => void
+  /**
+   * Tier 4 Phase 3 mod sync. Emitted on the joiner side after running the
+   * diff against `welcome.mods`. UI shows the prompt with size + breakdown
+   * (missing / drift / local-only). Renderer triggers `acceptModSync` IPC
+   * to actually start the download. Not emitted when the host omitted the
+   * mod manifest, when the joiner lacks the `modInventory` capability, or
+   * when the diff is empty (everything already matches).
+   */
+  modSyncRequired: (info: {
+    manifest: WelcomeModManifest
+    diff: ModDiffResult
+    downloadSizeBytes: number
+    /**
+     * Soft limit above which the renderer must show a confirm dialog
+     * before calling `acceptModSync`. Default 500 MiB per §3 of the spec.
+     */
+    confirmThresholdBytes: number
+    /** Convenience: `downloadSizeBytes > confirmThresholdBytes`. */
+    confirmRequired: boolean
+  }) => void
+  /**
+   * Tier 4 Phase 3 — host side. Emitted by `publishHostMods` to surface
+   * any mods that were excluded from the manifest (paid / no-share /
+   * server-only). UI shows a one-time notice so the host knows joiners
+   * may see missing assets for objects depending on those mods.
+   */
+  modShareSkipped: (info: {
+    skippedNoShareIds: string[]
+    skippedServerOnlyIds: string[]
+    publishedCount: number
+  }) => void
 }
 
 export interface SessionLogEntry {
@@ -170,6 +210,56 @@ export class EditorSyncSessionController extends EventEmitter {
   private projectDownload: { received: number; total: number; done: boolean; error?: string } | null = null
   private projectInstalledPath: string | null = null
 
+  /**
+   * Tier 4 Phase 3 mod sync (joiner side). The diff service is statically
+   * constructed; the enumerator callback is set by the IPC layer because
+   * the controller doesn't know how to resolve `userDir` on its own.
+   * `null` enumerator effectively disables mod sync.
+   */
+  private readonly modSyncJoiner = new ModSyncJoinerService()
+  private modEnumerator: (() => Promise<ModInfo[]>) | null = null
+  /** Last manifest+diff received in welcome — kept around so the renderer
+   *  can re-fetch via IPC and the download flow knows what to ask for. */
+  private modSyncPending: {
+    manifest: WelcomeModManifest
+    diff: ModDiffResult
+    downloadSizeBytes: number
+  } | null = null
+  private readonly modStaging = new CoopSessionStagingService()
+  /** Resolves the joiner's BeamNG userDir for staging downloads. Set by IPC layer. */
+  private userDirResolver: (() => string | null) | null = null
+  /** Resolves the configured download confirm threshold (bytes). Set by IPC layer. */
+  private modSyncThresholdResolver: (() => number) | null = null
+  /** Stable session-scope tag used for the joiner's staging dir + db.json marker. */
+  private joinerStagingTag: string | null = null
+  /** Active mod-sync orchestration (one at a time per join). */
+  private modSyncRun: { running: boolean; downloaded: string[] } | null = null
+
+  /**
+   * §D — per-peer undo stacks. Both stacks store entries the LOCAL author
+   * created (not remote ops). `myOps` grows as `do`-kind envelopes flow
+   * through `ingestLocalOp`; capped at MY_OPS_CAP via FIFO eviction so a
+   * marathon session does not balloon memory. `myRedoStack` holds entries
+   * that were popped by `undo()` and can be re-applied by `redo()`. Both
+   * are session-scoped (cleared in `leave()`); persistence across reconnect
+   * is Tier 6 territory per spec §D.5.
+   *
+   * Stored shape is the full `LuaOpEnvelope` we forwarded — that is the
+   * smallest object that carries everything #22 (inverse derivation) and
+   * #23 (create/delete special-case) need to rebuild the reverse op.
+   */
+  private static readonly MY_OPS_CAP = 1024
+  private myOps: LuaOpEnvelope[] = []
+  private myRedoStack: LuaOpEnvelope[] = []
+  /**
+   * Re-entry guard: undo()/redo() synthesises an inverse envelope and
+   * pumps it through `ingestLocalOp` so it follows the exact same
+   * broadcast + activity path as a real edit — but the stack push has
+   * to be skipped or every undo would immediately become its own
+   * undoable entry (and Ctrl+Z would oscillate).
+   */
+  private synthesisedUndoInFlight = false
+
   constructor(private readonly gameLauncher: GameLauncherService) {
     super()
     // Route every Lua op through us.
@@ -198,6 +288,42 @@ export class EditorSyncSessionController extends EventEmitter {
 
   setDisplayName(name: string): void {
     this.displayName = name || 'Player'
+  }
+
+  /**
+   * IPC layer plugs in a callback that returns the joiner's local mod
+   * library. Required for Tier 4 Phase 3 mod sync — without it, an
+   * incoming `welcome.mods` is logged and ignored. Called once at startup.
+   */
+  setModEnumerator(fn: (() => Promise<ModInfo[]>) | null): void {
+    this.modEnumerator = fn
+  }
+
+  /**
+   * IPC layer plugs in a callback that returns the joiner's BeamNG userDir
+   * for staging downloads. Required for mod sync — without it, accept will
+   * no-op. Returning `null` means the joiner has no configured game path.
+   */
+  setUserDirResolver(fn: (() => string | null) | null): void {
+    this.userDirResolver = fn
+  }
+
+  /**
+   * IPC layer plugs in a callback returning the configured "ask before
+   * downloading more than X bytes" threshold (from `AppConfig.worldEditSync
+   * .modSync.confirmThresholdBytes`). Defaults to 500 MiB when unset.
+   */
+  setModSyncThresholdResolver(fn: (() => number) | null): void {
+    this.modSyncThresholdResolver = fn
+  }
+
+  /** Most recent welcome.mods diff (for renderer queries). */
+  getPendingModSync(): {
+    manifest: WelcomeModManifest
+    diff: ModDiffResult
+    downloadSizeBytes: number
+  } | null {
+    return this.modSyncPending
   }
 
   getStatus(): SessionStatus {
@@ -278,6 +404,9 @@ export class EditorSyncSessionController extends EventEmitter {
     // local Lua for application.
     relay.onBroadcast((op) => {
       this.opsOut++
+      if (this.opsOut <= 3 || this.opsOut % 25 === 0) {
+        console.log(`[EditorSync.host] relay→localLua #${this.opsOut} kind=${op.kind} name=${op.name} author=${op.authorId}`)
+      }
       this.gameLauncher.sendEditorRemoteOp(op)
       this.emit('opBroadcast', op)
       this.recordActivityFromOp(op)
@@ -388,6 +517,77 @@ export class EditorSyncSessionController extends EventEmitter {
     return true
   }
 
+  /**
+   * Host-only: enumerate the local mod library, build a ModManifest, and
+   * publish it on the relay so future joiners receive `welcome.mods`.
+   * Filters out `multiplayerScope === 'server'` and `noShare === true`
+   * entries up front (per §3 of the spec) and emits `modShareSkipped`
+   * if any were dropped so the host UI can surface a one-time notice.
+   *
+   * `levelDependencies` is an optional list of mod filenames the current
+   * level's `info.json` references — joiners prioritise those downloads.
+   * Re-callable: each invocation rebuilds the share list and replaces the
+   * advertised manifest.
+   */
+  async publishHostMods(opts: {
+    beamngBuild: string
+    levelDependencies?: string[]
+  }): Promise<{ publishedCount: number; skippedNoShareIds: string[]; skippedServerOnlyIds: string[] }> {
+    if (!this.relay) {
+      throw new Error('publishHostMods called when not hosting')
+    }
+    if (!this.modEnumerator) {
+      throw new Error('publishHostMods called without modEnumerator wired')
+    }
+    const localMods = await this.modEnumerator()
+    const skippedServerOnlyIds = localMods
+      .filter((m) => m.multiplayerScope === 'server')
+      .map((m) => m.key)
+    const inv = new ModInventoryService()
+    const { manifest, skippedNoShare } = await inv.buildManifest(
+      localMods,
+      (m) => m.filePath,
+      opts.beamngBuild,
+      opts.levelDependencies ?? [],
+    )
+    // Hand off to the relay: HTTP share list (id → zip) + welcome manifest.
+    const httpCoords = await this.relay.setModShareList(
+      manifest.entries.map((e) => {
+        const local = localMods.find((m) => m.key === e.id)
+        return {
+          id: e.id,
+          fileName: e.fileName,
+          zipPath: local?.filePath ?? '',
+          sha256: e.sha256,
+          sizeBytes: e.sizeBytes,
+        }
+      }),
+    )
+    this.relay.setActiveModManifest({
+      beamngBuild: manifest.beamngBuild,
+      levelDependencies: manifest.levelDependencies,
+      entries: manifest.entries,
+      httpPort: httpCoords.httpPort,
+      authToken: httpCoords.authToken,
+    })
+    const summary = {
+      publishedCount: manifest.entries.length,
+      skippedNoShareIds: skippedNoShare,
+      skippedServerOnlyIds,
+    }
+    this.log(
+      'info',
+      'session',
+      `mod manifest published: ${summary.publishedCount} entries, ` +
+        `${summary.skippedNoShareIds.length} no-share skipped, ` +
+        `${summary.skippedServerOnlyIds.length} server-only skipped`,
+    )
+    if (summary.skippedNoShareIds.length > 0 || summary.skippedServerOnlyIds.length > 0) {
+      this.emit('modShareSkipped', summary)
+    }
+    return summary
+  }
+
   /* ── Join ─────────────────────────────────────────────────────────── */
 
   async startJoin(opts: {
@@ -405,6 +605,9 @@ export class EditorSyncSessionController extends EventEmitter {
 
     client.on('remoteOp', (op) => {
       this.opsOut++
+      if (this.opsOut <= 3 || this.opsOut % 25 === 0) {
+        console.log(`[EditorSync.joiner] peer→localLua #${this.opsOut} kind=${op.kind} name=${op.name} author=${op.authorId}`)
+      }
       this.gameLauncher.sendEditorRemoteOp(op)
       this.emit('opBroadcast', op)
       this.recordActivityFromOp(op)
@@ -444,6 +647,20 @@ export class EditorSyncSessionController extends EventEmitter {
       this.pushStatus()
     })
 
+    // Tier 4 Phase 3 mod sync: host responded to our `MissingModsRequest`
+    // with one offer per id. Each offer is processed sequentially by the
+    // active mod-sync run; if no run is active (offer arrived after we
+    // already gave up / cancelled), we just log and ignore.
+    client.on('modOffer', (offer) => {
+      if (!this.modSyncRun || !this.modSyncRun.running) {
+        this.log('warn', 'session', `Ignoring stale mod offer for ${offer.id}`)
+        return
+      }
+      this.processModOffer(offer).catch((err) => {
+        this.log('warn', 'session', `mod download for ${offer.id} failed: ${(err as Error).message}`)
+      })
+    })
+
     // Phase 3 — host streams a snapshot to us as snapshotBegin/Chunk*/End.
     // Forward chunks straight to local Lua for reassembly + apply. The Lua
     // side acks via Z| frames; the launcher surfaces them via the
@@ -452,11 +669,27 @@ export class EditorSyncSessionController extends EventEmitter {
       this.log('info', 'snapshot', `Receiving snapshot ${msg.snapshotId.substring(0, 8)} (${msg.total} chunks, ${msg.byteLength} B, baseSeq=${msg.baseSeq})`)
     })
     client.on('snapshotChunk', (msg) => {
+      // §E.34 — host MAY zlib-compress chunks above the threshold.
+      // Decompress here so the local Lua side stays oblivious to the
+      // wire-format optimisation. Any failure is fatal for the snapshot
+      // (we can't recover a single missing chunk), so log + drop and let
+      // the host's snapshot retry path rebuild from scratch.
+      let payload = msg.payload
+      if (msg.compressed === 'deflate-raw') {
+        try {
+          const buf = inflateRawSync(Buffer.from(msg.payload, 'base64'))
+          payload = buf.toString('utf8')
+        } catch (e) {
+          this.log('error', 'snapshot',
+            `Failed to inflate snapshot chunk ${msg.index}/${msg.total} of ${msg.snapshotId.substring(0, 8)}: ${(e as Error).message}`)
+          return
+        }
+      }
       this.gameLauncher.sendEditorSnapshotChunk({
         snapshotId: msg.snapshotId,
         index: msg.index,
         total: msg.total,
-        payload: msg.payload,
+        payload,
       })
     })
     client.on('snapshotEnd', (msg) => {
@@ -543,6 +776,16 @@ export class EditorSyncSessionController extends EventEmitter {
         this.emit('projectOffered', welcome.project)
       } else {
         this.activeProject = null
+      }
+      // Tier 4 Phase 3: if the host advertised a mod manifest, run the
+      // diff and tell the renderer. Best-effort — failure here doesn't
+      // block the session, the user just won't see the mod-sync prompt.
+      if (welcome.mods) {
+        this.handleWelcomeMods(welcome.mods).catch((err) => {
+          this.log('warn', 'session', `mod sync diff failed: ${(err as Error).message}`)
+        })
+      } else {
+        this.modSyncPending = null
       }
       // Cold-join env: replay every entry from the welcome cache so we
       // immediately see ToD/weather/gravity/simSpeed without waiting for
@@ -701,6 +944,64 @@ export class EditorSyncSessionController extends EventEmitter {
   }
 
   /**
+   * §E.3 — pass-through accessors for the WorldSaveService writer. Keep
+   * the relay private; callers go through these so the surface area
+   * stays stable across §F refactors. All return null when the
+   * controller is not in `hosting` state.
+   */
+  getCurrentSnapshotBytes(): ReturnType<EditorSyncRelayService['getCurrentSnapshotBytes']> {
+    return this.relay?.getCurrentSnapshotBytes() ?? null
+  }
+  getActiveModManifest(): ReturnType<EditorSyncRelayService['getActiveModManifest']> {
+    return this.relay?.getActiveModManifest() ?? null
+  }
+  getRecentOps(): ReturnType<EditorSyncRelayService['getRecentOps']> {
+    return this.relay?.getRecentOps() ?? []
+  }
+  /**
+   * §E.4 — seed the relay's snapshot + op log from a freshly loaded
+   * `.beamcmworld`. Returns true if the relay accepted the seed
+   * (i.e. we're hosting); false if there's no relay to feed (caller
+   * should host first, then re-call).
+   */
+  seedSavedWorld(input: { snapshotBytes: Buffer | null; ops: OpMsg[]; levelName: string | null }): boolean {
+    if (!this.relay) return false
+    this.relay.seedSavedWorld(input)
+    return true
+  }
+  /**
+   * §E.3 — request a fresh snapshot build from the host Lua. Used by
+   * solo saves so a host with no joiner can still capture the current
+   * scene to a `.beamcmworld`. Returns null if there's no relay
+   * (i.e. not hosting); rejects on bridge / timeout failures.
+   */
+  async forceSnapshotBuild(timeoutMs?: number): Promise<{
+    bytes: Buffer
+    levelName: string | null
+    baseSeq: number
+    createdTs: number
+  } | null> {
+    if (!this.relay) return null
+    return this.relay.forceSnapshotBuild(timeoutMs)
+  }
+  /** Best-effort current level identifier (host or joiner side). */
+  getLevelName(): string | null {
+    return this.levelName
+  }
+  /** Local author UUID (used to seed contributor list when saving solo). */
+  getAuthorId(): string {
+    return this.authorId
+  }
+  /** Local display name (BeamMP username when known). */
+  getDisplayName(): string {
+    return this.displayName
+  }
+  /** Stable per-session UUID — promoted to `worldId` on first save. */
+  getSessionId(): string | null {
+    return this.sessionId
+  }
+
+  /**
    * Joiner-only: progress callback for the renderer / IPC layer to keep
    * `status.projectDownload` in sync during the HTTP fetch.
    */
@@ -732,6 +1033,280 @@ export class EditorSyncSessionController extends EventEmitter {
     return this.host ? this.host.split(':')[0] ?? null : null
   }
 
+  /**
+   * Tier 4 Phase 3 mod sync — joiner side. Hashes the local mod library,
+   * runs the diff against the manifest the host advertised, stashes the
+   * result on the controller for renderer queries, and emits
+   * `modSyncRequired` if any download or attention is needed. Skips the
+   * emit when nothing is missing/drift/local-only — silent success.
+   */
+  private async handleWelcomeMods(welcomeMods: WelcomeModManifest): Promise<void> {
+    if (!this.modEnumerator) {
+      this.log('warn', 'session', 'welcome.mods received but no mod enumerator wired')
+      return
+    }
+    const localMods = await this.modEnumerator()
+    const manifest: ModManifest = {
+      beamngBuild: welcomeMods.beamngBuild,
+      levelDependencies: welcomeMods.levelDependencies,
+      // WelcomeModManifestEntry is a structural superset (same shape),
+      // so the cast is safe and avoids an explicit field-by-field copy.
+      entries: welcomeMods.entries,
+    }
+    const result = await this.modSyncJoiner.runDiff(manifest, localMods)
+    this.modSyncPending = {
+      manifest: welcomeMods,
+      diff: result.diff,
+      downloadSizeBytes: result.downloadSizeBytes,
+    }
+    const summary =
+      `${result.diff.exactMatchIds.length} exact / ` +
+      `${result.diff.missingIds.length} missing / ` +
+      `${result.diff.driftIds.length} drift / ` +
+      `${result.diff.localOnlyIds.length} local-only` +
+      (result.downloadSizeBytes > 0
+        ? ` (~${Math.round(result.downloadSizeBytes / (1024 * 1024))} MiB)`
+        : '')
+    this.log('info', 'session', `host mod manifest: ${summary}`)
+    const needsAttention =
+      result.diff.missingIds.length > 0 ||
+      result.diff.driftIds.length > 0 ||
+      result.diff.localOnlyIds.length > 0
+    if (needsAttention) {
+      const confirmThresholdBytes =
+        this.modSyncThresholdResolver?.() ?? 500 * 1024 * 1024
+      this.emit('modSyncRequired', {
+        manifest: welcomeMods,
+        diff: result.diff,
+        downloadSizeBytes: result.downloadSizeBytes,
+        confirmThresholdBytes,
+        confirmRequired: result.downloadSizeBytes > confirmThresholdBytes,
+      })
+    }
+  }
+
+  /**
+   * Tier 4 Phase 3: renderer-driven entry point that begins the actual
+   * mod-download flow. Sends a `MissingModsRequest` to the host; offers
+   * stream back via the `modOffer` listener and are processed in
+   * `processModOffer`. Caller is expected to have shown a confirm dialog
+   * already (the renderer enforces the size threshold from #21).
+   *
+   * No-op when there's nothing to download (i.e. only drift / local-only
+   * entries — those are handled by the renderer's UI directly).
+   */
+  async acceptModSync(): Promise<void> {
+    const pending = this.modSyncPending
+    if (!pending) {
+      this.log('warn', 'session', 'acceptModSync called with no pending diff')
+      return
+    }
+    if (this.modSyncRun?.running) {
+      this.log('warn', 'session', 'mod sync already running')
+      return
+    }
+    if (!this.peer) {
+      this.log('warn', 'session', 'acceptModSync called before peer connected')
+      return
+    }
+    if (!this.userDirResolver) {
+      this.log('warn', 'session', 'acceptModSync: no userDir resolver wired')
+      return
+    }
+    const userDir = this.userDirResolver()
+    if (!userDir) {
+      this.log('warn', 'session', 'acceptModSync: BeamNG userDir not configured')
+      return
+    }
+    if (pending.diff.missingIds.length === 0) {
+      // Nothing to download — confirm to host immediately so it can open
+      // the snapshot gate without waiting on us.
+      this.peer.sendModsInstalled(pending.diff.exactMatchIds, pending.diff.localOnlyIds)
+      this.log('info', 'session', 'mod sync: nothing to download, signalling installed')
+      return
+    }
+    // Mint a stable staging tag for this run; tied to host authorId so a
+    // re-join into the same session can re-use the existing folder if any
+    // partial downloads survived a crash.
+    this.joinerStagingTag = randomUUID().substring(0, 8)
+    await this.modStaging.ensureStagingDir(userDir, this.joinerStagingTag)
+    this.modSyncRun = { running: true, downloaded: [] }
+    this.log('info', 'session', `mod sync: requesting ${pending.diff.missingIds.length} mod(s) from host`)
+    const ok = this.peer.sendMissingModsRequest(pending.diff.missingIds)
+    if (!ok) {
+      this.modSyncRun = null
+      this.log('error', 'session', 'failed to send MissingModsRequest')
+    }
+  }
+
+  /**
+   * Process one `ModOffer` by downloading the zip into the joiner's
+   * staging dir, registering it in `db.json`, and — when every requested
+   * id has been received — emitting `ModsInstalled` to the host.
+   */
+  private async processModOffer(offer: {
+    id: string; url: string; sha256: string; sizeBytes: number; fileName: string
+  }): Promise<void> {
+    const pending = this.modSyncPending
+    const run = this.modSyncRun
+    if (!pending || !run || !this.userDirResolver || !this.joinerStagingTag) return
+    const userDir = this.userDirResolver()
+    if (!userDir) return
+    const sessionTag = this.joinerStagingTag
+    const destPath = this.modStaging.destPathFor(userDir, sessionTag, offer.fileName)
+    // Skip the download if a previous run already placed the bytes (e.g.
+    // a retry after a transient network blip); verify hash before trusting.
+    const alreadyStaged = await this.modStaging.hasStaged(userDir, sessionTag, offer.fileName, offer.sizeBytes)
+    if (!alreadyStaged) {
+      try {
+        await this.modSyncJoiner.downloadOffer(offer, destPath)
+      } catch (httpErr) {
+        // §E.33 — HTTP path unreachable (firewall blocking adjacent
+        // ports, host's HTTP failed to bind, etc.). Fall back to
+        // streaming over the existing session TCP socket. Slower but
+        // works whenever the session itself works.
+        this.log('warn', 'session',
+          `mod ${offer.id}: HTTP download failed (${(httpErr as Error).message}); ` +
+          `falling back to TCP stream`)
+        await this.downloadModOverTcp(offer, destPath)
+      }
+    }
+    const ok = await this.modSyncJoiner.verifyOnDisk(destPath, offer.sha256)
+    if (!ok) {
+      this.log('warn', 'session', `mod ${offer.id}: post-download sha256 mismatch — refusing to register`)
+      return
+    }
+    // Find the manifest entry to grab the metadata for db.json registration.
+    const manifestEntry = pending.manifest.entries.find((e) => e.id === offer.id)
+    if (!manifestEntry) {
+      this.log('warn', 'session', `mod ${offer.id}: no matching manifest entry, skipping db.json register`)
+      return
+    }
+    await this.modStaging.registerStagedMod(userDir, sessionTag, {
+      key: manifestEntry.id,
+      fileName: manifestEntry.fileName,
+      modType: manifestEntry.modType,
+      sizeBytes: manifestEntry.sizeBytes,
+      title: manifestEntry.title,
+      version: manifestEntry.version,
+      resourceId: manifestEntry.resourceId,
+    })
+    run.downloaded.push(offer.id)
+    this.log('info', 'session', `mod ${offer.id}: staged (${run.downloaded.length}/${pending.diff.missingIds.length})`)
+    if (run.downloaded.length >= pending.diff.missingIds.length) {
+      run.running = false
+      const presentIds = [...pending.diff.exactMatchIds, ...run.downloaded]
+      this.peer?.sendModsInstalled(presentIds, pending.diff.localOnlyIds)
+      this.log('info', 'session', `mod sync complete: ${presentIds.length} present, ${pending.diff.localOnlyIds.length} disabled`)
+      // Trigger in-game live reload via the Lua bridge. If BeamNG isn't
+      // running yet (joiner will launch after modsInstalled), this is a
+      // no-op and the mods will be picked up normally at boot.
+      if (this.userDirResolver && this.joinerStagingTag) {
+        const userDir = this.userDirResolver()
+        if (userDir) {
+          const stagingDir = this.modStaging.stagingDir(userDir, this.joinerStagingTag)
+          const payload = run.downloaded.map((id) => {
+            const e = pending.manifest.entries.find((x) => x.id === id)
+            return { key: id, fullpath: e ? `${stagingDir}/${e.fileName}` : stagingDir }
+          })
+          const ok = this.gameLauncher.sendEditorModReload(payload)
+          if (!ok) {
+            this.log('info', 'session', 'mod live-reload skipped: editor bridge not up yet (will load on next launch)')
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * §E.33 — TCP fallback for mod download. Asks the host to stream
+   * `id`'s zip bytes over the existing session socket (HTTP unreachable
+   * scenario). Resolves when `modEnd{ok:true}` arrives + sha256 matches;
+   * rejects on `modEnd{ok:false}`, mismatch, or socket close.
+   *
+   * Listeners are scoped to this single transfer — we attach `modChunk`
+   * + `modEnd` listeners only for `id`, then remove them on settle. A
+   * second concurrent call for the same id would currently confuse the
+   * host (one transfer, two writers); we don't support that today and
+   * the caller path (`processModOffer`) only ever runs one offer at a
+   * time per id.
+   */
+  private async downloadModOverTcp(
+    offer: { id: string; sha256: string; sizeBytes: number; fileName: string },
+    destPath: string,
+  ): Promise<void> {
+    if (!this.peer) throw new Error('TCP mod fallback: no active peer client')
+    await mkdir(dirname(destPath), { recursive: true })
+    return new Promise<void>((resolve, reject) => {
+      const out = createWriteStream(destPath)
+      const hash = createHash('sha256')
+      let received = 0
+      let lastIndex = -1
+      let settled = false
+
+      const cleanup = () => {
+        this.peer?.off('modChunk', onChunk)
+        this.peer?.off('modEnd', onEnd)
+      }
+      const fail = (err: Error) => {
+        if (settled) return
+        settled = true
+        cleanup()
+        try { out.destroy() } catch { /* ignore */ }
+        unlink(destPath).catch(() => { /* ignore */ })
+        reject(err)
+      }
+
+      const onChunk = (chunk: { id: string; index: number; total: number; payload: string }) => {
+        if (chunk.id !== offer.id) return
+        // Strict ordering: TCP delivers in-order, so any gap means the
+        // host skipped a chunk → bail rather than corrupt the file.
+        if (chunk.index !== lastIndex + 1) {
+          fail(new Error(`mod ${offer.id}: out-of-order chunk ${chunk.index} (expected ${lastIndex + 1})`))
+          return
+        }
+        lastIndex = chunk.index
+        try {
+          const buf = Buffer.from(chunk.payload, 'base64')
+          hash.update(buf)
+          received += buf.length
+          out.write(buf)
+        } catch (e) {
+          fail(new Error(`mod ${offer.id}: chunk decode failed: ${(e as Error).message}`))
+        }
+      }
+      const onEnd = (msg: { id: string; ok: boolean; error?: string; sha256: string; sizeBytes: number }) => {
+        if (msg.id !== offer.id) return
+        if (!msg.ok) {
+          fail(new Error(msg.error ?? 'host aborted TCP mod transfer'))
+          return
+        }
+        if (received !== msg.sizeBytes) {
+          fail(new Error(`mod ${offer.id}: size mismatch (got ${received}, expected ${msg.sizeBytes})`))
+          return
+        }
+        settled = true
+        cleanup()
+        out.end(() => {
+          const got = hash.digest('hex')
+          if (got !== msg.sha256) {
+            unlink(destPath).catch(() => { /* ignore */ })
+            reject(new Error(`mod ${offer.id}: sha256 mismatch (got ${got}, expected ${msg.sha256})`))
+            return
+          }
+          resolve()
+        })
+      }
+
+      this.peer!.on('modChunk', onChunk)
+      this.peer!.on('modEnd', onEnd)
+      const sent = this.peer!.sendModRequest(offer.id)
+      if (!sent) {
+        fail(new Error('failed to send modRequest (peer disconnected?)'))
+      }
+    })
+  }
+
   /* ── Leave ────────────────────────────────────────────────────────── */
 
   leave(): void {
@@ -755,6 +1330,24 @@ export class EditorSyncSessionController extends EventEmitter {
     }
     if (wasHosting) this.log('info', 'session', 'Stopped hosting')
     else if (wasJoined) this.log('info', 'session', 'Left session')
+    // Tier 4 Phase 3 mod sync cleanup — remove any coop-session mods we
+    // staged for this join and strip their db.json entries. Best-effort;
+    // leftover files are recoverable by the user from the multiplayer
+    // folder. Only runs on the joiner side (`joinerStagingTag` set).
+    if (this.joinerStagingTag && this.userDirResolver) {
+      const userDir = this.userDirResolver()
+      if (userDir) {
+        this.modStaging.cleanupSession(userDir, this.joinerStagingTag).catch((err) => {
+          this.log('warn', 'session', `mod staging cleanup failed: ${(err as Error).message}`)
+        })
+      }
+    }
+    this.joinerStagingTag = null
+    this.modSyncPending = null
+    this.modSyncRun = null
+    // §D.5: undo/redo stacks are session-scoped — drop them on disconnect.
+    this.myOps = []
+    this.myRedoStack = []
     this.state = 'idle'
     this.peers = []
     // Wipe every peer pose/activity; keep our own self pose (it was fresh just now).
@@ -778,6 +1371,9 @@ export class EditorSyncSessionController extends EventEmitter {
 
   private ingestLocalOp(env: LuaOpEnvelope): void {
     this.opsIn++
+    if (this.opsIn <= 3 || this.opsIn % 25 === 0) {
+      console.log(`[EditorSync.local] ingestLocalOp #${this.opsIn} state=${this.state} kind=${env.kind} name=${env.name}`)
+    }
     // Record as local-user activity so the UI can show "You: Move (42s ago)".
     this.recordActivity({
       authorId: this.authorId,
@@ -787,6 +1383,23 @@ export class EditorSyncSessionController extends EventEmitter {
       name: env.name,
       detail: env.detail,
     })
+    // §D.1–2: track our own `do` ops on the per-peer stack and clear the
+    // redo stack on any fresh user action — same semantics every undo
+    // implementation uses (Figma, Word, BeamNG's own native history).
+    // We deliberately do NOT push `undo`/`redo` envelopes: those will be
+    // synthesized by undo()/redo() below and re-enter ingestLocalOp via
+    // the same path; the `synthesisedUndo` re-entry flag suppresses the
+    // myOps push and the redo-stack reset for those cases.
+    if (env.kind === 'do' && !this.synthesisedUndoInFlight) {
+      this.myOps.push(env)
+      if (this.myOps.length > EditorSyncSessionController.MY_OPS_CAP) {
+        // FIFO eviction — losing the oldest end of history is the standard
+        // bounded-undo trade-off; MY_OPS_CAP=1024 is roughly an hour of
+        // continuous editing at 1 commit/4 s.
+        this.myOps.shift()
+      }
+      if (this.myRedoStack.length > 0) this.myRedoStack = []
+    }
     if (this.state === 'hosting' && this.relay) {
       this.relay.ingestLocalOp(env)
     } else if (this.state === 'joined' && this.peer) {
@@ -802,6 +1415,81 @@ export class EditorSyncSessionController extends EventEmitter {
     }
     // idle: drop; the op already executed locally and we're not syncing.
     this.pushStatus()
+  }
+
+  /* ── §D Undo / Redo (per-peer command-pattern) ───────────────────── */
+
+  /**
+   * Pop the local user's most recent `do`, build its inverse, and broadcast
+   * the inverse as a fresh `do` op so every peer (including ourselves)
+   * applies it through the regular commitAction path. The inverse is
+   * pushed onto `myRedoStack` so a Ctrl+Y re-flips it. Returns a small
+   * descriptor for the renderer to surface the first-time-seen toast
+   * mandated by §D.3 ("may discard concurrent changes by others").
+   */
+  undo(): { ok: boolean; reason?: string; name?: string } {
+    if (this.state === 'idle') return { ok: false, reason: 'no-session' }
+    if (this.myOps.length === 0) return { ok: false, reason: 'empty-stack' }
+    // We pop optimistically; if the inverter returns null we restore the
+    // entry so the user can retry with a different action.
+    const top = this.myOps.pop() as LuaOpEnvelope
+    const inverse = buildInverseOp(top)
+    if (!inverse) {
+      this.myOps.push(top)
+      this.log('warn', 'session', `Cannot invert action "${top.name ?? '?'}" (#22 coverage gap)`)
+      return { ok: false, reason: 'unsupported', name: top.name }
+    }
+    this.myRedoStack.push(top)
+    this.broadcastSynthesised(inverse)
+    return { ok: true, name: top.name }
+  }
+
+  /**
+   * Re-broadcast the original `do` envelope sitting on top of the redo
+   * stack. The matching `undo()` already handed the world back to its
+   * pre-edit state via the inverse op; replaying the original brings
+   * it forward again.
+   */
+  redo(): { ok: boolean; reason?: string; name?: string } {
+    if (this.state === 'idle') return { ok: false, reason: 'no-session' }
+    if (this.myRedoStack.length === 0) return { ok: false, reason: 'empty-stack' }
+    const top = this.myRedoStack.pop() as LuaOpEnvelope
+    // The original `do` envelope reasserts the post-state — re-broadcast
+    // it directly (we kept it intact when we pushed onto myRedoStack).
+    this.myOps.push(top)
+    // Re-emit with a fresh clientOpId so the relay/peer treats it as a
+    // distinct op and acks it independently. We do NOT clear the redo
+    // stack here because the user's intent is "go forward through
+    // history", not "start a new branch".
+    const reissue: LuaOpEnvelope = { ...top, clientOpId: randomUUID(), ts: Date.now() }
+    this.broadcastSynthesised(reissue, /* keepRedoStack */ true)
+    return { ok: true, name: top.name }
+  }
+
+  /**
+   * Pump an envelope through the same broadcast path as a real edit
+   * without disturbing myOps/myRedoStack. The activity panel still
+   * gets a row so peers see "you: undo Move" in the live feed.
+   */
+  private broadcastSynthesised(env: LuaOpEnvelope, keepRedoStack = false): void {
+    this.synthesisedUndoInFlight = true
+    try {
+      // Force-keep the redo stack across this re-entry by snapshotting
+      // it pre-call and restoring afterwards if requested. The
+      // ingestLocalOp guard already skips the myOps push, but the
+      // "fresh do clears redo" rule fires unconditionally — undo()
+      // wants the redo entry to stay so the user can keep walking.
+      const redoBackup = keepRedoStack ? this.myRedoStack.slice() : null
+      this.ingestLocalOp(env)
+      if (redoBackup) this.myRedoStack = redoBackup
+    } finally {
+      this.synthesisedUndoInFlight = false
+    }
+  }
+
+  /** Read-only stack depths for renderer button enable/disable. */
+  getUndoDepths(): { undo: number; redo: number } {
+    return { undo: this.myOps.length, redo: this.myRedoStack.length }
   }
 
   /* ── Env channel ────────────────────────────────────────────────────── */

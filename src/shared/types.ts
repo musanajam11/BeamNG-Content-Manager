@@ -112,6 +112,45 @@ export interface AppConfig {
   renderer: 'ask' | 'dx11' | 'vulkan'
   /** Voice chat settings */
   voiceChat: VoiceChatSettings
+  /** World Editor Sync (collaborative world editing) settings */
+  worldEditSync: WorldEditSyncSettings
+}
+
+/**
+ * World Editor Sync settings — collaborative world editing over TCP relay.
+ *
+ * Tier 4 flags are independent phase toggles (see
+ * Docs/WORLD-EDITOR-SYNC.md §Rollout). Default all false; when a flag
+ * is off the Tier 3 pathway is used for that channel. Hosts choose per
+ * session; joiners negotiate via the capability handshake (§A).
+ */
+export interface WorldEditSyncSettings {
+  /**
+   * Phase 5 master switch. When `false`, the World Editor Sync UI page
+   * is still reachable but `Host` / `Join` buttons short-circuit to a
+   * "feature disabled" notice and no Lua extension files are deployed.
+   * Default `true` once Phase 5 ships; older configs that predate the
+   * field are migrated to `true` on first load (see ConfigService).
+   */
+  enabled: boolean
+  tier4: {
+    /** Phase 1 — full reflective field capture (getFieldList) replacing TRACKED_FIELDS */
+    reflectiveFields: boolean
+    /** Phase 2 — full scenetree snapshot (authoritative baseline) */
+    fullSnapshot: boolean
+    /** Phase 3 — mod-inventory handshake + on-demand mod shipment */
+    modInventory: boolean
+    /** Phase 4 — terrain heightmap + forest instance baseline */
+    terrainForest: boolean
+  }
+  /**
+   * Tier 4 Phase 3 mod sync. Joiner shows a confirm dialog before any
+   * download larger than this threshold (per §3 of the spec). Default
+   * 500 MiB; users can lower to 0 to always confirm.
+   */
+  modSync: {
+    confirmThresholdBytes: number
+  }
 }
 
 export interface ServerInfo {
@@ -178,6 +217,13 @@ export interface ModInfo {
   loadOrder: number | null
   /** Actual directory name under levels/ inside the zip (for terrain mods) */
   levelDir: string | null
+  /**
+   * Tier 4 Phase 3 coop mod sharing: if true, this mod is excluded from
+   * the `ModManifest` the host advertises to joiners (e.g. paid / closed-
+   * license assets). The host still uses it locally; joiners get a
+   * "missing mod" warning for any object referencing it.
+   */
+  noShare?: boolean
 }
 
 export interface VehicleInfo {

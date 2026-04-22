@@ -22,6 +22,8 @@ import {
   Undo2,
   Redo2,
   Save,
+  Package,
+  Download,
   Circle,
 } from 'lucide-react'
 import type { SessionStatus, SessionOp, PeerPoseEntry, PeerActivity, EditorProject, SessionProjectInfo } from '../../../shared/types'
@@ -399,23 +401,22 @@ export function WorldEditSessionPage(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status?.state, status?.bridgeReady, status?.levelName, status?.sessionId, status?.host, status?.port, hostProject])
 
-  /* ── Joiner: auto-download + auto-launch mirroring BeamMP's "download
-   *    required mods before joining" flow. When the host advertises a new
-   *    project (initial welcome or mid-session swap), we:
-   *      1) kick off the HTTP download immediately
-   *      2) once installed, relaunch BeamNG into the synced project so
-   *         both sides end up in the same level. */
+  /* ── Joiner: auto-download ONLY (no auto-launch).
+   *
+   *    We pre-fetch the host's project zip the moment it's advertised so
+   *    the user doesn't have to wait when they decide to jump in, but we
+   *    deliberately DO NOT spawn BeamNG for them — launching the game is
+   *    a heavy, user-initiated action (alt-tab, GPU spin-up, save state
+   *    interruption) and joiners hated having it happen behind their back.
+   *    They press "Launch into Editor" themselves when they're ready. */
   const autoDownloadedShaRef = useRef<string | null>(null)
-  const autoLaunchedShaRef = useRef<string | null>(null)
   useEffect(() => {
     if (!status || status.state !== 'joined') {
       autoDownloadedShaRef.current = null
-      autoLaunchedShaRef.current = null
       return
     }
     const offered = status.project
     if (!offered) return
-    // Step 1: download if we haven't already for this sha.
     const downloading = !!status.projectDownload && !status.projectDownload.done
     const downloadedForOffer = status.projectInstalledPath && !status.projectDownload?.error
     if (
@@ -430,23 +431,6 @@ export function WorldEditSessionPage(
             console.warn('[coop] auto-download failed:', res?.error)
             // allow retry
             autoDownloadedShaRef.current = null
-          }
-        })
-    }
-    // Step 2: once install finished for the current offer, launch BeamNG
-    // into the synced project level (once per sha).
-    if (
-      downloadedForOffer &&
-      status.projectInstalledPath &&
-      autoLaunchedShaRef.current !== offered.sha256
-    ) {
-      autoLaunchedShaRef.current = offered.sha256
-      const levelOverride = `_beamcm_projects/${offered.folder}`
-      void window.api.worldEditSessionLaunchIntoEditor?.({ levelOverride })
-        .then((res) => {
-          if (!res?.success) {
-            console.warn('[coop] auto-launch after install failed:', res?.error)
-            autoLaunchedShaRef.current = null
           }
         })
     }
@@ -719,7 +703,7 @@ export function WorldEditSessionPage(
         code,
         displayName: displayName.trim() || undefined,
       })
-      if (!res.success) setErr(res.error || 'join+launch failed')
+      if (!res.success) setErr(res.error || 'join failed')
     } catch (e) {
       setErr(String(e))
     } finally {
@@ -1454,7 +1438,7 @@ export function WorldEditSessionPage(
                   ) : (
                     <LogIn size={14} />
                   )}
-                  {isConnecting ? 'Connecting…' : 'Join & launch'}
+                  {isConnecting ? 'Connecting…' : 'Join session'}
                 </button>
               )}
               <button
@@ -1904,6 +1888,10 @@ function EditorActionBar({
 }): React.JSX.Element {
   const [busy, setBusy] = useState(false)
   const [flash, setFlash] = useState<{ msg: string; tone: 'ok' | 'err' } | null>(null)
+  // §D first-time toast: surface the "concurrent edits may be discarded"
+  // warning once per browser profile so users learn the semantics without
+  // being nagged. Stored in localStorage; cleared by hand if testing.
+  const [showFirstUndoToast, setShowFirstUndoToast] = useState(false)
 
   const send = useCallback(
     async (
@@ -1912,13 +1900,54 @@ function EditorActionBar({
     ): Promise<void> => {
       setBusy(true)
       try {
-        const res = await window.api.worldEditSignal?.(action)
-        if (!res) {
-          setFlash({ msg: 'IPC binding unavailable — restart CM', tone: 'err' })
-        } else if (!res.success) {
-          setFlash({ msg: res.error ?? `${label} failed`, tone: 'err' })
+        // §D undo/redo are CM-mediated cross-peer ops, not the BeamNG
+        // editor's local stack — route them to the dedicated handlers
+        // so the inverse op is broadcast and `myOps`/`myRedoStack` stay
+        // in sync. Save/start/stop still use the legacy editor signal.
+        if (action === 'undo') {
+          const r = await window.api.worldEditSessionUndo?.()
+          if (!r) {
+            setFlash({ msg: 'IPC binding unavailable — restart CM', tone: 'err' })
+          } else if (!r.ok) {
+            const msg =
+              r.reason === 'empty-stack'
+                ? 'Nothing to undo'
+                : r.reason === 'unsupported'
+                  ? `"${r.name ?? 'action'}" can't be undone yet`
+                  : r.reason === 'no-session'
+                    ? 'Not in a session'
+                    : `Undo failed (${r.reason ?? '?'})`
+            setFlash({ msg, tone: 'err' })
+          } else {
+            setFlash({ msg: `Undo${r.name ? ` ${r.name}` : ''} ✓`, tone: 'ok' })
+            // §D first-time toast (per spec: "Undo will revert your last
+            // edit and may discard concurrent changes by others.").
+            try {
+              if (window.localStorage.getItem('cm.editorSync.undoToastSeen') !== '1') {
+                setShowFirstUndoToast(true)
+                window.localStorage.setItem('cm.editorSync.undoToastSeen', '1')
+              }
+            } catch { /* private mode / quota — non-fatal */ }
+          }
+        } else if (action === 'redo') {
+          const r = await window.api.worldEditSessionRedo?.()
+          if (!r) {
+            setFlash({ msg: 'IPC binding unavailable — restart CM', tone: 'err' })
+          } else if (!r.ok) {
+            const msg = r.reason === 'empty-stack' ? 'Nothing to redo' : `Redo failed (${r.reason ?? '?'})`
+            setFlash({ msg, tone: 'err' })
+          } else {
+            setFlash({ msg: `Redo${r.name ? ` ${r.name}` : ''} ✓`, tone: 'ok' })
+          }
         } else {
-          setFlash({ msg: `${label} ✓`, tone: 'ok' })
+          const res = await window.api.worldEditSignal?.(action)
+          if (!res) {
+            setFlash({ msg: 'IPC binding unavailable — restart CM', tone: 'err' })
+          } else if (!res.success) {
+            setFlash({ msg: res.error ?? `${label} failed`, tone: 'err' })
+          } else {
+            setFlash({ msg: `${label} ✓`, tone: 'ok' })
+          }
         }
       } catch (e) {
         setFlash({ msg: String(e), tone: 'err' })
@@ -1970,6 +1999,64 @@ function EditorActionBar({
         <Save size={15} /> Save level
       </button>
 
+      {/* §E.3 — package the live runtime state into a portable
+          `.beamcmworld` file. Available regardless of `editorPresent`
+          so a host can re-save after the game has closed (data is
+          held in the relay's snapshot cache). */}
+      <button
+        onClick={async () => {
+          setBusy(true)
+          try {
+            const r = await window.api.worldSaveSave?.({ includeOpLog: false })
+            if (!r) {
+              setFlash({ msg: 'IPC binding unavailable — restart CM', tone: 'err' })
+            } else if (!r.success) {
+              if (!r.cancelled) setFlash({ msg: r.error ?? 'Save world failed', tone: 'err' })
+            } else {
+              const mb = (r.bytes / (1024 * 1024)).toFixed(1)
+              setFlash({ msg: `Saved "${r.title}" (${mb} MB) ✓`, tone: 'ok' })
+            }
+          } finally {
+            setBusy(false)
+            window.setTimeout(() => setFlash(null), 2400)
+          }
+        }}
+        disabled={busy}
+        title="Save the entire world (snapshot + mods) to a .beamcmworld file you can share"
+        className={`${btnBase} border-violet-500/40 bg-violet-500/10 text-violet-300 hover:bg-violet-500/20`}
+      >
+        <Package size={15} /> Save world…
+      </button>
+      <button
+        onClick={async () => {
+          setBusy(true)
+          try {
+            const r = await window.api.worldSaveLoad?.()
+            if (!r) {
+              setFlash({ msg: 'IPC binding unavailable — restart CM', tone: 'err' })
+            } else if (!r.success) {
+              if (!r.cancelled) setFlash({ msg: r.error ?? 'Load world failed', tone: 'err' })
+            } else {
+              const detail: string[] = [`${r.modCount} mod${r.modCount === 1 ? '' : 's'}`]
+              if (r.opLogCount > 0) detail.push(`${r.opLogCount} ops`)
+              if (r.seededIntoRelay) detail.push('seeded')
+              setFlash({
+                msg: `Loaded ${r.levelName} (${detail.join(', ')}) ✓`,
+                tone: 'ok',
+              })
+            }
+          } finally {
+            setBusy(false)
+            window.setTimeout(() => setFlash(null), 2400)
+          }
+        }}
+        disabled={busy}
+        title="Load a .beamcmworld file and stage its mods into the multiplayer slot"
+        className={`${btnBase} border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20`}
+      >
+        <Download size={15} /> Load world…
+      </button>
+
       <div className="ml-auto flex items-center gap-2 text-[11px]">
         {/* Capture indicator */}
         {capturing ? (
@@ -2010,6 +2097,27 @@ function EditorActionBar({
           </span>
         )}
       </div>
+      {/* §D first-time toast — explains the cross-peer undo trade-off. */}
+      {showFirstUndoToast && (
+        <div className="basis-full mt-2 flex items-start gap-2 px-3 py-2 rounded-md border border-amber-500/40 bg-amber-500/10 text-amber-200 text-[12px]">
+          <AlertCircle size={14} className="mt-0.5 shrink-0" />
+          <div className="flex-1">
+            <div className="font-medium">Heads-up: shared-world undo</div>
+            <div className="opacity-80">
+              Undo reverts your last edit and may discard concurrent changes by
+              other peers on the same field. Use the in-editor history
+              (Ctrl+Shift+Z) for a local-only undo.
+            </div>
+          </div>
+          <button
+            onClick={() => setShowFirstUndoToast(false)}
+            className="text-amber-200/70 hover:text-amber-100 px-1"
+            title="Got it"
+          >
+            ×
+          </button>
+        </div>
+      )}
     </div>
   )
 }

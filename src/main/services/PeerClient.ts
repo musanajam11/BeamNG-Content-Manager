@@ -19,11 +19,31 @@ import { createConnection, type Socket } from 'net'
 import { EventEmitter } from 'events'
 import { randomUUID } from 'crypto'
 import {
-  FrameDecoder, sendMessage,
+  FrameDecoder, sendMessage, setSocketCodec,
+  WIRE_PROTOCOL_VERSION,
   type SessionMessage, type OpMsg, type WelcomeMsg, type PoseMsg, type EnvMsg, type FieldMsg,
   type SnapshotBeginMsg, type SnapshotChunkMsg, type SnapshotEndMsg, type SnapshotAppliedMsg,
-  type BrushMsg, type WelcomeProjectInfo,
+  type BrushMsg, type WelcomeProjectInfo, type Tier4Capability,
+  type ModOfferMsg, type ModChunkMsg, type ModEndMsg,
 } from './transports/SessionFrame'
+
+/**
+ * Default Tier 4 capabilities advertised by this CM build. Joiners send these
+ * to the host so the host can accept / reject based on its `tier4Required`
+ * list. Since every recent CM supports every Tier 4 channel (behind flags),
+ * we advertise the full set and let the host decide.
+ *
+ * \u00a7E.32 \u2014 `'msgpack'` is purely an encoding optimisation; the host folds
+ * it into its `tier4Optional` list and switches the per-peer codec when
+ * both sides advertise it. JSON remains the wire-compatible fallback.
+ */
+const DEFAULT_TIER4_CAPABILITIES: Tier4Capability[] = [
+  'reflectiveFields',
+  'fullSnapshot',
+  'modInventory',
+  'terrainForest',
+  'msgpack',
+]
 
 export interface PeerClientConfig {
   host: string
@@ -34,6 +54,14 @@ export interface PeerClientConfig {
   authorId?: string
   /** If set, ask host to replay ops from this seq onward (late-join catchup). */
   fromSeq?: number
+  /**
+   * Tier 4 capabilities this joiner's CM supports. Sent in Hello so the host
+   * can reject early if it has incompatible `tier4Required` capabilities.
+   * Default: all four (this CM always supports everything it can speak).
+   */
+  tier4Capabilities?: Tier4Capability[]
+  /** CM version string — shown in logs and the update-required modal. */
+  cmVersion?: string
 }
 
 interface Events {
@@ -54,6 +82,12 @@ interface Events {
   remoteBrush: (brush: BrushMsg) => void
   /** Host pushed a new/updated project offer mid-session. */
   projectOffered: (info: WelcomeProjectInfo) => void
+  /** Tier 4 Phase 3: host responded to a `MissingModsRequest` with download coords. */
+  modOffer: (offer: ModOfferMsg) => void
+  /** §E.33: one slice of a TCP-fallback mod transfer (`sendModRequest`). */
+  modChunk: (chunk: ModChunkMsg) => void
+  /** §E.33: TCP-fallback mod transfer finished (success or error). */
+  modEnd: (msg: ModEndMsg) => void
   ack: (info: { clientOpId: string; seq: number; status: string }) => void
   peerLeft: (info: { authorId: string; reason?: string }) => void
   closed: (reason: string) => void
@@ -116,11 +150,13 @@ export class PeerClient extends EventEmitter {
         socket.setNoDelay(true)
         sendMessage(socket, {
           type: 'hello',
-          protocol: 1,
+          protocol: WIRE_PROTOCOL_VERSION,
           authorId: this.authorId,
           displayName: cfg.displayName,
           token: cfg.token,
           fromSeq: cfg.fromSeq,
+          tier4Capabilities: cfg.tier4Capabilities ?? DEFAULT_TIER4_CAPABILITIES,
+          cmVersion: cfg.cmVersion,
         })
         // TCP up — now we wait for the host to reply with a welcome frame.
         armTimer(WELCOME_TIMEOUT_MS, 'no welcome from host within 8s (token rejected? wrong port? host crashed?)')
@@ -136,6 +172,16 @@ export class PeerClient extends EventEmitter {
               this.hostAuthorId = msg.authorId
               this.authorId = msg.yourAuthorId
               this.lastSeq = msg.lastSeq
+              // §E.32 — if both sides agreed on `'msgpack'` (we always
+              // advertise it; host echoes via tier4Optional), switch
+              // our outbound encoder. Decoder auto-detects per frame.
+              const optSet = new Set(msg.tier4Optional ?? [])
+              const wantMsgpack =
+                (cfg.tier4Capabilities ?? DEFAULT_TIER4_CAPABILITIES).includes('msgpack') &&
+                optSet.has('msgpack')
+              if (wantMsgpack) {
+                setSocketCodec(socket, 'msgpack')
+              }
               settled = true
               if (phaseTimer) { clearTimeout(phaseTimer); phaseTimer = null }
               this.startPing()
@@ -256,6 +302,49 @@ export class PeerClient extends EventEmitter {
     return sendMessage(this.socket, msg)
   }
 
+  /**
+   * Tier 4 Phase 3: ask the host to provide download coordinates for the
+   * given manifest ids. Host responds with one `ModOffer` per id.
+   */
+  sendMissingModsRequest(ids: string[]): boolean {
+    if (!this.socket || !this.ready || ids.length === 0) return false
+    return sendMessage(this.socket, {
+      type: 'missingModsRequest',
+      authorId: this.authorId,
+      ids,
+    })
+  }
+
+  /**
+   * Tier 4 Phase 3: confirm to the host that we've downloaded + staged
+   * every mod we needed. Host uses this as the gate-open signal for the
+   * level-load + snapshot push.
+   */
+  sendModsInstalled(presentIds: string[], disabledIds: string[]): boolean {
+    if (!this.socket || !this.ready) return false
+    return sendMessage(this.socket, {
+      type: 'modsInstalled',
+      authorId: this.authorId,
+      presentIds,
+      disabledIds,
+    })
+  }
+
+  /**
+   * §E.33 — ask the host to stream mod bytes for `id` over the existing
+   * session TCP socket. Used as a fallback when the joiner can't reach
+   * the host's HTTP mod-share route (e.g. firewall blocks adjacent ports).
+   * Bytes arrive as `modChunk` events; the transfer ends with `modEnd`.
+   */
+  sendModRequest(id: string): boolean {
+    if (!this.socket || !this.ready) return false
+    return sendMessage(this.socket, {
+      type: 'modRequest',
+      authorId: this.authorId,
+      id,
+    })
+  }
+
   /** Phase 4: send one brush stroke frame to the host. */
   sendBrush(obs: {
     strokeId: string; brushType: string; kind: 'begin' | 'tick' | 'end'; payload: unknown; ts: number
@@ -302,6 +391,15 @@ export class PeerClient extends EventEmitter {
         return
       case 'projectOffer':
         this.emit('projectOffered', msg.project)
+        return
+      case 'modOffer':
+        this.emit('modOffer', msg)
+        return
+      case 'modChunk':
+        this.emit('modChunk', msg)
+        return
+      case 'modEnd':
+        this.emit('modEnd', msg)
         return
       case 'ack':
         this.emit('ack', { clientOpId: msg.clientOpId, seq: msg.seq, status: msg.status })

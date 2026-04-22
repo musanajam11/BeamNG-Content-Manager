@@ -21,6 +21,8 @@ import type {
   EditorSyncCaptureEntry,
 } from '../../../shared/types'
 import { WorldEditSessionPage } from './WorldEditSessionPage'
+import { WorldProjectConverterPanel } from '../components/WorldProjectConverterPanel'
+import { useAppStore } from '../stores/useAppStore'
 
 /**
  * Coop World Editor — unified surface.
@@ -59,6 +61,11 @@ function StatusPill({
 }
 
 export function WorldEditSyncPage(): React.JSX.Element {
+  // Phase 5 master switch — when off, the page renders a single notice
+  // and `Deploy extension` (the only side-effecting button reachable on
+  // the page itself) is disabled. Session host/join controls live in
+  // `WorldEditSessionPage` further down and consult the same flag.
+  const featureEnabled = useAppStore((s) => s.config?.worldEditSync?.enabled ?? true)
   const [deployed, setDeployed] = useState(false)
   const [deploying, setDeploying] = useState(false)
   const [signalBusy, setSignalBusy] = useState(false)
@@ -247,7 +254,7 @@ export function WorldEditSyncPage(): React.JSX.Element {
         </div>
         <button
           onClick={handleDeploy}
-          disabled={deploying}
+          disabled={deploying || !featureEnabled}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors border disabled:opacity-50 ${
             deployed
               ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border-red-500/30'
@@ -268,6 +275,12 @@ export function WorldEditSyncPage(): React.JSX.Element {
       {/* Body — session UI is the primary surface; bridge controls live
           in a collapsible "Diagnostics" section at the bottom. */}
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+        {!featureEnabled && (
+          <div className="px-4 py-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-sm">
+            World Editor Sync is disabled in Settings → General → World Editor Sync.
+            Enable it there to deploy the extension and host or join sessions.
+          </div>
+        )}
         {/* Flash / error banners (from bridge ops — capture toggle, save, etc.) */}
         {flash && (
           <div className="px-4 py-2 rounded-lg bg-green-500/10 border border-green-500/30 text-green-400 text-sm">
@@ -307,6 +320,23 @@ export function WorldEditSyncPage(): React.JSX.Element {
           bridgeHooked={hooked}
           bridgeCapturing={capturing}
         />
+
+        {/* §E.6 — Project ↔ World converter. Lives outside the
+            Diagnostics drawer because it's relevant even before the
+            extension is deployed (no live state needed). Folded into a
+            <details> block so the page stays visually quiet by default. */}
+        <details className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]/40 overflow-hidden">
+          <summary className="cursor-pointer select-none px-4 py-3 flex items-center gap-2 text-sm font-semibold hover:bg-[var(--color-surface-hover)]/50">
+            <Wrench size={14} className="text-[var(--color-text-muted)]" />
+            World file tools
+            <span className="ml-2 text-xs font-normal text-[var(--color-text-muted)]">
+              convert .beamcmworld ↔ project zip
+            </span>
+          </summary>
+          <div className="px-4 pb-4 pt-2 border-t border-[var(--color-border)]">
+            <WorldProjectConverterPanel />
+          </div>
+        </details>
 
         {/* Diagnostics & tools — power-user surface, collapsed by default.
             Holds the raw bridge controls (capture/replay/undo/save) and the

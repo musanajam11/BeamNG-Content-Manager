@@ -16,7 +16,8 @@ export class BackendApiService {
     if (!response.ok) {
       throw new Error(`Failed to fetch server list: ${response.status}`)
     }
-    return response.json()
+    const raw = await response.json() as ServerInfo[]
+    return raw
   }
 
   async login(username: string, password: string): Promise<AuthResult> {

@@ -35,6 +35,8 @@ import { LuaConsoleService, type LuaScope } from '../services/LuaConsoleService'
 import { BeamUIFilesService } from '../services/BeamUIFilesService'
 import { EditorSyncSessionController, type SessionStatus } from '../services/EditorSyncSessionController'
 import type { SessionProjectInfo } from '../services/EditorSyncSessionController'
+import { WorldSaveService } from '../services/WorldSaveService'
+import { convertProjectZipToWorld, convertWorldToProjectZip } from '../services/WorldProjectConverter'
 import { setPresence as setDiscordPresence } from '../services/DiscordRPCService'
 import { parseBeamNGJson } from '../utils/parseBeamNGJson'
 import { LRUCache } from '../utils/lruCache'
@@ -62,6 +64,7 @@ let luaConsoleService: LuaConsoleService
 let beamUIFilesService: BeamUIFilesService
 let careerSaveService: CareerSaveService
 let editorSession: EditorSyncSessionController
+let worldSaveService: WorldSaveService
 
 // ── Server ↔ career-save tracking state ──
 // On join we snapshot the most-recent lastSaved per deployed profile.
@@ -92,6 +95,9 @@ export function initializeServices(): {
     const cfg = configService.get()
     return cfg.useOfficialBackend ? 'https://auth.beammp.com' : cfg.authUrl
   })
+  launcherService.setWorldEditSyncTier4Resolver(() => {
+    return configService.get().worldEditSync.tier4
+  })
   configService = new ConfigService()
   backendService = new BackendApiService()
   modManagerService = new ModManagerService()
@@ -116,6 +122,23 @@ export function initializeServices(): {
   // World-editor collaborative session controller. Hooks into the
   // GameLauncher's editor bridge and exposes host/join/leave to the renderer.
   editorSession = new EditorSyncSessionController(launcherService)
+  // Tier 4 Phase 3: let the controller enumerate the joiner's local mod
+  // library when it needs to diff against `welcome.mods`. Resolves userDir
+  // lazily so a config change between sessions is picked up automatically.
+  editorSession.setModEnumerator(async () => {
+    const userDir = configService.get().gamePaths?.userDir
+    if (!userDir) return []
+    try {
+      return await modManagerService.listMods(userDir)
+    } catch {
+      return []
+    }
+  })
+  editorSession.setUserDirResolver(() => configService.get().gamePaths?.userDir ?? null)
+  // Tier 4 Phase 3 #21: configurable confirm threshold for mod downloads.
+  editorSession.setModSyncThresholdResolver(
+    () => configService.get().worldEditSync?.modSync?.confirmThresholdBytes ?? 500 * 1024 * 1024,
+  )
   editorSession.on('statusChanged', (st: SessionStatus) => {
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send('worldEdit:session:status', st)
@@ -181,6 +204,23 @@ export function initializeServices(): {
   })
   editorSession.on('error', (err) => {
     console.warn('[EditorSession]', err.message)
+  })
+
+  // §E.7 — World save/load orchestrator. The `resolveModZip` callback
+  // walks the user's installed mod library to find the on-disk zip for
+  // any modId the writer is asked to embed. We resolve lazily (on every
+  // call) rather than caching, so a mid-session install picks up new
+  // mods without rebuilding the service.
+  worldSaveService = new WorldSaveService(launcherService, editorSession, async (modId) => {
+    const userDir = configService.get().gamePaths?.userDir
+    if (!userDir) return null
+    try {
+      const mods = await modManagerService.listMods(userDir)
+      const hit = mods.find((m) => m.key === modId)
+      return hit?.filePath ?? null
+    } catch {
+      return null
+    }
   })
 
   // Auto-deploy/undeploy voice bridge on server join/leave.
@@ -1301,7 +1341,14 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  /** One-click: parse session code, join, and launch BeamNG into the editor. */
+  /**
+   * Parse a session code and start the join. Despite the legacy
+   * `joinCodeAndLaunch` channel name, this NO LONGER auto-launches BeamNG —
+   * joiners explicitly press "Launch into Editor" when they're ready so we
+   * never alt-tab away from whatever they're doing the moment they paste an
+   * invite. The `level` field in the response is the host-advertised level
+   * the renderer can pass back into `worldEdit:session:launchIntoEditor`.
+   */
   ipcMain.handle(
     'worldEdit:session:joinCodeAndLaunch',
     async (
@@ -1311,9 +1358,6 @@ export function registerIpcHandlers(): void {
       const { decodeSessionCode } = await import('../../shared/sessionCode')
       const parsed = decodeSessionCode(opts.code)
       if (!parsed) return { success: false, error: 'Invalid session code' }
-      const appConfig = configService.get()
-      const userDir = appConfig.gamePaths?.userDir
-      if (!userDir) return { success: false, error: 'User data folder not configured' }
       let status: SessionStatus
       try {
         status = await editorSession.startJoin({
@@ -1325,27 +1369,9 @@ export function registerIpcHandlers(): void {
       } catch (err) {
         return { success: false, error: `${err}` }
       }
-      // Launch — force host's level, fall back to local choice if missing.
-      const prep = editorSession.prepareEditorLaunch({
-        userDir,
-        levelOverride: parsed.level,
-      })
-      if (prep.error || !prep.level) {
-        return { success: true, status, error: prep.error ?? 'No level available' }
-      }
-      const rendererArgs =
-        appConfig.renderer === 'vulkan' ? ['-gfx', 'vk']
-        : appConfig.renderer === 'dx11' ? ['-gfx', 'dx11']
-        : []
-      const launch = await launcherService.launchVanilla(
-        appConfig.gamePaths,
-        { mode: 'freeroam', level: prep.level },
-        { args: rendererArgs }
-      )
-      if (!launch.success) {
-        return { success: true, status, error: launch.error ?? 'Launch failed', level: prep.level }
-      }
-      return { success: true, status, level: prep.level }
+      // Surface the advertised level so the UI can pre-fill it for the
+      // user's manual launch button — but do NOT spawn the game.
+      return { success: true, status, level: parsed.level ?? undefined }
     }
   )
 
@@ -1394,6 +1420,288 @@ export function registerIpcHandlers(): void {
     editorSession.leave()
     return { success: true }
   })
+
+  /**
+   * §D undo/redo. Pops the local-author stack, builds an inverse op and
+   * broadcasts it (or replays the original on redo). Returns a small
+   * status object so the renderer can show the §D first-time toast on
+   * the very first successful undo.
+   */
+  ipcMain.handle(
+    'worldEdit:session:undo',
+    async (): Promise<{ ok: boolean; reason?: string; name?: string }> => {
+      return editorSession.undo()
+    }
+  )
+  ipcMain.handle(
+    'worldEdit:session:redo',
+    async (): Promise<{ ok: boolean; reason?: string; name?: string }> => {
+      return editorSession.redo()
+    }
+  )
+  ipcMain.handle(
+    'worldEdit:session:undoDepths',
+    async (): Promise<{ undo: number; redo: number }> => {
+      return editorSession.getUndoDepths()
+    }
+  )
+
+  /* ── §E world save / load / convert ─────────────────────────────── */
+
+  /**
+   * Save the currently-open world to a `.beamcmworld`. If `destPath`
+   * is omitted, opens a save dialog scoped to the user's `Documents`
+   * folder. Returns the chosen path, byte size and (lightweight)
+   * manifest so the renderer can show a confirmation toast without
+   * re-reading the zip.
+   */
+  ipcMain.handle(
+    'worldSave:save',
+    async (_event, opts: {
+      destPath?: string
+      title?: string
+      description?: string
+      includeOpLog?: boolean
+      previewPngPath?: string
+      forceBuildSnapshot?: boolean
+    } = {}): Promise<
+      { success: true; path: string; bytes: number; title: string }
+      | { success: false; cancelled?: true; error?: string }
+    > => {
+      try {
+        let dest = opts.destPath ?? null
+        if (!dest) {
+          const win = BrowserWindow.getFocusedWindow()
+          const safeTitle = (opts.title ?? 'world').replace(/[^a-z0-9._-]+/gi, '_')
+          const result = await dialog.showSaveDialog(win!, {
+            title: 'Save World As',
+            defaultPath: `${safeTitle}.beamcmworld`,
+            filters: [{ name: 'BeamMP CM World', extensions: ['beamcmworld'] }],
+          })
+          if (result.canceled || !result.filePath) {
+            return { success: false, cancelled: true }
+          }
+          dest = result.filePath
+        }
+        const out = await worldSaveService.saveCurrentWorld({
+          destPath: dest,
+          title: opts.title,
+          description: opts.description,
+          includeOpLog: opts.includeOpLog ?? false,
+          previewPngPath: opts.previewPngPath,
+          forceBuildSnapshot: opts.forceBuildSnapshot,
+        })
+        return { success: true, path: out.path, bytes: out.bytes, title: out.manifest.title }
+      } catch (err) {
+        return { success: false, error: (err as Error).message }
+      }
+    }
+  )
+
+  /**
+   * Inspect a `.beamcmworld` without unpacking. Cheap manifest-only
+   * read; safe to call from a file-picker preview.
+   */
+  ipcMain.handle(
+    'worldSave:inspect',
+    async (_event, sourcePath?: string): Promise<
+      { success: true; manifest: unknown; compressedBytes: number; uncompressedBytes: number; entryCount: number }
+      | { success: false; cancelled?: true; error?: string }
+    > => {
+      try {
+        let src = sourcePath ?? null
+        if (!src) {
+          const win = BrowserWindow.getFocusedWindow()
+          const result = await dialog.showOpenDialog(win!, {
+            title: 'Open World',
+            filters: [{ name: 'BeamMP CM World', extensions: ['beamcmworld'] }],
+            properties: ['openFile'],
+          })
+          if (result.canceled || result.filePaths.length === 0) {
+            return { success: false, cancelled: true }
+          }
+          src = result.filePaths[0]
+        }
+        const info = await worldSaveService.inspectWorld(src)
+        return {
+          success: true,
+          manifest: info.manifest,
+          compressedBytes: info.compressedBytes,
+          uncompressedBytes: info.uncompressedBytes,
+          entryCount: info.entryCount,
+        }
+      } catch (err) {
+        return { success: false, error: (err as Error).message }
+      }
+    }
+  )
+
+  /**
+   * Load a `.beamcmworld` and stage its mods. Does NOT launch the
+   * game — the renderer typically chains this with
+   * `worldEdit:session:launchIntoEditor`. Returns the level identity
+   * so the caller can pass `levelOverride` on launch.
+   */
+  ipcMain.handle(
+    'worldSave:load',
+    async (_event, opts: { sourcePath?: string } = {}): Promise<
+      {
+        success: true
+        levelName: string
+        worldId: string
+        stagedModsPath: string | null
+        modCount: number
+        hasSnapshot: boolean
+        opLogCount: number
+        seededIntoRelay: boolean
+      }
+      | { success: false; cancelled?: true; error?: string }
+    > => {
+      try {
+        let src = opts.sourcePath ?? null
+        if (!src) {
+          const win = BrowserWindow.getFocusedWindow()
+          const result = await dialog.showOpenDialog(win!, {
+            title: 'Load World',
+            filters: [{ name: 'BeamMP CM World', extensions: ['beamcmworld'] }],
+            properties: ['openFile'],
+          })
+          if (result.canceled || result.filePaths.length === 0) {
+            return { success: false, cancelled: true }
+          }
+          src = result.filePaths[0]
+        }
+        const userDir = configService.get().gamePaths?.userDir
+        if (!userDir) {
+          return { success: false, error: 'User data folder not configured' }
+        }
+        const inspect = await worldSaveService.inspectWorld(src)
+        const stagingRoot = join(
+          userDir,
+          'mods',
+          'multiplayer',
+          `world-${inspect.manifest.worldId}`,
+        )
+        const out = await worldSaveService.loadWorld({ sourcePath: src, stagingRoot })
+        return {
+          success: true,
+          levelName: out.levelName,
+          worldId: out.worldId,
+          stagedModsPath: out.stagedModsPath,
+          modCount: out.stagedMods.length,
+          hasSnapshot: out.snapshotBytes !== null,
+          opLogCount: out.opLogCount,
+          seededIntoRelay: out.seededIntoRelay,
+        }
+      } catch (err) {
+        return { success: false, error: (err as Error).message }
+      }
+    }
+  )
+
+  /**
+   * §E.6 — wrap an existing CM project zip in a `.beamcmworld` shell.
+   * The original zip is embedded verbatim so `worldSave:convertWorldToProject`
+   * is a perfect round-trip.
+   */
+  ipcMain.handle(
+    'worldSave:convertProjectToWorld',
+    async (_event, opts: {
+      sourceProjectZip?: string
+      destPath?: string
+      levelName: string
+      title?: string
+      description?: string
+      authorId: string
+      authorDisplayName: string
+      beamngBuild?: string
+    }): Promise<
+      { success: true; path: string; bytes: number }
+      | { success: false; cancelled?: true; error?: string }
+    > => {
+      try {
+        let src = opts.sourceProjectZip ?? null
+        if (!src) {
+          const win = BrowserWindow.getFocusedWindow()
+          const r = await dialog.showOpenDialog(win!, {
+            title: 'Select Project Zip',
+            filters: [{ name: 'CM Project Zip', extensions: ['zip'] }],
+            properties: ['openFile'],
+          })
+          if (r.canceled || r.filePaths.length === 0) return { success: false, cancelled: true }
+          src = r.filePaths[0]
+        }
+        let dest = opts.destPath ?? null
+        if (!dest) {
+          const win = BrowserWindow.getFocusedWindow()
+          const safe = (opts.title ?? basename(src, '.zip')).replace(/[^a-z0-9._-]+/gi, '_')
+          const r = await dialog.showSaveDialog(win!, {
+            title: 'Save World As',
+            defaultPath: `${safe}.beamcmworld`,
+            filters: [{ name: 'BeamMP CM World', extensions: ['beamcmworld'] }],
+          })
+          if (r.canceled || !r.filePath) return { success: false, cancelled: true }
+          dest = r.filePath
+        }
+        const out = await convertProjectZipToWorld({
+          sourceProjectZip: src,
+          destPath: dest,
+          levelName: opts.levelName,
+          title: opts.title,
+          description: opts.description,
+          authorId: opts.authorId,
+          authorDisplayName: opts.authorDisplayName,
+          beamngBuild: opts.beamngBuild,
+        })
+        return { success: true, path: out.path, bytes: out.bytes }
+      } catch (err) {
+        return { success: false, error: (err as Error).message }
+      }
+    }
+  )
+
+  /**
+   * §E.6 — extract the embedded `project.zip` from a `.beamcmworld`
+   * back to a standalone project zip. Errors with a clear message if
+   * the world wasn't produced by the wrapper above.
+   */
+  ipcMain.handle(
+    'worldSave:convertWorldToProject',
+    async (_event, opts: { sourceWorld?: string; destProjectZip?: string } = {}): Promise<
+      { success: true; path: string; bytes: number }
+      | { success: false; cancelled?: true; error?: string }
+    > => {
+      try {
+        let src = opts.sourceWorld ?? null
+        if (!src) {
+          const win = BrowserWindow.getFocusedWindow()
+          const r = await dialog.showOpenDialog(win!, {
+            title: 'Select World',
+            filters: [{ name: 'BeamMP CM World', extensions: ['beamcmworld'] }],
+            properties: ['openFile'],
+          })
+          if (r.canceled || r.filePaths.length === 0) return { success: false, cancelled: true }
+          src = r.filePaths[0]
+        }
+        let dest = opts.destProjectZip ?? null
+        if (!dest) {
+          const win = BrowserWindow.getFocusedWindow()
+          const safe = basename(src).replace(/\.beamcmworld$/i, '')
+          const r = await dialog.showSaveDialog(win!, {
+            title: 'Export Project Zip',
+            defaultPath: `${safe}.zip`,
+            filters: [{ name: 'CM Project Zip', extensions: ['zip'] }],
+          })
+          if (r.canceled || !r.filePath) return { success: false, cancelled: true }
+          dest = r.filePath
+        }
+        const out = await convertWorldToProjectZip({ sourceWorld: src, destProjectZip: dest })
+        return { success: true, path: out.path, bytes: out.bytes }
+      } catch (err) {
+        return { success: false, error: (err as Error).message }
+      }
+    }
+  )
 
   ipcMain.handle(
     'worldEdit:session:launchIntoEditor',

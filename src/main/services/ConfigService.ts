@@ -74,6 +74,18 @@ const DEFAULT_CONFIG: AppConfig = {
     turnServerUrl: null,
     turnUsername: null,
     turnCredential: null
+  },
+  worldEditSync: {
+    enabled: true,
+    tier4: {
+      reflectiveFields: false,
+      fullSnapshot: false,
+      modInventory: false,
+      terrainForest: false
+    },
+    modSync: {
+      confirmThresholdBytes: 500 * 1024 * 1024
+    }
   }
 }
 
@@ -104,6 +116,18 @@ export class ConfigService {
         const raw = await readFile(this.configPath, 'utf-8')
         const parsed = JSON.parse(raw)
         this.config = { ...DEFAULT_CONFIG, ...parsed }
+        // Phase 5 migration: shallow merge above replaces nested objects
+        // wholesale, so configs written before `worldEditSync.enabled`
+        // existed lose the field entirely. Force the default back in if
+        // a stored worldEditSync object is missing the new key.
+        if (parsed && typeof parsed === 'object' && parsed.worldEditSync && typeof parsed.worldEditSync === 'object') {
+          this.config.worldEditSync = {
+            ...DEFAULT_CONFIG.worldEditSync,
+            ...parsed.worldEditSync,
+            tier4: { ...DEFAULT_CONFIG.worldEditSync.tier4, ...(parsed.worldEditSync.tier4 ?? {}) },
+            modSync: { ...DEFAULT_CONFIG.worldEditSync.modSync, ...(parsed.worldEditSync.modSync ?? {}) },
+          }
+        }
       }
     } catch (err) {
       console.error('Failed to load config, using defaults:', err)

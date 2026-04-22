@@ -69,7 +69,8 @@ export const DEMO_SERVERS: ServerInfo[] = [
     modlist: '',
     modstotalsize: '0',
     modstotal: '0',
-    playerslist: 'Player1;Player2;Player3;RacerX;DriftKing'
+    playerslist: '',
+    worldEditPort: null
   },
   {
     ident: '5.6.7.8:30814',
@@ -93,7 +94,8 @@ export const DEMO_SERVERS: ServerInfo[] = [
     modlist: 'drift_playground.zip',
     modstotalsize: '52428800',
     modstotal: '1',
-    playerslist: 'DriftKing;Tofu86;InitialD;Keiichi'
+    playerslist: '',
+    worldEditPort: null
   },
   {
     ident: '10.0.0.1:30814',
@@ -117,7 +119,8 @@ export const DEMO_SERVERS: ServerInfo[] = [
     modlist: '',
     modstotalsize: '0',
     modstotal: '0',
-    playerslist: 'Alice;Bob;Charlie;Dave;Eve;Frank;Grace;Heidi'
+    playerslist: '',
+    worldEditPort: null
   },
   {
     ident: '192.168.1.1:30814',
@@ -141,7 +144,8 @@ export const DEMO_SERVERS: ServerInfo[] = [
     modlist: '',
     modstotalsize: '0',
     modstotal: '0',
-    playerslist: 'Kangaroo;DingoRacer;OutbackFan'
+    playerslist: '',
+    worldEditPort: null
   },
   {
     ident: '172.16.0.1:30815',
@@ -165,7 +169,8 @@ export const DEMO_SERVERS: ServerInfo[] = [
     modlist: '',
     modstotalsize: '0',
     modstotal: '0',
-    playerslist: 'Nigel;James;Richard;TheStig'
+    playerslist: '',
+    worldEditPort: null
   }
 ]
 
