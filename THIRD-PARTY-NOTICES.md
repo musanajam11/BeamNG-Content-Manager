@@ -45,7 +45,6 @@ All background images in this directory are in-game screenshots from BeamNG.driv
 - `demolition-derby.png`
 - `flying-car.jpg`
 - `police-chase.jpg`
-- `race-car.jpg`
 - `rally-drift.png`
 - `rally-jump.jpg`
 - `red-convertible.png`

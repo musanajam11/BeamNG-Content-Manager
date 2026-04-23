@@ -4906,7 +4906,7 @@ export function registerIpcHandlers(): void {
       const bgDir = join(app.getAppPath(), 'resources', 'backgrounds')
       const entries = await readdir(bgDir)
       return entries
-        .filter((e) => /\.(jpg|jpeg|png|webp)$/i.test(e))
+        .filter((e) => /\.(jpg|jpeg|png|webp|gif|apng)$/i.test(e))
         .map((e) => join(bgDir, e))
     } catch {
       return []
@@ -4931,7 +4931,23 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('appearance:loadBackgroundThumb', async (_event, filePath: string): Promise<string | null> => {
     try {
       const data = await readFile(filePath)
+      const ext = filePath.toLowerCase().split('.').pop() || ''
+      // Animated formats: nativeImage can't resize them properly (only first frame, often blank).
+      // Return the raw bytes as a data URL so the gallery shows the actual (animated) preview.
+      if (ext === 'gif' || ext === 'webp' || ext === 'apng') {
+        const mime = ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : 'image/apng'
+        return `data:${mime};base64,${data.toString('base64')}`
+      }
       const img = nativeImage.createFromBuffer(data)
+      if (img.isEmpty()) {
+        // Unknown / unsupported by nativeImage — fall back to raw bytes with best-guess mime
+        const mimeMap: Record<string, string> = {
+          png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+          bmp: 'image/bmp', svg: 'image/svg+xml', avif: 'image/avif'
+        }
+        const mime = mimeMap[ext] || 'application/octet-stream'
+        return `data:${mime};base64,${data.toString('base64')}`
+      }
       const resized = img.resize({ width: 384, quality: 'best' })
       const jpeg = resized.toJPEG(80)
       return `data:image/jpeg;base64,${jpeg.toString('base64')}`
