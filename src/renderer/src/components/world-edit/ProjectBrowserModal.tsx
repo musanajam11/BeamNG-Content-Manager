@@ -5,7 +5,6 @@ import {
   FolderOpen,
   FolderPlus,
   Trash2,
-  Share2,
   CheckCircle2,
   AlertCircle,
   Loader2,
@@ -142,30 +141,6 @@ export function ProjectBrowserModal(props: ProjectBrowserModalProps): React.JSX.
         const res = await window.api.worldEditLoadProject(p.levelPath)
         if (!res.success) setErr(res.error ?? 'Load failed')
         else showFlash(`Loading: ${p.name}`)
-      } catch (e) {
-        setErr(String(e))
-      } finally {
-        setBusy(false)
-      }
-    },
-    [showFlash]
-  )
-
-  const handleUseInSession = useCallback(
-    async (p: EditorProject) => {
-      // Mid-session swap — broadcasts ProjectOfferMsg to all greeted peers
-      // via the relay; joiners auto re-download + relaunch on sha mismatch.
-      setBusy(true)
-      setErr(null)
-      try {
-        const res = await window.api.worldEditSessionSetActiveProject?.({
-          path: p.path,
-          name: p.name,
-          levelName: p.levelName,
-          folder: projectFolderName(p),
-        })
-        if (!res?.success) setErr(res?.error ?? 'Set active project failed')
-        else showFlash(`Now sharing: ${p.name}`)
       } catch (e) {
         setErr(String(e))
       } finally {
@@ -334,20 +309,6 @@ export function ProjectBrowserModal(props: ProjectBrowserModalProps): React.JSX.
                       </div>
                     </div>
                     <div className="mt-2.5 flex items-center justify-end gap-1.5 flex-wrap">
-                      {isHosting && (
-                        <button
-                          onClick={() => void handleUseInSession(p)}
-                          disabled={busy || isActive}
-                          title={
-                            isActive
-                              ? 'Already shared with peers'
-                              : 'Share this project with peers in the current session (auto-pushed)'
-                          }
-                          className="flex items-center gap-1 px-2 py-1 rounded text-xs border border-fuchsia-500/40 bg-fuchsia-500/15 text-fuchsia-300 hover:bg-fuchsia-500/25 disabled:opacity-40"
-                        >
-                          <Share2 size={12} /> {isActive ? 'Shared' : 'Use in session'}
-                        </button>
-                      )}
                       <button
                         onClick={() => void handleLoad(p)}
                         disabled={busy || !editorPresent}

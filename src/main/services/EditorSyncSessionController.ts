@@ -832,22 +832,24 @@ export class EditorSyncSessionController extends EventEmitter {
     levelOverride?: string | null
   }): { level: string | null; error: string | null } {
     // Priority order for the level to boot into:
-    //   1. Explicit `levelOverride` from the caller (e.g. joiner's auto-launch
-    //      after project download hands in `_beamcm_projects/<folder>`).
-    //   2. The currently-advertised / -offered coop project — boot straight
-    //      into its own map so a host clicking "Launch into editor" always
-    //      lands in the same world as any connected peers, regardless of
-    //      whatever unrelated level the bridge last reported.
+    //   1. Explicit `levelOverride` from the caller (e.g. "Load saved project"
+    //      hands in `_beamcm_projects/<folder>` for an actual on-disk save).
+    //   2. The currently-advertised / -offered coop project's *underlying
+    //      stock level* (e.g. `gridmap_v2`). The `_beamcm_projects/<folder>`
+    //      directory itself is a metadata placeholder for synced edits — it
+    //      contains only a stub `info.json`, no `main/` group, so BeamNG
+    //      silently drops to the main menu when asked to load it. Both host
+    //      and joiner must boot the same stock map; ops + snapshot then
+    //      materialize the host's editor state on top.
     //   3. The bridge-reported level name (what BeamNG is currently sitting
     //      on if the game is already running).
     let level = opts.levelOverride ?? null
-    if (!level && this.activeProject && this.activeProject.folder) {
-      // VFS sub-path form that `launchVanilla` appends `.../info.json` onto.
-      level = `_beamcm_projects/${this.activeProject.folder}`
+    if (!level && this.activeProject && this.activeProject.levelName) {
+      level = this.normalizeLevelName(this.activeProject.levelName)
       this.log(
         'info',
         'session',
-        `prepareEditorLaunch: using active coop project "${this.activeProject.name}" → ${level}`,
+        `prepareEditorLaunch: using active coop project "${this.activeProject.name}" → underlying level "${level}"`,
       )
     }
     if (!level) {

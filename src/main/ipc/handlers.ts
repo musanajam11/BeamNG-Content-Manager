@@ -1842,94 +1842,23 @@ export function registerIpcHandlers(): void {
   )
 
   /**
-   * Joiner-only: fetch the host's advertised project.zip over HTTP,
-   * extract it into `<userDir>/levels/_beamcm_projects/<folder>/`, and
-   * return the local path. Progress is forwarded via `worldEdit:session:status`.
+   * Joiner-only: REMOVED.
+   *
+   * The project-zip download mechanism was decommissioned. Joiner catch-up
+   * now flows entirely through the live snapshot pipeline (scene graph,
+   * fields, objects, env, terrain, forest), which is more responsive and
+   * avoids the empty-zip race that plagued the static folder snapshot.
+   *
+   * The handler is kept registered but stubbed so any stale renderer
+   * binding gets a clean error instead of an unhandled-IPC crash.
    */
   ipcMain.handle(
     'worldEdit:session:downloadOfferedProject',
     async (): Promise<{ success: boolean; error?: string; localPath?: string }> => {
-      const info = editorSession.getActiveProject()
-      const hostIp = editorSession.getJoinedHost()
-      if (!info || !hostIp) {
-        return { success: false, error: 'No offered project for current session' }
-      }
-      const appConfig = configService.get()
-      const userDir = appConfig.gamePaths?.userDir
-      if (!userDir) return { success: false, error: 'User data folder not configured' }
-      try {
-        const { join: pjoin } = await import('node:path')
-        const fs = await import('node:fs')
-        const http = await import('node:http')
-        const yauzl = (await import('yauzl')).default
-
-        // Download into memory (projects are typically small; if we ever
-        // see huge ones we'll switch to streaming-to-temp-file).
-        const zipBuf: Buffer = await new Promise((resolve, reject) => {
-          const chunks: Buffer[] = []
-          let received = 0
-          const url = `http://${hostIp}:${info.httpPort}/project.zip?token=${encodeURIComponent(info.authToken)}`
-          http.get(url, { timeout: 30000 }, (res) => {
-            if (res.statusCode !== 200) {
-              reject(new Error(`HTTP ${res.statusCode}`))
-              res.resume()
-              return
-            }
-            const total = Number(res.headers['content-length']) || info.sizeBytes
-            editorSession.reportProjectDownloadProgress(0, total)
-            res.on('data', (c: Buffer) => {
-              chunks.push(c)
-              received += c.length
-              editorSession.reportProjectDownloadProgress(received, total)
-            })
-            res.on('end', () => resolve(Buffer.concat(chunks)))
-            res.on('error', reject)
-          }).on('error', reject)
-        })
-
-        // Verify hash.
-        const { createHash } = await import('node:crypto')
-        const actualSha = createHash('sha256').update(zipBuf).digest('hex')
-        if (actualSha !== info.sha256) {
-          throw new Error(`project zip hash mismatch (expected ${info.sha256.substring(0, 12)}…, got ${actualSha.substring(0, 12)}…)`)
-        }
-
-        // Extract to <userDir>/levels/_beamcm_projects/<folder>
-        const destDir = pjoin(userDir, 'levels', '_beamcm_projects', info.folder)
-        fs.mkdirSync(destDir, { recursive: true })
-        await new Promise<void>((resolve, reject) => {
-          yauzl.fromBuffer(zipBuf, { lazyEntries: true }, (err, zf) => {
-            if (err || !zf) { reject(err ?? new Error('zip open failed')); return }
-            zf.readEntry()
-            zf.on('entry', (entry) => {
-              const safeName = entry.fileName.replace(/\\/g, '/')
-              if (safeName.includes('..')) { zf.readEntry(); return }
-              const outPath = pjoin(destDir, safeName)
-              if (/\/$/.test(entry.fileName)) {
-                fs.mkdirSync(outPath, { recursive: true })
-                zf.readEntry()
-                return
-              }
-              fs.mkdirSync(pjoin(outPath, '..'), { recursive: true })
-              zf.openReadStream(entry, (err2, rs) => {
-                if (err2 || !rs) { reject(err2 ?? new Error('zip entry read failed')); return }
-                const ws = fs.createWriteStream(outPath)
-                rs.pipe(ws)
-                ws.on('finish', () => zf.readEntry())
-                ws.on('error', reject)
-              })
-            })
-            zf.on('end', () => resolve())
-            zf.on('error', reject)
-          })
-        })
-
-        editorSession.reportProjectInstalled(destDir)
-        return { success: true, localPath: destDir }
-      } catch (err) {
-        const msg = (err as Error).message
-        editorSession.reportProjectInstalled(null, msg)
-        return { success: false, error: msg }
+      return {
+        success: false,
+        error:
+          'Project zip downloads are no longer supported. Joiners are caught up via the live snapshot pipeline.',
       }
     }
   )

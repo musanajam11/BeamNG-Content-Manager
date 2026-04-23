@@ -26,7 +26,7 @@ import {
   Download,
   Circle,
 } from 'lucide-react'
-import type { SessionStatus, SessionOp, PeerPoseEntry, PeerActivity, EditorProject, SessionProjectInfo } from '../../../shared/types'
+import type { SessionStatus, SessionOp, PeerPoseEntry, PeerActivity, EditorProject } from '../../../shared/types'
 import { ProjectBrowserModal } from '../components/world-edit/ProjectBrowserModal'
 import { useNow } from '../hooks/useNow'
 import { useWorldEditSessionStore } from '../stores/useWorldEditSessionStore'
@@ -338,9 +338,13 @@ export function WorldEditSessionPage(
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ block: 'end' })
   }, [logEntries.length])
-  /* ── Auto-provision: when we start hosting with a bridge + known level,   *    save-as a fresh project (unless the user already picked one), start
-   *    the capture log, and tell the relay to advertise it so joiners can
-   *    download the same starting state. Fires at most once per session. */
+  /* ── Auto-start capture: when we start hosting with a bridge + known
+   *    level, kick off the capture log so the snapshot pipeline has a
+   *    feed of ops to relay to joiners. We deliberately do NOT auto-
+   *    create a project zip / advertise it: the project zip was a dead
+   *    feature — joiners get caught up entirely via the snapshot
+   *    pipeline (scene graph, fields, objects, env, terrain, forest),
+   *    not by downloading a stale zip of the host's level folder. */
   const autoProvisionedRef = useRef<string | null>(null)
   useEffect(() => {
     if (!status || status.state !== 'hosting') {
@@ -351,98 +355,8 @@ export function WorldEditSessionPage(
     const sessionKey = `${status.sessionId ?? ''}|${status.host ?? ''}|${status.port ?? ''}`
     if (autoProvisionedRef.current === sessionKey) return
     autoProvisionedRef.current = sessionKey
-    void (async () => {
-      try {
-        // Strip BeamNG's VFS wrapping ("/levels/foo/info.json" → "foo").
-        const rawLevel = status.levelName ?? ''
-        const baseLevel = rawLevel
-          .replace(/^\/+/, '')
-          .replace(/^levels\//i, '')
-          .replace(/\/info\.json$/i, '')
-          .replace(/\/$/, '')
-          .split('/')
-          .pop() || 'level'
-
-        let project: EditorProject | null = hostProject
-        if (!project) {
-          // Build a human-readable name: coop_YYYYMMDD_HHMM
-          const d = new Date()
-          const pad = (n: number): string => n.toString().padStart(2, '0')
-          const tag = `coop_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`
-          const res = await window.api.worldEditSaveProject?.(baseLevel, tag)
-          if (!res?.success) {
-            console.warn('[coop] auto-save project failed:', res?.error)
-          } else {
-            // Best-effort refresh; also resolve the newly-created EditorProject.
-            const list = await window.api.worldEditListProjects?.()
-            if (list) setProjects(list)
-            project = list?.find((p) => p.levelPath === res.levelPath) ?? null
-          }
-        }
-        // Kick off capture regardless — we want the capture log even if the
-        // project wasn't created (e.g. save-as failed). No-op if already on.
-        await window.api.worldEditSignal?.('start').catch(() => undefined)
-
-        // Hand the project to the relay so joiners see it in their welcome.
-        if (project) {
-          const folder = project.path.split(/[\\/]/).filter(Boolean).pop() ?? project.name
-          await window.api.worldEditSessionSetActiveProject?.({
-            path: project.path,
-            name: project.name,
-            levelName: project.levelName,
-            folder,
-          })
-        }
-      } catch (e) {
-        console.warn('[coop] auto-provision error:', e)
-      }
-    })()
-    // We intentionally depend only on status fields we read.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status?.state, status?.bridgeReady, status?.levelName, status?.sessionId, status?.host, status?.port, hostProject])
-
-  /* ── Joiner: auto-download ONLY (no auto-launch).
-   *
-   *    We pre-fetch the host's project zip the moment it's advertised so
-   *    the user doesn't have to wait when they decide to jump in, but we
-   *    deliberately DO NOT spawn BeamNG for them — launching the game is
-   *    a heavy, user-initiated action (alt-tab, GPU spin-up, save state
-   *    interruption) and joiners hated having it happen behind their back.
-   *    They press "Launch into Editor" themselves when they're ready. */
-  const autoDownloadedShaRef = useRef<string | null>(null)
-  useEffect(() => {
-    if (!status || status.state !== 'joined') {
-      autoDownloadedShaRef.current = null
-      return
-    }
-    const offered = status.project
-    if (!offered) return
-    const downloading = !!status.projectDownload && !status.projectDownload.done
-    const downloadedForOffer = status.projectInstalledPath && !status.projectDownload?.error
-    if (
-      !downloading &&
-      !downloadedForOffer &&
-      autoDownloadedShaRef.current !== offered.sha256
-    ) {
-      autoDownloadedShaRef.current = offered.sha256
-      void window.api.worldEditSessionDownloadOfferedProject?.()
-        .then((res) => {
-          if (!res?.success) {
-            console.warn('[coop] auto-download failed:', res?.error)
-            // allow retry
-            autoDownloadedShaRef.current = null
-          }
-        })
-    }
-  }, [
-    status?.state,
-    status?.project?.sha256,
-    status?.project?.folder,
-    status?.projectDownload?.done,
-    status?.projectDownload?.error,
-    status?.projectInstalledPath,
-    status,
-  ])
+    void window.api.worldEditSignal?.('start').catch(() => undefined)
+  }, [status?.state, status?.bridgeReady, status?.levelName, status?.sessionId, status?.host, status?.port])
 
   const onDetectPublicIp = async (): Promise<void> => {
     setPublicIpBusy(true)
@@ -990,19 +904,10 @@ export function WorldEditSessionPage(
         </div>
       )}
 
-      {/* Project offered by host (joiner only) — download + install prompt. */}
-      {isJoined && s?.project && (
-        <ProjectOfferedBanner
-          info={s.project}
-          download={s.projectDownload ?? null}
-          installedPath={s.projectInstalledPath ?? null}
-          onAccept={async () => {
-            setErr(null)
-            const res = await window.api.worldEditSessionDownloadOfferedProject?.()
-            if (!res?.success) setErr(res?.error ?? 'download failed')
-          }}
-        />
-      )}
+      {/* Project offered by host: intentionally not shown. The project zip
+          mechanism was removed — joiners are caught up entirely via the
+          live snapshot pipeline (scene graph + fields + objects + env +
+          terrain + forest), not by downloading a static folder snapshot. */}
 
       {/* Mode chooser */}
       {isIdle && mode === 'choose' && (
@@ -1790,73 +1695,10 @@ interface InvitePanelProps {
 }
 
 // ─── Project-offered banner (joiner side) ──────────────────────────────────
-
-function ProjectOfferedBanner({
-  info,
-  download,
-  installedPath,
-  onAccept,
-}: {
-  info: SessionProjectInfo
-  download: { received: number; total: number; done: boolean; error?: string } | null
-  installedPath: string | null
-  onAccept: () => void | Promise<void>
-}): React.JSX.Element {
-  const sizeMb = (info.sizeBytes / (1024 * 1024)).toFixed(1)
-  const pct = download && download.total > 0
-    ? Math.min(100, Math.round((download.received / download.total) * 100))
-    : 0
-  const downloading = !!download && !download.done
-  const installed = !!installedPath && !!download?.done && !download?.error
-
-  return (
-    <div className="rounded-lg border border-fuchsia-500/40 bg-fuchsia-500/10 p-3 text-xs text-fuchsia-100 flex items-start gap-2">
-      <FolderOpen size={14} className="mt-0.5 shrink-0" />
-      <div className="flex-1 space-y-1">
-        <div className="text-sm font-semibold">
-          Host is sharing project “{info.name}”
-        </div>
-        <div className="opacity-80">
-          Derived from level <span className="font-mono">{info.levelName}</span> ·{' '}
-          {sizeMb} MiB ·{' '}
-          <span className="font-mono text-[10px] opacity-60">{info.sha256.substring(0, 10)}…</span>
-        </div>
-        {installed ? (
-          <div className="text-emerald-300">
-            Installed — launching BeamNG into the synced project…
-          </div>
-        ) : downloading ? (
-          <div className="space-y-1">
-            <div className="h-1.5 rounded-full bg-fuchsia-500/20 overflow-hidden">
-              <div
-                className="h-full bg-fuchsia-400 transition-all"
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-            <div className="opacity-80">
-              Downloading… {pct}% ({Math.round(download!.received / 1024)} KiB /{' '}
-              {Math.round(download!.total / 1024)} KiB)
-            </div>
-          </div>
-        ) : download?.error ? (
-          <div className="text-red-300">Download failed: {download.error} — retrying…</div>
-        ) : (
-          <div className="opacity-80">
-            Downloading automatically so both sides start from the same state…
-          </div>
-        )}
-      </div>
-      {download?.error && !downloading && (
-        <button
-          onClick={() => { void onAccept() }}
-          className="px-3 py-1 rounded text-xs bg-fuchsia-500/20 hover:bg-fuchsia-500/30 border border-fuchsia-500/40 font-medium"
-        >
-          Retry
-        </button>
-      )}
-    </div>
-  )
-}
+// REMOVED: the project zip mechanism was decommissioned. Joiners are now
+// caught up entirely via the live snapshot pipeline (scene graph, fields,
+// objects, env, terrain, forest), not by downloading a folder snapshot.
+// See WorldEditSessionPage's "Auto-start capture" comment for context.
 
 // ─── Peers panel ───────────────────────────────────────────────────────────
 
