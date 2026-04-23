@@ -20,7 +20,7 @@ interface ModZipMeta {
 }
 
 interface DbEntry {
-  active: boolean
+  active: boolean | string | number
   modname?: string
   filename: string
   fullpath: string
@@ -43,6 +43,23 @@ interface DbEntry {
 }
 
 export class ModManagerService {
+  private isActiveFlag(value: unknown): boolean {
+    if (typeof value === 'boolean') return value
+    if (typeof value === 'string') {
+      const v = value.trim().toLowerCase()
+      return v === 'true' || v === '1' || v === 'yes' || v === 'on'
+    }
+    if (typeof value === 'number') return value !== 0
+    return false
+  }
+
+  private formatActiveFlag(previous: unknown, enabled: boolean): boolean | string {
+    // Preserve on-disk convention when possible. Some BeamNG installs write
+    // string flags in db.json; writing the same shape avoids subtle parser edge cases.
+    if (typeof previous === 'string') return enabled ? 'true' : 'false'
+    return enabled
+  }
+
   /**
    * Resolve the mods map from db.json.
    * BeamNG uses a wrapped format: { header: {...}, mods: { key: entry, ... } }
@@ -219,8 +236,8 @@ export class ModManagerService {
 
     // Force all BeamMP entries active so even stale duplicates don't disable MP.
     for (const [, entry] of beamEntries) {
-      if (!entry.active) {
-        entry.active = true
+      if (!this.isActiveFlag(entry.active)) {
+        entry.active = this.formatActiveFlag(entry.active, true)
         dirty = true
       }
     }
@@ -236,7 +253,7 @@ export class ModManagerService {
 
     if (!modsMap[keepKey]) {
       modsMap[keepKey] = {
-        active: true,
+        active: 'true',
         modname: 'beammp',
         filename: 'BeamMP.zip',
         fullpath: beammpZipPath,
@@ -250,7 +267,10 @@ export class ModManagerService {
       dirty = true
     } else {
       const keep = modsMap[keepKey]
-      if (!keep.active) { keep.active = true; dirty = true }
+      if (!this.isActiveFlag(keep.active)) {
+        keep.active = this.formatActiveFlag(keep.active, true)
+        dirty = true
+      }
       if (keep.modname !== 'beammp') { keep.modname = 'beammp'; dirty = true }
       if (keep.filename !== 'BeamMP.zip') { keep.filename = 'BeamMP.zip'; dirty = true }
       if (keep.fullpath !== beammpZipPath) { keep.fullpath = beammpZipPath; dirty = true }
@@ -324,7 +344,7 @@ export class ModManagerService {
         filePath,
         sizeBytes,
         modifiedDate,
-        enabled: entry.active,
+        enabled: this.isActiveFlag(entry.active),
         modType: entry.modType || 'unknown',
         title: entry.modData?.title || null,
         tagLine: entry.modData?.tag_line || null,
@@ -413,7 +433,7 @@ export class ModManagerService {
 
     const found = this.findModEntry(modsMap, modKey)
     if (found) {
-      found[1].active = enabled
+      found[1].active = this.formatActiveFlag(found[1].active, enabled)
       const output = this.buildDbJson(db, modsMap)
       await writeFile(dbPath, JSON.stringify(output, null, 3), 'utf-8')
     } else {
@@ -426,7 +446,7 @@ export class ModManagerService {
           const filePath = join(repoDir, match)
           const s = await stat(filePath)
           modsMap[modKey] = {
-            active: enabled,
+            active: enabled ? 'true' : 'false',
             modname: modKey,
             filename: match,
             fullpath: filePath,
@@ -505,7 +525,7 @@ export class ModManagerService {
 
     const modsMap = this.getModsMap(db)
     modsMap[key] = {
-      active: false,
+      active: 'false',
       modname: key,
       filename: fileName,
       fullpath: destPath,

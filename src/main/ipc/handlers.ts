@@ -5780,6 +5780,13 @@ export function registerIpcHandlers(): void {
 
           // Trigger the join
           const config = configService.get()
+          if (config.gamePaths?.userDir) {
+            try {
+              await modManagerService.ensureBeamMPEnabled(config.gamePaths.userDir)
+            } catch (err) {
+              console.warn('[ModManager] ensureBeamMPEnabled failed before queue join:', err)
+            }
+          }
           const queueRendererArgs = config.renderer === 'vulkan' ? ['-vulkan'] : config.renderer === 'dx11' ? ['-dx11'] : []
           const result = await launcherService.joinServer(
             savedTarget.ip,
