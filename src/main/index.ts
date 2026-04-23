@@ -220,6 +220,9 @@ app.whenReady().then(async () => {
     modManagerService.repairModNames(userDir).catch((err) =>
       console.error('[ModManager] repairModNames failed:', err)
     )
+    modManagerService.repairDuplicateEntries(userDir).catch((err) =>
+      console.error('[ModManager] repairDuplicateEntries failed:', err)
+    )
   }
 
   // Register all IPC handlers

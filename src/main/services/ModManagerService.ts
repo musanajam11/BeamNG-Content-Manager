@@ -102,6 +102,73 @@ export class ModManagerService {
     }
   }
 
+  /**
+   * Remove duplicate db.json entries that point at the same filename.
+   * Older CM builds (and some BeamNG versions) could leave two entries for
+   * the same physical file — e.g. a stale `BeamMP.zip` entry plus the live
+   * `mods/multiplayer/BeamMP.zip` entry. We keep the entry that points at the
+   * file actually on disk; if both exist on disk we prefer the one in
+   * `mods/multiplayer/` for `BeamMP.zip` and otherwise the first encountered.
+   */
+  async repairDuplicateEntries(userDir: string): Promise<void> {
+    const modsRoot = join(userDir, 'mods')
+    const dbPath = join(modsRoot, 'db.json')
+    let db: Record<string, unknown> = {}
+    try {
+      const raw = await readFile(dbPath, 'utf-8')
+      db = JSON.parse(stripBom(raw))
+    } catch { return }
+
+    const modsMap = this.getModsMap(db)
+    // Group dbKeys by lowercased filename
+    const byFilename = new Map<string, string[]>()
+    for (const [dbKey, entry] of Object.entries(modsMap)) {
+      if (!entry.filename) continue
+      const fn = entry.filename.toLowerCase()
+      const arr = byFilename.get(fn)
+      if (arr) arr.push(dbKey)
+      else byFilename.set(fn, [dbKey])
+    }
+
+    let dirty = false
+    for (const [fileName, dbKeys] of byFilename) {
+      if (dbKeys.length < 2) continue
+
+      // Find which entries actually have the file on disk and prefer
+      // multiplayer/ for BeamMP.zip.
+      let keep: string | null = null
+      const candidatesOnDisk: string[] = []
+      for (const k of dbKeys) {
+        const entry = modsMap[k]
+        const location = this.detectLocation(entry.dirname)
+        const dir = location === 'repo' ? 'repo' : location === 'multiplayer' ? 'multiplayer' : ''
+        const filePath = join(modsRoot, dir, entry.filename)
+        try {
+          await stat(filePath)
+          candidatesOnDisk.push(k)
+        } catch { /* not on disk */ }
+      }
+
+      const pool = candidatesOnDisk.length > 0 ? candidatesOnDisk : dbKeys
+      if (fileName === 'beammp.zip') {
+        keep = pool.find((k) => this.detectLocation(modsMap[k].dirname) === 'multiplayer') ?? pool[0]
+      } else {
+        keep = pool[0]
+      }
+
+      for (const k of dbKeys) {
+        if (k === keep) continue
+        delete modsMap[k]
+        dirty = true
+      }
+    }
+
+    if (dirty) {
+      const output = this.buildDbJson(db, modsMap)
+      await writeFile(dbPath, JSON.stringify(output, null, 3), 'utf-8')
+    }
+  }
+
   /** Read and return the full mod list by combining db.json metadata with disk files */
   async listMods(userDir: string): Promise<ModInfo[]> {
     const modsRoot = join(userDir, 'mods')
@@ -128,7 +195,14 @@ export class ModManagerService {
       const fileName = entry.filename
       const filePath = join(modsRoot, location === 'repo' ? 'repo' : location === 'multiplayer' ? 'multiplayer' : '', fileName)
 
-      seenFiles.add(fileName.toLowerCase())
+      // Skip duplicates: db.json occasionally contains multiple entries
+      // pointing at the same filename (e.g. a stale BeamMP.zip entry plus the
+      // current `mods/multiplayer/BeamMP.zip` entry). The first one we hit
+      // wins — without this guard the mod list would render the same file
+      // twice with identical metadata.
+      const fileNameLower = fileName.toLowerCase()
+      if (seenFiles.has(fileNameLower)) continue
+      seenFiles.add(fileNameLower)
 
       let sizeBytes = entry.stat?.filesize ?? 0
       let modifiedDate = entry.stat?.modtime ? new Date(entry.stat.modtime * 1000).toISOString() : ''
