@@ -4219,6 +4219,13 @@ export function registerIpcHandlers(): void {
     const config = configService.get()
     const ident = `${ip}:${port}`
     configService.addRecentServer(ident).catch(() => {})
+    if (config.gamePaths?.userDir) {
+      try {
+        await modManagerService.ensureBeamMPEnabled(config.gamePaths.userDir)
+      } catch (err) {
+        console.warn('[ModManager] ensureBeamMPEnabled failed before join:', err)
+      }
+    }
     const rendererArgs = config.renderer === 'vulkan' ? ['-gfx', 'vk'] : config.renderer === 'dx11' ? ['-gfx', 'dx11'] : []
     const result = await launcherService.joinServer(ip, port, config.gamePaths, { args: rendererArgs })
 
@@ -4313,7 +4320,10 @@ export function registerIpcHandlers(): void {
       // If the zip already exists in any known version folder, we're done.
       const candidates = await resolveBeamMPZipCandidates(userDir)
       const existing = candidates.find((p) => existsSync(p))
-      if (existing) return { success: true }
+      if (existing) {
+        await modManagerService.ensureBeamMPEnabled(userDir)
+        return { success: true }
+      }
       // Pick install destination: prefer <userDir>\current if that folder
       // exists (canonical BeamNG layout), else fall back to <userDir>.
       const currentDir = join(userDir, 'current')
@@ -4323,6 +4333,7 @@ export function registerIpcHandlers(): void {
       mkdirSync(modDir, { recursive: true })
       const data = await backendService.downloadMod()
       writeFileSync(zipPath, Buffer.from(data))
+      await modManagerService.ensureBeamMPEnabled(userDir)
       return { success: true }
     } catch (err) {
       return { success: false, error: String(err) }

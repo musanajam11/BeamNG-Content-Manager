@@ -1,5 +1,5 @@
 import { readFile, writeFile, readdir, unlink, copyFile, stat } from 'fs/promises'
-import { join, basename } from 'path'
+import { join, basename, dirname } from 'path'
 import { isModArchive, stripArchiveExt, forEachMatch, readFirstMatchWithName } from '../utils/archiveConverter'
 import type { ModInfo } from '../../shared/types'
 
@@ -159,6 +159,107 @@ export class ModManagerService {
       for (const k of dbKeys) {
         if (k === keep) continue
         delete modsMap[k]
+        dirty = true
+      }
+    }
+
+    if (dirty) {
+      const output = this.buildDbJson(db, modsMap)
+      await writeFile(dbPath, JSON.stringify(output, null, 3), 'utf-8')
+    }
+  }
+
+  /**
+   * Ensure BeamMP.zip is represented in db.json and forced active.
+   * This is a safety net for installs where the zip exists on disk but BeamNG
+   * left (or recreated) an inactive entry, which prevents MP from auto-starting.
+   */
+  async ensureBeamMPEnabled(userDir: string): Promise<void> {
+    const candidateZipPaths: string[] = [
+      join(userDir, 'mods', 'multiplayer', 'BeamMP.zip'),
+      join(userDir, 'current', 'mods', 'multiplayer', 'BeamMP.zip')
+    ]
+
+    // Include numeric version folders (e.g. 0.34) for non-standard layouts.
+    try {
+      const entries = await readdir(userDir)
+      for (const entry of entries) {
+        if (/^\d+\.\d+$/.test(entry)) {
+          candidateZipPaths.push(join(userDir, entry, 'mods', 'multiplayer', 'BeamMP.zip'))
+        }
+      }
+    } catch { /* userDir may not exist yet */ }
+
+    let beammpZipPath: string | null = null
+    for (const p of candidateZipPaths) {
+      try {
+        const s = await stat(p)
+        if (s.isFile()) {
+          beammpZipPath = p
+          break
+        }
+      } catch { /* try next candidate */ }
+    }
+    if (!beammpZipPath) return
+
+    const mpDir = dirname(beammpZipPath)
+    const modsRoot = dirname(mpDir)
+    const dbPath = join(modsRoot, 'db.json')
+
+    let db: Record<string, unknown> = {}
+    try {
+      const raw = await readFile(dbPath, 'utf-8')
+      db = JSON.parse(stripBom(raw))
+    } catch { /* db.json may not exist yet */ }
+
+    const modsMap = this.getModsMap(db)
+    const beamEntries = Object.entries(modsMap).filter(([, entry]) => (entry.filename || '').toLowerCase() === 'beammp.zip')
+
+    let dirty = false
+
+    // Force all BeamMP entries active so even stale duplicates don't disable MP.
+    for (const [, entry] of beamEntries) {
+      if (!entry.active) {
+        entry.active = true
+        dirty = true
+      }
+    }
+
+    // Prefer an entry that points at mods/multiplayer.
+    const keepKey =
+      beamEntries.find(([, entry]) => this.detectLocation(entry.dirname) === 'multiplayer')?.[0]
+      ?? beamEntries[0]?.[0]
+      ?? 'beammp'
+
+    const zipStat = await stat(beammpZipPath)
+    const currentModTime = Math.floor(zipStat.mtimeMs / 1000)
+
+    if (!modsMap[keepKey]) {
+      modsMap[keepKey] = {
+        active: true,
+        modname: 'beammp',
+        filename: 'BeamMP.zip',
+        fullpath: beammpZipPath,
+        dirname: mpDir,
+        modType: 'unknown',
+        stat: {
+          filesize: zipStat.size,
+          modtime: currentModTime
+        }
+      }
+      dirty = true
+    } else {
+      const keep = modsMap[keepKey]
+      if (!keep.active) { keep.active = true; dirty = true }
+      if (keep.modname !== 'beammp') { keep.modname = 'beammp'; dirty = true }
+      if (keep.filename !== 'BeamMP.zip') { keep.filename = 'BeamMP.zip'; dirty = true }
+      if (keep.fullpath !== beammpZipPath) { keep.fullpath = beammpZipPath; dirty = true }
+      if (keep.dirname !== mpDir) { keep.dirname = mpDir; dirty = true }
+      if (!keep.stat || keep.stat.filesize !== zipStat.size || keep.stat.modtime !== currentModTime) {
+        keep.stat = {
+          filesize: zipStat.size,
+          modtime: currentModTime
+        }
         dirty = true
       }
     }
