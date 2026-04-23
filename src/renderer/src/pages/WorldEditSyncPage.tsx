@@ -21,7 +21,6 @@ import type {
   EditorSyncCaptureEntry,
 } from '../../../shared/types'
 import { WorldEditSessionPage } from './WorldEditSessionPage'
-import { WorldProjectConverterPanel } from '../components/WorldProjectConverterPanel'
 import { useAppStore } from '../stores/useAppStore'
 
 /**
@@ -320,23 +319,6 @@ export function WorldEditSyncPage(): React.JSX.Element {
           bridgeHooked={hooked}
           bridgeCapturing={capturing}
         />
-
-        {/* §E.6 — Project ↔ World converter. Lives outside the
-            Diagnostics drawer because it's relevant even before the
-            extension is deployed (no live state needed). Folded into a
-            <details> block so the page stays visually quiet by default. */}
-        <details className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]/40 overflow-hidden">
-          <summary className="cursor-pointer select-none px-4 py-3 flex items-center gap-2 text-sm font-semibold hover:bg-[var(--color-surface-hover)]/50">
-            <Wrench size={14} className="text-[var(--color-text-muted)]" />
-            World file tools
-            <span className="ml-2 text-xs font-normal text-[var(--color-text-muted)]">
-              convert .beamcmworld ↔ project zip
-            </span>
-          </summary>
-          <div className="px-4 pb-4 pt-2 border-t border-[var(--color-border)]">
-            <WorldProjectConverterPanel />
-          </div>
-        </details>
 
         {/* Diagnostics & tools — power-user surface, collapsed by default.
             Holds the raw bridge controls (capture/replay/undo/save) and the

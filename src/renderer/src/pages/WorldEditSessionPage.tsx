@@ -14,11 +14,6 @@ import {
   Shield,
   ArrowLeft,
   MapPin,
-  FolderOpen,
-  FolderPlus,
-  X as XIcon,
-  RefreshCw,
-  ChevronRight,
   Undo2,
   Redo2,
   Save,
@@ -26,8 +21,7 @@ import {
   Download,
   Circle,
 } from 'lucide-react'
-import type { SessionStatus, SessionOp, PeerPoseEntry, PeerActivity, EditorProject } from '../../../shared/types'
-import { ProjectBrowserModal } from '../components/world-edit/ProjectBrowserModal'
+import type { SessionStatus, SessionOp, PeerPoseEntry, PeerActivity } from '../../../shared/types'
 import { useNow } from '../hooks/useNow'
 import { useWorldEditSessionStore } from '../stores/useWorldEditSessionStore'
 
@@ -115,24 +109,6 @@ function timeAgo(ts: number, now: number): string {
   return `${Math.floor(d / 3600)}h ago`
 }
 
-/**
- * Turn an EditorProject's BeamNG-style `levelPath`
- * ("/levels/_beamcm_projects/<folder>/") into the form `launchVanilla`
- * expects as its `level` field — i.e. the bit between `levels/` and the
- * final slash. Result feeds directly into `prepareEditorLaunch`'s
- * `levelOverride`, which then becomes `levels/<sub>/info.json`.
- */
-function projectLevelSubPath(p: EditorProject): string {
-  return p.levelPath.replace(/^\/+levels\//i, '').replace(/\/+$/, '')
-}
-
-function formatBytesShort(n: number): string {
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`
-  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`
-}
-
 export interface WorldEditSessionPageProps {
   /**
    * Bridge readiness signals from the parent's worldEditGetStatus poll. Used
@@ -152,7 +128,6 @@ export function WorldEditSessionPage(
 ): React.JSX.Element {
   const {
     bridgeEditorPresent = false,
-    bridgeCurrentLevel = null,
     bridgeHooked = false,
     bridgeCapturing = false,
   } = props
@@ -161,9 +136,6 @@ export function WorldEditSessionPage(
   const [err, setErr] = useState<string | null>(null)
   // UX mode: pick host OR join first (clearer than tabs)
   const [mode, setMode] = useState<'choose' | 'host' | 'join'>('choose')
-
-  // Project browser modal — opened from the active-project chip.
-  const [projectBrowserOpen, setProjectBrowserOpen] = useState(false)
 
   // Host-toggleable auth mode (open / token / approval / friends)
   const [authMode, setAuthMode] = useState<'open' | 'token' | 'approval' | 'friends'>('token')
@@ -199,16 +171,6 @@ export function WorldEditSessionPage(
   const [publicIp, setPublicIp] = useState<string | null>(null)
   const [publicIpBusy, setPublicIpBusy] = useState(false)
   const [publicIpErr, setPublicIpErr] = useState<string | null>(null)
-
-  // Saved editor projects — listed for the host picker + the mid-session
-  // "Load saved project" modal. Loaded on mount and refreshed after
-  // save-as-project or load actions elsewhere in the app.
-  const [projects, setProjects] = useState<EditorProject[]>([])
-  const [projectsBusy, setProjectsBusy] = useState(false)
-  /** Selected source project for the host flow. When set, overrides hostLevel. */
-  const [hostProject, setHostProject] = useState<EditorProject | null>(null)
-  /** Shown when the user clicks "Load saved project…" mid-session. */
-  const [projectPickerOpen, setProjectPickerOpen] = useState(false)
 
   // Windows Firewall hole for the listen port — Electron's auto-prompt only
   // covers our app binary on the active LAN profile and silently misses the
@@ -283,12 +245,6 @@ export function WorldEditSessionPage(
       .listMaps?.()
       .then((maps) => setAvailableMaps(maps ?? []))
       .catch(() => setAvailableMaps([]))
-    // Populate the saved-projects list so users can host from one or load
-    // one mid-session.
-    window.api
-      .worldEditListProjects?.()
-      .then((list) => setProjects(list ?? []))
-      .catch(() => setProjects([]))
     // Fetch Tailscale status — if the user has Tailscale running we can offer
     // a zero-config cross-network invite code using their tailnet IP.
     window.api
@@ -480,11 +436,7 @@ export function WorldEditSessionPage(
       .split(/[\n,]+/)
       .map((s) => s.trim())
       .filter(Boolean)
-    // Saved project overrides the stock/mod level dropdown — we feed the
-    // project's VFS sub-path (e.g. "_beamcm_projects/gridmap_v2__foo") as
-    // the session level, which `launchVanilla` turns into
-    // "-level levels/<sub>/info.json" and boots into that project folder.
-    const levelName = hostProject ? projectLevelSubPath(hostProject) : hostLevel.trim() || null
+    const levelName = hostLevel.trim() || null
     return {
       port: Number.isFinite(port) && port > 0 ? port : undefined,
       token: hostToken.trim() || null,
@@ -508,52 +460,6 @@ export function WorldEditSessionPage(
       setBusy(false)
     }
   }
-
-  /** Refresh the saved-projects list (used by the picker modal + after loads). */
-  const refreshProjects = useCallback(async () => {
-    setProjectsBusy(true)
-    try {
-      const list = await window.api.worldEditListProjects?.()
-      setProjects(list ?? [])
-    } catch {
-      /* ignore */
-    } finally {
-      setProjectsBusy(false)
-    }
-  }, [])
-
-  /**
-   * Mid-session "Load saved project" — signals the running BeamNG to
-   * reload into the chosen project's level folder. The relay stays up; the
-   * local editor's reload will re-report pose + level to peers as usual.
-   */
-  const onLoadProjectMidSession = useCallback(
-    async (p: EditorProject): Promise<void> => {
-      if (
-        !window.confirm(
-          `Load project "${p.name}" into the current session?\n\n` +
-            'BeamNG will reload the level. Any unsaved edits in the current map will be lost.'
-        )
-      )
-        return
-      setBusy(true)
-      setErr(null)
-      try {
-        const res = await window.api.worldEditLoadProject?.(p.levelPath)
-        if (!res) {
-          setErr('Load-project binding unavailable — restart CM.')
-          return
-        }
-        if (!res.success) setErr(res.error ?? 'Load failed')
-        else setProjectPickerOpen(false)
-      } catch (e) {
-        setErr(String(e))
-      } finally {
-        setBusy(false)
-      }
-    },
-    []
-  )
 
   const onApprovePeer = async (authorId: string): Promise<void> => {
     await window.api.worldEditSessionApprovePeer?.(authorId)
@@ -723,41 +629,6 @@ export function WorldEditSessionPage(
       <div className="flex items-center gap-3 flex-wrap">
         <Radio size={18} className="text-[var(--color-accent)]" />
         <h2 className="text-base font-semibold">Multiplayer session</h2>
-
-        {/* Active project chip — shows what the host is currently sharing
-            (or that nothing is staged), and opens the project browser modal
-            on click. Visible to both hosts (write access) and joiners
-            (read-only — they get whatever the host advertises). */}
-        <button
-          onClick={() => setProjectBrowserOpen(true)}
-          className={`ml-auto group flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
-            s?.project
-              ? 'border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-200 hover:bg-fuchsia-500/20'
-              : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]'
-          }`}
-          title={
-            s?.project
-              ? 'Click to browse, swap, or capture another project'
-              : 'Open the coop project browser'
-          }
-        >
-          <FolderOpen size={14} className="shrink-0" />
-          {s?.project ? (
-            <>
-              <span>
-                <span className="opacity-70">{isJoined ? 'Receiving' : 'Sharing'}: </span>
-                <span className="font-semibold">{s.project.name}</span>
-                <span className="opacity-60"> • {s.project.levelName}</span>
-              </span>
-            </>
-          ) : (
-            <span>{isHosting ? 'No project staged — click to share one' : 'Coop projects'}</span>
-          )}
-          <ChevronRight
-            size={12}
-            className="opacity-50 group-hover:translate-x-0.5 transition-transform"
-          />
-        </button>
       </div>
       <p className="text-sm text-[var(--color-text-muted)] max-w-4xl">
         Collaborative world-editor sessions run <strong>peer-to-peer between two CM installs</strong>
@@ -1035,8 +906,7 @@ export function WorldEditSessionPage(
               <select
                 value={hostLevel}
                 onChange={(e) => setHostLevel(e.target.value)}
-                disabled={!!hostProject}
-                className="w-full px-2 py-1.5 rounded bg-[var(--color-bg)] border border-[var(--color-border)] font-mono disabled:opacity-50"
+                className="w-full px-2 py-1.5 rounded bg-[var(--color-bg)] border border-[var(--color-border)] font-mono"
               >
                 <option value="">— auto-detect from game —</option>
                 {availableMaps.length > 0 && (
@@ -1064,69 +934,6 @@ export function WorldEditSessionPage(
               </select>
             </label>
 
-            {/* Start from saved project — if picked, overrides the level dropdown */}
-            <div className="md:col-span-2 rounded-md border border-fuchsia-500/30 bg-fuchsia-500/5 p-3 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-xs font-semibold text-fuchsia-300 inline-flex items-center gap-1">
-                  <FolderOpen size={12} /> Start from a saved project (optional)
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void refreshProjects()}
-                  disabled={projectsBusy}
-                  className="text-[11px] text-[var(--color-text-muted)] hover:text-[var(--color-text)] inline-flex items-center gap-1 disabled:opacity-50"
-                  title="Reload project list"
-                >
-                  {projectsBusy ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />}
-                  Refresh
-                </button>
-              </div>
-              <p className="text-[11px] text-[var(--color-text-muted)]">
-                Resume from a map you previously saved. Use the
-                <strong className="mx-1">Coop projects</strong> chip at the top of this page
-                and click <strong>Capture current</strong> while the world editor is open to
-                snapshot new ones. BeamNG will boot into the project folder instead of a stock level.
-              </p>
-              {projects.length === 0 ? (
-                <div className="text-[11px] text-[var(--color-text-muted)] italic">
-                  No saved projects yet. Save one from an active editor to use it here.
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <select
-                    value={hostProject?.path ?? ''}
-                    onChange={(e) => {
-                      const chosen = projects.find((p) => p.path === e.target.value) ?? null
-                      setHostProject(chosen)
-                      if (chosen) setHostLevel('')
-                    }}
-                    className="flex-1 px-2 py-1.5 rounded bg-[var(--color-bg)] border border-[var(--color-border)] font-mono text-xs"
-                  >
-                    <option value="">— none (use level above) —</option>
-                    {projects.map((p) => (
-                      <option key={p.path} value={p.path}>
-                        {p.name} · {p.levelName} ({formatBytesShort(p.sizeBytes)})
-                      </option>
-                    ))}
-                  </select>
-                  {hostProject && (
-                    <button
-                      type="button"
-                      onClick={() => setHostProject(null)}
-                      className="p-1.5 rounded border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)]"
-                      title="Clear selection"
-                    >
-                      <XIcon size={12} />
-                    </button>
-                  )}
-                </div>
-              )}
-              {hostProject && (
-                <div className="text-[11px] text-fuchsia-200/80 bg-fuchsia-500/10 rounded px-2 py-1 font-mono">
-                  Will boot into <span className="text-fuchsia-100">{hostProject.levelPath}</span>
-                </div>
-              )}
-            </div>
             <label className="text-xs space-y-1 md:col-span-2">
               <span className="text-[var(--color-text-muted)]">
                 Access token (optional — peers without it will be refused)
@@ -1380,11 +1187,6 @@ export function WorldEditSessionPage(
           copied={copied}
           onLeave={onLeave}
           onLaunchIntoEditor={onLaunchIntoEditor}
-          onOpenProjectPicker={() => {
-            void refreshProjects()
-            setProjectPickerOpen(true)
-          }}
-          hasProjects={projects.length > 0}
           busy={busy}
         />
       )}
@@ -1416,19 +1218,6 @@ export function WorldEditSessionPage(
             >
               <PlayCircle size={14} /> Launch into editor
             </button>
-            {projects.length > 0 && (
-              <button
-                disabled={busy}
-                onClick={() => {
-                  void refreshProjects()
-                  setProjectPickerOpen(true)
-                }}
-                title="Reload BeamNG into one of your saved projects (won't disconnect the session)"
-                className="px-3 py-1.5 rounded border border-fuchsia-500/30 bg-fuchsia-500/10 hover:bg-fuchsia-500/20 text-fuchsia-300 text-sm inline-flex items-center gap-1 disabled:opacity-50"
-              >
-                <FolderOpen size={14} /> Load saved project…
-              </button>
-            )}
             <button
               disabled={busy}
               onClick={onLeave}
@@ -1563,109 +1352,10 @@ export function WorldEditSessionPage(
         </div>
       </div>
 
-      {/* Saved-project picker modal — triggered from host/joined views */}
-      {projectPickerOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-          onClick={() => setProjectPickerOpen(false)}
-        >
-          <div
-            className="w-full max-w-2xl max-h-[80vh] overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] shadow-2xl flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)]">
-              <div className="flex items-center gap-2">
-                <FolderOpen size={16} className="text-fuchsia-300" />
-                <h3 className="text-sm font-semibold">Load a saved project</h3>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => void refreshProjects()}
-                  disabled={projectsBusy}
-                  className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] inline-flex items-center gap-1 disabled:opacity-50"
-                >
-                  {projectsBusy ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-                  Refresh
-                </button>
-                <button
-                  onClick={() => setProjectPickerOpen(false)}
-                  className="p-1 rounded hover:bg-[var(--color-surface-hover)]"
-                  title="Close"
-                >
-                  <XIcon size={14} />
-                </button>
-              </div>
-            </div>
-            <div className="px-4 py-3 text-xs text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
-              Picking a project reloads BeamNG into that project folder. The session stays up;
-              once the level reloads, your local edits to that project are restored.
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              {projects.length === 0 ? (
-                <div className="px-4 py-8 text-center text-sm text-[var(--color-text-muted)]">
-                  No saved projects yet. Open the <strong>Coop projects</strong> chip at the top of
-                  the page and click <strong className="mx-1">Capture current</strong> while
-                  BeamNG is in the world editor.
-                </div>
-              ) : (
-                <table className="w-full text-xs">
-                  <thead className="bg-[var(--color-surface)] text-[var(--color-text-muted)]">
-                    <tr>
-                      <th className="text-left px-4 py-2">Name</th>
-                      <th className="text-left px-4 py-2">Source level</th>
-                      <th className="text-left px-4 py-2 w-40">Modified</th>
-                      <th className="text-right px-4 py-2 w-24">Size</th>
-                      <th className="px-4 py-2 w-28"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {projects.map((p) => (
-                      <tr key={p.path} className="border-t border-[var(--color-border)]/40">
-                        <td className="px-4 py-2 font-medium">{p.name}</td>
-                        <td className="px-4 py-2 text-[var(--color-text-muted)] font-mono">
-                          {p.levelName}
-                        </td>
-                        <td className="px-4 py-2 text-[var(--color-text-muted)] tabular-nums">
-                          {new Date(p.mtime).toLocaleString()}
-                        </td>
-                        <td className="px-4 py-2 text-right text-[var(--color-text-muted)] tabular-nums">
-                          {formatBytesShort(p.sizeBytes)}
-                        </td>
-                        <td className="px-4 py-2 text-right">
-                          <button
-                            onClick={() => void onLoadProjectMidSession(p)}
-                            disabled={busy}
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded border border-fuchsia-500/30 bg-fuchsia-500/10 hover:bg-fuchsia-500/20 text-fuchsia-300 text-xs disabled:opacity-50"
-                          >
-                            <FolderOpen size={11} /> Load
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-            <div className="px-4 py-2 border-t border-[var(--color-border)] text-[11px] text-[var(--color-text-muted)] bg-[var(--color-surface)] flex items-center gap-1">
-              <FolderPlus size={11} />
-              Save new projects via the <strong className="mx-1 text-[var(--color-text)]">Coop projects</strong>
-              chip at the top of the page and click <strong className="mx-1 text-[var(--color-text)]">Capture current</strong>.
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Project browser slide-over — opened from the active-project chip
-          in the page header. Single source of truth for load / share /
-          capture / delete actions across all coop projects. */}
-      <ProjectBrowserModal
-        open={projectBrowserOpen}
-        onClose={() => setProjectBrowserOpen(false)}
-        activeFolder={s?.project?.folder ?? null}
-        isHosting={isHosting}
-        editorPresent={bridgeEditorPresent || s?.bridgeReady === true}
-        currentLevel={bridgeCurrentLevel ?? s?.levelName ?? null}
-      />
+      {/* Project browser + saved-project picker modals were removed in
+          v0.3.54 along with the broken `_beamcm_projects/<folder>` stub
+          pipeline. Late joiners are caught up via the live snapshot pipeline
+          (sceneGraph + fields + objects + env + terrain + forest) instead. */}
     </div>
   )
 }
@@ -1687,10 +1377,6 @@ interface InvitePanelProps {
   onLeave: () => void | Promise<void>
   /** Launch BeamNG.drive directly into the World Editor on the session level. */
   onLaunchIntoEditor: () => void | Promise<void>
-  /** Open the saved-project picker modal to reload BeamNG into a different project. */
-  onOpenProjectPicker: () => void
-  /** Controls whether the project-picker button is rendered. */
-  hasProjects: boolean
   busy: boolean
 }
 
@@ -2098,8 +1784,6 @@ function InvitePanel({
   copied,
   onLeave,
   onLaunchIntoEditor,
-  onOpenProjectPicker,
-  hasProjects,
   busy,
 }: InvitePanelProps): React.JSX.Element {
   const port = status.port ?? 45678
@@ -2205,16 +1889,6 @@ function InvitePanel({
           >
             <PlayCircle size={14} /> Launch into editor
           </button>
-          {hasProjects && (
-            <button
-              disabled={busy}
-              onClick={onOpenProjectPicker}
-              title="Reload BeamNG into one of your saved projects (session stays up)"
-              className="px-3 py-1.5 rounded border border-fuchsia-500/30 bg-fuchsia-500/10 hover:bg-fuchsia-500/20 text-fuchsia-300 text-sm inline-flex items-center gap-1 disabled:opacity-50"
-            >
-              <FolderOpen size={14} /> Load saved project…
-            </button>
-          )}
           <button
             disabled={busy}
             onClick={() => void onLeave()}
