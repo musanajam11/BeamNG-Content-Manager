@@ -164,7 +164,7 @@ export function WorldEditSessionPage(
   const [hostToken, setHostToken] = useState('')
   const [hostLevel, setHostLevel] = useState('')
   const [availableMaps, setAvailableMaps] = useState<
-    Array<{ name: string; source: 'stock' | 'mod'; levelDir?: string }>
+    Array<{ name: string; source: 'stock' | 'mod'; levelDir?: string; modKey?: string }>
   >([])
   const [displayName, setDisplayName] = useState('Player')
   const [lanIps, setLanIps] = useState<string[]>([])
@@ -430,6 +430,7 @@ export function WorldEditSessionPage(
     authMode: 'open' | 'token' | 'approval' | 'friends'
     friendsWhitelist?: string[]
     advertiseHost?: string | null
+    mapModKey?: string | null
   } => {
     const port = Number.parseInt(hostPort, 10)
     const whitelist = friendsWhitelistText
@@ -437,6 +438,16 @@ export function WorldEditSessionPage(
       .map((s) => s.trim())
       .filter(Boolean)
     const levelName = hostLevel.trim() || null
+    // If the chosen level comes from a mod (not a stock map), forward
+    // the mod key so the host advertises that single zip to joiners —
+    // map sync is the only mod-sync flow we support.
+    const selectedMap = levelName
+      ? availableMaps.find((m) => (m.levelDir ?? m.name) === levelName)
+      : null
+    const mapModKey =
+      selectedMap && selectedMap.source === 'mod' && selectedMap.modKey
+        ? selectedMap.modKey
+        : null
     return {
       port: Number.isFinite(port) && port > 0 ? port : undefined,
       token: hostToken.trim() || null,
@@ -445,6 +456,7 @@ export function WorldEditSessionPage(
       authMode,
       friendsWhitelist: authMode === 'friends' ? whitelist : undefined,
       advertiseHost: advertiseHost || null,
+      mapModKey,
     }
   }
 

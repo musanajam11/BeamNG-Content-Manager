@@ -1081,6 +1081,33 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle('game:clearModCache', async (): Promise<{ success: boolean; error?: string; freedBytes?: number; fileCount?: number }> => {
+    // Cached BeamMP mod downloads live in <CM appData>/Resources — separate
+    // from BeamNG's cache/temp dirs cleared by game:clearCache.
+    const cacheDir = join(app.getPath('userData'), 'Resources')
+    if (!existsSync(cacheDir)) return { success: true, freedBytes: 0, fileCount: 0 }
+    let freedBytes = 0
+    let fileCount = 0
+    try {
+      const entries = await readdir(cacheDir, { withFileTypes: true })
+      for (const entry of entries) {
+        if (!entry.isFile()) continue
+        const filePath = join(cacheDir, entry.name)
+        try {
+          const s = await stat(filePath)
+          await unlink(filePath)
+          freedBytes += s.size
+          fileCount++
+        } catch (err) {
+          console.warn(`Failed to remove ${entry.name}: ${err}`)
+        }
+      }
+      return { success: true, freedBytes, fileCount }
+    } catch (err) {
+      return { success: false, error: `Failed to clear mod cache: ${err}` }
+    }
+  })
+
   ipcMain.handle('game:launchSafeMode', async (): Promise<{ success: boolean; error?: string }> => {
     const paths = configService.get().gamePaths
     if (!paths?.executable || !existsSync(paths.executable)) {
@@ -1270,6 +1297,7 @@ export function registerIpcHandlers(): void {
         authMode?: 'open' | 'token' | 'approval' | 'friends'
         friendsWhitelist?: string[]
         advertiseHost?: string | null
+        mapModKey?: string | null
       }
     ): Promise<{ success: boolean; error?: string; status?: SessionStatus }> => {
       const userDir = configService.get().gamePaths?.userDir
@@ -1285,6 +1313,7 @@ export function registerIpcHandlers(): void {
           authMode: opts.authMode,
           friendsWhitelist: opts.friendsWhitelist,
           advertiseHost: opts.advertiseHost ?? null,
+          mapModKey: opts.mapModKey ?? null,
         })
         return { success: true, status }
       } catch (err) {
@@ -1357,6 +1386,7 @@ export function registerIpcHandlers(): void {
         authMode?: 'open' | 'token' | 'approval' | 'friends'
         friendsWhitelist?: string[]
         advertiseHost?: string | null
+        mapModKey?: string | null
       }
     ): Promise<{ success: boolean; error?: string; status?: SessionStatus; level?: string }> => {
       const appConfig = configService.get()
@@ -1374,6 +1404,7 @@ export function registerIpcHandlers(): void {
           authMode: opts.authMode,
           friendsWhitelist: opts.friendsWhitelist,
           advertiseHost: opts.advertiseHost ?? null,
+          mapModKey: opts.mapModKey ?? null,
         })
       } catch (err) {
         return { success: false, error: `${err}` }
@@ -1774,6 +1805,15 @@ export function registerIpcHandlers(): void {
       const appConfig = configService.get()
       const userDir = appConfig.gamePaths?.userDir
       if (!userDir) return { success: false, error: 'User data folder not configured' }
+      // Refuse to launch while the host's map mod is still being
+      // downloaded — BeamNG would either fail to find the level or
+      // silently bounce the player back to the main menu.
+      if (editorSession.isModSyncBlocking()) {
+        return {
+          success: false,
+          error: 'Map mod is still downloading from the host — wait for the transfer to finish, then try again.',
+        }
+      }
       const prep = editorSession.prepareEditorLaunch({
         userDir,
         levelOverride: opts?.levelOverride ?? null,
@@ -4063,11 +4103,11 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  ipcMain.handle('game:listMaps', async (): Promise<{ name: string; source: 'stock' | 'mod'; modZipPath?: string; levelDir?: string }[]> => {
+  ipcMain.handle('game:listMaps', async (): Promise<{ name: string; source: 'stock' | 'mod'; modZipPath?: string; levelDir?: string; modKey?: string }[]> => {
     const config = configService.get()
     const installDir = config.gamePaths?.installDir
     const userDir = config.gamePaths?.userDir
-    const maps: { name: string; source: 'stock' | 'mod'; modZipPath?: string; levelDir?: string }[] = []
+    const maps: { name: string; source: 'stock' | 'mod'; modZipPath?: string; levelDir?: string; modKey?: string }[] = []
     const seen = new Set<string>()
 
     // 1) Stock maps from installDir/content/levels/
@@ -4085,18 +4125,34 @@ export function registerIpcHandlers(): void {
       } catch { /* dir doesn't exist */ }
     }
 
-    // 2) Mod maps (enabled terrain mods from mod manager)
+    // 2) Mod maps. We treat ANY enabled mod with a `levels/<dir>/`
+    //    folder (i.e. `levelDir` set) as a candidate map — the older
+    //    strict `modType === 'terrain' || 'map'` filter silently dropped
+    //    map mods that BeamNG itself classified as `'unknown'` in db.json.
+    //    `levelDir` is populated by `scanModZip` whenever the archive
+    //    contains a `levels/` entry, which is the most reliable signal
+    //    we have. We also fall back to `levelDir` when `title` is null
+    //    so the dropdown still shows a usable label.
     try {
       const mods = await modManagerService.listMods(userDir || '')
       for (const mod of mods) {
-        if ((mod.modType === 'terrain' || mod.modType === 'map') && mod.enabled && mod.title) {
-          // Use the actual level directory name from the zip, falling back to title
-          const levelDir = mod.levelDir || mod.title
-          if (!seen.has(levelDir)) {
-            seen.add(levelDir)
-            maps.push({ name: mod.title, source: 'mod', modZipPath: mod.filePath, levelDir })
-          }
-        }
+        if (!mod.enabled) continue
+        const isMapMod =
+          mod.modType === 'terrain' ||
+          mod.modType === 'map' ||
+          !!mod.levelDir
+        if (!isMapMod) continue
+        const levelDir = mod.levelDir || mod.title || mod.key
+        if (!levelDir) continue
+        if (seen.has(levelDir)) continue
+        seen.add(levelDir)
+        maps.push({
+          name: mod.title || levelDir,
+          source: 'mod',
+          modZipPath: mod.filePath,
+          levelDir,
+          modKey: mod.key,
+        })
       }
     } catch { /* ignore */ }
 

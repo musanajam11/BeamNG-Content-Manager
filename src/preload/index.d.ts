@@ -84,7 +84,7 @@ interface AppAPI {
   // Game Launcher
   launchGame(): Promise<{ success: boolean; error?: string }>
   launchVanilla(config?: { mode?: string; level?: string; vehicle?: string }): Promise<{ success: boolean; error?: string }>
-  listMaps(): Promise<{ name: string; source: 'stock' | 'mod'; modZipPath?: string; levelDir?: string }[]>
+  listMaps(): Promise<{ name: string; source: 'stock' | 'mod'; modZipPath?: string; levelDir?: string; modKey?: string }[]>
   listVehicles(): Promise<{
     name: string; displayName: string; brand: string; type: string;
     bodyStyle: string; country: string; source: 'stock' | 'mod'; configCount: number
@@ -123,6 +123,7 @@ interface AppAPI {
   // Support Tools
   openUserFolder(): Promise<{ success: boolean; error?: string }>
   clearCache(): Promise<{ success: boolean; error?: string; freedBytes?: number }>
+  clearModCache(): Promise<{ success: boolean; error?: string; freedBytes?: number; fileCount?: number }>
   launchSafeMode(): Promise<{ success: boolean; error?: string }>
   launchSafeVulkan(): Promise<{ success: boolean; error?: string }>
   verifyIntegrity(): Promise<{ success: boolean; error?: string }>
@@ -252,7 +253,7 @@ interface AppAPI {
     sname: string
   }) => void): () => void
   onModSyncProgress(callback: (progress: {
-    phase: 'downloading' | 'loading' | 'done'
+    phase: 'downloading' | 'loading' | 'done' | 'cancelled'
     modIndex: number
     modCount: number
     fileName: string
@@ -633,6 +634,7 @@ interface AppAPI {
     authMode?: 'open' | 'token' | 'approval' | 'friends'
     friendsWhitelist?: string[]
     advertiseHost?: string | null
+    mapModKey?: string | null
   }): Promise<{ success: boolean; error?: string; status?: import('../shared/types').SessionStatus }>
   worldEditSessionJoin(opts: {
     host: string
@@ -658,6 +660,7 @@ interface AppAPI {
     authMode?: 'open' | 'token' | 'approval' | 'friends'
     friendsWhitelist?: string[]
     advertiseHost?: string | null
+    mapModKey?: string | null
   }): Promise<{ success: boolean; error?: string; status?: import('../shared/types').SessionStatus; level?: string }>
   worldEditSessionJoinCodeAndLaunch(opts: {
     code: string; displayName?: string

@@ -8,10 +8,13 @@ import {
   unlinkSync,
   renameSync,
   createReadStream,
+  createWriteStream,
   readdirSync,
   statSync,
-  rmSync
+  rmSync,
+  type WriteStream
 } from 'fs'
+import type { Hash } from 'crypto'
 import { readFile as readFileAsync } from 'fs/promises'
 import { join, extname, basename } from 'path'
 import {
@@ -29,6 +32,7 @@ import { homedir } from 'os'
 import { app, BrowserWindow, safeStorage } from 'electron'
 import type { GamePaths, GameStatus } from '../../shared/types'
 import { EditorSyncBridgeSocket, type LuaOpEnvelope, type LuaHello, type LuaPose, type LuaEnvObservation, type LuaFieldObservation, type LuaSnapshotChunk, type LuaSnapshotAck, type LuaBrushObservation } from './EditorSyncBridgeSocket'
+import { notifyModSyncProgress, closeModSyncOverlay } from './ModSyncOverlayWindow'
 
 interface ModInfo {
   file_name: string
@@ -4157,11 +4161,17 @@ export class GameLauncherService {
   // Server TCP handshake state
   private serverBuffer: Buffer = Buffer.alloc(0)
   private serverMsgResolve: ((msg: string) => void) | null = null
-  private serverRawResolve: ((data: Buffer) => void) | null = null
   private serverRawSize: number = 0
-  private serverRawBuffer: Buffer | null = null
   private serverRawOffset: number = 0
   private serverRawProgressCallback: ((received: number) => void) | null = null
+  // Streaming sink: incoming raw bytes are written straight to disk and
+  // hashed inline instead of buffered in a single contiguous Buffer. Used
+  // for mod downloads that can be hundreds of MB — or several GB — and
+  // would otherwise OOM V8's ArrayBuffer allocator.
+  private serverRawStreamFile: WriteStream | null = null
+  private serverRawStreamHash: Hash | null = null
+  private serverRawStreamResolve: ((info: { hash: string; size: number }) => void) | null = null
+  private serverRawStreamReject: ((err: Error) => void) | null = null
   private serverInRelay: boolean = false
 
   // UDP
@@ -4318,21 +4328,41 @@ export class GameLauncherService {
   private emitLauncherLog(line: string): void {
     const windows = BrowserWindow.getAllWindows()
     for (const win of windows) {
-      if (!win.isDestroyed()) win.webContents.send('launcher:log', line)
+      if (win.isDestroyed()) continue
+      const wc = win.webContents
+      if (wc.isDestroyed() || wc.isCrashed() || wc.isLoading()) continue
+      try { wc.send('launcher:log', line) } catch { /* ignore disposed frame */ }
     }
   }
 
   private emitModSyncProgress(progress: {
-    phase: 'downloading' | 'loading' | 'done'
+    phase: 'downloading' | 'loading' | 'done' | 'cancelled'
     modIndex: number
     modCount: number
     fileName: string
     received: number
     total: number
   }): void {
+    // Lazily spawn / tear down the always-on-top overlay window. Must run
+    // BEFORE broadcasting so the new window is registered and receives the
+    // very first event via getAllWindows(). PID is passed so the overlay
+    // can track BeamNG's window position and follow it across monitors.
+    const gamePid = this.gameProcess?.pid ?? null
+    notifyModSyncProgress(progress, gamePid)
+    // Suppress in-app broadcasts once the game has exited — the launcher
+    // keeps emitting `placed` events for already-on-disk mods after the
+    // user quits BeamNG, which would otherwise resurrect the in-app overlay.
+    if (!gamePid && progress.phase !== 'cancelled') return
     const windows = BrowserWindow.getAllWindows()
     for (const win of windows) {
-      if (!win.isDestroyed()) win.webContents.send('game:modSyncProgress', progress)
+      if (win.isDestroyed()) continue
+      const wc = win.webContents
+      // Skip windows whose render frame is gone (e.g. mid HMR reload in dev,
+      // or a window currently navigating). Calling .send() on a disposed
+      // frame throws "Render frame was disposed before WebFrameMain could be
+      // accessed", which would otherwise abort the entire download stream.
+      if (wc.isDestroyed() || wc.isCrashed() || wc.isLoading()) continue
+      try { wc.send('game:modSyncProgress', progress) } catch { /* ignore disposed frame */ }
     }
   }
 
@@ -4940,10 +4970,12 @@ export class GameLauncherService {
         this.serverMsgResolve = null
         r('')
       }
-      if (this.serverRawResolve) {
-        const r = this.serverRawResolve
-        this.serverRawResolve = null
-        r(Buffer.alloc(0))
+      if (this.serverRawStreamReject) {
+        const reject = this.serverRawStreamReject
+        const ws = this.serverRawStreamFile
+        this.cleanupStreamSink()
+        try { ws?.destroy() } catch { /* ignore */ }
+        reject(new Error('Server connection lost during download'))
       }
 
     })
@@ -5002,30 +5034,53 @@ export class GameLauncherService {
     })
   }
 
-  private serverRecvRaw(size: number, timeoutMs?: number): Promise<Buffer> {
-    // Scale timeout: at least 60s, or allow ~10 KB/s minimum throughput, whichever is larger
+  private serverRecvRawToFile(size: number, destPath: string, timeoutMs?: number): Promise<{ hash: string; size: number }> {
     const effectiveTimeout = timeoutMs ?? Math.max(60000, Math.ceil(size / 10240) * 1000 + 30000)
     return new Promise((resolve, reject) => {
       if (this.terminate) { reject(new Error('Terminated')); return }
+      const ws = createWriteStream(destPath)
+      const hash = createHash('sha256')
       const timer = setTimeout(() => {
-        if (this.serverRawResolve === wrappedResolve) {
-          this.serverRawResolve = null
-          this.log(`ERROR: serverRecvRaw timed out waiting for ${size} bytes`)
+        if (this.serverRawStreamResolve === wrappedResolve) {
+          this.cleanupStreamSink()
+          try { ws.destroy() } catch { /* ignore */ }
+          this.log(`ERROR: serverRecvRawToFile timed out waiting for ${size} bytes (got ${this.serverRawOffset})`)
           this.terminateWith('Mod download timed out')
-          resolve(Buffer.alloc(0))
+          reject(new Error('timeout'))
         }
       }, effectiveTimeout)
-      const wrappedResolve = (val: Buffer): void => {
+      const wrappedResolve = (info: { hash: string; size: number }): void => {
         clearTimeout(timer)
-        resolve(val)
+        resolve(info)
       }
-      this.serverRawResolve = wrappedResolve
+      const wrappedReject = (err: Error): void => {
+        clearTimeout(timer)
+        reject(err)
+      }
+      ws.on('error', (err) => {
+        if (this.serverRawStreamReject === wrappedReject) {
+          this.cleanupStreamSink()
+          wrappedReject(err)
+        }
+      })
+      this.serverRawStreamFile = ws
+      this.serverRawStreamHash = hash
+      this.serverRawStreamResolve = wrappedResolve
+      this.serverRawStreamReject = wrappedReject
       this.serverRawSize = size
-      // Pre-allocate the target buffer and track write offset for streaming receives
-      this.serverRawBuffer = Buffer.allocUnsafe(size)
       this.serverRawOffset = 0
       this.processServerBuffer()
     })
+  }
+
+  private cleanupStreamSink(): void {
+    this.serverRawStreamFile = null
+    this.serverRawStreamHash = null
+    this.serverRawStreamResolve = null
+    this.serverRawStreamReject = null
+    this.serverRawSize = 0
+    this.serverRawOffset = 0
+    this.serverRawProgressCallback = null
   }
 
   private processServerBuffer(): void {
@@ -5048,12 +5103,19 @@ export class GameLauncherService {
       }
       return
     }
-    if (this.serverRawResolve && this.serverRawSize > 0 && this.serverRawBuffer) {
-      // Stream incoming data into pre-allocated buffer instead of accumulating
+    if (this.serverRawStreamResolve && this.serverRawSize > 0 && this.serverRawStreamFile && this.serverRawStreamHash) {
+      // Streaming sink: copy bytes from the receive buffer directly into the
+      // write stream + hasher, never holding more than `serverBuffer.length`
+      // bytes in memory at once.
       const remaining = this.serverRawSize - this.serverRawOffset
       if (this.serverBuffer.length > 0 && remaining > 0) {
         const toCopy = Math.min(this.serverBuffer.length, remaining)
-        this.serverBuffer.copy(this.serverRawBuffer, this.serverRawOffset, 0, toCopy)
+        const slice = this.serverBuffer.subarray(0, toCopy)
+        this.serverRawStreamHash.update(slice)
+        // write() returns false on backpressure; we don't await drain because
+        // the TCP socket already throttles us — but we DO release the slice
+        // immediately so V8 can GC the underlying chunk.
+        this.serverRawStreamFile.write(slice)
         this.serverRawOffset += toCopy
         this.serverBuffer = this.serverBuffer.subarray(toCopy)
         if (this.serverRawProgressCallback) {
@@ -5061,14 +5123,18 @@ export class GameLauncherService {
         }
       }
       if (this.serverRawOffset >= this.serverRawSize) {
-        const data = this.serverRawBuffer
-        const resolve = this.serverRawResolve
-        this.serverRawResolve = null
-        this.serverRawSize = 0
-        this.serverRawBuffer = null
-        this.serverRawOffset = 0
-        this.serverRawProgressCallback = null
-        resolve(data)
+        const ws = this.serverRawStreamFile
+        const hash = this.serverRawStreamHash
+        const resolve = this.serverRawStreamResolve
+        const reject = this.serverRawStreamReject
+        const finalSize = this.serverRawSize
+        this.cleanupStreamSink()
+        ws.end(() => {
+          if (resolve) resolve({ hash: hash.digest('hex'), size: finalSize })
+        })
+        // If the stream errors after end(), prefer the resolve we already
+        // queued; the reject is here only for in-flight failures.
+        void reject
       }
       return
     }
@@ -5241,21 +5307,43 @@ export class GameLauncherService {
         this.emitModSyncProgress({ phase: 'downloading', modIndex: i, modCount: modInfos.length, fileName: mod.file_name, received: 0, total: mod.file_size })
         this.log(`Downloading ${mod.file_name} (${mod.file_size} bytes)`)
         this.serverSendFramed('f' + mod.file_name)
-        const dlResp = await this.serverRecvMsg()
+        // Allow up to 5 minutes for the server's AG response. After delivering
+        // a multi-GB mod, some servers take 30+ seconds to start streaming the
+        // next file (disk I/O, serving other clients, etc.). 30s default is
+        // not enough — observed real-world timeouts after downloading 2.4 GB.
+        const dlResp = await this.serverRecvMsg(300000)
         if (dlResp === 'CO' || this.terminate) { this.terminateWith(`Server refused to send mod "${mod.file_name}"`); return }
         if (dlResp !== 'AG') { this.terminateWith(`Unexpected response downloading mod "${mod.file_name}": ${dlResp?.substring(0, 40)}`); return }
         // Stream progress updates to the overlay as data arrives
         this.serverRawProgressCallback = (received: number): void => {
           this.emitModSyncProgress({ phase: 'downloading', modIndex: i, modCount: modInfos.length, fileName: mod.file_name, received, total: mod.file_size })
         }
-        const fileData = await this.serverRecvRaw(mod.file_size)
-        if (this.terminate || fileData.length !== mod.file_size) { this.terminateWith(`Download of "${mod.file_name}" was incomplete (got ${fileData.length} of ${mod.file_size} bytes)`); return }
+        // Stream straight to disk + hash inline. Avoids allocating a single
+        // contiguous Buffer for the whole file (fails with "Array buffer
+        // allocation failed" for files >~1 GB or smaller files when V8's
+        // heap is fragmented after several launches in one session).
+        const tmpCachedPath = cachedPath + '.partial'
+        let dlInfo: { hash: string; size: number }
+        try {
+          dlInfo = await this.serverRecvRawToFile(mod.file_size, tmpCachedPath)
+        } catch (err) {
+          try { unlinkSync(tmpCachedPath) } catch { /* ignore */ }
+          this.terminateWith(`Download of "${mod.file_name}" failed: ${(err as Error).message}`)
+          return
+        }
+        if (this.terminate || dlInfo.size !== mod.file_size) {
+          try { unlinkSync(tmpCachedPath) } catch { /* ignore */ }
+          this.terminateWith(`Download of "${mod.file_name}" was incomplete (got ${dlInfo.size} of ${mod.file_size} bytes)`)
+          return
+        }
         this.emitModSyncProgress({ phase: 'downloading', modIndex: i, modCount: modInfos.length, fileName: mod.file_name, received: mod.file_size, total: mod.file_size })
-        writeFileSync(cachedPath, fileData)
-        const hash = await this.hashFile(cachedPath)
-        if (hash !== mod.hash) {
-          try { unlinkSync(cachedPath) } catch { /* */ }
+        if (dlInfo.hash !== mod.hash) {
+          try { unlinkSync(tmpCachedPath) } catch { /* */ }
           this.terminateWith(`Hash mismatch for "${mod.file_name}" — downloaded file is corrupted`)
+          return
+        }
+        try { renameSync(tmpCachedPath, cachedPath) } catch (err) {
+          this.terminateWith(`Failed to finalize download of "${mod.file_name}": ${(err as Error).message}`)
           return
         }
         this.log(`Downloaded ${mod.file_name}`)
@@ -5630,7 +5718,13 @@ export class GameLauncherService {
     if (this.udpSocket) { try { this.udpSocket.close() } catch { /* */ } this.udpSocket = null }
     this.udpTarget = null
     this.serverMsgResolve = null
-    this.serverRawResolve = null
+    if (this.serverRawStreamReject) {
+      const reject = this.serverRawStreamReject
+      const ws = this.serverRawStreamFile
+      this.cleanupStreamSink()
+      try { ws?.destroy() } catch { /* ignore */ }
+      reject(new Error('Connection reset'))
+    }
     this.terminate = false
     this.ulStatus = 'Ulstart'
     this.cachedModList = ''
@@ -5775,6 +5869,11 @@ export class GameLauncherService {
       this.gameProcess.on('exit', (code) => {
         this.log(`BeamNG.drive exited with code ${code}`)
         this.gameProcess = null
+        // Always tear down the mod-sync overlay window when the game exits,
+        // even if shutdown() short-circuits below. This guarantees the
+        // standalone overlay never gets orphaned and the in-app overlay
+        // receives the synthetic 'cancelled' broadcast.
+        closeModSyncOverlay()
 
         if (this.isProtonLaunch) {
           // On Steam Deck / Proton, the `steam` CLI exits immediately after
@@ -7418,6 +7517,9 @@ export class GameLauncherService {
       }
     }
     this.notifyGameExit()
+    // Tear down the mod-sync overlay window if the game quit before mods
+    // finished downloading — otherwise it would remain stuck on screen.
+    closeModSyncOverlay()
     this.stopGpsFilePoller()
     this.stopEditorSyncStatusPoller()
     this.netReset()

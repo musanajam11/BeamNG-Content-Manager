@@ -536,6 +536,7 @@ function SupportToolsSection(): React.JSX.Element {
   const { t } = useTranslation()
   const [status, setStatus] = useState<string | null>(null)
   const [clearing, setClearing] = useState(false)
+  const [clearingMods, setClearingMods] = useState(false)
 
   const showStatus = (msg: string, durationMs = 4000): void => {
     setStatus(msg)
@@ -559,6 +560,21 @@ function SupportToolsSection(): React.JSX.Element {
       }
     } finally {
       setClearing(false)
+    }
+  }
+
+  const handleClearModCache = async (): Promise<void> => {
+    setClearingMods(true)
+    try {
+      const result = await window.api.clearModCache()
+      if (result.success) {
+        const mb = result.freedBytes ? (result.freedBytes / 1024 / 1024).toFixed(1) : '0'
+        showStatus(t('settings.modCacheClearedMB', { count: result.fileCount ?? 0, mb }))
+      } else {
+        showStatus(result.error ?? 'Failed')
+      }
+    } finally {
+      setClearingMods(false)
     }
   }
 
@@ -604,6 +620,13 @@ function SupportToolsSection(): React.JSX.Element {
           <div>
             <div className="font-medium text-[var(--color-text-primary)]">{t('settings.clearCache')}</div>
             <div className="text-xs text-[var(--color-text-muted)]">{t('settings.clearCacheDesc')}</div>
+          </div>
+        </button>
+        <button onClick={handleClearModCache} disabled={clearingMods} className={btnClass}>
+          {clearingMods ? <Loader2 size={15} className="shrink-0 text-[var(--color-accent)] animate-spin" /> : <Trash2 size={15} className="shrink-0 text-[var(--color-accent)]" />}
+          <div>
+            <div className="font-medium text-[var(--color-text-primary)]">{t('settings.clearModCache')}</div>
+            <div className="text-xs text-[var(--color-text-muted)]">{t('settings.clearModCacheDesc')}</div>
           </div>
         </button>
         <button onClick={handleSafeMode} className={btnClass}>

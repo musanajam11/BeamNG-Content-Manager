@@ -363,6 +363,13 @@ export class EditorSyncSessionController extends EventEmitter {
     friendsWhitelist?: string[]
     levelSource?: { builtIn: boolean; modPath?: string; hash?: string } | null
     /**
+     * Mod key for the level the host wants peers to load. When set and
+     * the level is provided by an installed mod (not a stock map), this
+     * is the ONLY mod that will be advertised in the Welcome manifest —
+     * joiners receive just the map zip and nothing else.
+     */
+    mapModKey?: string | null
+    /**
      * Public-facing host address to embed in the session code. If omitted,
      * callers (IPC handler) can fill it in afterwards via `setAdvertiseHost`.
      */
@@ -462,6 +469,21 @@ export class EditorSyncSessionController extends EventEmitter {
         displayName: this.displayName,
       })
       this.log('info', 'relay', `Hosting on port ${st.port}${this.token ? ' (token required)' : ' (open session)'}`)
+      // If hosting on a modded map, advertise that single mod zip so
+      // joiners can download + activate it before they launch into the
+      // editor. We deliberately publish ONLY the map mod — the user has
+      // opted out of any broader mod-sync behaviour.
+      if (opts.mapModKey) {
+        try {
+          await this.publishHostMods({
+            beamngBuild: '',
+            restrictToKeys: [opts.mapModKey],
+          })
+        } catch (modErr) {
+          this.log('warn', 'session',
+            `mapModKey "${opts.mapModKey}" provided but publishHostMods failed: ${modErr}`)
+        }
+      }
       this.pushStatus()
       return this.getStatus()
     } catch (err) {
@@ -470,6 +492,24 @@ export class EditorSyncSessionController extends EventEmitter {
       this.pushStatus()
       throw err
     }
+  }
+
+  /**
+   * Joiner-side: returns true while a host-advertised map mod is still
+   * pending download (or actively downloading). The launch IPC consults
+   * this so the joiner can't boot BeamNG into a level whose mod isn't
+   * yet on disk — that would either fail to load or silently drop into
+   * the main menu.
+   */
+  isModSyncBlocking(): boolean {
+    if (this.modSyncRun?.running) return true
+    if (this.modSyncPending && this.modSyncPending.diff.missingIds.length > 0) {
+      // Pending diff exists with downloads required, but acceptModSync
+      // hasn't started yet (or it finished and was cleared — the latter
+      // resets modSyncPending so we wouldn't be here).
+      return true
+    }
+    return false
   }
 
   /**
@@ -532,6 +572,14 @@ export class EditorSyncSessionController extends EventEmitter {
   async publishHostMods(opts: {
     beamngBuild: string
     levelDependencies?: string[]
+    /**
+     * Optional whitelist of mod keys to publish. When set, every other
+     * installed mod is skipped — used by the session host flow to share
+     * ONLY the active map's mod zip (the user explicitly does not want
+     * arbitrary mod sync between players, just the modded map itself).
+     * Pass `null` / omit to fall back to the full library (legacy).
+     */
+    restrictToKeys?: string[] | null
   }): Promise<{ publishedCount: number; skippedNoShareIds: string[]; skippedServerOnlyIds: string[] }> {
     if (!this.relay) {
       throw new Error('publishHostMods called when not hosting')
@@ -539,7 +587,13 @@ export class EditorSyncSessionController extends EventEmitter {
     if (!this.modEnumerator) {
       throw new Error('publishHostMods called without modEnumerator wired')
     }
-    const localMods = await this.modEnumerator()
+    const allLocalMods = await this.modEnumerator()
+    const restrictSet = opts.restrictToKeys && opts.restrictToKeys.length > 0
+      ? new Set(opts.restrictToKeys)
+      : null
+    const localMods = restrictSet
+      ? allLocalMods.filter((m) => restrictSet.has(m.key))
+      : allLocalMods
     const skippedServerOnlyIds = localMods
       .filter((m) => m.multiplayerScope === 'server')
       .map((m) => m.key)
@@ -1084,6 +1138,17 @@ export class EditorSyncSessionController extends EventEmitter {
         confirmThresholdBytes,
         confirmRequired: result.downloadSizeBytes > confirmThresholdBytes,
       })
+      // Map-only sync policy: the host should only ever advertise the
+      // single map mod the session needs, so we auto-accept the diff
+      // here without prompting. Progress still flows through the
+      // existing `game:modSyncProgress` IPC for renderer feedback, and
+      // `isModSyncBlocking()` keeps the joiner from launching into the
+      // editor before the zip lands on disk.
+      if (result.diff.missingIds.length > 0) {
+        this.acceptModSync().catch((err) => {
+          this.log('error', 'session', `auto acceptModSync failed: ${err}`)
+        })
+      }
     }
   }
 

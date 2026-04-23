@@ -253,3 +253,54 @@ button, a, input { transition: all 0.15s ease; }
 .marquee-scroll.is-overflowing {
   animation: marquee-scroll 6s ease-in-out infinite alternate;
 }
+
+/* ── Mod-sync overlay download animations ── */
+@keyframes modsync-stripes {
+  0%   { background-position: 0 0; }
+  100% { background-position: 32px 0; }
+}
+@keyframes modsync-shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+@keyframes modsync-bounce {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
+}
+.modsync-bar-stripes {
+  background-image: linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.18) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.18) 50%,
+    rgba(255, 255, 255, 0.18) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 32px 32px;
+  animation: modsync-stripes 0.8s linear infinite;
+}
+.modsync-bar-shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.35) 50%,
+    transparent 100%
+  );
+  animation: modsync-shimmer 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+.modsync-icon-bounce {
+  animation: modsync-bounce 1.1s ease-in-out infinite;
+}
+@keyframes modsync-ring-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.modsync-ring-spin {
+  animation: modsync-ring-spin 1.6s linear infinite;
+  transform-origin: 50% 50%;
+}

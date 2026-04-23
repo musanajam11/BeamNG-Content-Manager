@@ -27,7 +27,13 @@ export function ServersPage(): React.JSX.Element {
 
   useEffect(() => {
     const unsub = window.api.onModSyncProgress((p) => {
-      setModSyncActive(p.phase !== 'done')
+      setModSyncActive(p.phase !== 'done' && p.phase !== 'cancelled')
+      // If the user cancelled the join (closed the BeamNG window mid-sync),
+      // also clear the "Connecting to server" overlay — otherwise it stays
+      // stuck because the joinServer() promise never resolves.
+      if (p.phase === 'cancelled') {
+        setJoining(false)
+      }
     })
     return unsub
   }, [])
@@ -170,7 +176,18 @@ export function ServersPage(): React.JSX.Element {
     // Load initial game status
     window.api.getGameStatus().then(setGameStatus)
     // Listen for real-time game status changes
-    const unsubStatus = window.api.onGameStatusChange(setGameStatus)
+    const unsubStatus = window.api.onGameStatusChange((s) => {
+      setGameStatus((prev) => {
+        // If the game just stopped running, also clear the local "joining"
+        // state so the "Connecting to server" overlay doesn't stay stuck
+        // after the user closed the BeamNG window mid-launch.
+        if (prev.running && !s.running) {
+          setJoining(false)
+          setModSyncActive(false)
+        }
+        return s
+      })
+    })
     // Auto-refresh server list every 30 seconds, but only when the window is visible
     let interval: ReturnType<typeof setInterval> | null = null
     const refreshAndReprobe = (): void => {

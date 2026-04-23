@@ -36,7 +36,7 @@ const api = {
   launchVanilla: (config?: { mode?: string; level?: string; vehicle?: string }) =>
     ipcRenderer.invoke('game:launchVanilla', config),
   listMaps: () =>
-    ipcRenderer.invoke('game:listMaps') as Promise<{ name: string; source: 'stock' | 'mod'; modZipPath?: string; levelDir?: string }[]>,
+    ipcRenderer.invoke('game:listMaps') as Promise<{ name: string; source: 'stock' | 'mod'; modZipPath?: string; levelDir?: string; modKey?: string }[]>,
   listVehicles: () =>
     ipcRenderer.invoke('game:listVehicles'),
   getVehiclePreview: (vehicleName: string) =>
@@ -110,6 +110,7 @@ const api = {
   // Support Tools
   openUserFolder: () => ipcRenderer.invoke('game:openUserFolder') as Promise<{ success: boolean; error?: string }>,
   clearCache: () => ipcRenderer.invoke('game:clearCache') as Promise<{ success: boolean; error?: string; freedBytes?: number }>,
+  clearModCache: () => ipcRenderer.invoke('game:clearModCache') as Promise<{ success: boolean; error?: string; freedBytes?: number; fileCount?: number }>,
   launchSafeMode: () => ipcRenderer.invoke('game:launchSafeMode') as Promise<{ success: boolean; error?: string }>,
   launchSafeVulkan: () => ipcRenderer.invoke('game:launchSafeVulkan') as Promise<{ success: boolean; error?: string }>,
   verifyIntegrity: () => ipcRenderer.invoke('game:verifyIntegrity') as Promise<{ success: boolean; error?: string }>,
@@ -725,6 +726,7 @@ const api = {
     authMode?: 'open' | 'token' | 'approval' | 'friends'
     friendsWhitelist?: string[]
     advertiseHost?: string | null
+    mapModKey?: string | null
   }) =>
     ipcRenderer.invoke('worldEdit:session:host', opts) as Promise<{
       success: boolean
@@ -763,6 +765,7 @@ const api = {
     authMode?: 'open' | 'token' | 'approval' | 'friends'
     friendsWhitelist?: string[]
     advertiseHost?: string | null
+    mapModKey?: string | null
   }) =>
     ipcRenderer.invoke('worldEdit:session:hostAndLaunch', opts) as Promise<{
       success: boolean
