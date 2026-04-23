@@ -4878,19 +4878,30 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('appearance:loadBackgroundImage', async (_event, filePath: string) => {
     try {
       const data = await readFile(filePath)
+      const ext = filePath.split('.').pop()?.toLowerCase() || 'png'
+      // Animated formats: never re-encode through nativeImage (it strips
+      // animation, and on Linux often returns an empty buffer entirely).
+      // Always return the original bytes as a data URL so the browser plays
+      // the animation natively.
+      if (ext === 'gif' || ext === 'webp' || ext === 'apng') {
+        const mime = ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : 'image/apng'
+        return `data:${mime};base64,${data.toString('base64')}`
+      }
       // Resize large images to max 1920px wide to avoid IPC/memory issues
       if (data.length > 2 * 1024 * 1024) {
         const img = nativeImage.createFromBuffer(data)
-        const size = img.getSize()
-        if (size.width > 1920) {
-          const resized = img.resize({ width: 1920, quality: 'best' })
-          const jpeg = resized.toJPEG(85)
+        if (!img.isEmpty()) {
+          const size = img.getSize()
+          if (size.width > 1920) {
+            const resized = img.resize({ width: 1920, quality: 'best' })
+            const jpeg = resized.toJPEG(85)
+            return `data:image/jpeg;base64,${jpeg.toString('base64')}`
+          }
+          const jpeg = img.toJPEG(85)
           return `data:image/jpeg;base64,${jpeg.toString('base64')}`
         }
-        const jpeg = img.toJPEG(85)
-        return `data:image/jpeg;base64,${jpeg.toString('base64')}`
+        // nativeImage couldn't decode — fall through to raw-bytes path
       }
-      const ext = filePath.split('.').pop()?.toLowerCase() || 'png'
       const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`
       return `data:${mime};base64,${data.toString('base64')}`
     } catch {
