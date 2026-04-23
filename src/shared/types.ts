@@ -85,6 +85,9 @@ export interface AppearanceSettings {
   filterContrast: number
   /** Saturation post-filter: 0.0 – 2.0, default 1.0 */
   filterSaturation: number
+  /** How many server rows to render per chunk in the server list. More rows
+   * scroll smoother once loaded but cost more on initial render. 100–1000. */
+  serverListChunkSize: number
 }
 
 export interface AppConfig {

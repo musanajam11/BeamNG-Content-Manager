@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronUp, ChevronDown, ArrowUpDown, SlidersHorizontal, Tags, X, Check, Globe2, CircleDot } from 'lucide-react'
+import { ChevronUp, ChevronDown, ArrowUpDown, Tags, X, Check, Globe2, CircleDot } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useServerStore } from '../../stores/useServerStore'
 import type { SortField, SortDir, FilterTab, QuickFilter } from '../../stores/useServerStore'
@@ -22,7 +22,9 @@ const SORT_I18N: Record<SortField, string> = {
   location: 'servers.sortRegion'
 }
 
-const QF_KEYS: QuickFilter[] = ['hideEmpty', 'hideFull', 'officialOnly', 'moddedOnly']
+// Only "hide empty" / "hide full" remain here — `officialOnly` and `moddedOnly`
+// are removed because the Official/Modded tabs above already cover that.
+const QF_KEYS: QuickFilter[] = ['hideEmpty', 'hideFull']
 const QF_I18N: Record<QuickFilter, string> = {
   hideEmpty: 'servers.hideEmpty',
   hideFull: 'servers.hideFull',
@@ -132,8 +134,8 @@ export function ServersFilters({
   }, [tagOptions, tagSearch])
 
   return (
-    <div className="space-y-2">
-      {/* Filter tabs + sort row */}
+    <div>
+      {/* Single combined row: tabs · sort · quick filters · dropdowns · tags */}
       <div className="flex flex-wrap items-center gap-1.5">
         {TAB_KEYS.map((key) => (
           <button
@@ -171,12 +173,8 @@ export function ServersFilters({
             </button>
           )
         })}
-      </div>
 
-      {/* Quick filters + dropdowns + tag popover row */}
-      <div className="flex flex-wrap items-center gap-1.5">
-        <SlidersHorizontal size={11} className="text-[var(--color-text-secondary)]" />
-        <span className="text-[11px] text-[var(--color-text-secondary)] mr-0.5">{t('servers.quickFilters')}</span>
+        <div className="mx-1 h-4 w-px bg-[var(--color-surface-active)]" />
 
         {QF_KEYS.map((key) => {
           const active = quickFilters.has(key)
@@ -184,7 +182,7 @@ export function ServersFilters({
             <button
               key={key}
               onClick={() => onToggleQuickFilter(key)}
-              className={`rounded-full border px-3 py-1.5 text-[10px] font-medium transition ${
+              className={`rounded-full border px-3 py-1 text-[10px] font-medium transition ${
                 active
                   ? 'border-[var(--color-border-accent)] bg-[var(--color-accent-15)] text-[var(--color-accent-text-muted)]'
                   : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-active)] hover:text-[var(--color-text-primary)]'

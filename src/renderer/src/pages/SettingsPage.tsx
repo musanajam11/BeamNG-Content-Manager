@@ -970,6 +970,33 @@ function AppearanceSettingsPanel(): React.JSX.Element {
           </div>
         </section>
 
+        {/* Server List Chunk Size — controls how many server rows are loaded
+            into the scrollable server list at once. Lower = snappier scroll
+            on huge lists; higher = fewer "load more" steps. */}
+        <section>
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
+            <PanelLeft size={16} />
+            {t('settings.serverListChunkSize', 'Server List Chunk Size')}
+          </h2>
+          <div className="flex items-center gap-3">
+            <input
+              type="range"
+              min={100}
+              max={1000}
+              step={50}
+              value={appearance.serverListChunkSize ?? 250}
+              onChange={(e) => update({ serverListChunkSize: parseInt(e.target.value) })}
+              className="flex-1 accent-[var(--color-accent)]"
+            />
+            <span className="text-sm text-[var(--color-text-secondary)] w-16 text-right font-mono">
+              {appearance.serverListChunkSize ?? 250}
+            </span>
+          </div>
+          <p className="text-xs text-[var(--color-text-muted)] mt-2">
+            {t('settings.serverListChunkSizeDesc', 'How many servers are rendered per chunk. Lower values keep scrolling smoother on huge lists; higher values mean fewer "load more" steps.')}
+          </p>
+        </section>
+
         {/* Sidebar Layout */}
         <SidebarLayoutSection appearance={appearance} update={update} />
 

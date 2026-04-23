@@ -53,7 +53,8 @@ const DEFAULT_CONFIG: AppConfig = {
     effectHoverLift: false,
     filterBrightness: 1.0,
     filterContrast: 1.0,
-    filterSaturation: 1.0
+    filterSaturation: 1.0,
+    serverListChunkSize: 250
   },
   setupComplete: false,
   loadOrderEnforcement: false,

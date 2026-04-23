@@ -42,7 +42,8 @@ const DEFAULT_APPEARANCE: AppearanceSettings = {
   effectHoverLift: true,
   filterBrightness: 1.0,
   filterContrast: 1.0,
-  filterSaturation: 1.1
+  filterSaturation: 1.1,
+  serverListChunkSize: 250
 }
 
 /** Preset accent color palettes */
