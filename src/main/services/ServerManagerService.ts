@@ -42,11 +42,14 @@ interface RunningServer {
   state: HostedServerState
   startedAt: number
   players: number
+  connectedPlayerIds: Set<number>
+  connectedPlayerNames: Set<string>
   error: string | null
   consoleBuffer: string[]
   memoryBytes: number
   cpuPercent: number
   resourceTimer: ReturnType<typeof setInterval> | null
+  playerPollTimer: ReturnType<typeof setInterval> | null
 }
 
 const MAX_CONSOLE_LINES = 2000
@@ -111,6 +114,73 @@ export class ServerManagerService {
     const custom = this.customExeResolver?.()
     if (custom && existsSync(custom)) return custom
     return this.exePath
+  }
+
+  private extractPlayerCount(line: string): number | null {
+    const playersSlashMax = line.match(/\bPlayers?\s*:\s*(\d+)\s*\/\s*\d+\b/i)
+    if (playersSlashMax) return parseInt(playersSlashMax[1], 10)
+
+    const playersOnline = line.match(/\b(\d+)\s*\/\s*\d+\s+players?\b/i)
+    if (playersOnline) return parseInt(playersOnline[1], 10)
+
+    return null
+  }
+
+  private applyPlayerEventFromLine(line: string, entry: RunningServer): boolean {
+    // Connection logs observed in BeamMP output can be event-based rather than
+    // periodic totals (e.g. "Assigned ID 0 to guest...", "name : Connected").
+    // Track both IDs and names and use the larger set size as the current count.
+    const assignedId = line.match(/\bAssigned\s+ID\s+(\d+)\s+to\s+(.+?)\s*$/i)
+    if (assignedId) {
+      const id = parseInt(assignedId[1], 10)
+      const name = assignedId[2].trim().toLowerCase()
+      if (!Number.isNaN(id)) entry.connectedPlayerIds.add(id)
+      if (name) entry.connectedPlayerNames.add(name)
+      const nextPlayers = Math.max(entry.connectedPlayerIds.size, entry.connectedPlayerNames.size)
+      if (nextPlayers !== entry.players) {
+        entry.players = nextPlayers
+        return true
+      }
+      return false
+    }
+
+    const nameConnected = line.match(/\b([^:\]]+)\s*:\s*Connected\b/i)
+    if (nameConnected) {
+      const name = nameConnected[1].trim().toLowerCase()
+      if (name) entry.connectedPlayerNames.add(name)
+      const nextPlayers = Math.max(entry.connectedPlayerIds.size, entry.connectedPlayerNames.size)
+      if (nextPlayers !== entry.players) {
+        entry.players = nextPlayers
+        return true
+      }
+      return false
+    }
+
+    const idDisconnected = line.match(/\bID\s+(\d+)\b.*\bDisconnected\b/i)
+    if (idDisconnected) {
+      const id = parseInt(idDisconnected[1], 10)
+      if (!Number.isNaN(id)) entry.connectedPlayerIds.delete(id)
+      const nextPlayers = Math.max(entry.connectedPlayerIds.size, entry.connectedPlayerNames.size)
+      if (nextPlayers !== entry.players) {
+        entry.players = nextPlayers
+        return true
+      }
+      return false
+    }
+
+    const nameDisconnected = line.match(/\b([^:\]]+)\s*:\s*Disconnected\b/i)
+    if (nameDisconnected) {
+      const name = nameDisconnected[1].trim().toLowerCase()
+      if (name) entry.connectedPlayerNames.delete(name)
+      const nextPlayers = Math.max(entry.connectedPlayerIds.size, entry.connectedPlayerNames.size)
+      if (nextPlayers !== entry.players) {
+        entry.players = nextPlayers
+        return true
+      }
+      return false
+    }
+
+    return false
   }
 
   /* ── Auth Key encryption helpers ── */
@@ -828,11 +898,14 @@ export class ServerManagerService {
       state: 'starting',
       startedAt: Date.now(),
       players: 0,
+      connectedPlayerIds: new Set<number>(),
+      connectedPlayerNames: new Set<string>(),
       error: null,
       consoleBuffer: [],
       memoryBytes: 0,
       cpuPercent: 0,
-      resourceTimer: null
+      resourceTimer: null,
+      playerPollTimer: null
     }
     this.running.set(id, entry)
 
@@ -863,6 +936,17 @@ export class ServerManagerService {
       this.emitConsole(id, line)
     }
 
+    const requestPlayerCount = (): void => {
+      if (entry.state !== 'running' || !entry.process.stdin?.writable) return
+      entry.process.stdin.write('status\n')
+    }
+
+    // Keep player count fresh even if the server only prints the count on
+    // explicit status requests.
+    entry.playerPollTimer = setInterval(() => {
+      requestPlayerCount()
+    }, 10000)
+
     child.stdout?.on('data', (data: Buffer) => {
       const text = data.toString()
       for (const line of text.split('\n')) {
@@ -872,11 +956,22 @@ export class ServerManagerService {
         if (line.includes('Server ready') || line.includes('Listening on port')) {
           entry.state = 'running'
           this.emitStatusChange(id)
+          requestPlayerCount()
         }
-        // Player count detection
-        const playerMatch = line.match(/Players: (\d+)\//)
-        if (playerMatch) {
-          entry.players = parseInt(playerMatch[1], 10)
+
+        // Player count detection from status output
+        const parsedPlayers = this.extractPlayerCount(line)
+        if (parsedPlayers !== null && parsedPlayers !== entry.players) {
+          entry.players = parsedPlayers
+          if (parsedPlayers === 0) {
+            entry.connectedPlayerIds.clear()
+            entry.connectedPlayerNames.clear()
+          }
+          this.emitStatusChange(id)
+        }
+
+        if (this.applyPlayerEventFromLine(line, entry)) {
+          this.emitStatusChange(id)
         }
       }
     })
@@ -897,6 +992,7 @@ export class ServerManagerService {
 
     child.on('exit', (code) => {
       if (entry.resourceTimer) clearInterval(entry.resourceTimer)
+      if (entry.playerPollTimer) clearInterval(entry.playerPollTimer)
       if (entry.state !== 'error') {
         entry.state = 'stopped'
         if (code !== 0 && code !== null) {
@@ -914,6 +1010,7 @@ export class ServerManagerService {
       if (e && e.state === 'starting') {
         e.state = 'running'
         this.emitStatusChange(id)
+        requestPlayerCount()
       }
     }, 5000)
 
@@ -934,6 +1031,7 @@ export class ServerManagerService {
     const entry = this.running.get(id)
     if (!entry) return
     if (entry.resourceTimer) clearInterval(entry.resourceTimer)
+    if (entry.playerPollTimer) clearInterval(entry.playerPollTimer)
     entry.state = 'stopped'
     entry.process.kill()
     this.running.delete(id)
