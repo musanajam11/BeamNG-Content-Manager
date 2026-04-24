@@ -42,13 +42,12 @@ interface RunningServer {
   state: HostedServerState
   startedAt: number
   players: number
-  connectedPlayerIds: Set<number>
-  connectedPlayerNames: Set<string>
   error: string | null
   consoleBuffer: string[]
   memoryBytes: number
   cpuPercent: number
   resourceTimer: ReturnType<typeof setInterval> | null
+  connectionPollTimer: ReturnType<typeof setInterval> | null
 }
 
 const MAX_CONSOLE_LINES = 2000
@@ -115,61 +114,28 @@ export class ServerManagerService {
     return this.exePath
   }
 
-  private applyPlayerEventFromLine(line: string, entry: RunningServer): boolean {
-    // Connection logs observed in BeamMP output can be event-based rather than
-    // periodic totals (e.g. "Assigned ID 0 to guest...", "name : Connected").
-    // Track both IDs and names and use the larger set size as the current count.
-    const assignedId = line.match(/\bAssigned\s+ID\s+(\d+)\s+to\s+(.+?)\s*$/i)
-    if (assignedId) {
-      const id = parseInt(assignedId[1], 10)
-      const name = assignedId[2].trim().toLowerCase()
-      if (!Number.isNaN(id)) entry.connectedPlayerIds.add(id)
-      if (name) entry.connectedPlayerNames.add(name)
-      const nextPlayers = Math.max(entry.connectedPlayerIds.size, entry.connectedPlayerNames.size)
-      if (nextPlayers !== entry.players) {
-        entry.players = nextPlayers
-        return true
-      }
-      return false
-    }
+  private async pollConnectionCount(port: number): Promise<number> {
+    try {
+      const { exec } = await import('child_process')
+      const { promisify } = await import('util')
+      const execPromise = promisify(exec)
 
-    const nameConnected = line.match(/\b([^:\]]+)\s*:\s*Connected\b/i)
-    if (nameConnected) {
-      const name = nameConnected[1].trim().toLowerCase()
-      if (name) entry.connectedPlayerNames.add(name)
-      const nextPlayers = Math.max(entry.connectedPlayerIds.size, entry.connectedPlayerNames.size)
-      if (nextPlayers !== entry.players) {
-        entry.players = nextPlayers
-        return true
+      let cmd: string
+      if (process.platform === 'win32') {
+        // On Windows, use netstat to count ESTABLISHED connections on the port
+        cmd = `netstat -an | find "${port}" | find "ESTABLISHED" /c`
+      } else {
+        // On Linux/macOS, use ss or netstat
+        cmd = `ss -tuln 2>/dev/null | grep ":${port}" | wc -l || netstat -tuln 2>/dev/null | grep ":${port}" | wc -l || echo 0`
       }
-      return false
-    }
 
-    const idDisconnected = line.match(/\bID\s+(\d+)\b.*\bDisconnected\b/i)
-    if (idDisconnected) {
-      const id = parseInt(idDisconnected[1], 10)
-      if (!Number.isNaN(id)) entry.connectedPlayerIds.delete(id)
-      const nextPlayers = Math.max(entry.connectedPlayerIds.size, entry.connectedPlayerNames.size)
-      if (nextPlayers !== entry.players) {
-        entry.players = nextPlayers
-        return true
-      }
-      return false
+      const { stdout } = await execPromise(cmd, { windowsHide: true })
+      const count = parseInt(stdout.trim().split('\n')[0], 10) || 0
+      // Subtract 1 for the listening socket itself on some netstat outputs
+      return Math.max(0, count - 1)
+    } catch {
+      return 0
     }
-
-    const nameDisconnected = line.match(/\b([^:\]]+)\s*:\s*Disconnected\b/i)
-    if (nameDisconnected) {
-      const name = nameDisconnected[1].trim().toLowerCase()
-      if (name) entry.connectedPlayerNames.delete(name)
-      const nextPlayers = Math.max(entry.connectedPlayerIds.size, entry.connectedPlayerNames.size)
-      if (nextPlayers !== entry.players) {
-        entry.players = nextPlayers
-        return true
-      }
-      return false
-    }
-
-    return false
   }
 
   /* ── Auth Key encryption helpers ── */
@@ -887,13 +853,12 @@ export class ServerManagerService {
       state: 'starting',
       startedAt: Date.now(),
       players: 0,
-      connectedPlayerIds: new Set<number>(),
-      connectedPlayerNames: new Set<string>(),
       error: null,
       consoleBuffer: [],
       memoryBytes: 0,
       cpuPercent: 0,
-      resourceTimer: null
+      resourceTimer: null,
+      connectionPollTimer: null
     }
     this.running.set(id, entry)
 
@@ -916,6 +881,16 @@ export class ServerManagerService {
       }).catch(() => {})
     }, 2000)
 
+    // Poll connection count on server port every 3 seconds for accurate player count
+    entry.connectionPollTimer = setInterval(() => {
+      this.pollConnectionCount(config.port).then((count) => {
+        if (count !== entry.players) {
+          entry.players = count
+          this.emitStatusChange(id)
+        }
+      }).catch(() => {})
+    }, 3000)
+
     const pushLine = (line: string): void => {
       entry.consoleBuffer.push(line)
       if (entry.consoleBuffer.length > MAX_CONSOLE_LINES) {
@@ -932,11 +907,6 @@ export class ServerManagerService {
         // Detect when server is ready
         if (line.includes('Server ready') || line.includes('Listening on port')) {
           entry.state = 'running'
-          this.emitStatusChange(id)
-        }
-
-        // Track player count only from connection/disconnection events
-        if (this.applyPlayerEventFromLine(line, entry)) {
           this.emitStatusChange(id)
         }
       }
@@ -958,6 +928,7 @@ export class ServerManagerService {
 
     child.on('exit', (code) => {
       if (entry.resourceTimer) clearInterval(entry.resourceTimer)
+      if (entry.connectionPollTimer) clearInterval(entry.connectionPollTimer)
       if (entry.state !== 'error') {
         entry.state = 'stopped'
         if (code !== 0 && code !== null) {
@@ -995,6 +966,7 @@ export class ServerManagerService {
     const entry = this.running.get(id)
     if (!entry) return
     if (entry.resourceTimer) clearInterval(entry.resourceTimer)
+    if (entry.connectionPollTimer) clearInterval(entry.connectionPollTimer)
     entry.state = 'stopped'
     entry.process.kill()
     this.running.delete(id)
