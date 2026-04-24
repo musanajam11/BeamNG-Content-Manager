@@ -42,6 +42,8 @@ interface RunningServer {
   state: HostedServerState
   startedAt: number
   players: number
+  connectedPlayerIds: Set<number>
+  connectedPlayerNames: Set<string>
   error: string | null
   consoleBuffer: string[]
   memoryBytes: number
@@ -111,6 +113,63 @@ export class ServerManagerService {
     const custom = this.customExeResolver?.()
     if (custom && existsSync(custom)) return custom
     return this.exePath
+  }
+
+  private applyPlayerEventFromLine(line: string, entry: RunningServer): boolean {
+    // Connection logs observed in BeamMP output can be event-based rather than
+    // periodic totals (e.g. "Assigned ID 0 to guest...", "name : Connected").
+    // Track both IDs and names and use the larger set size as the current count.
+    const assignedId = line.match(/\bAssigned\s+ID\s+(\d+)\s+to\s+(.+?)\s*$/i)
+    if (assignedId) {
+      const id = parseInt(assignedId[1], 10)
+      const name = assignedId[2].trim().toLowerCase()
+      if (!Number.isNaN(id)) entry.connectedPlayerIds.add(id)
+      if (name) entry.connectedPlayerNames.add(name)
+      const nextPlayers = Math.max(entry.connectedPlayerIds.size, entry.connectedPlayerNames.size)
+      if (nextPlayers !== entry.players) {
+        entry.players = nextPlayers
+        return true
+      }
+      return false
+    }
+
+    const nameConnected = line.match(/\b([^:\]]+)\s*:\s*Connected\b/i)
+    if (nameConnected) {
+      const name = nameConnected[1].trim().toLowerCase()
+      if (name) entry.connectedPlayerNames.add(name)
+      const nextPlayers = Math.max(entry.connectedPlayerIds.size, entry.connectedPlayerNames.size)
+      if (nextPlayers !== entry.players) {
+        entry.players = nextPlayers
+        return true
+      }
+      return false
+    }
+
+    const idDisconnected = line.match(/\bID\s+(\d+)\b.*\bDisconnected\b/i)
+    if (idDisconnected) {
+      const id = parseInt(idDisconnected[1], 10)
+      if (!Number.isNaN(id)) entry.connectedPlayerIds.delete(id)
+      const nextPlayers = Math.max(entry.connectedPlayerIds.size, entry.connectedPlayerNames.size)
+      if (nextPlayers !== entry.players) {
+        entry.players = nextPlayers
+        return true
+      }
+      return false
+    }
+
+    const nameDisconnected = line.match(/\b([^:\]]+)\s*:\s*Disconnected\b/i)
+    if (nameDisconnected) {
+      const name = nameDisconnected[1].trim().toLowerCase()
+      if (name) entry.connectedPlayerNames.delete(name)
+      const nextPlayers = Math.max(entry.connectedPlayerIds.size, entry.connectedPlayerNames.size)
+      if (nextPlayers !== entry.players) {
+        entry.players = nextPlayers
+        return true
+      }
+      return false
+    }
+
+    return false
   }
 
   /* ── Auth Key encryption helpers ── */
@@ -828,6 +887,8 @@ export class ServerManagerService {
       state: 'starting',
       startedAt: Date.now(),
       players: 0,
+      connectedPlayerIds: new Set<number>(),
+      connectedPlayerNames: new Set<string>(),
       error: null,
       consoleBuffer: [],
       memoryBytes: 0,
@@ -873,10 +934,10 @@ export class ServerManagerService {
           entry.state = 'running'
           this.emitStatusChange(id)
         }
-        // Player count detection
-        const playerMatch = line.match(/Players: (\d+)\//)
-        if (playerMatch) {
-          entry.players = parseInt(playerMatch[1], 10)
+
+        // Track player count only from connection/disconnection events
+        if (this.applyPlayerEventFromLine(line, entry)) {
+          this.emitStatusChange(id)
         }
       }
     })
