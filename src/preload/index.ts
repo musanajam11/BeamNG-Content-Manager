@@ -181,6 +181,7 @@ const api = {
 
   // Mods
   getMods: () => ipcRenderer.invoke('mods:list'),
+  repairModIndex: () => ipcRenderer.invoke('mods:repairIndex') as Promise<{ success: boolean; error?: string }>,
   toggleMod: (modKey: string, enabled: boolean) => ipcRenderer.invoke('mods:toggle', modKey, enabled),
   deleteMod: (modKey: string) => ipcRenderer.invoke('mods:delete', modKey),
   installMod: () => ipcRenderer.invoke('mods:install'),
@@ -278,6 +279,23 @@ const api = {
   hostedServerStart: (id: string) => ipcRenderer.invoke('hostedServer:start', id),
   hostedServerStop: (id: string) => ipcRenderer.invoke('hostedServer:stop', id),
   hostedServerRestart: (id: string) => ipcRenderer.invoke('hostedServer:restart', id),
+  hostedServerGetModGateConfig: (id: string) =>
+    ipcRenderer.invoke('hostedServer:getModGateConfig', id) as Promise<{
+      exists: boolean
+      config: {
+        enabled: boolean
+        allowedArchives: string[]
+        allowedVehicleNames: string[]
+        stockVehicleNames: string[]
+        serverVehicleNames: string[]
+        vehicleDisplayNames?: Record<string, string>
+        vehicleDeniedNames: string[]
+        vehicleForcedAllowedNames: string[]
+        updatedAt: string
+      } | null
+    }>,
+  hostedServerSaveModGateConfig: (id: string, input: { allowedVehicleNames?: string[] }) =>
+    ipcRenderer.invoke('hostedServer:saveModGateConfig', id, input) as Promise<{ success: boolean; error?: string }>,
   hostedServerListSupportTickets: (id: string) =>
     ipcRenderer.invoke('hostedServer:listSupportTickets', id) as Promise<import('../shared/types').SupportTicket[]>,
   hostedServerCreateSupportTicket: (id: string, input: import('../shared/types').SupportTicketCreateInput) =>

@@ -45,6 +45,18 @@ export interface DynamicTrafficConfig {
   trafficSpawnWarnings: boolean
 }
 
+export interface HostedServerModGateConfig {
+  enabled: boolean
+  allowedArchives: string[]
+  allowedVehicleNames: string[]
+  stockVehicleNames: string[]
+  serverVehicleNames: string[]
+  vehicleDisplayNames?: Record<string, string>
+  vehicleDeniedNames: string[]
+  vehicleForcedAllowedNames: string[]
+  updatedAt: string
+}
+
 interface AppAPI {
   // Config
   getConfig(): Promise<AppConfig>
@@ -177,6 +189,7 @@ interface AppAPI {
 
   // Mods
   getMods(): Promise<{ success: boolean; data?: ModInfo[]; error?: string }>
+  repairModIndex(): Promise<{ success: boolean; error?: string }>
   toggleMod(modKey: string, enabled: boolean): Promise<{ success: boolean; error?: string }>
   deleteMod(modKey: string): Promise<{ success: boolean; error?: string }>
   installMod(): Promise<{ success: boolean; data?: ModInfo[]; error?: string }>
@@ -269,6 +282,8 @@ interface AppAPI {
   hostedServerStart(id: string): Promise<{ success: boolean; error?: string }>
   hostedServerStop(id: string): Promise<{ success: boolean }>
   hostedServerRestart(id: string): Promise<{ success: boolean; error?: string }>
+  hostedServerGetModGateConfig(id: string): Promise<{ exists: boolean; config: HostedServerModGateConfig | null }>
+  hostedServerSaveModGateConfig(id: string, input: { allowedVehicleNames?: string[] }): Promise<{ success: boolean; error?: string }>
   hostedServerListSupportTickets(id: string): Promise<SupportTicket[]>
   hostedServerCreateSupportTicket(id: string, input: SupportTicketCreateInput): Promise<SupportTicket>
   hostedServerUpdateSupportTicket(id: string, ticketId: string, patch: SupportTicketUpdateInput): Promise<SupportTicket | null>

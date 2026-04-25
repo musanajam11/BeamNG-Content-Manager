@@ -105,6 +105,7 @@ export function initializeServices(): {
   repoService = new BeamNGRepoService()
   serverManagerService = new ServerManagerService()
   serverManagerService.setCustomExeResolver(() => configService.get().customServerExe ?? null)
+  serverManagerService.setInstallDirResolver(() => configService.get().gamePaths?.installDir ?? null)
   backupSchedulerService = new BackupSchedulerService()
   taskSchedulerService = new TaskSchedulerService()
   taskSchedulerService.setDependencies(serverManagerService, backupSchedulerService)
@@ -4229,7 +4230,18 @@ export function registerIpcHandlers(): void {
       }
     }
     const rendererArgs = config.renderer === 'vulkan' ? ['-gfx', 'vk'] : config.renderer === 'dx11' ? ['-gfx', 'dx11'] : []
-    const result = await launcherService.joinServer(ip, port, config.gamePaths, { args: rendererArgs })
+    // Collect user-enabled non-server mods for client-side sideloading
+    let sideloadMods: string[] = []
+    if (config.gamePaths?.userDir) {
+      try {
+        const allMods = await modManagerService.listMods(config.gamePaths.userDir)
+        sideloadMods = allMods
+          .filter(m => m.enabled && m.location !== 'multiplayer')
+          .map(m => m.fileName)
+          .filter(Boolean)
+      } catch { /* best-effort */ }
+    }
+    const result = await launcherService.joinServer(ip, port, config.gamePaths, { args: rendererArgs, sideloadMods })
 
     // Snapshot deployed save timestamps so we can diff on disconnect
     if (result.success) {
@@ -5048,6 +5060,22 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle('mods:repairIndex', async () => {
+    const config = configService.get()
+    const userDir = config.gamePaths?.userDir
+    if (!userDir) return { success: false, error: 'Game user directory not configured' }
+    try {
+      await modManagerService.repairModNames(userDir)
+      await modManagerService.repairDuplicateEntries(userDir)
+      await modManagerService.ensureBeamMPEnabled(userDir)
+      vehicleListCache = null
+      conflictDetectionService.invalidate()
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
   ipcMain.handle('mods:toggle', async (_event, modKey: string, enabled: boolean) => {
     const config = configService.get()
     const userDir = config.gamePaths?.userDir
@@ -5790,11 +5818,22 @@ export function registerIpcHandlers(): void {
             }
           }
           const queueRendererArgs = config.renderer === 'vulkan' ? ['-vulkan'] : config.renderer === 'dx11' ? ['-dx11'] : []
+          // Collect user-enabled non-server mods for client-side sideloading
+          let queueSideloadMods: string[] = []
+          if (config.gamePaths?.userDir) {
+            try {
+              const queueAllMods = await modManagerService.listMods(config.gamePaths.userDir)
+              queueSideloadMods = queueAllMods
+                .filter(m => m.enabled && m.location !== 'multiplayer')
+                .map(m => m.fileName)
+                .filter(Boolean)
+            } catch { /* best-effort */ }
+          }
           const result = await launcherService.joinServer(
             savedTarget.ip,
             parseInt(savedTarget.port, 10),
             config.gamePaths,
-            { args: queueRendererArgs }
+            { args: queueRendererArgs, sideloadMods: queueSideloadMods }
           )
 
           win?.webContents.send('queue:joined', {
@@ -5945,6 +5984,14 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('hostedServer:restart', async (_event, id: string) => {
     return serverManagerService.restartServer(id)
+  })
+
+  ipcMain.handle('hostedServer:getModGateConfig', async (_event, id: string) => {
+    return serverManagerService.getModGateConfig(id)
+  })
+
+  ipcMain.handle('hostedServer:saveModGateConfig', async (_event, id: string, input: { allowedVehicleNames?: string[] }) => {
+    return serverManagerService.saveModGateConfig(id, input)
   })
 
   // -- Hosted Server Support Tickets --

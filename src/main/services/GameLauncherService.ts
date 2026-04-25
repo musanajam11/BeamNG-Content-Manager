@@ -4148,6 +4148,10 @@ export class GameLauncherService {
   private terminateReason: string = ''
   private kickPending: boolean = false
   private confList: Set<string> = new Set()
+  /** Filenames of user-enabled mods to keep active during multiplayer (sideloading). */
+  private sideloadModFiles: string[] = []
+    /** Snapshot of db.json active flags before a server session (key → raw active value). Restored on disconnect. */
+    private modActiveSnapshot: Record<string, unknown> | null = null
   private clientId: number = -1
   private magic: Buffer | null = null
 
@@ -5197,9 +5201,16 @@ export class GameLauncherService {
 
     if (!modResp || modResp === '-') {
       this.log('No mods required')
-      this.cachedModList = ''
+      // Copy sideloaded mods to multiplayer/ even when the server has no mods
+      if (this.sideloadModFiles.length > 0) {
+        const noModsMpDir = join(this.gameUserDir, 'mods', 'multiplayer')
+        if (!existsSync(noModsMpDir)) mkdirSync(noModsMpDir, { recursive: true })
+        this.copySideloadMods(noModsMpDir)
+      }
+      const sideloadStr = this.sideloadModFiles.filter(Boolean).join(';')
+      this.cachedModList = sideloadStr
       if (!this.preSyncActive) {
-        this.coreSend('L')
+        this.coreSend(sideloadStr ? 'L' + sideloadStr : 'L')
       }
       this.serverSendFramed('Done')
     } else {
@@ -5246,7 +5257,13 @@ export class GameLauncherService {
 
     if (!existsSync(this.cachingDirectory)) mkdirSync(this.cachingDirectory, { recursive: true })
 
-    const modNames = modInfos.map((m) => m.file_name).filter(Boolean).join(';')
+    const serverModNames = modInfos.map((m) => m.file_name).filter(Boolean).join(';')
+    // Append user-sideloaded mods (enabled non-server mods the user wants active during MP)
+    const serverModSet = new Set(modInfos.map((m) => m.file_name.toLowerCase()))
+    const extraMods = this.sideloadModFiles.filter((f) => f && !serverModSet.has(f.toLowerCase()))
+    const modNames = extraMods.length > 0
+      ? serverModNames + (serverModNames ? ';' : '') + extraMods.join(';')
+      : serverModNames
     this.cachedModList = modNames
     // During pre-sync, DON'T send L yet — it would trigger the game's loading
     // state machine before connectToServer is called, causing mod map loads to
@@ -5264,11 +5281,14 @@ export class GameLauncherService {
     // isModAllowed(modName) for each — if a leftover zip has no valid info.json
     // (nil modName), the Lua crashes with "bad argument #1 to 'lower'".
     const requiredFiles = new Set(modInfos.map((m) => m.file_name.toLowerCase()))
+    const sideloadSet = new Set(this.sideloadModFiles.map((f) => f.toLowerCase()))
     try {
       for (const file of readdirSync(modsDir)) {
         if (!file.toLowerCase().endsWith('.zip')) continue
         // Never remove BeamMP.zip — it's the core multiplayer mod
         if (file.toLowerCase() === 'beammp.zip') continue
+        // Never remove user-sideloaded mods
+        if (sideloadSet.has(file.toLowerCase())) continue
         if (!requiredFiles.has(file.toLowerCase())) {
           try {
             unlinkSync(join(modsDir, file))
@@ -5277,6 +5297,9 @@ export class GameLauncherService {
         }
       }
     } catch { /* ignore if directory read fails */ }
+
+    // Copy sideloaded mods into mods/multiplayer/ so BeamNG can load them via the L message.
+    this.copySideloadMods(modsDir)
 
     this.log(`Syncing ${modInfos.length} mods...`)
 
@@ -6281,11 +6304,97 @@ export class GameLauncherService {
     }
   }
 
-  joinServer(ip: string, port: number, paths: GamePaths, options?: { args?: string[] }): Promise<{ success: boolean; error?: string }> {
+  /** Save a snapshot of non-multiplayer mod active flags from db.json before a server session. */
+  private saveModSnapshot(): void {
+    if (!this.gameUserDir) return
+    try {
+      const dbPath = join(this.gameUserDir, 'mods', 'db.json')
+      const raw = readFileSync(dbPath, 'utf-8')
+      const db = JSON.parse(raw)
+      const modsMap: Record<string, { active?: unknown; dirname?: string }> =
+        (db.mods && typeof db.mods === 'object' && !Array.isArray(db.mods))
+          ? (db.mods as Record<string, { active?: unknown; dirname?: string }>)
+          : (db as Record<string, { active?: unknown; dirname?: string }>)
+      const snapshot: Record<string, unknown> = {}
+      for (const [key, entry] of Object.entries(modsMap)) {
+        if (!entry || typeof entry !== 'object') continue
+        const dir = String(entry.dirname || '').toLowerCase()
+        if (dir.includes('multiplayer')) continue // skip server mods
+        snapshot[key] = entry.active
+      }
+      this.modActiveSnapshot = snapshot
+      this.log(`[Sideload] Snapshotted active flags for ${Object.keys(snapshot).length} user mod(s)`)
+    } catch (err) {
+      this.log(`[Sideload] Failed to snapshot db.json: ${err}`)
+      this.modActiveSnapshot = null
+    }
+  }
+
+  /** Restore non-multiplayer mod active flags in db.json after a server session ends. */
+  private restoreModSnapshot(): void {
+    if (!this.modActiveSnapshot || !this.gameUserDir) return
+    try {
+      const dbPath = join(this.gameUserDir, 'mods', 'db.json')
+      const raw = readFileSync(dbPath, 'utf-8')
+      const db = JSON.parse(raw)
+      const hasMods = db.mods && typeof db.mods === 'object' && !Array.isArray(db.mods)
+      const modsMap: Record<string, { active?: unknown }> = hasMods
+        ? (db.mods as Record<string, { active?: unknown }>)
+        : (db as Record<string, { active?: unknown }>)
+      let changed = 0
+      for (const [key, savedActive] of Object.entries(this.modActiveSnapshot)) {
+        if (modsMap[key] && typeof modsMap[key] === 'object') {
+          modsMap[key].active = savedActive
+          changed++
+        }
+      }
+      if (hasMods) db.mods = modsMap
+      writeFileSync(dbPath, JSON.stringify(db, null, 2))
+      this.log(`[Sideload] Restored active flags for ${changed} user mod(s) in db.json`)
+    } catch (err) {
+      this.log(`[Sideload] Failed to restore db.json: ${err}`)
+    }
+    this.modActiveSnapshot = null
+  }
+
+  /** Copy sideloaded mod zips from their source location into the multiplayer mods dir. */
+  private copySideloadMods(modsDir: string): void {
+    if (!this.sideloadModFiles.length || !this.gameUserDir) return
+    const modsRoot = join(this.gameUserDir, 'mods')
+    for (const fileName of this.sideloadModFiles) {
+      if (!fileName) continue
+      const dest = join(modsDir, fileName)
+      // Skip if already placed (e.g. server mod with same name)
+      if (existsSync(dest)) continue
+      const candidates = [
+        join(modsRoot, fileName),
+        join(modsRoot, 'repo', fileName),
+      ]
+      const src = candidates.find((p) => existsSync(p))
+      if (src) {
+        try {
+          copyFileSync(src, dest)
+          this.log(`[Sideload] Copied ${fileName} to multiplayer/`)
+        } catch (err) {
+          this.log(`[Sideload] WARNING: Failed to copy ${fileName}: ${err}`)
+        }
+      } else {
+        this.log(`[Sideload] WARNING: Source not found for ${fileName} — skipping`)
+      }
+    }
+  }
+
+  joinServer(ip: string, port: number, paths: GamePaths, options?: { args?: string[]; sideloadMods?: string[] }): Promise<{ success: boolean; error?: string }> {
     return this.joinServerImpl(ip, port, paths, options)
   }
 
-  private async joinServerImpl(ip: string, port: number, paths: GamePaths, options?: { args?: string[] }): Promise<{ success: boolean; error?: string }> {
+  private async joinServerImpl(ip: string, port: number, paths: GamePaths, options?: { args?: string[]; sideloadMods?: string[] }): Promise<{ success: boolean; error?: string }> {
+    // Capture sideloaded mods (user-enabled mods to keep active during multiplayer)
+    this.sideloadModFiles = options?.sideloadMods?.filter(Boolean) ?? []
+    if (this.sideloadModFiles.length > 0) {
+      this.log(`Sideloading ${this.sideloadModFiles.length} user mod(s): ${this.sideloadModFiles.join(', ')}`)
+    }
+
     // Auto-login as guest if not authenticated
     if (!this.loginAuth) {
       await this.loginAsGuest()
@@ -6342,6 +6451,10 @@ export class GameLauncherService {
     const isLocalServer = ip === '127.0.0.1' || ip === 'localhost' || ip === '::1'
     const MAX_RETRIES = isLocalServer ? 3 : 1
     const RETRY_DELAY_MS = 2000
+
+    // Snapshot db.json active flags before the session so we can restore them
+    // after BeamNG's MPCoreNetwork rewrites them to disable non-server mods.
+    this.saveModSnapshot()
 
     let lastError = ''
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -7575,7 +7688,12 @@ export class GameLauncherService {
     closeModSyncOverlay()
     this.stopGpsFilePoller()
     this.stopEditorSyncStatusPoller()
+    // Restore user mod active flags that BeamNG's MPCoreNetwork rewrote during the session
+    this.restoreModSnapshot()
     this.netReset()
+    // Clear sideload/session state only after restoration has run.
+    this.sideloadModFiles = []
+    this.modActiveSnapshot = null
     if (this.protonShutdownTimer) {
       clearTimeout(this.protonShutdownTimer)
       this.protonShutdownTimer = null

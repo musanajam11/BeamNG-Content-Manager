@@ -378,6 +378,7 @@ function SortableModRow({
 function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): React.JSX.Element {
   const [mods, setMods] = useState<ModInfo[]>([])
   const [loading, setLoading] = useState(true)
+  const [repairingIndex, setRepairingIndex] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [filter, setFilter] = useState<ModFilter>('')
@@ -655,6 +656,23 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
     window.api.openModsFolder()
   }
 
+  const handleRepairIndex = async (): Promise<void> => {
+    setRepairingIndex(true)
+    setError(null)
+    try {
+      const result = await window.api.repairModIndex()
+      if (!result.success) {
+        setError(result.error || t('mods.failedToLoadMods'))
+        return
+      }
+      await fetchMods()
+    } catch (err) {
+      setError(String(err))
+    } finally {
+      setRepairingIndex(false)
+    }
+  }
+
   const handleDragEnd = (event: DragEndEvent): void => {
     const { active, over } = event
     if (!over || active.id === over.id) return
@@ -734,6 +752,15 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
             >
               {scanningConflicts ? <Loader2 size={13} className="animate-spin" /> : <Scan size={13} />}
               {t('mods.scanConflicts')}
+            </button>
+            <button
+              onClick={handleRepairIndex}
+              disabled={repairingIndex}
+              className="inline-flex items-center gap-1.5 border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs text-[var(--color-text-secondary)] transition hover:bg-[var(--color-surface-active)] disabled:opacity-50"
+              title={t('mods.repairIndexTooltip')}
+            >
+              {repairingIndex ? <Loader2 size={13} className="animate-spin" /> : <ShieldAlert size={13} />}
+              {repairingIndex ? t('mods.repairingIndex') : t('mods.repairIndex')}
             </button>
             <button
               onClick={fetchMods}

@@ -5,6 +5,7 @@ import type { HostedServerConfig } from '../../../../shared/types'
 import { BeamMPNameEditor } from './BeamMPNameEditor'
 import { CareerMPConfigSection } from './CareerMPConfigSection'
 import { DynamicTrafficConfigSection } from './DynamicTrafficConfigSection'
+import { ModGateConfigSection } from './ModGateConfigSection'
 
 type MapEntry = { name: string; source: 'stock' | 'mod'; levelDir?: string }
 
@@ -158,7 +159,7 @@ export function ConfigEditor({
 
   return (
     <div className="flex-1 overflow-y-auto p-4">
-      <div className="grid grid-cols-2 gap-4 max-w-2xl">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 w-full">
         <BeamMPNameEditor
           value={(draft.name as string) ?? ''}
           onChange={(name) => setDraft({ ...draft, name })}
@@ -274,7 +275,7 @@ export function ConfigEditor({
 
       {/* Validation summary */}
       {hasErrors && (
-        <div className="mt-4 flex items-start gap-2 p-3 rounded border border-yellow-500/30 bg-yellow-500/5 max-w-2xl">
+        <div className="mt-4 flex items-start gap-2 p-3 rounded border border-yellow-500/30 bg-yellow-500/5 w-full">
           <AlertTriangle size={16} className="text-yellow-400 shrink-0 mt-0.5" />
           <div className="text-xs text-yellow-300 space-y-0.5">
             {errors.map((e) => (
@@ -289,6 +290,23 @@ export function ConfigEditor({
 
       {/* BeamMP Dynamic Traffic plugin config — only renders when that plugin is installed for this server */}
       <DynamicTrafficConfigSection serverId={serverId} />
+
+      {/* Vehicle allow/block checklist backing sideload protection enforcement */}
+      <ModGateConfigSection
+        serverId={serverId}
+        enabled={!!draft.clientContentGate}
+        onToggleEnabled={async (enabled) => {
+          const previous = !!draft.clientContentGate
+          const nextDraft = { ...draft, clientContentGate: enabled }
+          setDraft(nextDraft)
+          try {
+            await window.api.hostedServerUpdate(serverId, { clientContentGate: enabled })
+          } catch (err) {
+            setDraft({ ...draft, clientContentGate: previous })
+            throw err
+          }
+        }}
+      />
 
       {/* Actions */}
       <div className="mt-4 flex items-center gap-3">

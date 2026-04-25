@@ -596,6 +596,12 @@ export interface HostedServerConfig {
   allowGuests: boolean
   logChat: boolean
   debug: boolean
+  /**
+   * When enabled, BeamCM deploys a spawn gate plugin that blocks vehicle
+   * spawns tied to client archives not present in this server's
+   * Resources/Client directory.
+   */
+  clientContentGate: boolean
   customImage?: string
 }
 

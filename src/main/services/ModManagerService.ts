@@ -344,7 +344,6 @@ export class ModManagerService {
       // twice with identical metadata.
       const fileNameLower = fileName.toLowerCase()
       if (seenFiles.has(fileNameLower)) continue
-      seenFiles.add(fileNameLower)
 
       let sizeBytes = entry.stat?.filesize ?? 0
       let modifiedDate = entry.stat?.modtime ? new Date(entry.stat.modtime * 1000).toISOString() : ''
@@ -352,6 +351,8 @@ export class ModManagerService {
       // Verify file exists and get fresh stats if db values missing
       try {
         const s = await stat(filePath)
+        // Only mark as seen after we know this db entry points to a real file.
+        seenFiles.add(fileNameLower)
         if (!sizeBytes) sizeBytes = s.size
         if (!modifiedDate) modifiedDate = s.mtime.toISOString()
       } catch {
@@ -383,7 +384,8 @@ export class ModManagerService {
     // Scan disk for archives not present in db.json.
     // Include both repo/ and multiplayer/ so protected mods like BeamMP still
     // appear even if db.json is malformed.
-    const scanTargets: Array<{ subDir: string; location: 'repo' | 'multiplayer' }> = [
+    const scanTargets: Array<{ subDir: string; location: 'repo' | 'multiplayer' | 'other' }> = [
+      { subDir: '', location: 'other' },
       { subDir: 'repo', location: 'repo' },
       { subDir: 'multiplayer', location: 'multiplayer' }
     ]

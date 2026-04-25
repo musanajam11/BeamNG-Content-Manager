@@ -316,7 +316,11 @@ export const useHostedServerStore = create<HostedServerState>((set, get) => ({
     if (result.success && result.data) {
       set({
         mods: result.data
-          .filter((m) => m.location !== 'multiplayer')
+          .filter((m) => {
+            const key = (m.key || '').toLowerCase()
+            const fileName = (m.fileName || '').toLowerCase()
+            return key !== 'beammp' && fileName !== 'beammp.zip'
+          })
           .map((m) => ({
             key: m.key,
             name: m.title ?? m.fileName,

@@ -43,7 +43,8 @@ const DEFAULT_CONFIG: Omit<HostedServerConfig, 'id'> = {
   tags: 'Freeroam',
   allowGuests: true,
   logChat: true,
-  debug: false
+  debug: false,
+  clientContentGate: false
 }
 
 interface RunningServer {
@@ -64,6 +65,22 @@ interface RunningSupportIngest {
   server: HttpServer
   port: number
   token: string
+}
+
+interface ModGateConfigFile {
+  enabled: boolean
+  allowedArchives: string[]
+  allowedVehicleNames: string[]
+  stockVehicleNames: string[]
+  serverVehicleNames: string[]
+  vehicleDisplayNames?: Record<string, string>
+  vehicleDeniedNames: string[]
+  vehicleForcedAllowedNames: string[]
+  updatedAt: string
+}
+
+interface SaveModGateConfigInput {
+  allowedVehicleNames?: string[]
 }
 
 const MAX_CONSOLE_LINES = 2000
@@ -106,6 +123,7 @@ export class ServerManagerService {
   private exePath: string | null = null
   private downloading = false
   private customExeResolver: (() => string | null) | null = null
+  private installDirResolver: (() => string | null) | null = null
   private onServerStartCallback: ((id: string, serverDir: string, resourceFolder: string) => void) | null = null
   private analyticsService: AnalyticsService | null = null
   private supportIngest = new Map<string, RunningSupportIngest>()
@@ -119,6 +137,11 @@ export class ServerManagerService {
   /** Set a callback that returns the custom server exe path from config (or null for default) */
   setCustomExeResolver(resolver: () => string | null): void {
     this.customExeResolver = resolver
+  }
+
+  /** Resolve BeamNG install directory from app config when needed. */
+  setInstallDirResolver(resolver: () => string | null): void {
+    this.installDirResolver = resolver
   }
 
   /** Inject the analytics service so the server manager can update player sessions directly */
@@ -805,6 +828,240 @@ export class ServerManagerService {
     }
   }
 
+  /* ── Client Content Gate (sideloaded vehicle spawn blocker) ── */
+
+  private async listClientArchives(serverDir: string, resourceFolder: string): Promise<string[]> {
+    const clientDir = join(serverDir, resourceFolder, 'Client')
+    if (!existsSync(clientDir)) return []
+    const files = await readdir(clientDir, { withFileTypes: true }).catch(() => [])
+    return files
+      .filter((f) => f.isFile() && f.name.toLowerCase().endsWith('.zip'))
+      .map((f) => f.name.toLowerCase())
+      .sort((a, b) => a.localeCompare(b))
+  }
+
+  /** Discover vehicle ids + display names inside a zip by scanning vehicle metadata entries. */
+  private discoverVehiclesInZip(zipPath: string): Promise<Map<string, string>> {
+    return new Promise((resolve) => {
+      const out = new Map<string, string>()
+      yauzlOpen(zipPath, { lazyEntries: true }, (err, zipFile) => {
+        if (err || !zipFile) { resolve(new Map()); return }
+        zipFile.readEntry()
+        zipFile.on('entry', (entry: Entry) => {
+          const fn = entry.fileName.replace(/\\/g, '/')
+          const infoMatch = fn.match(/^vehicles\/([^/]+)\/info\.json$/i)
+          const jbeamMatch = fn.match(/^vehicles\/([^/]+)\/[^/]+\.jbeam$/i)
+          const match = infoMatch || jbeamMatch
+          if (!match || !match[1]) {
+            zipFile.readEntry()
+            return
+          }
+
+          const vehicleId = match[1].toLowerCase()
+          if (!out.has(vehicleId)) out.set(vehicleId, vehicleId)
+
+          zipFile.openReadStream(entry, (streamErr, stream) => {
+            if (streamErr || !stream) {
+              zipFile.readEntry()
+              return
+            }
+
+            let raw = ''
+            stream.on('data', (chunk: Buffer) => {
+              raw += chunk.toString('utf-8')
+            })
+            stream.on('error', () => {
+              zipFile.readEntry()
+            })
+            stream.on('end', () => {
+              try {
+                let candidate: string | null = null
+
+                if (infoMatch) {
+                  const parsed = JSON.parse(raw) as Record<string, unknown>
+                  candidate =
+                    (typeof parsed.Name === 'string' && parsed.Name.trim()) ||
+                    (typeof parsed.name === 'string' && parsed.name.trim()) ||
+                    (typeof parsed.model === 'string' && parsed.model.trim()) ||
+                    null
+                } else {
+                  // JBeam is JSON-like and may not be strict JSON, so use robust regex fallback.
+                  const infoScoped = raw.match(/"information"\s*:\s*\{[\s\S]*?"Name"\s*:\s*"([^"]+)"/i)
+                  const anyName = raw.match(/"Name"\s*:\s*"([^"]+)"/)
+                  const lowerName = raw.match(/"name"\s*:\s*"([^"]+)"/)
+                  candidate = (infoScoped?.[1] || anyName?.[1] || lowerName?.[1] || '').trim() || null
+                }
+
+                if (candidate && candidate.toLowerCase() !== vehicleId) {
+                  out.set(vehicleId, candidate)
+                }
+              } catch {
+                // Ignore malformed metadata; fallback stays vehicle id.
+              }
+              zipFile.readEntry()
+            })
+          })
+        })
+        zipFile.on('end', () => { zipFile.close(); resolve(out) })
+        zipFile.on('error', () => resolve(out))
+      })
+    })
+  }
+
+  /** Vehicle ids and display names from server-provided client archives. */
+  private async listServerVehicles(serverDir: string, resourceFolder: string): Promise<{ names: string[]; displayNames: Record<string, string> }> {
+    const clientDir = join(serverDir, resourceFolder, 'Client')
+    if (!existsSync(clientDir)) return { names: [], displayNames: {} }
+    const files = await readdir(clientDir, { withFileTypes: true }).catch(() => [])
+    const names = new Set<string>()
+    const displayNames: Record<string, string> = {}
+    for (const f of files) {
+      if (!f.isFile() || !f.name.toLowerCase().endsWith('.zip')) continue
+      const zipPath = join(clientDir, f.name)
+      const discovered = await this.discoverVehiclesInZip(zipPath).catch(() => new Map<string, string>())
+      for (const [id, display] of discovered.entries()) {
+        names.add(id)
+        if (display && display !== id) displayNames[id] = display
+      }
+    }
+    return {
+      names: Array.from(names).sort((a, b) => a.localeCompare(b)),
+      displayNames,
+    }
+  }
+
+  private normalizeNameList(input: unknown): string[] {
+    if (!Array.isArray(input)) return []
+    const out = new Set<string>()
+    for (const v of input) {
+      if (typeof v !== 'string') continue
+      const n = v.trim().toLowerCase()
+      if (!n) continue
+      out.add(n)
+    }
+    return Array.from(out).sort((a, b) => a.localeCompare(b))
+  }
+
+  private async readModGateConfigFile(cfgPath: string): Promise<Partial<ModGateConfigFile>> {
+    if (!existsSync(cfgPath)) return {}
+    try {
+      const parsed = JSON.parse(await readFile(cfgPath, 'utf-8')) as Partial<ModGateConfigFile>
+      return parsed
+    } catch {
+      return {}
+    }
+  }
+
+  async getModGateConfig(id: string): Promise<{ exists: boolean; config: ModGateConfigFile | null }> {
+    const config = await this.getServerConfig(id)
+    if (!config) return { exists: false, config: null }
+    await this.syncModGatePlugin(id, config)
+    const cfgPath = join(this.serversDir, id, 'beamcm_mod_gate.json')
+    if (!existsSync(cfgPath)) return { exists: false, config: null }
+    try {
+      const parsed = JSON.parse(await readFile(cfgPath, 'utf-8')) as ModGateConfigFile
+      return { exists: true, config: parsed }
+    } catch {
+      return { exists: false, config: null }
+    }
+  }
+
+  async saveModGateConfig(id: string, input: SaveModGateConfigInput): Promise<{ success: boolean; error?: string }> {
+    try {
+      const config = await this.getServerConfig(id)
+      if (!config) return { success: false, error: 'Server not found' }
+      const serverDir = join(this.serversDir, id)
+      const cfgPath = join(serverDir, 'beamcm_mod_gate.json')
+
+      // Refresh discovered baseline first.
+      await this.syncModGatePlugin(id, config)
+
+      const existing = await this.readModGateConfigFile(cfgPath)
+      const stock = this.normalizeNameList(existing.stockVehicleNames)
+      const server = this.normalizeNameList(existing.serverVehicleNames)
+      const baseline = new Set<string>([...stock, ...server])
+      const desired = new Set<string>(this.normalizeNameList(input.allowedVehicleNames))
+
+      const denied: string[] = []
+      const forced: string[] = []
+      for (const v of baseline) {
+        if (!desired.has(v)) denied.push(v)
+      }
+      for (const v of desired) {
+        if (!baseline.has(v)) forced.push(v)
+      }
+
+      const next: Partial<ModGateConfigFile> = {
+        ...existing,
+        vehicleDeniedNames: denied.sort((a, b) => a.localeCompare(b)),
+        vehicleForcedAllowedNames: forced.sort((a, b) => a.localeCompare(b)),
+      }
+      await writeFile(cfgPath, JSON.stringify(next, null, 2), 'utf-8')
+
+      // Rebuild effective allowlist from updated overrides.
+      await this.syncModGatePlugin(id, config)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  }
+
+  /** Stock vehicle ids from BeamNG installDir/content/vehicles/*.zip (if known). */
+  private async listStockVehicleNames(): Promise<string[]> {
+    const installDir = this.installDirResolver?.()
+    if (!installDir) return []
+    const vehiclesDir = join(installDir, 'content', 'vehicles')
+    if (!existsSync(vehiclesDir)) return []
+    const files = await readdir(vehiclesDir, { withFileTypes: true }).catch(() => [])
+    return files
+      .filter((f) => f.isFile() && f.name.toLowerCase().endsWith('.zip'))
+      .map((f) => f.name.replace(/\.zip$/i, '').toLowerCase())
+      .sort((a, b) => a.localeCompare(b))
+  }
+
+  private async syncModGatePlugin(id: string, config: HostedServerConfig): Promise<void> {
+    const serverDir = join(this.serversDir, id)
+    const pluginDir = join(serverDir, config.resourceFolder, 'Server', 'BeamCMModGate')
+    const pluginPath = join(pluginDir, 'main.lua')
+    const cfgPath = join(serverDir, 'beamcm_mod_gate.json')
+
+    const allowedArchives = await this.listClientArchives(serverDir, config.resourceFolder)
+    const [serverVehicles, stockVehicleNames] = await Promise.all([
+      this.listServerVehicles(serverDir, config.resourceFolder),
+      this.listStockVehicleNames(),
+    ])
+    const serverVehicleNames = serverVehicles.names
+    const existing = await this.readModGateConfigFile(cfgPath)
+    const vehicleDeniedNames = this.normalizeNameList(existing.vehicleDeniedNames)
+    const vehicleForcedAllowedNames = this.normalizeNameList(existing.vehicleForcedAllowedNames)
+
+    const baseline = new Set<string>([...serverVehicleNames, ...stockVehicleNames])
+    const allowedVehicleNames = new Set<string>(baseline)
+    for (const denied of vehicleDeniedNames) allowedVehicleNames.delete(denied)
+    for (const forced of vehicleForcedAllowedNames) allowedVehicleNames.add(forced)
+
+    const cfg: ModGateConfigFile = {
+      enabled: !!config.clientContentGate,
+      allowedArchives,
+      allowedVehicleNames: Array.from(allowedVehicleNames).sort((a, b) => a.localeCompare(b)),
+      stockVehicleNames,
+      serverVehicleNames,
+      vehicleDisplayNames: serverVehicles.displayNames,
+      vehicleDeniedNames,
+      vehicleForcedAllowedNames,
+      updatedAt: new Date().toISOString(),
+    }
+    await writeFile(cfgPath, JSON.stringify(cfg, null, 2), 'utf-8')
+
+    if (!config.clientContentGate) {
+      if (existsSync(pluginDir)) await rm(pluginDir, { recursive: true, force: true })
+      return
+    }
+
+    if (!existsSync(pluginDir)) await mkdir(pluginDir, { recursive: true })
+    await writeFile(pluginPath, buildModGateLuaPlugin(serverDir), 'utf-8')
+  }
+
   /* ── Ban Enforcer Plugin Deploy ── */
 
   async deployBanPlugin(id: string): Promise<void> {
@@ -1286,6 +1543,7 @@ export class ServerManagerService {
     await writeFile(join(dir, 'server.json'), this.serializeConfig(config), 'utf-8')
     // Merge user values on top of the real generated config
     await this.writeToml(config)
+    await this.syncModGatePlugin(id, config)
     return config
   }
 
@@ -1295,6 +1553,7 @@ export class ServerManagerService {
     const config: HostedServerConfig = { ...this.deserializeConfig(raw), ...partial, id }
     await writeFile(join(dir, 'server.json'), this.serializeConfig(config), 'utf-8')
     await this.writeToml(config)
+    await this.syncModGatePlugin(id, config)
     return config
   }
 
@@ -1331,6 +1590,7 @@ export class ServerManagerService {
 
     // Refresh TOML before launch
     await this.writeToml(config)
+    await this.syncModGatePlugin(id, config)
 
     // Ensure this server has its own exe copy
     const localExe = this.serverExePath(id)
@@ -1857,6 +2117,140 @@ export class ServerManagerService {
       doGet(url)
     })
   }
+}
+
+/* ── BeamCM Mod Gate Lua Plugin ── */
+function buildModGateLuaPlugin(serverDir: string): string {
+  const cfgPath = serverDir.replace(/\\/g, '/') + '/beamcm_mod_gate.json'
+  return `-- BeamCM Mod Gate
+-- Blocks vehicle spawns tied to client archives not provided by this server.
+
+local TAG = "[BeamCM-ModGate] "
+local cfgPath = "${cfgPath}"
+
+local gateEnabled = false
+local allowedArchives = {}
+local allowedVehicleNames = {}
+
+local function readConfig()
+  local f = io.open(cfgPath, "r")
+  if not f then
+    print(TAG .. "Config not found: " .. cfgPath)
+    return
+  end
+  local raw = f:read("*a")
+  f:close()
+  if not raw or raw == "" then return end
+  local ok, cfg = pcall(Util.JsonDecode, raw)
+  if not ok or type(cfg) ~= "table" then
+    print(TAG .. "Invalid JSON config")
+    return
+  end
+  gateEnabled = cfg.enabled == true
+  allowedArchives = {}
+  allowedVehicleNames = {}
+  if type(cfg.allowedArchives) == "table" then
+    for _, name in ipairs(cfg.allowedArchives) do
+      if type(name) == "string" and name ~= "" then
+        allowedArchives[string.lower(name)] = true
+      end
+    end
+  end
+  if type(cfg.allowedVehicleNames) == "table" then
+    for _, name in ipairs(cfg.allowedVehicleNames) do
+      if type(name) == "string" and name ~= "" then
+        allowedVehicleNames[string.lower(name)] = true
+      end
+    end
+  end
+end
+
+local function findZipHint(value)
+  if type(value) == "string" then
+    local lower = string.lower(value)
+    local zip = string.match(lower, "([^/\\\\]+%.zip)")
+    if zip then return zip end
+    return nil
+  end
+  if type(value) ~= "table" then return nil end
+  for _, v in pairs(value) do
+    local hit = findZipHint(v)
+    if hit then return hit end
+  end
+  return nil
+end
+
+local function decodeSpawnData(raw)
+  if type(raw) == "table" then return raw end
+  if type(raw) ~= "string" or raw == "" then return nil end
+  local ok, decoded = pcall(Util.JsonDecode, raw)
+  if ok and type(decoded) == "table" then return decoded end
+  local start = string.find(raw, "{")
+  if start then
+    local ok2, decoded2 = pcall(Util.JsonDecode, string.sub(raw, start))
+    if ok2 and type(decoded2) == "table" then return decoded2 end
+  end
+  return nil
+end
+
+function onInit()
+  readConfig()
+  MP.RegisterEvent("onVehicleSpawn", "onVehicleSpawn")
+  print(TAG .. "Loaded. enabled=" .. tostring(gateEnabled) .. ", allowedArchives=" .. tostring((function()
+    local c = 0
+    for _ in pairs(allowedArchives) do c = c + 1 end
+    return c
+  end)()) .. ", allowedVehicleNames=" .. tostring((function()
+    local c = 0
+    for _ in pairs(allowedVehicleNames) do c = c + 1 end
+    return c
+  end)()))
+end
+
+function onVehicleSpawn(playerID, vehicleID, data)
+  if not gateEnabled then return end
+  local decoded = decodeSpawnData(data)
+  local name = MP.GetPlayerName(playerID) or ("player:" .. tostring(playerID))
+
+  local function blockSpawn(reason, archive, veh)
+    local archiveOut = archive or "<none>"
+    local vehOut = veh or "unknown"
+    print(TAG .. "BLOCK sideloaded vehicle spawn player=" .. tostring(name) .. " vehicle=" .. tostring(vehOut) .. " archive=" .. tostring(archiveOut) .. " reason=" .. tostring(reason))
+
+    local removed = false
+    if MP.RemoveVehicle then
+      local ok = pcall(MP.RemoveVehicle, playerID, vehicleID)
+      removed = ok
+    end
+    if MP.SendChatMessage then
+      MP.SendChatMessage(playerID, "Vehicle blocked: only server-provided mod packs are allowed on this server.")
+    end
+    if not removed then
+      print(TAG .. "WARNING: RemoveVehicle failed for pid=" .. tostring(playerID) .. " vid=" .. tostring(vehicleID))
+    end
+    return 1
+  end
+
+  -- Strict mode: if payload cannot be decoded, block.
+  if not decoded then
+    return blockSpawn("undecodable-payload", nil, nil)
+  end
+
+  local archive = findZipHint(decoded)
+  local veh = tostring(decoded.name or decoded.jbm or decoded.model or "unknown")
+  local vehKey = string.lower(tostring(decoded.jbm or decoded.model or decoded.name or ""))
+
+  -- No archive hint: allow only when the vehicle id/name is known to come from
+  -- stock content or server-provided client archives.
+  if not archive then
+    if vehKey ~= "" and allowedVehicleNames[vehKey] then return end
+    return blockSpawn("no-archive-hint", nil, veh)
+  end
+  if allowedArchives[archive] then return end
+
+  return blockSpawn("archive-not-allowlisted", archive, veh)
+end
+`
 }
 
 /* ── BeamMPCM Tracker Lua Plugin ── */

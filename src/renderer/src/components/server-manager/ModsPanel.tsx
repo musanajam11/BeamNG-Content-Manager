@@ -159,6 +159,7 @@ export function ModsPanel({ serverId, mods, onRefresh }: ModsPanelProps): React.
   const [bulkProgress, setBulkProgress] = useState<BulkProgressState | null>(null)
   const [deployedNames, setDeployedNames] = useState<Set<string>>(new Set())
   const [deployedOrder, setDeployedOrder] = useState<string[]>([])
+  const [refreshing, setRefreshing] = useState(false)
   const { dialog: confirmDialogEl, confirm } = useConfirmDialog()
 
   const sensors = useSensors(
@@ -274,6 +275,17 @@ export function ModsPanel({ serverId, mods, onRefresh }: ModsPanelProps): React.
     }
   }
 
+  const handleRefresh = async (): Promise<void> => {
+    setRefreshing(true)
+    try {
+      await onRefresh()
+      await fetchDeployed()
+      await fetchOrder()
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   const handleUndeployAll = async (): Promise<void> => {
     const deployedFileNames = sortedMods
       .map((m) => m.filePath.replace(/\\/g, '/').split('/').pop()?.toLowerCase() ?? '')
@@ -359,6 +371,13 @@ export function ModsPanel({ serverId, mods, onRefresh }: ModsPanelProps): React.
         <div className="px-4 py-2 border-b border-[var(--color-border)] flex items-center justify-between gap-3">
           <span className="text-xs text-[var(--color-text-muted)]">{t('serverManager.deployModsDescription')}</span>
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing || bulkDeploying || bulkUndeploying}
+              className="text-xs px-2.5 py-1 bg-[var(--color-surface)] text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] transition-colors disabled:opacity-50"
+            >
+              {refreshing ? 'Refreshing...' : t('common.refresh')}
+            </button>
             <button
               onClick={handleDeployAll}
               disabled={bulkDeploying || bulkUndeploying || deployableCount === 0}
