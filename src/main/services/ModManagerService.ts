@@ -1,5 +1,6 @@
 import { readFile, writeFile, readdir, unlink, copyFile, stat } from 'fs/promises'
 import { join, basename, dirname } from 'path'
+import { jsonrepair } from 'jsonrepair'
 import { isModArchive, stripArchiveExt, forEachMatch, readFirstMatchWithName } from '../utils/archiveConverter'
 import type { ModInfo } from '../../shared/types'
 
@@ -61,6 +62,47 @@ export class ModManagerService {
   }
 
   /**
+   * Read mods/db.json with auto-repair for malformed JSON.
+   * On successful repair we persist the fixed file and create a timestamped backup.
+   */
+  private async loadDbJson(
+    dbPath: string,
+    options: { allowMissing?: boolean } = {}
+  ): Promise<{ db: Record<string, unknown>; parseFailed: boolean }> {
+    let raw: string
+    try {
+      raw = await readFile(dbPath, 'utf-8')
+    } catch {
+      if (options.allowMissing) return { db: {}, parseFailed: false }
+      throw new Error(`Failed to read db.json at ${dbPath}`)
+    }
+
+    const normalized = stripBom(raw)
+    try {
+      return { db: JSON.parse(normalized), parseFailed: false }
+    } catch {
+      // Try robust repair for legacy/corrupted db.json files.
+      try {
+        const repaired = jsonrepair(normalized)
+        const parsed = JSON.parse(repaired) as Record<string, unknown>
+        const backupPath = `${dbPath}.bak.${Date.now()}`
+        try {
+          await writeFile(backupPath, normalized, 'utf-8')
+        } catch { /* best effort */ }
+        await writeFile(dbPath, repaired, 'utf-8')
+        console.warn(`[ModManager] Auto-repaired malformed db.json and saved backup to ${backupPath}`)
+        return { db: parsed, parseFailed: false }
+      } catch {
+        if (options.allowMissing) {
+          console.warn('[ModManager] db.json is malformed and could not be auto-repaired; falling back to disk scan')
+          return { db: {}, parseFailed: true }
+        }
+        throw new Error(`Malformed db.json at ${dbPath} and auto-repair failed`)
+      }
+    }
+  }
+
+  /**
    * Resolve the mods map from db.json.
    * BeamNG uses a wrapped format: { header: {...}, mods: { key: entry, ... } }
    * Our installMod previously wrote flat: { key: entry, ... }
@@ -99,11 +141,7 @@ export class ModManagerService {
   /** Repair db.json entries that are missing the modname field (prevents BeamMP Lua crash) */
   async repairModNames(userDir: string): Promise<void> {
     const dbPath = join(userDir, 'mods', 'db.json')
-    let db: Record<string, unknown> = {}
-    try {
-      const raw = await readFile(dbPath, 'utf-8')
-      db = JSON.parse(stripBom(raw))
-    } catch { return }
+    const { db } = await this.loadDbJson(dbPath, { allowMissing: true })
 
     const modsMap = this.getModsMap(db)
     let dirty = false
@@ -130,11 +168,7 @@ export class ModManagerService {
   async repairDuplicateEntries(userDir: string): Promise<void> {
     const modsRoot = join(userDir, 'mods')
     const dbPath = join(modsRoot, 'db.json')
-    let db: Record<string, unknown> = {}
-    try {
-      const raw = await readFile(dbPath, 'utf-8')
-      db = JSON.parse(stripBom(raw))
-    } catch { return }
+    const { db } = await this.loadDbJson(dbPath, { allowMissing: true })
 
     const modsMap = this.getModsMap(db)
     // Group dbKeys by lowercased filename
@@ -222,12 +256,7 @@ export class ModManagerService {
     const mpDir = dirname(beammpZipPath)
     const modsRoot = dirname(mpDir)
     const dbPath = join(modsRoot, 'db.json')
-
-    let db: Record<string, unknown> = {}
-    try {
-      const raw = await readFile(dbPath, 'utf-8')
-      db = JSON.parse(stripBom(raw))
-    } catch { /* db.json may not exist yet */ }
+    const { db } = await this.loadDbJson(dbPath, { allowMissing: true })
 
     const modsMap = this.getModsMap(db)
     const beamEntries = Object.entries(modsMap).filter(([, entry]) => (entry.filename || '').toLowerCase() === 'beammp.zip')
@@ -294,15 +323,7 @@ export class ModManagerService {
   async listMods(userDir: string): Promise<ModInfo[]> {
     const modsRoot = join(userDir, 'mods')
     const dbPath = join(modsRoot, 'db.json')
-
-    // Load db.json for metadata
-    let db: Record<string, unknown> = {}
-    try {
-      const raw = await readFile(dbPath, 'utf-8')
-      db = JSON.parse(stripBom(raw))
-    } catch {
-      // db.json may not exist yet — scan disk only
-    }
+    const { db, parseFailed: dbParseFailed } = await this.loadDbJson(dbPath, { allowMissing: true })
 
     const modsMap = this.getModsMap(db)
     const mods: ModInfo[] = []
@@ -359,44 +380,53 @@ export class ModManagerService {
       })
     }
 
-    // Scan repo/ for any archives not in db.json
-    try {
-      const repoDir = join(modsRoot, 'repo')
-      const files = await readdir(repoDir)
-      for (const file of files) {
-        if (!isModArchive(file)) continue
-        if (seenFiles.has(file.toLowerCase())) continue
+    // Scan disk for archives not present in db.json.
+    // Include both repo/ and multiplayer/ so protected mods like BeamMP still
+    // appear even if db.json is malformed.
+    const scanTargets: Array<{ subDir: string; location: 'repo' | 'multiplayer' }> = [
+      { subDir: 'repo', location: 'repo' },
+      { subDir: 'multiplayer', location: 'multiplayer' }
+    ]
+    for (const target of scanTargets) {
+      try {
+        const dir = join(modsRoot, target.subDir)
+        const files = await readdir(dir)
+        for (const file of files) {
+          if (!isModArchive(file)) continue
+          if (seenFiles.has(file.toLowerCase())) continue
 
-        const filePath = join(repoDir, file)
+          const filePath = join(dir, file)
+          const s = await stat(filePath)
+          const key = stripArchiveExt(file).toLowerCase()
 
-        const s = await stat(filePath)
-        const key = stripArchiveExt(file).toLowerCase()
+          // When db.json is malformed, skip deep zip scans to keep listing fast.
+          const meta = dbParseFailed
+            ? { title: null, tagLine: null, author: null, version: null, modType: 'unknown', iconDataUrl: null, levelDir: null }
+            : await this.scanModZip(filePath)
 
-        // Scan zip for metadata
-        const meta = await this.scanModZip(filePath)
-
-        mods.push({
-          key,
-          fileName: file,
-          filePath,
-          sizeBytes: s.size,
-          modifiedDate: s.mtime.toISOString(),
-          enabled: false,
-          modType: meta.modType,
-          title: meta.title,
-          tagLine: meta.tagLine,
-          author: meta.author,
-          version: meta.version,
-          previewImage: null,
-          location: 'repo',
-          resourceId: null,
-          multiplayerScope: null,
-          loadOrder: null,
-          levelDir: meta.levelDir
-        })
+          mods.push({
+            key,
+            fileName: file,
+            filePath,
+            sizeBytes: s.size,
+            modifiedDate: s.mtime.toISOString(),
+            enabled: target.location === 'multiplayer',
+            modType: meta.modType,
+            title: meta.title,
+            tagLine: meta.tagLine,
+            author: meta.author,
+            version: meta.version,
+            previewImage: null,
+            location: target.location,
+            resourceId: null,
+            multiplayerScope: null,
+            loadOrder: null,
+            levelDir: meta.levelDir
+          })
+        }
+      } catch {
+        // target folder may not exist
       }
-    } catch {
-      // repo/ folder may not exist
     }
 
     return mods
@@ -427,8 +457,7 @@ export class ModManagerService {
   /** Toggle mod active state in db.json */
   async toggleMod(userDir: string, modKey: string, enabled: boolean): Promise<void> {
     const dbPath = join(userDir, 'mods', 'db.json')
-    const raw = await readFile(dbPath, 'utf-8')
-    const db = JSON.parse(stripBom(raw))
+    const { db } = await this.loadDbJson(dbPath, { allowMissing: true })
     const modsMap = this.getModsMap(db)
 
     const found = this.findModEntry(modsMap, modKey)
@@ -467,12 +496,7 @@ export class ModManagerService {
   /** Delete a mod zip from disk and remove its db.json entry */
   async deleteMod(userDir: string, modKey: string): Promise<void> {
     const dbPath = join(userDir, 'mods', 'db.json')
-
-    let db: Record<string, unknown> = {}
-    try {
-      const raw = await readFile(dbPath, 'utf-8')
-      db = JSON.parse(stripBom(raw))
-    } catch { /* ignore */ }
+    const { db } = await this.loadDbJson(dbPath, { allowMissing: true })
 
     const modsMap = this.getModsMap(db)
     const found = this.findModEntry(modsMap, modKey)
@@ -517,11 +541,7 @@ export class ModManagerService {
 
     // Write to db.json
     const dbPath = join(userDir, 'mods', 'db.json')
-    let db: Record<string, unknown> = {}
-    try {
-      const raw = await readFile(dbPath, 'utf-8')
-      db = JSON.parse(stripBom(raw))
-    } catch { /* db.json may not exist */ }
+    const { db } = await this.loadDbJson(dbPath, { allowMissing: true })
 
     const modsMap = this.getModsMap(db)
     modsMap[key] = {
@@ -570,11 +590,7 @@ export class ModManagerService {
 
   async updateModScope(userDir: string, modKey: string, scope: 'client' | 'server' | 'both'): Promise<void> {
     const dbPath = join(userDir, 'mods', 'db.json')
-    let db: Record<string, unknown> = {}
-    try {
-      const raw = await readFile(dbPath, 'utf-8')
-      db = JSON.parse(stripBom(raw))
-    } catch { /* db.json may not exist */ }
+    const { db } = await this.loadDbJson(dbPath, { allowMissing: true })
 
     const modsMap = this.getModsMap(db)
     const entry = modsMap[modKey]
@@ -587,11 +603,7 @@ export class ModManagerService {
   /** Manually override the mod type classification in db.json */
   async updateModType(userDir: string, modKey: string, modType: string): Promise<void> {
     const dbPath = join(userDir, 'mods', 'db.json')
-    let db: Record<string, unknown> = {}
-    try {
-      const raw = await readFile(dbPath, 'utf-8')
-      db = JSON.parse(stripBom(raw))
-    } catch { /* db.json may not exist */ }
+    const { db } = await this.loadDbJson(dbPath, { allowMissing: true })
 
     const modsMap = this.getModsMap(db)
     const entry = modsMap[modKey]

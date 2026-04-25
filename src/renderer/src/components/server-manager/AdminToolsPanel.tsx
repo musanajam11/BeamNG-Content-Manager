@@ -53,6 +53,7 @@ interface InstalledPlugin {
 
 interface AdminToolsPanelProps {
   serverId: string
+  className?: string
 }
 
 /**
@@ -75,7 +76,7 @@ function adminPluginIcon(id: string): { Icon: React.ComponentType<{ size?: numbe
   }
 }
 
-export function AdminToolsPanel({ serverId }: AdminToolsPanelProps): React.JSX.Element {
+export function AdminToolsPanel({ serverId, className }: AdminToolsPanelProps): React.JSX.Element {
   const { t } = useTranslation()
   const [catalog, setCatalog] = useState<PluginCatalogEntry[]>([])
   const [releasesByPlugin, setReleasesByPlugin] = useState<Record<string, PluginRelease[]>>({})
@@ -223,7 +224,7 @@ export function AdminToolsPanel({ serverId }: AdminToolsPanelProps): React.JSX.E
   )
 
   return (
-    <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4 space-y-3 m-4">
+    <div className={`bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4 space-y-3 m-4 ${className ?? ''}`}>
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
           <Package size={16} className="text-[var(--color-accent)]" />{' '}

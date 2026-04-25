@@ -5,7 +5,6 @@ import {
   FolderOpen,
   Plus,
   Trash2,
-  ToggleLeft,
   ToggleRight,
   HardDrive,
   MapPin,
@@ -199,7 +198,8 @@ export function ModsPage(): React.JSX.Element {
 function SortableModRow({
   mod,
   isSelected,
-  actionPending,
+  toggleDisabled,
+  isBusy,
   conflictCount,
   isOverridden,
   registrySource,
@@ -210,7 +210,8 @@ function SortableModRow({
 }: {
   mod: ModInfo
   isSelected: boolean
-  actionPending: string | null
+  toggleDisabled: boolean
+  isBusy: boolean
   conflictCount: number
   isOverridden: boolean
   registrySource: 'registry' | 'manual' | null
@@ -271,21 +272,18 @@ function SortableModRow({
 
       {/* Toggle */}
       <td className="px-4 py-3">
-        <button
-          onClick={(e) => {
+        <input
+          type="checkbox"
+          checked={mod.enabled}
+          onChange={(e) => {
             e.stopPropagation()
             onToggle(mod)
           }}
-          disabled={actionPending === mod.key || mod.location === 'multiplayer'}
-          className="text-[var(--color-text-secondary)] transition hover:text-[var(--color-text-primary)] disabled:opacity-40"
+          onClick={(e) => e.stopPropagation()}
+          disabled={toggleDisabled}
+          className="h-4 w-4 cursor-pointer accent-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-50"
           title={mod.enabled ? t('mods.disableMod') : t('mods.enableMod')}
-        >
-          {mod.enabled ? (
-            <ToggleRight size={20} className="text-[var(--color-accent)]" />
-          ) : (
-            <ToggleLeft size={20} />
-          )}
-        </button>
+        />
       </td>
 
       {/* Mod name + conflict indicator */}
@@ -361,7 +359,7 @@ function SortableModRow({
               e.stopPropagation()
               onDelete(mod)
             }}
-            disabled={actionPending === mod.key}
+            disabled={isBusy}
             className="text-[var(--color-text-muted)] transition hover:text-rose-400 disabled:opacity-40"
             title={t('mods.deleteMod')}
           >
@@ -385,6 +383,7 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
   const [filter, setFilter] = useState<ModFilter>('')
   const [selectedMod, setSelectedMod] = useState<ModInfo | null>(null)
   const [actionPending, setActionPending] = useState<string | null>(null)
+  const [bulkPending, setBulkPending] = useState(false)
   // Bounded LRU cache for mod preview images. Each preview is a base64 data URL
   // that can easily be 100-300 KB; without bounding, clicking through hundreds
   // of mods would retain all of them in renderer memory for the session.
@@ -413,6 +412,15 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
+
+  const isModToggleable = useCallback((mod: ModInfo): boolean => {
+    const key = mod.key.trim().toLowerCase()
+    const fileName = mod.fileName.trim().toLowerCase()
+    if (mod.location === 'multiplayer') return false
+    // BeamMP is required for multiplayer and should never be bulk/row toggled.
+    if (key === 'beammp' || fileName === 'beammp.zip') return false
+    return true
+  }, [])
 
   const fetchMods = async (): Promise<void> => {
     setLoading(true)
@@ -521,18 +529,55 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
   }, [mods])
 
   const handleToggle = async (mod: ModInfo): Promise<void> => {
+    if (!isModToggleable(mod)) return
     setActionPending(mod.key)
-    const newState = !mod.enabled
-    const result = await window.api.toggleMod(mod.key, newState)
-    if (result.success) {
-      setMods((prev) =>
-        prev.map((m) => (m.key === mod.key ? { ...m, enabled: newState } : m))
-      )
-      if (selectedMod?.key === mod.key) {
-        setSelectedMod({ ...selectedMod, enabled: newState })
+    try {
+      const newState = !mod.enabled
+      const result = await window.api.toggleMod(mod.key, newState)
+      if (result.success) {
+        setMods((prev) =>
+          prev.map((m) => (m.key === mod.key ? { ...m, enabled: newState } : m))
+        )
+        if (selectedMod?.key === mod.key) {
+          setSelectedMod({ ...selectedMod, enabled: newState })
+        }
+      } else {
+        // Keep UI in sync with on-disk state if backend rejected the toggle.
+        await fetchMods()
       }
+    } finally {
+      setActionPending(null)
     }
-    setActionPending(null)
+  }
+
+  const handleSetAllEnabled = async (enabled: boolean): Promise<void> => {
+    const modsToUpdate = mods.filter((m) => isModToggleable(m) && m.enabled !== enabled)
+    if (modsToUpdate.length === 0) return
+
+    setBulkPending(true)
+    try {
+      // Apply sequentially: each IPC toggle rewrites db.json, so parallel writes
+      // can race and drop updates.
+      for (const mod of modsToUpdate) {
+        const result = await window.api.toggleMod(mod.key, enabled)
+        if (!result.success) {
+          console.warn(`[ModsPage] Failed to bulk-toggle ${mod.key}: ${result.error || 'unknown error'}`)
+        }
+      }
+      const refreshed = await window.api.getMods()
+      if (refreshed.success && refreshed.data) {
+        setMods(refreshed.data)
+        setSelectedMod((prev) => {
+          if (!prev) return prev
+          const updated = refreshed.data?.find((m) => m.key === prev.key)
+          return updated ?? prev
+        })
+      } else {
+        await fetchMods()
+      }
+    } finally {
+      setBulkPending(false)
+    }
   }
 
   const handleDelete = async (mod: ModInfo): Promise<void> => {
@@ -649,6 +694,24 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
             )}
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleSetAllEnabled(true)}
+              disabled={bulkPending || loading || mods.every((m) => !isModToggleable(m) || m.enabled)}
+              className="inline-flex items-center gap-1.5 border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs text-[var(--color-text-secondary)] transition hover:bg-[var(--color-surface-active)] disabled:opacity-50"
+              title={`${t('mods.enableMod')} (${t('common.all')})`}
+            >
+              <ToggleRight size={13} />
+              {t('mods.enableMod')} ({t('common.all')})
+            </button>
+            <button
+              onClick={() => handleSetAllEnabled(false)}
+              disabled={bulkPending || loading || mods.every((m) => !isModToggleable(m) || !m.enabled)}
+              className="inline-flex items-center gap-1.5 border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs text-[var(--color-text-secondary)] transition hover:bg-[var(--color-surface-active)] disabled:opacity-50"
+              title={`${t('mods.disableMod')} (${t('common.all')})`}
+            >
+              <ToggleRight size={13} className="rotate-180" />
+              {t('mods.disableMod')} ({t('common.all')})
+            </button>
             {/* Enforcement toggle */}
             <button
               onClick={() => setEnforcement(!enforcement)}
@@ -813,7 +876,8 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                           key={mod.key}
                           mod={mod}
                           isSelected={selectedMod?.key === mod.key}
-                          actionPending={actionPending}
+                          toggleDisabled={bulkPending || actionPending === mod.key || !isModToggleable(mod)}
+                          isBusy={bulkPending || actionPending === mod.key}
                           conflictCount={getModConflictCount(mod.key)}
                           isOverridden={isModOverridden(mod.key)}
                           registrySource={
@@ -1079,27 +1143,20 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                 })()}
 
                 {/* Actions */}
-                {selectedMod.location !== 'multiplayer' && (
+                {isModToggleable(selectedMod) && (
                   <div className="flex gap-2 pt-2">
-                    <button
-                      onClick={() => handleToggle(selectedMod)}
-                      disabled={actionPending === selectedMod.key}
-                      className={`flex-1 inline-flex items-center justify-center gap-1.5 border px-3 py-2 text-xs font-medium transition ${
-                        selectedMod.enabled
-                          ? 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-hover)]'
-                          : 'border-[var(--color-border-accent)] bg-[var(--color-accent-10)] text-[var(--color-accent-text)] hover:bg-[var(--color-accent-20)]'
-                      }`}
+                    <label
+                      className="flex-1 inline-flex items-center justify-center gap-2 border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs font-medium text-[var(--color-text-secondary)]"
                     >
-                      {selectedMod.enabled ? (
-                        <>
-                          <ToggleLeft size={13} /> {t('mods.disableMod')}
-                        </>
-                      ) : (
-                        <>
-                          <ToggleRight size={13} /> {t('mods.enableMod')}
-                        </>
-                      )}
-                    </button>
+                      <input
+                        type="checkbox"
+                        checked={selectedMod.enabled}
+                        onChange={() => handleToggle(selectedMod)}
+                        disabled={actionPending === selectedMod.key}
+                        className="h-4 w-4 cursor-pointer accent-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-50"
+                      />
+                      {selectedMod.enabled ? t('common.enabled') : t('common.disabled')}
+                    </label>
                     <button
                       onClick={() => handleDelete(selectedMod)}
                       disabled={actionPending === selectedMod.key}

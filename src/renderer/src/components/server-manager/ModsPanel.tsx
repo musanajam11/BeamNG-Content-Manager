@@ -1,4 +1,4 @@
-import { Package, Server, Trash2, GripVertical } from 'lucide-react'
+import { Package, Server, Trash2, GripVertical, ChevronUp, ChevronDown } from 'lucide-react'
 import { useState, useEffect, useCallback } from 'react'
 import {
   DndContext,
@@ -141,6 +141,7 @@ function SortableServerModRow({
 
 export function ModsPanel({ serverId, mods, onRefresh }: ModsPanelProps): React.JSX.Element {
   const { t } = useTranslation()
+  const [adminToolsOpen, setAdminToolsOpen] = useState(false)
   const [registryMeta, setRegistryMeta] = useState<Record<string, { multiplayer_scope?: string }>>({})
   const [copying, setCopying] = useState<string | null>(null)
   const [undeploying, setUndeploying] = useState<string | null>(null)
@@ -312,7 +313,24 @@ export function ModsPanel({ serverId, mods, onRefresh }: ModsPanelProps): React.
         )}
       </div>
       </div>
-      <AdminToolsPanel serverId={serverId} />
+      <div className="shrink-0 border-t border-[var(--color-border)] bg-[var(--color-surface)]">
+        <button
+          onClick={() => setAdminToolsOpen((v) => !v)}
+          className="w-full flex items-center justify-between px-4 py-3 text-sm text-[var(--color-text-primary)] hover:bg-[var(--color-surface-hover)] transition-colors"
+          title={t('serverManager.adminTools.title')}
+        >
+          <span className="font-medium">{t('serverManager.adminTools.title')}</span>
+          {adminToolsOpen ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+        </button>
+        {adminToolsOpen && (
+          <div className="max-h-[42vh] overflow-y-auto border-t border-[var(--color-border)]">
+            <AdminToolsPanel
+              serverId={serverId}
+              className="m-0 rounded-none border-0 border-t border-[var(--color-border)]"
+            />
+          </div>
+        )}
+      </div>
       {confirmDialogEl}
     </>
   )
