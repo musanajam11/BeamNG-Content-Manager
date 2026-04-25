@@ -27,6 +27,7 @@ import { useVoiceChatStore } from './stores/useVoiceChatStore'
 import { useGameStore } from './stores/useGameStore'
 import { useWorldEditSessionStore } from './stores/useWorldEditSessionStore'
 import { useThemeStore, resolveColorMode, applyTheme } from './stores/useThemeStore'
+import { useHostedServerStore } from './stores/useHostedServerStore'
 import i18n from './i18n'
 
 function PageRouter(): React.JSX.Element {
@@ -193,10 +194,26 @@ function App(): React.JSX.Element {
             maxPlayers: parseInt(server.maxplayers, 10) || undefined
           })
         } else {
-          window.api.discordSetPlaying({
-            serverName: status.connectedServer,
-            mapName: 'Unknown'
-          })
+          // Not found in the public server list — check if it's one of the
+          // user's own hosted servers (matched by port, since it'll be 127.0.0.1)
+          const connPort = parseInt(status.connectedServer.split(':')[1] ?? '', 10)
+          const hostedEntries = useHostedServerStore.getState().servers
+          const hostedMatch = connPort
+            ? hostedEntries.find((e) => e.config.port === connPort)
+            : undefined
+          if (hostedMatch) {
+            window.api.discordSetPlaying({
+              serverName: hostedMatch.config.name,
+              mapName: hostedMatch.config.map
+                ? hostedMatch.config.map.replace(/^\/levels\//, '').replace(/\/info\.json$/, '').replace(/\//g, ' ').trim()
+                : '',
+            })
+          } else {
+            window.api.discordSetPlaying({
+              serverName: 'a private server',
+              mapName: ''
+            })
+          }
         }
         // Start polling telemetry for vehicle info
         startVehiclePoller(status.connectedServer)

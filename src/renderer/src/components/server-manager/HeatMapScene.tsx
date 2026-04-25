@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState, useCallback } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import type { PlayerPosition, GPSRoute } from '../../../../shared/types'
@@ -7,6 +7,7 @@ import { worldToNorm, normToWorld, type MapBounds } from './mapBounds'
 const PLANE_SIZE = 20
 const TERRAIN_SEGMENTS = 512
 const HEIGHT_SCALE = 0.6 // gentle terrain relief — keeps map readable
+const PLAYER_EMOJIS = ['😀', '😎', '🤖', '👾', '💀', '👻', '🐱', '🐸', '🔥', '⭐', '🛸', '🚗'] as const
 
 interface HeatMapSceneProps {
   mapPath: string
@@ -19,6 +20,7 @@ interface HeatMapSceneProps {
   heatGridVersion?: number
   heatGridRes?: number
   onMapClick?: (worldX: number, worldY: number) => void
+  onTexBoundsLoaded?: (bounds: { minX: number; maxX: number; minY: number; maxY: number } | null) => void
 }
 
 export default function HeatMapScene({
@@ -31,8 +33,11 @@ export default function HeatMapScene({
   heatGrid,
   heatGridVersion,
   heatGridRes,
-  onMapClick
+  onMapClick,
+  onTexBoundsLoaded
 }: HeatMapSceneProps): React.JSX.Element {
+  const [surfaceReadyTick, setSurfaceReadyTick] = useState(0)
+  const [tooltip, setTooltip] = useState<{ name: string; x: number; y: number } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
@@ -40,7 +45,10 @@ export default function HeatMapScene({
   const controlsRef = useRef<OrbitControls | null>(null)
   const frameIdRef = useRef<number>(0)
   const groundRef = useRef<THREE.Mesh | null>(null)
-  const playerMeshesRef = useRef<Map<string, THREE.Mesh>>(new Map())
+  const playerSpritesRef = useRef<Map<string, THREE.Sprite>>(new Map())
+  const playerConesRef = useRef<Map<string, THREE.Mesh>>(new Map())
+  const lastEmojiByKeyRef = useRef<Map<string, string>>(new Map())
+  const emojiTextureCacheRef = useRef<Map<string, THREE.Texture>>(new Map())
   const routeLinesRef = useRef<Map<string, THREE.Object3D>>(new Map())
   const waypointMeshesRef = useRef<Map<string, THREE.Mesh[]>>(new Map())
   const raycasterRef = useRef(new THREE.Raycaster())
@@ -49,6 +57,11 @@ export default function HeatMapScene({
   const heightRangeRef = useRef<{ min: number; max: number }>({ min: 0, max: 255 })
   const heatOverlayRef = useRef<THREE.Mesh | null>(null)
   const heatTexRef = useRef<THREE.DataTexture | null>(null)
+  // Maps sprite key → player name for hover tooltip
+  const playerNameByKeyRef = useRef<Map<string, string>>(new Map())
+  // Track which surfaceReadyTick value the overlay geometry was built for.
+  // When the tick advances (ground deformed), geometry is rebuilt from the updated mesh.
+  const lastOverlaySurfaceTickRef = useRef(-1)
   // World bounds covered by the texture image (from tile compositing, or matching terrain bounds)
   const texBoundsRef = useRef<{ minX: number; maxX: number; minY: number; maxY: number } | null>(null)
 
@@ -86,6 +99,45 @@ export default function HeatMapScene({
     return ((r - min) / range) * HEIGHT_SCALE * fade
   }
 
+  const randomEmojiForJoin = (key: string): string => {
+    const prev = lastEmojiByKeyRef.current.get(key)
+    if (PLAYER_EMOJIS.length <= 1) {
+      const single = PLAYER_EMOJIS[0]
+      lastEmojiByKeyRef.current.set(key, single)
+      return single
+    }
+
+    let next = PLAYER_EMOJIS[Math.floor(Math.random() * PLAYER_EMOJIS.length)]
+    if (prev && next === prev) {
+      const candidates = PLAYER_EMOJIS.filter((e) => e !== prev)
+      next = candidates[Math.floor(Math.random() * candidates.length)]
+    }
+    lastEmojiByKeyRef.current.set(key, next)
+    return next
+  }
+
+  const getEmojiTexture = (emoji: string): THREE.Texture => {
+    const cached = emojiTextureCacheRef.current.get(emoji)
+    if (cached) return cached
+
+    const size = 128
+    const canvas = document.createElement('canvas')
+    canvas.width = size
+    canvas.height = size
+    const ctx = canvas.getContext('2d')!
+    ctx.clearRect(0, 0, size, size)
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.font = `${Math.floor(size * 0.72)}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`
+    ctx.fillText(emoji, size / 2, size / 2 + 2)
+
+    const tex = new THREE.CanvasTexture(canvas)
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.needsUpdate = true
+    emojiTextureCacheRef.current.set(emoji, tex)
+    return tex
+  }
+
   /* ── Initialise scene ────────────────────────────────────────── */
   useEffect(() => {
     const container = containerRef.current
@@ -114,7 +166,7 @@ export default function HeatMapScene({
     container.appendChild(renderer.domElement)
     rendererRef.current = renderer
 
-    // Single ambient light — only needed for player marker cones (the terrain is unlit)
+    // Single ambient light — terrain is unlit, but this helps route/overlay materials.
     const ambient = new THREE.AmbientLight(0xffffff, 1.2)
     scene.add(ambient)
     const sun = new THREE.DirectionalLight(0xffffff, 0.6)
@@ -131,6 +183,8 @@ export default function HeatMapScene({
     ground.rotation.x = -Math.PI / 2
     scene.add(ground)
     groundRef.current = ground
+    // Signal downstream effects (heat overlay) that ground is now available.
+    setSurfaceReadyTick((v) => v + 1)
 
     // Controls
     const controls = new OrbitControls(camera, renderer.domElement)
@@ -165,7 +219,7 @@ export default function HeatMapScene({
       cancelAnimationFrame(frameIdRef.current)
       obs.disconnect()
       scene.traverse((obj) => {
-        if (obj instanceof THREE.Mesh) {
+        if (obj instanceof THREE.Mesh || obj instanceof THREE.Sprite) {
           obj.geometry?.dispose()
           const m = obj.material as THREE.Material | THREE.Material[]
           const dm = (mat: THREE.Material): void => {
@@ -183,6 +237,8 @@ export default function HeatMapScene({
         }
       })
       scene.clear()
+      for (const tex of emojiTextureCacheRef.current.values()) tex.dispose()
+      emojiTextureCacheRef.current.clear()
       renderer.dispose()
       renderer.forceContextLoss?.()
       if (container.contains(renderer.domElement)) {
@@ -284,6 +340,9 @@ export default function HeatMapScene({
 
         pos.needsUpdate = true
         geo.computeVertexNormals()
+        // Heightmap deformation finished; force heat overlay effect to resync
+        // overlay vertices to the updated ground geometry.
+        setSurfaceReadyTick((v) => v + 1)
       }
       img.src = dataUrl
     }
@@ -296,6 +355,7 @@ export default function HeatMapScene({
     const loadMinimap = window.api.getMapMinimap(mapPath).then((result) => {
       if (result) {
         if (result.worldBounds) texBoundsRef.current = result.worldBounds
+        onTexBoundsLoaded?.(result.worldBounds ?? null)
         applyTexture(result.dataUrl)
         return
       }
@@ -312,12 +372,13 @@ export default function HeatMapScene({
     }
   }, [mapPath])
 
-  /* ── Player markers (cones) ──────────────────────────────────── */
+  /* ── Player markers (emoji sprites) ──────────────────────────── */
   useEffect(() => {
     const scene = sceneRef.current
     if (!scene) return
 
-    const existing = playerMeshesRef.current
+    const existing = playerSpritesRef.current
+    const existingCones = playerConesRef.current
     const seen = new Set<string>()
 
     for (const p of players) {
@@ -328,34 +389,69 @@ export default function HeatMapScene({
       const { u: pu, v: pv } = worldToPlane(p.x, p.y)
       const px = (pu - 0.5) * PLANE_SIZE
       const pz = (pv - 0.5) * PLANE_SIZE
-      const py = getHeightAt(nx, ny) + 0.25
+      const groundY = getHeightAt(nx, ny)
+      const coneHeight = 0.35
+      const coneTipLift = 0.01
+      const coneCenterY = groundY + coneHeight * 0.5 + coneTipLift
+      const emojiY = coneCenterY + coneHeight * 0.5 + 0.09
 
-      let mesh = existing.get(key)
-      if (!mesh) {
-        const cGeo = new THREE.ConeGeometry(0.15, 0.4, 8)
-        const hue = (p.playerId * 0.15) % 1
-        const color = new THREE.Color().setHSL(hue, 0.8, 0.55)
-        const cMat = new THREE.MeshStandardMaterial({
-          color,
-          emissive: color,
-          emissiveIntensity: 0.3
+      // Keep name map in sync for tooltip
+      playerNameByKeyRef.current.set(key, p.playerName)
+
+      let sprite = existing.get(key)
+      if (!sprite) {
+        const emoji = randomEmojiForJoin(key)
+        const mat = new THREE.SpriteMaterial({
+          map: getEmojiTexture(emoji),
+          transparent: true,
+          depthWrite: false,
         })
-        mesh = new THREE.Mesh(cGeo, cMat)
-        scene.add(mesh)
-        existing.set(key, mesh)
+        sprite = new THREE.Sprite(mat)
+        sprite.scale.set(0.75, 0.75, 1)
+        scene.add(sprite)
+        existing.set(key, sprite)
+
+        const coneGeo = new THREE.ConeGeometry(0.06, 0.35, 10)
+        const coneMat = new THREE.MeshStandardMaterial({
+          color: '#ff8a3d',
+          emissive: '#ff8a3d',
+          emissiveIntensity: 0.15,
+          transparent: true,
+          opacity: 0.35,
+          depthWrite: false,
+          roughness: 0.55,
+          metalness: 0.0,
+        })
+        const cone = new THREE.Mesh(coneGeo, coneMat)
+        cone.rotation.x = Math.PI
+        scene.add(cone)
+        existingCones.set(key, cone)
       }
 
-      mesh.position.set(px, py, pz)
-      mesh.rotation.y = -p.heading * (Math.PI / 180)
+      sprite.position.set(px, emojiY, pz)
+
+      const cone = existingCones.get(key)
+      if (cone) {
+        cone.position.set(px, coneCenterY, pz)
+        cone.rotation.y = -p.heading * (Math.PI / 180)
+      }
     }
 
     // Remove stale markers
-    for (const [key, mesh] of existing) {
+    for (const [key, sprite] of existing) {
       if (!seen.has(key)) {
-        scene.remove(mesh)
-        mesh.geometry.dispose()
-        ;(mesh.material as THREE.Material).dispose()
+        playerNameByKeyRef.current.delete(key)
+        scene.remove(sprite)
+        ;(sprite.material as THREE.Material).dispose()
         existing.delete(key)
+
+        const cone = existingCones.get(key)
+        if (cone) {
+          scene.remove(cone)
+          cone.geometry.dispose()
+          ;(cone.material as THREE.Material).dispose()
+          existingCones.delete(key)
+        }
       }
     }
   }, [players, bounds])
@@ -646,10 +742,21 @@ export default function HeatMapScene({
       heatTexRef.current.needsUpdate = true
     }
 
-    // Create or update overlay mesh — copy ground geometry with slight upward offset
-    if (!heatOverlayRef.current) {
+    // Rebuild the overlay geometry whenever the ground changes (surfaceReadyTick advanced)
+    // or when creating for the first time. This guarantees the overlay always sits
+    // +0.04 above the *current* (possibly deformed) terrain rather than a stale flat clone.
+    const geometryNeedsRebuild =
+      !heatOverlayRef.current || lastOverlaySurfaceTickRef.current !== surfaceReadyTick
+
+    if (geometryNeedsRebuild) {
+      if (heatOverlayRef.current) {
+        scene.remove(heatOverlayRef.current)
+        heatOverlayRef.current.geometry.dispose()
+        ;(heatOverlayRef.current.material as THREE.Material).dispose()
+        heatOverlayRef.current = null
+      }
+
       const overlayGeo = ground.geometry.clone()
-      // Lift all vertices slightly above the terrain surface
       const pos = overlayGeo.attributes.position as THREE.BufferAttribute
       const groundPos = ground.geometry.attributes.position as THREE.BufferAttribute
       for (let i = 0; i < pos.count; i++) {
@@ -660,7 +767,10 @@ export default function HeatMapScene({
       const overlayMat = new THREE.MeshBasicMaterial({
         map: heatTexRef.current,
         transparent: true,
-        depthTest: true,
+        // depthTest disabled: heatmap is a 2D overlay — depth-testing against the terrain
+        // would occlude the flat overlay behind hills before geometry is synced to the
+        // displaced mesh. With renderOrder=1 this renders correctly atop the terrain.
+        depthTest: false,
         side: THREE.FrontSide,
         blending: THREE.NormalBlending
       })
@@ -669,19 +779,14 @@ export default function HeatMapScene({
       overlay.renderOrder = 1
       scene.add(overlay)
       heatOverlayRef.current = overlay
-    } else {
-      // Sync vertex heights with ground
-      const overlayPos = heatOverlayRef.current.geometry.attributes.position as THREE.BufferAttribute
-      const groundPos = ground.geometry.attributes.position as THREE.BufferAttribute
-      for (let i = 0; i < overlayPos.count; i++) {
-        overlayPos.setZ(i, groundPos.getZ(i) + 0.04)
-      }
-      overlayPos.needsUpdate = true
+      lastOverlaySurfaceTickRef.current = surfaceReadyTick
+    } else if (heatOverlayRef.current) {
+      // Geometry is current — just refresh the texture reference and ensure visible
       ;(heatOverlayRef.current.material as THREE.MeshBasicMaterial).map = heatTexRef.current
       ;(heatOverlayRef.current.material as THREE.MeshBasicMaterial).needsUpdate = true
       heatOverlayRef.current.visible = true
     }
-  }, [showHeatmap, heatGridVersion, heatGrid, heatGridRes])
+  }, [showHeatmap, heatGridVersion, heatGrid, heatGridRes, surfaceReadyTick])
 
   /* ── Click-to-place waypoints in plot mode ───────────────────── */
   useEffect(() => {
@@ -724,5 +829,62 @@ export default function HeatMapScene({
     }
   }, [mode, bounds, onMapClick])
 
-  return <div ref={containerRef} className="w-full h-full min-h-0" />
+  /* ── Sprite hover tooltip ────────────────────────────────────── */
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const renderer = rendererRef.current
+    const camera = cameraRef.current
+    const container = containerRef.current
+    if (!renderer || !camera || !container) return
+
+    const rect = container.getBoundingClientRect()
+    const mx = ((e.clientX - rect.left) / rect.width) * 2 - 1
+    const my = -((e.clientY - rect.top) / rect.height) * 2 + 1
+
+    const rc = new THREE.Raycaster()
+    rc.params.Sprite = { threshold: 0.4 }
+    rc.setFromCamera(new THREE.Vector2(mx, my), camera)
+
+    const sprites = Array.from(playerSpritesRef.current.values())
+    const hits = rc.intersectObjects(sprites)
+    if (hits.length > 0) {
+      const hit = hits[0].object as THREE.Sprite
+      // Reverse-lookup key from sprite
+      for (const [key, s] of playerSpritesRef.current) {
+        if (s === hit) {
+          const name = playerNameByKeyRef.current.get(key)
+          if (name) {
+            setTooltip({ name, x: e.clientX - rect.left, y: e.clientY - rect.top })
+            return
+          }
+          break
+        }
+      }
+    }
+    setTooltip(null)
+  }, [])
+
+  return (
+    <div
+      ref={containerRef}
+      className="w-full h-full min-h-0 relative"
+      onMouseMove={handleMouseMove}
+      onMouseLeave={() => setTooltip(null)}
+    >
+      {tooltip && (
+        <div
+          className="pointer-events-none absolute z-10 px-2 py-1 rounded text-xs font-medium whitespace-nowrap"
+          style={{
+            left: tooltip.x + 12,
+            top: tooltip.y - 28,
+            background: 'rgba(0,0,0,0.75)',
+            color: '#fff',
+            backdropFilter: 'blur(4px)',
+            border: '1px solid rgba(255,255,255,0.15)'
+          }}
+        >
+          {tooltip.name}
+        </div>
+      )}
+    </div>
+  )
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Search, Map, Loader2, X, ChevronLeft, MapPin, User, Tag, Calendar, HardDrive, ExternalLink, Info, Ruler, Flag } from 'lucide-react'
+import { Search, Map as MapIcon, Loader2, X, ChevronLeft, MapPin, User, Tag, Calendar, HardDrive, ExternalLink, Info, Ruler, Flag } from 'lucide-react'
 import type { MapRichMetadata } from '../../../shared/types'
 import { useBoundedCache } from '../hooks/useBoundedCache'
 
@@ -26,13 +26,13 @@ export function MapsPage(): React.JSX.Element {
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterSource, setFilterSource] = useState<'all' | 'stock' | 'mod'>('all')
+  const previewCacheSize = useMemo(() => Math.min(Math.max(100, maps.length + 20), 500), [maps.length])
   // Bounded LRU cache for map preview thumbnails. Each is a base64 data URL
   // (~10-100 KB); without bounding, scrolling through hundreds of maps would
   // pin all of them in renderer memory for the session.
-  const previews = useBoundedCache<string>(60)
-  // Track which previews have been requested (regardless of cache eviction)
-  // so the lazy-loading effect doesn't loop on evicted entries.
-  const previewsAttempted = useRef<Set<string>>(new Set())
+  const previews = useBoundedCache<string>(previewCacheSize)
+  const previewsInFlight = useRef<Set<string>>(new Set())
+  const previewFailures = useRef<Map<string, number>>(new Map())
 
   // Detail view
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
@@ -57,24 +57,55 @@ export function MapsPage(): React.JSX.Element {
     return () => { cancelled = true }
   }, [])
 
-  // Load previews lazily in batches
+  // Load previews in bounded batches until the grid is populated
   useEffect(() => {
     if (maps.length === 0) return
     let cancelled = false
-    const load = async (): Promise<void> => {
-      const batch = maps.filter((m) => !previewsAttempted.current.has(m.name)).slice(0, 12)
-      for (const m of batch) {
-        if (cancelled) return
-        previewsAttempted.current.add(m.name)
-        const img = await window.api.getMapPreview(`/levels/${m.name}/`, m.modZipPath)
-        if (!cancelled && img) {
-          previews.set(m.name, img)
-        }
-      }
+    const MAX_RETRIES = 2
+    const CONCURRENCY = 8
+
+    const loadBatch = async (): Promise<void> => {
+      const pending = maps
+        .filter((m) => !previews.has(m.name))
+        .filter((m) => !previewsInFlight.current.has(m.name))
+        .filter((m) => (previewFailures.current.get(m.name) ?? 0) <= MAX_RETRIES)
+        .slice(0, CONCURRENCY)
+
+      if (pending.length === 0) return
+
+      await Promise.all(
+        pending.map(async (m) => {
+          previewsInFlight.current.add(m.name)
+          try {
+            const img = await window.api.getMapPreview(`/levels/${m.name}/`, m.modZipPath)
+            if (cancelled) return
+            if (img) {
+              previews.set(m.name, img)
+            } else {
+              previewFailures.current.set(m.name, (previewFailures.current.get(m.name) ?? 0) + 1)
+            }
+          } catch {
+            if (!cancelled) {
+              previewFailures.current.set(m.name, (previewFailures.current.get(m.name) ?? 0) + 1)
+            }
+          } finally {
+            previewsInFlight.current.delete(m.name)
+          }
+        })
+      )
     }
-    load()
-    return () => { cancelled = true }
-  }, [maps])
+
+    void loadBatch()
+    const timer = setInterval(() => {
+      if (cancelled) return
+      void loadBatch()
+    }, 250)
+
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [maps, previews.has, previews.set])
 
   // Filter + search
   const filtered = useMemo(() => {
@@ -133,7 +164,7 @@ export function MapsPage(): React.JSX.Element {
       <>
         {/* Toolbar */}
         <div className="flex items-center gap-3 p-4 border-b border-[var(--color-border)]">
-          <Map size={18} className="text-[var(--color-accent)]" />
+          <MapIcon size={18} className="text-[var(--color-accent)]" />
           <h1 className="text-sm font-semibold text-[var(--color-text-primary)]">{t('maps.title')}</h1>
           <span className="text-xs text-[var(--color-text-muted)]">
             {t('maps.filteredOf', { filtered: filtered.length, total: maps.length })}
@@ -184,7 +215,7 @@ export function MapsPage(): React.JSX.Element {
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-[var(--color-text-muted)]">
-              <Map size={36} strokeWidth={1} />
+              <MapIcon size={36} strokeWidth={1} />
               <p className="text-sm mt-2">{t('maps.noMapsFound')}</p>
             </div>
           ) : (
@@ -203,7 +234,7 @@ export function MapsPage(): React.JSX.Element {
                       <img src={previews.get(m.name)} alt={formatMapName(m.name)} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
-                        <Map size={28} className="text-[var(--color-text-dim)]" />
+                        <MapIcon size={28} className="text-[var(--color-text-dim)]" />
                       </div>
                     )}
                   </div>
@@ -263,7 +294,7 @@ export function MapsPage(): React.JSX.Element {
           >
             <ChevronLeft size={18} />
           </button>
-          <Map size={18} className="text-[var(--color-accent)]" />
+          <MapIcon size={18} className="text-[var(--color-accent)]" />
           <h1 className="text-sm font-semibold text-[var(--color-text-primary)]">
             {mapMetadata?.title || formatMapName(selectedMap.name)}
           </h1>
@@ -290,7 +321,7 @@ export function MapsPage(): React.JSX.Element {
                   <img src={detailPreview} alt={mapMetadata?.title || formatMapName(selectedMap.name)} className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-[var(--color-text-muted)]">
-                    <Map size={48} strokeWidth={1} />
+                    <MapIcon size={48} strokeWidth={1} />
                   </div>
                 )}
               </div>
@@ -317,7 +348,7 @@ export function MapsPage(): React.JSX.Element {
                   <span className="text-[var(--color-text-secondary)] font-mono">{selectedMap.name}</span>
                 </div>
                 <div className="flex items-center gap-2 text-xs">
-                  <Map size={12} className="text-[var(--color-accent)]" />
+                  <MapIcon size={12} className="text-[var(--color-accent)]" />
                   <span className="text-[var(--color-text-muted)]">{t('maps.sourceLabel')}</span>
                   <span className="text-[var(--color-text-secondary)]">{selectedMap.source === 'stock' ? t('maps.stockSource') : t('maps.modSource')}</span>
                 </div>
@@ -370,7 +401,7 @@ export function MapsPage(): React.JSX.Element {
                   <img src={terrainBase} alt="Terrain Base" className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-[var(--color-text-muted)]">
-                    <Map size={48} strokeWidth={1} />
+                    <MapIcon size={48} strokeWidth={1} />
                     <span className="ml-2 text-xs">{t('maps.noMinimap')}</span>
                   </div>
                 )}

@@ -563,11 +563,21 @@ export interface ScheduledTask {
 /* ── Server Analytics ── */
 
 export interface PlayerSession {
+  sessionId: string
+  playerId: number | null
   playerName: string
   joinedAt: number
   leftAt: number | null
   /** Duration in ms (computed when session ends) */
   durationMs: number
+  ipAddress: string | null
+  beammpId: string | null
+  discordId: string | null
+  role: string | null
+  isGuest: boolean | null
+  authAt: number | null
+  lastSeenAt: number | null
+  endReason: string | null
 }
 
 export interface DailyStats {
@@ -585,12 +595,22 @@ export interface PlayerSummary {
   totalTimeMs: number
   lastSeen: number
   firstSeen: number
+  lastIpAddress: string | null
+  uniqueIpCount: number
+  knownIps: string[]
+  beammpId: string | null
+  discordId: string | null
+  roles: string[]
+  isGuest: boolean
 }
 
 export interface AnalyticsData {
   dailyStats: DailyStats[]
   playerSummaries: PlayerSummary[]
   activeSessions: PlayerSession[]
+  sessionHistory: PlayerSession[]
+  totalSessions: number
+  uniqueIpCount: number
 }
 
 export type ServerExeStatus = 'ready' | 'missing' | 'downloading'

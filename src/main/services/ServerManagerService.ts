@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir, readdir, unlink, stat, copyFile, rm, chmod,
 import { existsSync, createWriteStream } from 'fs'
 import { join, basename, dirname, relative, sep, posix } from 'path'
 import { app, BrowserWindow, safeStorage } from 'electron'
+import type { AnalyticsService } from './AnalyticsService'
 import { spawn, ChildProcess } from 'child_process'
 import { randomUUID } from 'crypto'
 import { get as httpsGet } from 'https'
@@ -48,9 +49,15 @@ interface RunningServer {
   cpuPercent: number
   resourceTimer: ReturnType<typeof setInterval> | null
   connectionPollTimer: ReturnType<typeof setInterval> | null
+  analyticsPollerTimer: ReturnType<typeof setInterval> | null
 }
 
 const MAX_CONSOLE_LINES = 2000
+const POSITION_RETENTION_MS = 30 * 60 * 1000
+// How long a position entry is considered live (tracker writes every 500ms, so 5s gives 10x margin)
+const POSITION_STALE_WINDOW_SEC = 5
+// How long to serve cached positions when the file can't be read (bridges transient write gaps)
+const POSITION_ERROR_CACHE_MS = 3000
 
 /**
  * Parse a port specification string (e.g. "30814,30816-30820,31000") into an
@@ -81,10 +88,12 @@ export class ServerManagerService {
   private serversDir: string
   private binDir: string
   private running = new Map<string, RunningServer>()
+  private lastGoodPositions = new Map<string, { positions: PlayerPosition[]; updatedAtMs: number }>()
   private exePath: string | null = null
   private downloading = false
   private customExeResolver: (() => string | null) | null = null
   private onServerStartCallback: ((id: string, serverDir: string, resourceFolder: string) => void) | null = null
+  private analyticsService: AnalyticsService | null = null
 
   constructor() {
     const base = join(app.getPath('appData'), 'BeamMP-ContentManager')
@@ -95,6 +104,11 @@ export class ServerManagerService {
   /** Set a callback that returns the custom server exe path from config (or null for default) */
   setCustomExeResolver(resolver: () => string | null): void {
     this.customExeResolver = resolver
+  }
+
+  /** Inject the analytics service so the server manager can update player sessions directly */
+  setAnalyticsService(svc: AnalyticsService): void {
+    this.analyticsService = svc
   }
 
   /**
@@ -677,12 +691,73 @@ export class ServerManagerService {
   /* ── Player Positions ── */
 
   async getPlayerPositions(id: string): Promise<PlayerPosition[]> {
+    const cached = this.lastGoodPositions.get(id)
+    // Never surface cached/live positions when the server is not running.
+    // This avoids showing ghost markers before startup.
+    if (!this.running.has(id)) {
+      this.lastGoodPositions.delete(id)
+      return []
+    }
+
     const posPath = join(this.serversDir, id, 'player_positions.json')
-    if (!existsSync(posPath)) return []
+    // Also check the plugin directory — old deployments used a relative path
+    // that some BeamMP versions resolve relative to the plugin folder instead of
+    // the server root.
+    const config = await this.getServerConfig(id).catch(() => null)
+    const trackerMainPath = config
+      ? join(this.serversDir, id, config.resourceFolder, 'Server', 'BeamMPCM', 'main.lua')
+      : null
+    // If tracker isn't deployed, treat positions as unavailable so old files
+    // cannot keep rendering stale markers/heat.
+    if (!trackerMainPath || !existsSync(trackerMainPath)) {
+      this.lastGoodPositions.delete(id)
+      return []
+    }
+
+    const pluginPosPath = config
+      ? join(this.serversDir, id, config.resourceFolder, 'Server', 'BeamMPCM', 'player_positions.json')
+      : null
+
+    const candidates = [posPath, pluginPosPath].filter((p): p is string => Boolean(p && existsSync(p)))
+    if (candidates.length === 0) {
+      if (cached && Date.now() - cached.updatedAtMs < POSITION_RETENTION_MS) return cached.positions
+      return []
+    }
+
+    // Use the freshest file so we don't get stuck reading a stale root file while
+    // the tracker is actively writing the fallback plugin path (or vice versa).
+    const ranked = await Promise.all(
+      candidates.map(async (p) => {
+        try {
+          const s = await stat(p)
+          return { p, mtimeMs: s.mtimeMs }
+        } catch {
+          return { p, mtimeMs: 0 }
+        }
+      })
+    )
+    ranked.sort((a, b) => b.mtimeMs - a.mtimeMs)
+    const activePath = ranked[0].p
+
     try {
-      const raw = await readFile(posPath, 'utf-8')
-      return JSON.parse(raw)
+      const raw = await readFile(activePath, 'utf-8')
+      const parsed: PlayerPosition[] = JSON.parse(raw)
+      // Reject very stale entries, but tolerate short write gaps/hiccups so
+      // markers don't disappear when navigating between pages.
+      const nowSec = Date.now() / 1000
+      const fresh = parsed.filter((p) => p.timestamp && nowSec - p.timestamp < POSITION_STALE_WINDOW_SEC)
+      if (fresh.length > 0) {
+        this.lastGoodPositions.set(id, { positions: fresh, updatedAtMs: Date.now() })
+        return fresh
+      }
+      // File was read and parsed successfully but no fresh positions — the player(s)
+      // genuinely disconnected. Clear the cache so ghost markers don't linger.
+      this.lastGoodPositions.delete(id)
+      return []
     } catch {
+      // On read/parse error only: return short-lived cached positions to bridge
+      // transient write gaps (e.g. tracker is mid-write when we read the file).
+      if (cached && Date.now() - cached.updatedAtMs < POSITION_ERROR_CACHE_MS) return cached.positions
       return []
     }
   }
@@ -695,9 +770,8 @@ export class ServerManagerService {
     const pluginDir = join(this.serversDir, id, config.resourceFolder, 'Server', 'BeamMPCM')
     if (!existsSync(pluginDir)) await mkdir(pluginDir, { recursive: true })
     const pluginPath = join(pluginDir, 'main.lua')
-    if (!existsSync(pluginPath)) {
-      await writeFile(pluginPath, TRACKER_LUA_PLUGIN, 'utf-8')
-    }
+    const serverDir = join(this.serversDir, id)
+    await writeFile(pluginPath, buildTrackerLuaPlugin(serverDir), 'utf-8')
   }
 
   async isTrackerPluginDeployed(id: string): Promise<boolean> {
@@ -842,6 +916,16 @@ export class ServerManagerService {
     }
 
     const serverDir = join(this.serversDir, id)
+    // Keep deployed tracker plugin in sync with the embedded template so fixes
+    // apply on restart without requiring manual undeploy/redeploy.
+    try {
+      const trackerMain = join(serverDir, config.resourceFolder, 'Server', 'BeamMPCM', 'main.lua')
+      if (existsSync(trackerMain)) {
+        await writeFile(trackerMain, buildTrackerLuaPlugin(serverDir), 'utf-8')
+      }
+    } catch {
+      // Non-fatal: server can still start even if plugin refresh fails.
+    }
     const child = spawn(localExe, [], {
       cwd: serverDir,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -858,7 +942,8 @@ export class ServerManagerService {
       memoryBytes: 0,
       cpuPercent: 0,
       resourceTimer: null,
-      connectionPollTimer: null
+      connectionPollTimer: null,
+      analyticsPollerTimer: null
     }
     this.running.set(id, entry)
 
@@ -890,6 +975,28 @@ export class ServerManagerService {
         }
       }).catch(() => {})
     }, 3000)
+
+    // Background analytics poller — reads active player names from the tracker
+    // plugin's analytics file every 10 s. We deliberately avoid raw TCP connections
+    // to the BeamMP server here because the server counts every TCP connect attempt
+    // (including info queries) against its per-IP concurrent-connection limit (10),
+    // which causes ECONNABORTED on reconnect after repeated sessions.
+    if (this.analyticsService) {
+      const svc = this.analyticsService
+      const trackerFile = join(this.serversDir, id, 'player_analytics.json')
+      entry.analyticsPollerTimer = setInterval(() => {
+        readFile(trackerFile, 'utf-8')
+          .then((raw) => {
+            const data = JSON.parse(raw)
+            const activeSessions: Array<{ playerName?: string }> = Array.isArray(data.activeSessions) ? data.activeSessions : []
+            const names = activeSessions
+              .map((s) => (typeof s.playerName === 'string' ? s.playerName : ''))
+              .filter((n) => n.length > 0)
+            return svc.updatePlayers(id, names)
+          })
+          .catch(() => {})
+      }, 10000)
+    }
 
     const pushLine = (line: string): void => {
       entry.consoleBuffer.push(line)
@@ -929,6 +1036,8 @@ export class ServerManagerService {
     child.on('exit', (code) => {
       if (entry.resourceTimer) clearInterval(entry.resourceTimer)
       if (entry.connectionPollTimer) clearInterval(entry.connectionPollTimer)
+      if (entry.analyticsPollerTimer) clearInterval(entry.analyticsPollerTimer)
+      this.analyticsService?.endAllSessions(id).catch(() => {})
       if (entry.state !== 'error') {
         entry.state = 'stopped'
         if (code !== 0 && code !== null) {
@@ -967,6 +1076,8 @@ export class ServerManagerService {
     if (!entry) return
     if (entry.resourceTimer) clearInterval(entry.resourceTimer)
     if (entry.connectionPollTimer) clearInterval(entry.connectionPollTimer)
+    if (entry.analyticsPollerTimer) clearInterval(entry.analyticsPollerTimer)
+    this.analyticsService?.endAllSessions(id).catch(() => {})
     entry.state = 'stopped'
     entry.process.kill()
     this.running.delete(id)
@@ -1307,29 +1418,235 @@ export class ServerManagerService {
 }
 
 /* ── BeamMPCM Tracker Lua Plugin ── */
-const TRACKER_LUA_PLUGIN = `-- BeamMPCM Position Tracker Plugin
+function buildTrackerLuaPlugin(serverDir: string): string {
+  // Use forward slashes — Lua io.open accepts them on Windows and they
+  // don't need escaping inside the template literal.
+  const posPath = serverDir.replace(/\\/g, '/') + '/player_positions.json'
+  const analyticsPath = serverDir.replace(/\\/g, '/') + '/player_analytics.json'
+  return `-- BeamMPCM Position Tracker Plugin
 -- Auto-deployed by BeamMP Content Manager
 -- Polls MP.GetPositionRaw every 500ms and writes player_positions.json
+-- Also records durable player session analytics.
 
 local TAG = "[BeamCM-Tracker] "
-local posFile = "player_positions.json"
+local posFile = "${posPath}"
+local analyticsFile = "${analyticsPath}"
+local posFileFallback = "player_positions.json"
 local writeCount = 0
 local lastPlayerCount = 0
+local ANALYTICS_VERSION = 2
+local MAX_COMPLETED_SESSIONS = 5000
+
+local pendingAuth = {}
+local activeSessions = {}
+local completedSessions = {}
+
+local function nowMs()
+  -- Use epoch seconds to avoid 32-bit overflow in BeamMP's Lua runtime.
+  -- The app normalizes second-based timestamps to ms on ingest.
+  return os.time()
+end
+
+local function safeStr(value)
+  if value == nil then return nil end
+  local s = tostring(value)
+  if s == "" then return nil end
+  return s
+end
+
+local function makeAuthKey(playerName, identifiers)
+  if identifiers and identifiers.beammp and identifiers.beammp ~= "" then
+    return "beammp:" .. tostring(identifiers.beammp)
+  end
+  if identifiers and identifiers.ip and identifiers.ip ~= "" then
+    return "ip:" .. tostring(identifiers.ip)
+  end
+  return "name:" .. tostring(playerName or "unknown")
+end
+
+local function buildSessionId(playerId, playerName, identifiers, joinedAt)
+  local stable = "unknown"
+  if identifiers and identifiers.beammp and identifiers.beammp ~= "" then
+    stable = tostring(identifiers.beammp)
+  elseif identifiers and identifiers.ip and identifiers.ip ~= "" then
+    stable = tostring(identifiers.ip)
+  else
+    stable = tostring(playerName or "unknown")
+  end
+  stable = string.gsub(stable, "[^%w%-%._]", "_")
+  return tostring(joinedAt) .. "-" .. tostring(playerId) .. "-" .. stable
+end
+
+local function cloneSession(session)
+  return {
+    sessionId = session.sessionId,
+    playerId = session.playerId,
+    playerName = session.playerName,
+    joinedAt = session.joinedAt,
+    leftAt = session.leftAt,
+    durationMs = session.durationMs,
+    ipAddress = session.ipAddress,
+    beammpId = session.beammpId,
+    discordId = session.discordId,
+    role = session.role,
+    isGuest = session.isGuest,
+    authAt = session.authAt,
+    lastSeenAt = session.lastSeenAt,
+    endReason = session.endReason,
+  }
+end
+
+local function normalizeLoadedSession(raw)
+  if type(raw) ~= "table" or not raw.joinedAt then return nil end
+  return {
+    sessionId = safeStr(raw.sessionId) or buildSessionId(raw.playerId or -1, raw.playerName or "Unknown Player", { beammp = raw.beammpId, ip = raw.ipAddress or raw.ip }, raw.joinedAt),
+    playerId = tonumber(raw.playerId) or nil,
+    playerName = safeStr(raw.playerName) or "Unknown Player",
+    joinedAt = tonumber(raw.joinedAt) or nowMs(),
+    leftAt = tonumber(raw.leftAt) or nil,
+    durationMs = tonumber(raw.durationMs) or 0,
+    ipAddress = safeStr(raw.ipAddress) or safeStr(raw.ip),
+    beammpId = safeStr(raw.beammpId),
+    discordId = safeStr(raw.discordId),
+    role = safeStr(raw.role),
+    isGuest = raw.isGuest == true,
+    authAt = tonumber(raw.authAt) or nil,
+    lastSeenAt = tonumber(raw.lastSeenAt) or nil,
+    endReason = safeStr(raw.endReason),
+  }
+end
+
+local function loadAnalyticsState()
+  local f = io.open(analyticsFile, "r")
+  if not f then return end
+  local raw = f:read("*a")
+  f:close()
+  if not raw or raw == "" then return end
+  local ok, decoded = pcall(Util.JsonDecode, raw)
+  if not ok or type(decoded) ~= "table" then
+    print(TAG .. "WARNING: Failed to decode " .. analyticsFile .. "; starting fresh")
+    return
+  end
+  if type(decoded.completedSessions) == "table" then
+    for _, entry in ipairs(decoded.completedSessions) do
+      local session = normalizeLoadedSession(entry)
+      if session then table.insert(completedSessions, session) end
+    end
+  end
+end
+
+local function writeAnalytics()
+  local activeList = {}
+  for _, session in pairs(activeSessions) do
+    table.insert(activeList, cloneSession(session))
+  end
+  table.sort(activeList, function(a, b)
+    return (a.joinedAt or 0) > (b.joinedAt or 0)
+  end)
+  local payload = {
+    version = ANALYTICS_VERSION,
+    updatedAt = nowMs(),
+    activeSessions = activeList,
+    completedSessions = completedSessions,
+  }
+  local encoded = Util.JsonEncode(payload)
+  local f = io.open(analyticsFile, "w")
+  if not f then
+    print(TAG .. "ERROR: Failed to open " .. analyticsFile .. " for writing")
+    return
+  end
+  f:write(encoded)
+  f:close()
+end
+
+local function cachePendingAuth(playerName, role, isGuest, identifiers)
+  local key = makeAuthKey(playerName, identifiers)
+  pendingAuth[key] = {
+    playerName = safeStr(playerName) or "Unknown Player",
+    role = safeStr(role),
+    isGuest = isGuest == true,
+    authAt = nowMs(),
+    ipAddress = identifiers and safeStr(identifiers.ip) or nil,
+    beammpId = identifiers and safeStr(identifiers.beammp) or nil,
+    discordId = identifiers and safeStr(identifiers.discord) or nil,
+  }
+end
+
+local function finalizeSession(playerId, endReason, explicitName)
+  local session = activeSessions[playerId]
+  if not session then return nil end
+  local finishedAt = nowMs()
+  session.playerName = safeStr(explicitName) or session.playerName
+  session.leftAt = finishedAt
+  session.lastSeenAt = finishedAt
+  session.durationMs = math.max(0, finishedAt - (session.joinedAt or finishedAt))
+  session.endReason = endReason
+  table.insert(completedSessions, cloneSession(session))
+  while #completedSessions > MAX_COMPLETED_SESSIONS do
+    table.remove(completedSessions, 1)
+  end
+  activeSessions[playerId] = nil
+  writeAnalytics()
+  return session
+end
 
 print(TAG .. "Position tracker plugin loading...")
 print(TAG .. "Output file: " .. posFile)
+print(TAG .. "Analytics file: " .. analyticsFile)
 print(TAG .. "Poll interval: 500ms")
 
+loadAnalyticsState()
+
+MP.RegisterEvent("onPlayerAuth", "handlePlayerAuth")
+MP.RegisterEvent("onPlayerJoin", "handlePlayerJoin")
 MP.RegisterEvent("onPlayerDisconnect", "handlePlayerDisconnect")
 MP.RegisterEvent("onVehicleDeleted", "handleVehicleDeleted")
 MP.RegisterEvent("onVehicleSpawn", "handleVehicleSpawn")
 MP.CreateEventTimer("writePositions", 500)
+MP.RegisterEvent("writePositions", "writePositions")
 
-print(TAG .. "Events registered: onVehicleSpawn, onVehicleDeleted, onPlayerDisconnect")
+print(TAG .. "Events registered: onPlayerAuth, onPlayerJoin, onVehicleSpawn, onVehicleDeleted, onPlayerDisconnect, writePositions")
 print(TAG .. "Timer registered: writePositions (500ms)")
 
 -- Track which vehicles belong to which player for cleanup
 local playerVehicles = {}
+
+function handlePlayerAuth(player_name, player_role, is_guest, identifiers)
+  cachePendingAuth(player_name, player_role, is_guest, identifiers)
+  local ip = identifiers and safeStr(identifiers.ip) or "unknown"
+  local beammp = identifiers and safeStr(identifiers.beammp) or "n/a"
+  print(TAG .. "Player auth: " .. tostring(player_name) .. " (ip=" .. tostring(ip) .. ", beammp=" .. tostring(beammp) .. ")")
+end
+
+function handlePlayerJoin(player_id)
+  local joinedAt = nowMs()
+  local name = MP.GetPlayerName(player_id) or ("Player " .. tostring(player_id))
+  local identifiers = MP.GetPlayerIdentifiers(player_id) or {}
+  local auth = pendingAuth[makeAuthKey(name, identifiers)] or {}
+  if activeSessions[player_id] then
+    finalizeSession(player_id, "rejoined", name)
+  end
+  local role = nil
+  if MP.GetPlayerRole then role = MP.GetPlayerRole(player_id) end
+  activeSessions[player_id] = {
+    sessionId = buildSessionId(player_id, name, identifiers, joinedAt),
+    playerId = player_id,
+    playerName = name,
+    joinedAt = joinedAt,
+    leftAt = nil,
+    durationMs = 0,
+    ipAddress = safeStr(identifiers.ip) or auth.ipAddress,
+    beammpId = safeStr(identifiers.beammp) or auth.beammpId,
+    discordId = safeStr(identifiers.discord) or auth.discordId,
+    role = safeStr(role) or auth.role,
+    isGuest = MP.IsPlayerGuest and MP.IsPlayerGuest(player_id) or auth.isGuest or false,
+    authAt = auth.authAt,
+    lastSeenAt = joinedAt,
+    endReason = nil,
+  }
+  writeAnalytics()
+  print(TAG .. "Player joined: " .. name .. " (pid=" .. tostring(player_id) .. ", ip=" .. tostring(activeSessions[player_id].ipAddress or "unknown") .. ")")
+end
 
 function handleVehicleSpawn(player_id, vehicle_id, data)
   if not playerVehicles[player_id] then playerVehicles[player_id] = {} end
@@ -1352,7 +1669,12 @@ function handlePlayerDisconnect(player_id)
     for _ in pairs(playerVehicles[player_id]) do vehCount = vehCount + 1 end
   end
   playerVehicles[player_id] = nil
-  print(TAG .. "Player disconnected: " .. name .. " (pid=" .. tostring(player_id) .. ", vehicles cleaned: " .. vehCount .. ")")
+  local finished = finalizeSession(player_id, "disconnect", name)
+  if finished then
+    print(TAG .. "Player disconnected: " .. finished.playerName .. " (pid=" .. tostring(player_id) .. ", ip=" .. tostring(finished.ipAddress or "unknown") .. ", stayed=" .. tostring(finished.durationMs) .. "ms, vehicles cleaned: " .. vehCount .. ")")
+  else
+    print(TAG .. "Player disconnected: " .. name .. " (pid=" .. tostring(player_id) .. ", vehicles cleaned: " .. vehCount .. ")")
+  end
 end
 
 function writePositions()
@@ -1363,12 +1685,16 @@ function writePositions()
   local posErrors = 0
   for pid, name in pairs(players) do
     playerCount = playerCount + 1
+    if activeSessions[pid] then
+      activeSessions[pid].playerName = name
+      activeSessions[pid].lastSeenAt = nowMs()
+    end
     local ok, vehicles = pcall(MP.GetPlayerVehicles, pid)
     if ok and vehicles then
       for vid, _ in pairs(vehicles) do
         vehicleCount = vehicleCount + 1
-        local raw, err = MP.GetPositionRaw(pid, vid)
-        if err == "" and raw and raw.pos then
+        local okPos, raw, err = pcall(MP.GetPositionRaw, pid, vid)
+        if okPos and err == "" and raw and raw.pos then
           local speed = 0
           if raw.vel then
             local vx, vy, vz = raw.vel[1] or 0, raw.vel[2] or 0, raw.vel[3] or 0
@@ -1387,6 +1713,9 @@ function writePositions()
           })
         else
           posErrors = posErrors + 1
+          if not okPos and writeCount % 60 == 0 then
+            print(TAG .. "WARNING: GetPositionRaw failed for pid=" .. tostring(pid) .. ", vid=" .. tostring(vid) .. ": " .. tostring(raw))
+          end
         end
       end
     elseif not ok then
@@ -1407,16 +1736,28 @@ function writePositions()
   end
 
   local json = Util.JsonEncode(allPos)
+  local wrotePath = nil
   local f = io.open(posFile, "w")
   if f then
     f:write(json)
     f:close()
+    wrotePath = posFile
   else
-    if writeCount % 60 == 0 then
-      print(TAG .. "ERROR: Failed to open " .. posFile .. " for writing")
+    local f2 = io.open(posFileFallback, "w")
+    if f2 then
+      f2:write(json)
+      f2:close()
+      wrotePath = posFileFallback
     end
+  end
+
+  if (not wrotePath) and writeCount % 60 == 0 then
+    print(TAG .. "ERROR: Failed to open both " .. posFile .. " and " .. posFileFallback .. " for writing")
   end
 end
 
+writeAnalytics()
+
 print(TAG .. "Plugin loaded successfully")
 `
+}

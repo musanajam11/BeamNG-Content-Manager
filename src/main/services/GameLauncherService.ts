@@ -5733,8 +5733,14 @@ export class GameLauncherService {
     this.connectedServerAddress = null
 
     if (this.serverSocket) {
-      this.serverSocket.destroy()
+      const sock = this.serverSocket
       this.serverSocket = null
+      // Send FIN gracefully before destroying so the BeamMP server properly
+      // decrements its per-IP TCP connection counter. A hard destroy() sends
+      // RST which the server may not handle correctly, leaving the connection
+      // counted as still open and blocking future reconnects (10-conn limit).
+      try { sock.end() } catch { /* ignore */ }
+      setTimeout(() => { try { sock.destroy() } catch { /* ignore */ } }, 200)
     }
     if (this.gameProxySocket) {
       this.gameProxySocket.destroy()
@@ -6328,23 +6334,70 @@ export class GameLauncherService {
     // the game to connect.  This way, if the server rejects us (full,
     // banned, version mismatch, etc.) we never send the join signal
     // and can kill the game cleanly instead of it landing on the menu.
-    this.connectToServer(ip, port)
+    //
+    // For local/same-machine servers (127.0.0.1 / localhost), the BeamMP
+    // server may still be processing the previous client's disconnect when
+    // CM immediately reconnects (after force-killing the game).  Retry the
+    // server connection up to 3 times with a short delay before giving up.
+    const isLocalServer = ip === '127.0.0.1' || ip === 'localhost' || ip === '::1'
+    const MAX_RETRIES = isLocalServer ? 3 : 1
+    const RETRY_DELAY_MS = 2000
 
-    // Wait for handshake + mod sync to complete (relay mode entered)
-    try {
-      await new Promise<void>((resolve, reject) => {
+    let lastError = ''
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      if (attempt > 1) {
+        this.log(`Server connect attempt ${attempt}/${MAX_RETRIES} — waiting ${RETRY_DELAY_MS}ms before retry...`)
+        await new Promise<void>((r) => setTimeout(r, RETRY_DELAY_MS))
+        // Re-check: game must still be alive and initialized for a retry
+        if (!this.gameInitialized || !this.coreSocket || this.coreSocket.destroyed) {
+          this.log('Game disconnected before server connect retry — aborting')
+          this.preSyncActive = false
+          this.killGame()
+          return { success: false, error: lastError }
+        }
+        // Reset terminate flag and connection state for the retry attempt
+        this.terminate = false
+        this.terminateReason = ''
+        this.serverInRelay = false
+        this.confList.clear()
+        this.ping = -1
+        this.clientId = -1
+      }
+
+      this.connectToServer(ip, port)
+
+      // Wait for handshake + mod sync to complete (relay mode entered)
+      const connectResult = await new Promise<{ ok: boolean; error: string }>((resolve) => {
         const check = setInterval(() => {
-          if (this.serverInRelay) { clearInterval(check); resolve() }
-          else if (this.terminate) { clearInterval(check); reject(new Error(this.terminateReason || 'Server sync failed')) }
+          if (this.serverInRelay) { clearInterval(check); resolve({ ok: true, error: '' }) }
+          else if (this.terminate) { clearInterval(check); resolve({ ok: false, error: this.terminateReason || 'Server sync failed' }) }
         }, 100)
-        setTimeout(() => { clearInterval(check); reject(new Error('Server connection timed out after 30 minutes')) }, 1800000)
+        setTimeout(() => { clearInterval(check); resolve({ ok: false, error: 'Server connection timed out after 30 minutes' }) }, 1800000)
       })
-    } catch (err) {
-      const errorMsg = (err as Error).message
-      this.log(`Server join failed, killing game: ${errorMsg}`)
+
+      if (connectResult.ok) {
+        lastError = ''
+        break
+      }
+
+      lastError = connectResult.error
+      const isRetryable = lastError.includes('Connection failed') || lastError.includes('ECONNABORTED') || lastError.includes('ECONNRESET') || lastError.includes('ECONNREFUSED')
+      if (!isRetryable || attempt === MAX_RETRIES) {
+        this.log(`Server join failed, killing game: ${lastError}`)
+        this.preSyncActive = false
+        this.killGame()
+        return { success: false, error: lastError }
+      }
+      this.log(`Server connect failed (attempt ${attempt}/${MAX_RETRIES}): ${lastError}`)
+      // Destroy the failed socket so the retry creates a fresh one
+      if (this.serverSocket) { this.serverSocket.destroy(); this.serverSocket = null }
+    }
+
+    if (lastError) {
+      // All retries exhausted (should have returned above, but be safe)
       this.preSyncActive = false
       this.killGame()
-      return { success: false, error: errorMsg }
+      return { success: false, error: lastError }
     }
 
     // Handshake succeeded — NOW tell the game to connect

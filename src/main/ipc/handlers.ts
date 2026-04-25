@@ -108,6 +108,7 @@ export function initializeServices(): {
   taskSchedulerService = new TaskSchedulerService()
   taskSchedulerService.setDependencies(serverManagerService, backupSchedulerService)
   analyticsService = new AnalyticsService()
+  serverManagerService.setAnalyticsService(analyticsService)
   registryService = new RegistryService()
   tailscaleService = new TailscaleService()
   loadOrderService = new LoadOrderService()

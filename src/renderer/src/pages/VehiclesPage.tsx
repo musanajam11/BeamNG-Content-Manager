@@ -25,13 +25,13 @@ export function VehiclesPage(): React.JSX.Element {
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<FilterType>('all')
   const [filterBrand, setFilterBrand] = useState<string>('all')
+  const previewCacheSize = useMemo(() => Math.min(Math.max(120, vehicles.length + 24), 600), [vehicles.length])
   // Bounded LRU cache for vehicle preview thumbnails. Each is a base64 data
   // URL (~10-100 KB); without bounding, scrolling through hundreds of vehicles
   // would pin all of them in renderer memory.
-  const previews = useBoundedCache<string>(80)
-  // Track which previews have been requested (regardless of cache eviction)
-  // so the lazy-loading effect doesn't loop on evicted entries.
-  const previewsAttempted = useRef<Set<string>>(new Set())
+  const previews = useBoundedCache<string>(previewCacheSize)
+  const previewsInFlight = useRef<Set<string>>(new Set())
+  const previewFailures = useRef<Map<string, number>>(new Map())
 
   // Detail / config state
   const [viewMode, setViewMode] = useState<ViewMode>('grid')
@@ -76,24 +76,55 @@ export function VehiclesPage(): React.JSX.Element {
     return () => { cancelled = true }
   }, [])
 
-  // ── Load previews lazily ──
+  // ── Load previews in bounded batches until the grid is populated ──
   useEffect(() => {
     if (vehicles.length === 0) return
     let cancelled = false
-    const load = async (): Promise<void> => {
-      const batch = vehicles.filter((v) => !previewsAttempted.current.has(v.name)).slice(0, 12)
-      for (const v of batch) {
-        if (cancelled) return
-        previewsAttempted.current.add(v.name)
-        const img = await window.api.getVehiclePreview(v.name)
-        if (!cancelled && img) {
-          previews.set(v.name, img)
-        }
-      }
+    const MAX_RETRIES = 2
+    const CONCURRENCY = 8
+
+    const loadBatch = async (): Promise<void> => {
+      const pending = vehicles
+        .filter((v) => !previews.has(v.name))
+        .filter((v) => !previewsInFlight.current.has(v.name))
+        .filter((v) => (previewFailures.current.get(v.name) ?? 0) <= MAX_RETRIES)
+        .slice(0, CONCURRENCY)
+
+      if (pending.length === 0) return
+
+      await Promise.all(
+        pending.map(async (v) => {
+          previewsInFlight.current.add(v.name)
+          try {
+            const img = await window.api.getVehiclePreview(v.name)
+            if (cancelled) return
+            if (img) {
+              previews.set(v.name, img)
+            } else {
+              previewFailures.current.set(v.name, (previewFailures.current.get(v.name) ?? 0) + 1)
+            }
+          } catch {
+            if (!cancelled) {
+              previewFailures.current.set(v.name, (previewFailures.current.get(v.name) ?? 0) + 1)
+            }
+          } finally {
+            previewsInFlight.current.delete(v.name)
+          }
+        })
+      )
     }
-    load()
-    return () => { cancelled = true }
-  }, [vehicles])
+
+    void loadBatch()
+    const timer = setInterval(() => {
+      if (cancelled) return
+      void loadBatch()
+    }, 250)
+
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [vehicles, previews.has, previews.set])
 
   // ── Filtered + searched list ──
   const brands = useMemo(() => {
