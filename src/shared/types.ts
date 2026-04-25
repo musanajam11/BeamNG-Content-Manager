@@ -88,6 +88,8 @@ export interface AppearanceSettings {
   /** How many server rows to render per chunk in the server list. More rows
    * scroll smoother once loaded but cost more on initial render. 100–1000. */
   serverListChunkSize: number
+  /** Show hover hint tooltips on sidebar items (on by default for fresh installs) */
+  showHints: boolean
 }
 
 export interface AppConfig {
@@ -455,6 +457,128 @@ export type AppPage =
   | 'lua-console'
   | 'world-edit-sync'
 
+export type SupportTicketStatus =
+  | 'new'
+  | 'triaged'
+  | 'in-progress'
+  | 'resolved'
+  | 'closed'
+
+export type SupportTicketPriority = 'low' | 'normal' | 'high' | 'urgent'
+
+export type SupportTicketSource = 'in-game' | 'desktop' | 'imported'
+
+export interface SupportTicketLocation {
+  map?: string
+  x?: number
+  y?: number
+  z?: number
+}
+
+export interface SupportTicketSessionMetadata {
+  serverName?: string
+  serverIdent?: string
+  map?: string
+  players?: string[]
+  playerCount?: number
+  sessionId?: string
+  startedAt?: number
+  endedAt?: number
+}
+
+export interface SupportTicketVersions {
+  game?: string
+  beammp?: string
+  launcher?: string
+  contentManager?: string
+  modPack?: string
+}
+
+export interface SupportTicketPcSpecs {
+  os?: string
+  cpu?: string
+  gpu?: string
+  ramGb?: number
+  vramGb?: number
+  storage?: string
+}
+
+export interface SupportTicketPayload {
+  logsSnapshot?: string
+  sessionMetadata?: SupportTicketSessionMetadata
+  location?: SupportTicketLocation
+  loadedMods?: string[]
+  versions?: SupportTicketVersions
+  pcSpecs?: SupportTicketPcSpecs
+}
+
+export interface SupportTicket {
+  id: string
+  createdAt: number
+  updatedAt: number
+  source: SupportTicketSource
+  status: SupportTicketStatus
+  priority: SupportTicketPriority
+  subject: string
+  message: string
+  reporterName?: string
+  reporterBeammpId?: string
+  assignedTo?: string
+  tags?: string[]
+  internalNotes?: string
+  payload: SupportTicketPayload
+}
+
+export interface SupportTicketCreateInput {
+  source?: SupportTicketSource
+  priority?: SupportTicketPriority
+  subject: string
+  message: string
+  reporterName?: string
+  reporterBeammpId?: string
+  tags?: string[]
+  payload?: SupportTicketPayload
+}
+
+export interface SupportTicketUpdateInput {
+  status?: SupportTicketStatus
+  priority?: SupportTicketPriority
+  subject?: string
+  message?: string
+  assignedTo?: string
+  tags?: string[]
+  internalNotes?: string
+  payload?: SupportTicketPayload
+}
+
+export interface HostedServerSupportIngestConfig {
+  enabled: boolean
+  port: number
+  token: string
+  publicHost: string
+}
+
+export interface HostedServerSupportTicketUiConfig {
+  topics: string[]
+  maxMessageLength: number
+  enablePriorityDropdown: boolean
+  reporterIdentityMode: 'auto' | 'manual'
+  includeLogsSnapshot: boolean
+  includeSessionMetadata: boolean
+  includeLocation: boolean
+  includeLoadedMods: boolean
+  includeVersions: boolean
+  includePcSpecs: boolean
+}
+
+export interface HostedServerSupportIngestStatus {
+  running: boolean
+  senderDeployed: boolean
+  config: HostedServerSupportIngestConfig
+  endpointPath: string
+  endpointExample: string
+}
+
 /* ── Hosted Server Manager ── */
 
 export interface HostedServerConfig {
@@ -604,9 +728,25 @@ export interface PlayerSummary {
   isGuest: boolean
 }
 
+export interface IpSummary {
+  ipAddress: string
+  nickname: string | null
+  playerNames: string[]
+  totalSessions: number
+  totalTimeMs: number
+  lastSeen: number
+  firstSeen: number
+  banned: boolean
+  beammpIds: string[]
+  discordIds: string[]
+  roles: string[]
+  isGuest: boolean
+}
+
 export interface AnalyticsData {
   dailyStats: DailyStats[]
   playerSummaries: PlayerSummary[]
+  ipSummaries: IpSummary[]
   activeSessions: PlayerSession[]
   sessionHistory: PlayerSession[]
   totalSessions: number

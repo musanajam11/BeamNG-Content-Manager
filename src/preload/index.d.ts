@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import type { AppConfig, GamePaths, ServerInfo, AuthResult, GameStatus, ModInfo, RepoBrowseResult, RepoCategory, RepoSortOrder, VehicleDetail, VehicleConfigInfo, VehicleConfigData, HostedServerConfig, HostedServerStatus, HostedServerEntry, ServerFileEntry, ServerFileSearchResult, ServerExeStatus, GPSRoute, PlayerPosition, BackupSchedule, BackupEntry, ScheduledTask, AnalyticsData, MapRichMetadata, LoadOrderData, ModConflictReport } from '../shared/types'
+import type { AppConfig, GamePaths, ServerInfo, AuthResult, GameStatus, ModInfo, RepoBrowseResult, RepoCategory, RepoSortOrder, VehicleDetail, VehicleConfigInfo, VehicleConfigData, HostedServerConfig, HostedServerStatus, HostedServerEntry, ServerFileEntry, ServerFileSearchResult, ServerExeStatus, GPSRoute, PlayerPosition, BackupSchedule, BackupEntry, ScheduledTask, AnalyticsData, IpSummary, MapRichMetadata, LoadOrderData, ModConflictReport, SupportTicket, SupportTicketCreateInput, SupportTicketUpdateInput, HostedServerSupportIngestConfig, HostedServerSupportIngestStatus, HostedServerSupportTicketUiConfig } from '../shared/types'
 import type { RegistryStatus, RegistrySearchOptions, RegistrySearchResult, AvailableMod, InstalledRegistryMod, ResolutionResult, RegistryRepository, BeamModMetadata, ModpackExport } from '../shared/registry-types'
 
 export interface CareerMPServerConfig {
@@ -269,6 +269,20 @@ interface AppAPI {
   hostedServerStart(id: string): Promise<{ success: boolean; error?: string }>
   hostedServerStop(id: string): Promise<{ success: boolean }>
   hostedServerRestart(id: string): Promise<{ success: boolean; error?: string }>
+  hostedServerListSupportTickets(id: string): Promise<SupportTicket[]>
+  hostedServerCreateSupportTicket(id: string, input: SupportTicketCreateInput): Promise<SupportTicket>
+  hostedServerUpdateSupportTicket(id: string, ticketId: string, patch: SupportTicketUpdateInput): Promise<SupportTicket | null>
+  hostedServerDeleteSupportTicket(id: string, ticketId: string): Promise<boolean>
+  hostedServerGetSupportIngestStatus(id: string): Promise<HostedServerSupportIngestStatus>
+  hostedServerUpdateSupportIngestConfig(id: string, patch: Partial<HostedServerSupportIngestConfig>): Promise<HostedServerSupportIngestStatus>
+  hostedServerStartSupportIngest(id: string): Promise<HostedServerSupportIngestStatus>
+  hostedServerStopSupportIngest(id: string): Promise<HostedServerSupportIngestStatus>
+  hostedServerGetSupportTicketUiConfig(id: string): Promise<HostedServerSupportTicketUiConfig>
+  hostedServerUpdateSupportTicketUiConfig(id: string, patch: Partial<HostedServerSupportTicketUiConfig>): Promise<HostedServerSupportTicketUiConfig>
+  hostedServerExportSupportSenderMod(id: string): Promise<{ success: boolean; filePath?: string; error?: string }>
+  hostedServerDeploySupportSenderMod(id: string): Promise<{ success: boolean; filePath?: string; error?: string }>
+  hostedServerUndeploySupportSenderMod(id: string): Promise<{ success: boolean; error?: string }>
+  hostedServerSimulateSupportTicketSubmit(id: string): Promise<{ success: boolean; statusCode?: number; ticketId?: string; error?: string }>
   hostedServerGetConsole(id: string): Promise<string[]>
   hostedServerSendCommand(id: string, command: string): Promise<void>
   hostedServerGetExeStatus(): Promise<ServerExeStatus>
@@ -328,6 +342,8 @@ interface AppAPI {
   // Analytics
   hostedServerGetAnalytics(id: string): Promise<AnalyticsData>
   hostedServerClearAnalytics(id: string): Promise<void>
+  hostedServerSetIpMeta(id: string, ip: string, patch: { nickname?: string | null; banned?: boolean }): Promise<void>
+  hostedServerIsBanPluginDeployed(id: string): Promise<boolean>
   hostedServerUpdatePlayerTracking(id: string, playerNames: string[]): Promise<void>
   hostedServerEndAllSessions(id: string): Promise<void>
 

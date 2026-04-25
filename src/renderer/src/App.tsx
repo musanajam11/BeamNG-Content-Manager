@@ -276,7 +276,22 @@ function App(): React.JSX.Element {
   // Apply appearance settings and language once config is loaded
   useEffect(() => {
     if (config?.appearance) {
-      loadTheme(config.appearance)
+      const appearance = config.appearance
+      if (appearance.bgImageList.length === 0) {
+        // Fresh install: populate bgImageList with bundled defaults first so
+        // bgCycleOnLaunch can pick a random background on first launch
+        window.api.getDefaultBackgrounds().then((paths) => {
+          if (paths.length > 0) {
+            const withDefaults = { ...appearance, bgImageList: paths }
+            window.api.updateConfig({ appearance: withDefaults })
+            loadTheme(withDefaults)
+          } else {
+            loadTheme(appearance)
+          }
+        })
+      } else {
+        loadTheme(appearance)
+      }
     }
     if (config?.language) {
       i18n.changeLanguage(config.language)

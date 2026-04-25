@@ -3,6 +3,7 @@ import { readFile, writeFile, mkdir, access, readdir, unlink, rename as fsRename
 import { existsSync, unlinkSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import net from 'node:net'
+import { request as httpRequest } from 'node:http'
 import { get as httpsGet, request as httpsRequest } from 'node:https'
 import { PNG } from 'pngjs'
 import {
@@ -40,7 +41,7 @@ import { convertProjectZipToWorld, convertWorldToProjectZip } from '../services/
 import { setPresence as setDiscordPresence } from '../services/DiscordRPCService'
 import { parseBeamNGJson } from '../utils/parseBeamNGJson'
 import { LRUCache } from '../utils/lruCache'
-import type { AppConfig, GamePaths, ServerInfo, RepoSortOrder, VehicleDetail, VehicleConfigInfo, VehicleConfigData, VehicleEditorData, SlotInfo, VariableInfo, WheelPlacement, ActiveMeshResult, HostedServerConfig, GPSRoute, ScheduledTask, MapRichMetadata } from '../../shared/types'
+import type { AppConfig, GamePaths, ServerInfo, RepoSortOrder, VehicleDetail, VehicleConfigInfo, VehicleConfigData, VehicleEditorData, SlotInfo, VariableInfo, WheelPlacement, ActiveMeshResult, HostedServerConfig, GPSRoute, ScheduledTask, MapRichMetadata, SupportTicketCreateInput, SupportTicketUpdateInput, HostedServerSupportIngestConfig, HostedServerSupportTicketUiConfig } from '../../shared/types'
 import type { RegistrySearchOptions, RegistryRepository, BeamModMetadata, InstalledRegistryMod } from '../../shared/registry-types'
 
 let discoveryService: GameDiscoveryService
@@ -66,13 +67,13 @@ let careerSaveService: CareerSaveService
 let editorSession: EditorSyncSessionController
 let worldSaveService: WorldSaveService
 
-// ── Server ↔ career-save tracking state ──
+// -- Server ? career-save tracking state --
 // On join we snapshot the most-recent lastSaved per deployed profile.
-// On disconnect we compare — only profiles whose saves actually changed get associated.
+// On disconnect we compare � only profiles whose saves actually changed get associated.
 let serverSessionSnapshot: {
   serverIdent: string
   serverName: string | null
-  /** profileName → newest lastSaved ISO string at the moment of join */
+  /** profileName ? newest lastSaved ISO string at the moment of join */
   timestamps: Record<string, string | null>
 } | null = null
 
@@ -150,18 +151,18 @@ export function initializeServices(): {
       if (st.state === 'hosting' || st.state === 'joined') {
         const peerCount = (st.peers?.length ?? 0) + 1 // +1 for self
         const role = st.state === 'hosting' ? 'Hosting' : 'Joined'
-        const where = st.levelName ? ` · ${st.levelName.replace(/^\/levels\//, '').replace(/\/info\.json$/, '').replace(/\/$/, '')}` : ''
+        const where = st.levelName ? ` � ${st.levelName.replace(/^\/levels\//, '').replace(/\/info\.json$/, '').replace(/\/$/, '')}` : ''
         setDiscordPresence({
           details: 'Editing worlds with Friends',
-          state: `${role}${where} · ${peerCount} player${peerCount === 1 ? '' : 's'}`,
+          state: `${role}${where} � ${peerCount} player${peerCount === 1 ? '' : 's'}`,
         })
       } else if (st.state === 'connecting') {
         setDiscordPresence({
           details: 'Editing worlds with Friends',
-          state: 'Connecting…',
+          state: 'Connecting�',
         })
       } else {
-        // idle — fall back to the generic browsing label
+        // idle � fall back to the generic browsing label
         setDiscordPresence({ details: 'Browsing content', state: 'Home' })
       }
     } catch {
@@ -207,7 +208,7 @@ export function initializeServices(): {
     console.warn('[EditorSession]', err.message)
   })
 
-  // §E.7 — World save/load orchestrator. The `resolveModZip` callback
+  // �E.7 � World save/load orchestrator. The `resolveModZip` callback
   // walks the user's installed mod library to find the on-disk zip for
   // any modId the writer is asked to embed. We resolve lazily (on every
   // call) rather than caching, so a mid-session install picks up new
@@ -375,7 +376,7 @@ function readRawFromZip(zipPath: string, pattern: RegExp): Promise<Buffer | null
 
 /**
  * Read multiple files from an archive in a single pass.
- * Returns a Map of filename → Buffer for each matched file.
+ * Returns a Map of filename ? Buffer for each matched file.
  */
 function readMultipleFromZip(zipPath: string, fileNames: string[]): Promise<Map<string, Buffer>> {
   return readMultiple(zipPath, fileNames)
@@ -442,7 +443,7 @@ async function readDecalRoadsFromZip(
 }
 
 /**
- * Read DecalRoad defs for routing — includes road_invisible and other driveable surfaces,
+ * Read DecalRoad defs for routing � includes road_invisible and other driveable surfaces,
  * but excludes decorative overlays (tire marks, cracks, paint, rubber marks).
  */
 async function readRoutableRoadsFromZip(
@@ -543,7 +544,7 @@ async function buildCompositeMapImage(
     const terrainTile = tiles.find(t => /terrain/i.test(t.file) && !/t_terrain_base/i.test(t.file))
     const overlayTiles = tiles.filter(t => t !== terrainTile)
 
-    // If no overlays, skip tile path entirely — monolithic fallback handles it
+    // If no overlays, skip tile path entirely � monolithic fallback handles it
     if (overlayTiles.length === 0) {
       tiles = null
     } else {
@@ -610,11 +611,11 @@ async function buildCompositeMapImage(
           const mi = (y * mmW + x) * 4
           const a = mm.data[mi + 3] / 255
 
-          // Map minimap pixel → world coords via terrain tile bounds
+          // Map minimap pixel ? world coords via terrain tile bounds
           const worldX = tWorldX0 + (x / mmW) * tWorldW
           const worldY = tWorldY1 - (y / mmH) * tWorldH
 
-          // Map world coords → output pixel
+          // Map world coords ? output pixel
           const ox = Math.round((worldX - worldMinX) * scale)
           const oy = Math.round((worldMaxY - worldY) * scale)
           if (ox < 0 || ox >= outW || oy < 0 || oy >= outH) continue
@@ -711,7 +712,7 @@ async function buildCompositeMapImage(
             const r = tile.data[ti], g = tile.data[ti + 1], b = tile.data[ti + 2]
             const a2 = tile.data[ti + 3]
 
-            // Overlay tiles: A=0 always means "no content" — skip entirely
+            // Overlay tiles: A=0 always means "no content" � skip entirely
             if (a2 === 0) continue
 
             // Chroma key: skip background-colored pixels
@@ -847,7 +848,7 @@ async function buildCompositeMapImage(
   return { image: PNG.sync.write(out) }
 }
 
-/** Read a heightmap image from a BeamNG level zip – tries *_heightmap.png first, falls back to *.ter.depth.png */
+/** Read a heightmap image from a BeamNG level zip � tries *_heightmap.png first, falls back to *.ter.depth.png */
 async function readHeightmapFromZip(zipPath: string, levelName: string): Promise<string | null> {
   // Try dedicated heightmap first
   const hm = await readImageFromZip(zipPath, new RegExp(
@@ -876,7 +877,7 @@ async function readTextFromZip(zipPath: string, pattern: RegExp): Promise<string
 }
 
 export function registerIpcHandlers(): void {
-  // ── Config ──
+  // -- Config --
   ipcMain.handle('config:get', async (): Promise<AppConfig> => {
     return configService.get()
   })
@@ -897,7 +898,7 @@ export function registerIpcHandlers(): void {
           voiceChatService.undeployBridge()
         } else if (after.gamePaths?.userDir) {
           // Bridge may have been written by a previous session even if the
-          // service isn't currently "active" — sweep the on-disk artefact
+          // service isn't currently "active" � sweep the on-disk artefact
           // directly so it doesn't keep polling on the next game launch.
           try {
             const stalePath = join(after.gamePaths.userDir, 'lua', 'ge', 'extensions', 'beamcmVoice.lua')
@@ -915,7 +916,7 @@ export function registerIpcHandlers(): void {
           try {
             if (await serverManagerService.isVoicePluginDeployed(s.config.id)) {
               await serverManagerService.undeployVoicePlugin(s.config.id)
-              console.log(`[VoiceChat] Undeployed server plugin from "${s.config.name}" (${s.config.id}) — voice chat disabled`)
+              console.log(`[VoiceChat] Undeployed server plugin from "${s.config.name}" (${s.config.id}) � voice chat disabled`)
             }
           } catch (err) {
             console.warn(`[VoiceChat] Undeploy failed for ${s.config.id}:`, err)
@@ -933,7 +934,7 @@ export function registerIpcHandlers(): void {
     return configService.markSetupComplete()
   })
 
-  // ── Appearance / Zoom ──
+  // -- Appearance / Zoom --
   ipcMain.handle('appearance:setZoom', async (event, factor: number): Promise<void> => {
     const clamped = Math.max(0.5, Math.min(2.0, factor))
     event.sender.setZoomFactor(clamped)
@@ -943,7 +944,7 @@ export function registerIpcHandlers(): void {
     return event.sender.getZoomFactor()
   })
 
-  // ── Version Info ──
+  // -- Version Info --
   let cachedServerVersion: string | null = null
 
   ipcMain.handle('app:getVersions', async () => {
@@ -986,7 +987,7 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // ── Game Discovery ──
+  // -- Game Discovery --
   ipcMain.handle('game:discoverPaths', async (): Promise<GamePaths> => {
     return discoveryService.discoverPaths()
   })
@@ -1023,7 +1024,7 @@ export function registerIpcHandlers(): void {
     discoveryService.clearCache()
   })
 
-  // ── Game Launcher ──
+  // -- Game Launcher --
   ipcMain.handle('game:launch', async (): Promise<{ success: boolean; error?: string }> => {
     const config = configService.get()
     const rendererArgs = config.renderer === 'vulkan' ? ['-gfx', 'vk'] : config.renderer === 'dx11' ? ['-gfx', 'dx11'] : []
@@ -1036,7 +1037,7 @@ export function registerIpcHandlers(): void {
     return launcherService.launchVanilla(appConfig.gamePaths, config, { args: rendererArgs })
   })
 
-  // ── Support Tools ──
+  // -- Support Tools --
 
   ipcMain.handle('game:openUserFolder', async () => {
     const userDir = configService.get().gamePaths?.userDir
@@ -1083,7 +1084,7 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('game:clearModCache', async (): Promise<{ success: boolean; error?: string; freedBytes?: number; fileCount?: number }> => {
-    // Cached BeamMP mod downloads live in <CM appData>/Resources — separate
+    // Cached BeamMP mod downloads live in <CM appData>/Resources � separate
     // from BeamNG's cache/temp dirs cleared by game:clearCache.
     const cacheDir = join(app.getPath('userData'), 'Resources')
     if (!existsSync(cacheDir)) return { success: true, freedBytes: 0, fileCount: 0 }
@@ -1118,13 +1119,13 @@ export function registerIpcHandlers(): void {
     const { spawn } = await import('node:child_process')
     const tmpDir = join(app.getPath('temp'), 'BeamNG-SafeMode-' + Date.now())
     await mkdir(tmpDir, { recursive: true })
-    // Proton/Wine sees Linux paths via Z: drive — convert for the game process
+    // Proton/Wine sees Linux paths via Z: drive � convert for the game process
     const userpath = paths.isProton ? 'Z:' + tmpDir.replace(/\//g, '\\') : tmpDir
     const args = ['-userpath', userpath]
     if (paths.isProton) {
-      // Proton: must launch through Steam — direct exe won't work on Linux
+      // Proton: must launch through Steam � direct exe won't work on Linux
       const steamBin = launcherService.findSteamBinaryPublic()
-      if (!steamBin) return { success: false, error: 'Steam not found — required to launch via Proton' }
+      if (!steamBin) return { success: false, error: 'Steam not found � required to launch via Proton' }
       spawn(steamBin, ['-applaunch', '284160', ...args], {
         detached: true,
         stdio: 'ignore'
@@ -1151,7 +1152,7 @@ export function registerIpcHandlers(): void {
     const args = ['-userpath', userpath, '-gfx', 'vk']
     if (paths.isProton) {
       const steamBin = launcherService.findSteamBinaryPublic()
-      if (!steamBin) return { success: false, error: 'Steam not found — required to launch via Proton' }
+      if (!steamBin) return { success: false, error: 'Steam not found � required to launch via Proton' }
       spawn(steamBin, ['-applaunch', '284160', ...args], {
         detached: true,
         stdio: 'ignore'
@@ -1176,7 +1177,7 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // ── GPS Tracker ──
+  // -- GPS Tracker --
   ipcMain.handle('gps:deployTracker', async (): Promise<{ success: boolean; error?: string }> => {
     const userDir = configService.get().gamePaths?.userDir
     if (!userDir) return { success: false, error: 'User data folder not configured' }
@@ -1197,10 +1198,10 @@ export function registerIpcHandlers(): void {
     return launcherService.getGPSTelemetry()
   })
 
-  // ── World Editor Sync (Phase 0 spike) ──
+  // -- World Editor Sync (Phase 0 spike) --
   //
   // Capture-only extension that wraps editor.history and writes captured
-  // actions to settings/BeamCM/we_capture.log. No networking yet — this is
+  // actions to settings/BeamCM/we_capture.log. No networking yet � this is
   // the validation gate for the broader design in Project/Docs/WORLD-EDITOR-SYNC.md.
 
   ipcMain.handle('worldEdit:deploy', async (): Promise<{ success: boolean; error?: string }> => {
@@ -1280,7 +1281,7 @@ export function registerIpcHandlers(): void {
     return launcherService.deleteEditorProject(userDir, absolutePath)
   })
 
-  // ── World Editor Session (Phase 2/3: host + join) ──
+  // -- World Editor Session (Phase 2/3: host + join) --
 
   ipcMain.handle('worldEdit:session:getStatus', async () => {
     return editorSession.getStatus()
@@ -1416,7 +1417,7 @@ export function registerIpcHandlers(): void {
         levelOverride: opts.levelName ?? null,
       })
       if (prep.error || !prep.level) {
-        // Session is up, just couldn't launch — report partial success.
+        // Session is up, just couldn't launch � report partial success.
         return { success: true, status, error: prep.error ?? 'No level selected' }
       }
       const rendererArgs =
@@ -1437,7 +1438,7 @@ export function registerIpcHandlers(): void {
 
   /**
    * Parse a session code and start the join. Despite the legacy
-   * `joinCodeAndLaunch` channel name, this NO LONGER auto-launches BeamNG —
+   * `joinCodeAndLaunch` channel name, this NO LONGER auto-launches BeamNG �
    * joiners explicitly press "Launch into Editor" when they're ready so we
    * never alt-tab away from whatever they're doing the moment they paste an
    * invite. The `level` field in the response is the host-advertised level
@@ -1464,7 +1465,7 @@ export function registerIpcHandlers(): void {
         return { success: false, error: `${err}` }
       }
       // Surface the advertised level so the UI can pre-fill it for the
-      // user's manual launch button — but do NOT spawn the game.
+      // user's manual launch button � but do NOT spawn the game.
       return { success: true, status, level: parsed.level ?? undefined }
     }
   )
@@ -1516,9 +1517,9 @@ export function registerIpcHandlers(): void {
   })
 
   /**
-   * §D undo/redo. Pops the local-author stack, builds an inverse op and
+   * �D undo/redo. Pops the local-author stack, builds an inverse op and
    * broadcasts it (or replays the original on redo). Returns a small
-   * status object so the renderer can show the §D first-time toast on
+   * status object so the renderer can show the �D first-time toast on
    * the very first successful undo.
    */
   ipcMain.handle(
@@ -1540,7 +1541,7 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  /* ── §E world save / load / convert ─────────────────────────────── */
+  /* -- �E world save / load / convert ------------------------------- */
 
   /**
    * Save the currently-open world to a `.beamcmworld`. If `destPath`
@@ -1632,7 +1633,7 @@ export function registerIpcHandlers(): void {
 
   /**
    * Load a `.beamcmworld` and stage its mods. Does NOT launch the
-   * game — the renderer typically chains this with
+   * game � the renderer typically chains this with
    * `worldEdit:session:launchIntoEditor`. Returns the level identity
    * so the caller can pass `levelOverride` on launch.
    */
@@ -1694,7 +1695,7 @@ export function registerIpcHandlers(): void {
   )
 
   /**
-   * §E.6 — wrap an existing CM project zip in a `.beamcmworld` shell.
+   * �E.6 � wrap an existing CM project zip in a `.beamcmworld` shell.
    * The original zip is embedded verbatim so `worldSave:convertWorldToProject`
    * is a perfect round-trip.
    */
@@ -1755,7 +1756,7 @@ export function registerIpcHandlers(): void {
   )
 
   /**
-   * §E.6 — extract the embedded `project.zip` from a `.beamcmworld`
+   * �E.6 � extract the embedded `project.zip` from a `.beamcmworld`
    * back to a standalone project zip. Errors with a clear message if
    * the world wasn't produced by the wrapper above.
    */
@@ -1807,12 +1808,12 @@ export function registerIpcHandlers(): void {
       const userDir = appConfig.gamePaths?.userDir
       if (!userDir) return { success: false, error: 'User data folder not configured' }
       // Refuse to launch while the host's map mod is still being
-      // downloaded — BeamNG would either fail to find the level or
+      // downloaded � BeamNG would either fail to find the level or
       // silently bounce the player back to the main menu.
       if (editorSession.isModSyncBlocking()) {
         return {
           success: false,
-          error: 'Map mod is still downloading from the host — wait for the transfer to finish, then try again.',
+          error: 'Map mod is still downloading from the host � wait for the transfer to finish, then try again.',
         }
       }
       const prep = editorSession.prepareEditorLaunch({
@@ -1837,7 +1838,7 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  /* ── Coop-session project: advertise (host) / download (joiner) ────── */
+  /* -- Coop-session project: advertise (host) / download (joiner) ------ */
 
   /**
    * Host-only: register a project folder as the one the relay advertises
@@ -1953,7 +1954,7 @@ export function registerIpcHandlers(): void {
    * Aggregated host-address candidates for the Coop Editor host wizard.
    * Returns every plausible address the host could give to a joiner, tagged
    * by source and whether it should be recommended. Order of preference
-   * (highest first): tailscale → public IP → first LAN → others → loopback.
+   * (highest first): tailscale ? public IP ? first LAN ? others ? loopback.
    */
   ipcMain.handle(
     'worldEdit:session:getHostAddresses',
@@ -1970,7 +1971,7 @@ export function registerIpcHandlers(): void {
         recommended: boolean
       }> = []
 
-      // Tailscale — probe non-fatally (service might not be installed).
+      // Tailscale � probe non-fatally (service might not be installed).
       try {
         const st = await tailscaleService.getStatus()
         if (st.installed && st.running && st.ip) {
@@ -1983,7 +1984,7 @@ export function registerIpcHandlers(): void {
         }
       } catch { /* non-fatal */ }
 
-      // Public IP — best-effort. Many users will want this for internet hosts.
+      // Public IP � best-effort. Many users will want this for internet hosts.
       try {
         const https = await import('node:https')
         const ip = await new Promise<string>((resolve, reject) => {
@@ -2007,7 +2008,7 @@ export function registerIpcHandlers(): void {
         }
       } catch { /* non-fatal */ }
 
-      // LAN — always include so the host can choose for LAN sessions.
+      // LAN � always include so the host can choose for LAN sessions.
       try {
         const nets = (await import('node:os')).networkInterfaces()
         let firstLan = true
@@ -2027,7 +2028,7 @@ export function registerIpcHandlers(): void {
         }
       } catch { /* non-fatal */ }
 
-      // Loopback last — useful for same-machine testing only.
+      // Loopback last � useful for same-machine testing only.
       out.push({
         kind: 'loopback',
         address: '127.0.0.1',
@@ -2039,7 +2040,7 @@ export function registerIpcHandlers(): void {
   )
 
   // Check whether a Windows Firewall inbound TCP allow-rule already exists for
-  // this port under our well-known display name. Read-only — no UAC needed.
+  // this port under our well-known display name. Read-only � no UAC needed.
   ipcMain.handle(
     'worldEdit:session:checkFirewallHole',
     async (
@@ -2087,13 +2088,13 @@ export function registerIpcHandlers(): void {
   // We need TWO things to make Tailscale work reliably:
   //
   //   1. A port-based Allow rule (Profile=Any, covers wintun adapter).
-  //   2. Per-program Allow rules for our exe — and removal of any
+  //   2. Per-program Allow rules for our exe � and removal of any
   //      auto-created Block rules for the same exe. This is the hidden
   //      gotcha: the very first time Electron binds a listener, Windows
   //      pops a "Allow on Public networks?" dialog. If the user dismissed
   //      it (or only allowed Private), Windows silently created an inbound
   //      Block rule for our binary, and that Block beats the port Allow on
-  //      the wintun (Public-classified) interface — so Tailscale joiners
+  //      the wintun (Public-classified) interface � so Tailscale joiners
   //      time out at TCP-SYN even though the port rule looks fine.
   //
   // So we build a script that:
@@ -2184,7 +2185,7 @@ export function registerIpcHandlers(): void {
   // issue (firewall block, wrong IP, listener crashed, etc.) before sharing
   // the invite. Tailscale hairpin: connecting to your own 100.x address from
   // the same machine traverses the wintun adapter, so this is a real
-  // smoke-test — if a SYN can't reach the listener locally over Tailscale,
+  // smoke-test � if a SYN can't reach the listener locally over Tailscale,
   // a remote peer won't get through either.
   ipcMain.handle(
     'worldEdit:session:testReachability',
@@ -2214,9 +2215,9 @@ export function registerIpcHandlers(): void {
         const timer = setTimeout(() => {
           done({
             success: false,
-            error: `TCP connect timed out after ${TIMEOUT_MS}ms — firewall is dropping SYN packets to ${host}:${port}. ` +
+            error: `TCP connect timed out after ${TIMEOUT_MS}ms � firewall is dropping SYN packets to ${host}:${port}. ` +
               `If this is your own Tailscale IP, Windows Firewall is blocking the listener on the wintun adapter ` +
-              `(usually a stale per-binary Block rule from the first launch). Click "Open firewall hole" again — ` +
+              `(usually a stale per-binary Block rule from the first launch). Click "Open firewall hole" again � ` +
               `the new script removes any blocking rules.`,
           })
         }, TIMEOUT_MS)
@@ -2232,7 +2233,7 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // ── Voice Chat ──
+  // -- Voice Chat --
 
   ipcMain.handle('voice:enable', async () => {
     const userDir = configService.get().gamePaths?.userDir
@@ -2288,7 +2289,7 @@ export function registerIpcHandlers(): void {
     return voiceChatService.undeployBridge()
   })
 
-  // ── Voice mesh tier (Tier 2) ──
+  // -- Voice mesh tier (Tier 2) --
   ipcMain.handle('voiceMesh:listen', async () => {
     return voiceMeshService.listen()
   })
@@ -2318,7 +2319,7 @@ export function registerIpcHandlers(): void {
     return voiceMeshService.send(payload.peerId, buf)
   })
 
-  // ── Lua Console (live REPL into BeamNG.drive GE-Lua) ──
+  // -- Lua Console (live REPL into BeamNG.drive GE-Lua) --
   ipcMain.handle('luaConsole:deploy', async () => {
     const userDir = configService.get().gamePaths?.userDir
     if (!userDir) return { success: false, error: 'User data folder not configured' }
@@ -2366,7 +2367,7 @@ export function registerIpcHandlers(): void {
     return { success: true }
   })
 
-  // ── BeamNG UI Files (HTML/JS/CSS/JSON live editor) ──
+  // -- BeamNG UI Files (HTML/JS/CSS/JSON live editor) --
   ipcMain.handle('beamUI:listRoots', async (_event, payload: { includeInstall: boolean; installWritable?: boolean }) => {
     const cfg = configService.get()
     let userDir = cfg.gamePaths?.userDir ?? null
@@ -2450,7 +2451,7 @@ export function registerIpcHandlers(): void {
     return { success: true }
   })
 
-  // ── GPS Map POIs ──
+  // -- GPS Map POIs --
   const poiCache = new LRUCache<string, import('../../shared/types').GPSMapPOI[]>(20)
 
   /** Turn raw POI names (e.g. "spawns_gasStation01_parking", "gasStation_01") into short readable labels */
@@ -2587,7 +2588,7 @@ export function registerIpcHandlers(): void {
     return resolved
   })
 
-  // ── Vehicle scanning ──
+  // -- Vehicle scanning --
   // Known non-vehicle zips (props, barriers, etc.) - filter these out for the vehicle browser
   const NON_VEHICLE_TYPES = new Set([
     'Prop', 'Trailer', 'Utility', 'prop', 'Barrier', 'Other'
@@ -2683,7 +2684,7 @@ export function registerIpcHandlers(): void {
     return Array.from(vehicleNames)
   }
 
-  /** Resolve zip path for a vehicle: mod registry → stock fallback */
+  /** Resolve zip path for a vehicle: mod registry ? stock fallback */
   function getVehicleZipPath(vehicleName: string, installDir: string): string {
     return getModVehicleZip(vehicleName) || join(installDir, 'content', 'vehicles', `${vehicleName}.zip`)
   }
@@ -2817,7 +2818,7 @@ export function registerIpcHandlers(): void {
     return null
   })
 
-  // ── Vehicle Detail ──
+  // -- Vehicle Detail --
   ipcMain.handle('game:getVehicleDetail', async (_event, vehicleName: string): Promise<VehicleDetail | null> => {
     const config = configService.get()
     const installDir = config.gamePaths?.installDir
@@ -2864,7 +2865,7 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // ── Vehicle Configs ──
+  // -- Vehicle Configs --
   ipcMain.handle('game:getVehicleConfigs', async (_event, vehicleName: string): Promise<VehicleConfigInfo[]> => {
     const config = configService.get()
     const installDir = config.gamePaths?.installDir
@@ -2945,13 +2946,13 @@ export function registerIpcHandlers(): void {
     return configs
   })
 
-  // ── Vehicle Config Preview Image ──
+  // -- Vehicle Config Preview Image --
   ipcMain.handle('game:getVehicleConfigPreview', async (_event, vehicleName: string, configName: string): Promise<string | null> => {
     const config = configService.get()
     const userDir = config.gamePaths?.userDir
     const installDir = config.gamePaths?.installDir
 
-    // 1) Check user dir first — user configs store previews as <name>.jpg/.png next to <name>.pc
+    // 1) Check user dir first � user configs store previews as <name>.jpg/.png next to <name>.pc
     if (userDir) {
       const userVehicleDir = join(userDir, 'vehicles', vehicleName)
       for (const ext of ['jpg', 'jpeg', 'png']) {
@@ -2980,7 +2981,7 @@ export function registerIpcHandlers(): void {
     return null
   })
 
-  // ── Vehicle Config Data (read .pc file) ──
+  // -- Vehicle Config Data (read .pc file) --
   ipcMain.handle('game:getVehicleConfigData', async (_event, vehicleName: string, configName: string): Promise<VehicleConfigData | null> => {
     const config = configService.get()
     const userDir = config.gamePaths?.userDir
@@ -3007,7 +3008,7 @@ export function registerIpcHandlers(): void {
     return null
   })
 
-  // ── Save Vehicle Config ──
+  // -- Save Vehicle Config --
   ipcMain.handle('game:saveVehicleConfig', async (_event, vehicleName: string, configName: string, data: VehicleConfigData): Promise<{ success: boolean; error?: string }> => {
     const config = configService.get()
     const userDir = config.gamePaths?.userDir
@@ -3029,7 +3030,7 @@ export function registerIpcHandlers(): void {
     return { success: true }
   })
 
-  // ── Delete Vehicle Config ──
+  // -- Delete Vehicle Config --
   ipcMain.handle('game:deleteVehicleConfig', async (_event, vehicleName: string, configName: string): Promise<{ success: boolean; error?: string }> => {
     const config = configService.get()
     const userDir = config.gamePaths?.userDir
@@ -3046,7 +3047,7 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // ── Rename Vehicle Config ──
+  // -- Rename Vehicle Config --
   ipcMain.handle('game:renameVehicleConfig', async (_event, vehicleName: string, oldName: string, newName: string): Promise<{ success: boolean; error?: string }> => {
     const config = configService.get()
     const userDir = config.gamePaths?.userDir
@@ -3070,7 +3071,7 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // ── Get Vehicle 3D Model Data ──
+  // -- Get Vehicle 3D Model Data --
   // Returns all relevant DAE file contents from the vehicle zip + common.zip.
   // Vehicles have multiple DAE files (e.g., body + cargobox + dump body + mechanicals).
   // When activeMeshes is provided, common.zip DAEs are filtered to only include files
@@ -3138,7 +3139,7 @@ export function registerIpcHandlers(): void {
     return daeTexts
   })
 
-  // ── Get Vehicle Materials from .materials.json files ──
+  // -- Get Vehicle Materials from .materials.json files --
   // Reads all materials.json from the vehicle zip + common.zip.
   // Returns a record keyed by `mapTo` (which is the DAE material name).
   ipcMain.handle(
@@ -3167,7 +3168,7 @@ export function registerIpcHandlers(): void {
       const vehicleZip = getVehicleZipPath(vehicleName, installDir)
       await readEntriesFromZip(vehicleZip, (fn) => fn.endsWith('.materials.json'), readMats)
 
-      // Then common.zip — read ALL shared materials (skip already-resolved from vehicle zip)
+      // Then common.zip � read ALL shared materials (skip already-resolved from vehicle zip)
       const commonZip = join(installDir, 'content', 'vehicles', 'common.zip')
       try {
         await readEntriesFromZip(
@@ -3181,7 +3182,7 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // ── Resolve default paint colors for a vehicle + config ──
+  // -- Resolve default paint colors for a vehicle + config --
   // Reads vehicle info.json for libraryPaints + defaultPaintName, per-config info for
   // defaultMultiPaintSetup, and common.paintLibrary.json to resolve 3 zone paint colors.
   // Returns an array of 3 paint objects matching the PaintData shape.
@@ -3254,7 +3255,7 @@ export function registerIpcHandlers(): void {
         )
       } catch { /* */ }
 
-      // Build name→paint and id→name lookup (mirrors vehiclePaints.lua logic)
+      // Build name?paint and id?name lookup (mirrors vehiclePaints.lua logic)
       const paintByName: Record<string, typeof paintLibrary[string]> = {}
       const idToName: Record<string, string> = {}
       for (const [id, paint] of Object.entries(paintLibrary)) {
@@ -3339,7 +3340,7 @@ export function registerIpcHandlers(): void {
       if (!paint3Key) paint3Key = paint1Key || modelDefaultPaint3
 
       // 4. Resolve paint names/IDs to actual paint data
-      // Mirrors resolvePaintHelper: try by name, then by ID→name, then by name-lookup from library
+      // Mirrors resolvePaintHelper: try by name, then by ID?name, then by name-lookup from library
       const resolvePaint = (key: string | undefined): typeof paintLibrary[string] | null => {
         if (!key) return null
         // Try direct name match
@@ -3365,7 +3366,7 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // ── Resolve active globalSkin from config parts ──
+  // -- Resolve active globalSkin from config parts --
   // Reads jbeam to find the `globalSkin` value for the active `paint_design` part.
   // Returns e.g. { skin: "bcpd", slotType: "skin_sedan" } which maps to material suffix
   // ".<slotType>.<skin>" (e.g. "fullsize.skin_sedan.bcpd")
@@ -3408,7 +3409,7 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // ── Shared JBeam Part Database + Slot Tree Utility ──
+  // -- Shared JBeam Part Database + Slot Tree Utility --
   // Used by both getActiveVehicleMeshes and getWheelPlacements to avoid code duplication.
 
   interface FlexbodyEntry { mesh: string; groups: string[] }
@@ -3438,7 +3439,7 @@ export function registerIpcHandlers(): void {
       // slotType
       if (typeof partDef.slotType === 'string') entry.slotType = partDef.slotType
 
-      // flexbodies → mesh + groups
+      // flexbodies ? mesh + groups
       const flexbodies = partDef.flexbodies as unknown[][]
       if (Array.isArray(flexbodies)) {
         let meshCol = -1, groupCol = -1
@@ -3462,7 +3463,7 @@ export function registerIpcHandlers(): void {
         }
       }
 
-      // props → mesh names only
+      // props ? mesh names only
       const props = partDef.props as unknown[][]
       if (Array.isArray(props)) {
         let meshCol = -1
@@ -3473,7 +3474,7 @@ export function registerIpcHandlers(): void {
         }
       }
 
-      // slots2 (newer) — extract allowTypes/denyTypes
+      // slots2 (newer) � extract allowTypes/denyTypes
       const slots2 = partDef.slots2 as unknown[][]
       if (Array.isArray(slots2)) {
         let nameCol = 0, defaultCol = 3, allowCol = 1, denyCol = 2
@@ -3498,7 +3499,7 @@ export function registerIpcHandlers(): void {
         }
       }
 
-      // slots (older) — no allow/deny
+      // slots (older) � no allow/deny
       const slotsArr = partDef.slots as unknown[][]
       if (Array.isArray(slotsArr) && !slots2) {
         for (const row of slotsArr) {
@@ -3556,7 +3557,7 @@ export function registerIpcHandlers(): void {
         }
       }
       // Scan pressureWheels for hubGroup and group columns (these define wheel/tire groups
-      // that are dynamically generated at runtime — they don't appear in nodes sections)
+      // that are dynamically generated at runtime � they don't appear in nodes sections)
       const pw = partDef.pressureWheels as unknown[] | undefined
       if (Array.isArray(pw)) {
         let pwHeaders: unknown[] | null = null
@@ -3606,7 +3607,7 @@ export function registerIpcHandlers(): void {
           if (!isSlotTypeCompatible(partDB[resolved].slotType, slot)) {
             resolved = slot.defaultPart // fall back
             if (resolved && partDB[resolved] && !isSlotTypeCompatible(partDB[resolved].slotType, slot)) {
-              continue // default also invalid → skip
+              continue // default also invalid ? skip
             }
           }
         }
@@ -3644,7 +3645,7 @@ export function registerIpcHandlers(): void {
     return { activeMeshes, meshOwnership, activeNodeGroups, activeParts }
   }
 
-  // ── Get Active Vehicle Meshes via slot tree walk ──
+  // -- Get Active Vehicle Meshes via slot tree walk --
   // Builds a part database (meshes + slots) from jbeam files, then walks the slot tree
   // from the root part using config.parts to resolve which parts are active.
   // Returns the list of mesh names that should be visible + ownership map.
@@ -3682,7 +3683,7 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // ── Get Wheel Placements ──
+  // -- Get Wheel Placements --
   // Uses shared slot-tree walk, then computes wheel hub centers from pressureWheels
   // node1:/node2: midpoints (authoritative), falling back to hub group medians.
   ipcMain.handle(
@@ -3715,7 +3716,7 @@ export function registerIpcHandlers(): void {
       const partDB = buildPartDB(rawParts)
       const { activeParts } = walkSlotTree(partDB, rawParts, vehicleName, configParts)
 
-      // ── 1. Collect ALL node positions and group memberships from active parts ──
+      // -- 1. Collect ALL node positions and group memberships from active parts --
       const allNodes: Record<string, [number, number, number]> = {}
       const groupNodeIds: Record<string, string[]> = {}
 
@@ -3773,8 +3774,8 @@ export function registerIpcHandlers(): void {
         return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
       }
 
-      // ── 2. Discover wheel corners from pressureWheels ──
-      // node1:/node2: only have X (lateral) offsets in jbeam — Y and Z are 0 (set at runtime).
+      // -- 2. Discover wheel corners from pressureWheels --
+      // node1:/node2: only have X (lateral) offsets in jbeam � Y and Z are 0 (set at runtime).
       // Hub group median is the best source; nodeArm is a single-node fallback.
       const discoveredCorners = new Set<string>()
       const hubCenters: Record<string, [number, number, number]> = {}
@@ -3795,7 +3796,7 @@ export function registerIpcHandlers(): void {
           if (!name) continue
           discoveredCorners.add(name)
 
-          // Save nodeArm position separately — only used as LAST fallback
+          // Save nodeArm position separately � only used as LAST fallback
           if (!nodeArmPositions[name]) {
             const armIdx = pwHeaders.indexOf('nodeArm:')
             if (armIdx >= 0) {
@@ -3810,7 +3811,7 @@ export function registerIpcHandlers(): void {
         for (const c of ['FR', 'FL', 'RR', 'RL']) discoveredCorners.add(c)
       }
 
-      // Priority 1: exact hub groups (_hub_FR, _hub_RL1, etc.) — median (best full 3D)
+      // Priority 1: exact hub groups (_hub_FR, _hub_RL1, etc.) � median (best full 3D)
       // Hub groups have the most nodes with real 3D positions, making median robust.
       for (const corner of discoveredCorners) {
         const suffix = `_hub_${corner}`
@@ -3829,7 +3830,7 @@ export function registerIpcHandlers(): void {
         }
       }
 
-      // Priority 2: combined axle groups (_hub_F → split by X sign)
+      // Priority 2: combined axle groups (_hub_F ? split by X sign)
       // For X: use average of the 2 outermost nodes (biased toward wheel face),
       // because inner structural nodes (shock mounts, trailing arms) drag median inward.
       // For Y, Z: median works well (structural spread is smaller).
@@ -3867,7 +3868,7 @@ export function registerIpcHandlers(): void {
         }
       }
 
-      // ── 3. Scan active parts for wheel-related flexbodies ──
+      // -- 3. Scan active parts for wheel-related flexbodies --
       const allCornerNames = [...discoveredCorners]
       const cornerPattern = allCornerNames.map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
       const cornerRx = new RegExp(`(?:wheelhub|wheel|tire|hubcap|trimring)_(${cornerPattern})\\b`, 'i')
@@ -3907,7 +3908,7 @@ export function registerIpcHandlers(): void {
         }
       }
 
-      // ── DIAGNOSTIC: dump placement data to file ──
+      // -- DIAGNOSTIC: dump placement data to file --
       try {
         const { writeFileSync } = await import('fs')
         const { join: pjoin } = await import('path')
@@ -3972,7 +3973,7 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // ── Vehicle Editor Data: slot options + variable metadata ──
+  // -- Vehicle Editor Data: slot options + variable metadata --
   ipcMain.handle(
     'game:getVehicleEditorData',
     async (_event, vehicleName: string): Promise<VehicleEditorData> => {
@@ -3980,9 +3981,9 @@ export function registerIpcHandlers(): void {
       const installDir = config.gamePaths?.installDir
       if (!installDir) return { slots: {}, variables: {} }
 
-      // slotType → description (from the slot definition itself)
+      // slotType ? description (from the slot definition itself)
       const slotDescriptions: Record<string, string> = {}
-      // slotType → partNames that declare this slotType
+      // slotType ? partNames that declare this slotType
       const slotOptions: Record<string, string[]> = {}
       // All slots declared by parts (so we know which exist)
       const declaredSlots = new Set<string>()
@@ -4127,7 +4128,7 @@ export function registerIpcHandlers(): void {
     }
 
     // 2) Mod maps. We treat ANY enabled mod with a `levels/<dir>/`
-    //    folder (i.e. `levelDir` set) as a candidate map — the older
+    //    folder (i.e. `levelDir` set) as a candidate map � the older
     //    strict `modType === 'terrain' || 'map'` filter silently dropped
     //    map mods that BeamNG itself classified as `'unknown'` in db.json.
     //    `levelDir` is populated by `scanModZip` whenever the archive
@@ -4341,7 +4342,7 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // ── Backend API ──
+  // -- Backend API --
   ipcMain.handle('backend:getServers', async () => {
     try {
       return { success: true, data: await backendService.getServerList() }
@@ -4384,7 +4385,7 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // ── Map Preview ──
+  // -- Map Preview --
   // In-memory cache so we only read zip files once per level
   const mapPreviewCache = new LRUCache<string, string | null>(30)
 
@@ -4394,7 +4395,7 @@ export function registerIpcHandlers(): void {
       const installDir = config.gamePaths?.installDir
       const userDir = config.gamePaths?.userDir
 
-      // Extract level name: "/levels/west_coast_usa/info.json" → "west_coast_usa"
+      // Extract level name: "/levels/west_coast_usa/info.json" ? "west_coast_usa"
       const levelName = mapPath.replace(/^\/levels\//, '').replace(/\/info\.json$/, '').replace(/\/$/, '')
       if (!levelName) return null
 
@@ -4446,7 +4447,7 @@ export function registerIpcHandlers(): void {
         } catch { /* not a stock map */ }
       }
 
-      // 3) Try mod zip — use wildcard level name since mod internal folder may differ
+      // 3) Try mod zip � use wildcard level name since mod internal folder may differ
       if (modZipPath) {
         try {
           await access(modZipPath)
@@ -4465,7 +4466,7 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // ── Map Minimap (composite: terrain base colour + minimap overlay, disk-cached) ──
+  // -- Map Minimap (composite: terrain base colour + minimap overlay, disk-cached) --
   const minimapCache = new LRUCache<string, { dataUrl: string; worldBounds?: { minX: number; maxX: number; minY: number; maxY: number } } | null>(10)
   const minimapCacheDir = join(app.getPath('userData'), 'cache', 'minimaps')
 
@@ -4481,7 +4482,7 @@ export function registerIpcHandlers(): void {
       // Fast in-memory cache
       if (minimapCache.has(levelName)) return minimapCache.get(levelName)!
 
-      // Check disk cache (version 3 — tile composite)
+      // Check disk cache (version 3 � tile composite)
       const cachedPath = join(minimapCacheDir, `${levelName}_v3.png`)
       const boundsPath = join(minimapCacheDir, `${levelName}_v3.json`)
       try {
@@ -4492,7 +4493,7 @@ export function registerIpcHandlers(): void {
         try {
           const bJson = await readFile(boundsPath, 'utf-8')
           worldBounds = JSON.parse(bJson)
-        } catch { /* no bounds file — monolithic map */ }
+        } catch { /* no bounds file � monolithic map */ }
         const result = { dataUrl, worldBounds }
         minimapCache.set(levelName, result)
         return result
@@ -4527,7 +4528,7 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // ── Map Terrain Base ──
+  // -- Map Terrain Base --
   const terrainBaseCache = new LRUCache<string, string | null>(10)
 
   ipcMain.handle('map:getTerrainBase', async (_event, mapPath: string, modZipPath?: string): Promise<string | null> => {
@@ -4557,7 +4558,7 @@ export function registerIpcHandlers(): void {
         } catch { /* not a stock map */ }
       }
 
-      // 2) Try mod zip — wildcard level name since internal folder may differ
+      // 2) Try mod zip � wildcard level name since internal folder may differ
       if (modZipPath) {
         try {
           await access(modZipPath)
@@ -4580,7 +4581,7 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // ── Map Heightmap ──
+  // -- Map Heightmap --
   const heightmapCache = new LRUCache<string, string | null>(8)
 
   ipcMain.handle('map:getHeightmap', async (_event, mapPath: string): Promise<string | null> => {
@@ -4626,7 +4627,7 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // ── Map Terrain Info (from .terrain.json) ──
+  // -- Map Terrain Info (from .terrain.json) --
   ipcMain.handle('map:getTerrainInfo', async (_event, mapPath: string): Promise<{ size: number } | null> => {
     try {
       const config = configService.get()
@@ -4651,7 +4652,7 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // ── Map Rich Metadata (info.json + .terrain.json + mod registry) ──
+  // -- Map Rich Metadata (info.json + .terrain.json + mod registry) --
   ipcMain.handle('map:getMetadata', async (_event, mapName: string, modZipPath?: string): Promise<MapRichMetadata> => {
     const meta: MapRichMetadata = {}
     const config = configService.get()
@@ -4768,7 +4769,7 @@ export function registerIpcHandlers(): void {
     return meta
   })
 
-  // ── Map Road Route (A* pathfinding along DecalRoads) ──
+  // -- Map Road Route (A* pathfinding along DecalRoads) --
   const roadNetworkCache = new LRUCache<string, RoadNetwork>(8)
 
   ipcMain.handle('map:findRoute', async (
@@ -4814,7 +4815,7 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // ── Flag Image Cache ──
+  // -- Flag Image Cache --
   const flagMemCache = new LRUCache<string, string>(64)
   const flagCacheDir = join(app.getPath('userData'), 'cache', 'flags')
 
@@ -4860,7 +4861,7 @@ export function registerIpcHandlers(): void {
     return results
   })
 
-  // ── Favorites ──
+  // -- Favorites --
   ipcMain.handle('favorites:get', async () => {
     return configService.getFavorites()
   })
@@ -4869,12 +4870,12 @@ export function registerIpcHandlers(): void {
     return configService.setFavorite(ident, favorite)
   })
 
-  // ── Recent Servers ──
+  // -- Recent Servers --
   ipcMain.handle('recentServers:get', async () => {
     return configService.getRecentServers()
   })
 
-  // ── Background Image Picker ──
+  // -- Background Image Picker --
   ipcMain.handle('appearance:pickBackgroundImage', async () => {
     const win = BrowserWindow.getFocusedWindow()
     if (!win) return null
@@ -4912,7 +4913,7 @@ export function registerIpcHandlers(): void {
           const jpeg = img.toJPEG(85)
           return `data:image/jpeg;base64,${jpeg.toString('base64')}`
         }
-        // nativeImage couldn't decode — fall through to raw-bytes path
+        // nativeImage couldn't decode � fall through to raw-bytes path
       }
       const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`
       return `data:${mime};base64,${data.toString('base64')}`
@@ -4963,7 +4964,7 @@ export function registerIpcHandlers(): void {
       }
       const img = nativeImage.createFromBuffer(data)
       if (img.isEmpty()) {
-        // Unknown / unsupported by nativeImage — fall back to raw bytes with best-guess mime
+        // Unknown / unsupported by nativeImage � fall back to raw bytes with best-guess mime
         const mimeMap: Record<string, string> = {
           png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
           bmp: 'image/bmp', svg: 'image/svg+xml', avif: 'image/avif'
@@ -4979,7 +4980,7 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // ── Window Controls ──
+  // -- Window Controls --
   ipcMain.on('window:minimize', (event) => {
     BrowserWindow.fromWebContents(event.sender)?.minimize()
   })
@@ -4999,7 +5000,7 @@ export function registerIpcHandlers(): void {
     return BrowserWindow.fromWebContents(event.sender)?.isMaximized() ?? false
   })
 
-  // ── Mods ──
+  // -- Mods --
   ipcMain.handle('mods:list', async () => {
     const config = configService.get()
     const userDir = config.gamePaths?.userDir
@@ -5095,7 +5096,7 @@ export function registerIpcHandlers(): void {
       vehicleListCache = null
       return { success: true }
     } catch {
-      // File may already be gone — still clean up registry
+      // File may already be gone � still clean up registry
       cleanupRegistry()
       loadOrderService.removeClientEntry(modKey).catch(() => {})
       conflictDetectionService.invalidate()
@@ -5173,7 +5174,7 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // ── Mod Load Order ──
+  // -- Mod Load Order --
   ipcMain.handle('mods:getLoadOrder', async () => {
     try {
       const data = await loadOrderService.getClientOrder()
@@ -5217,7 +5218,7 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // ── Mod Conflict Detection ──
+  // -- Mod Conflict Detection --
   ipcMain.handle('mods:scanConflicts', async () => {
     const config = configService.get()
     const userDir = config.gamePaths?.userDir
@@ -5241,7 +5242,7 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // ── Server Mod Load Order ──
+  // -- Server Mod Load Order --
   ipcMain.handle('hostedServer:getModLoadOrder', async (_event, serverId: string) => {
     try {
       const data = await loadOrderService.getServerOrder(serverId)
@@ -5265,7 +5266,7 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // ── Mod Repository (BeamNG.com) ──
+  // -- Mod Repository (BeamNG.com) --
   ipcMain.handle(
     'repo:browse',
     async (_event, categoryId: number, page: number, sort: RepoSortOrder) => {
@@ -5335,7 +5336,7 @@ export function registerIpcHandlers(): void {
           resolve(result)
         }
 
-        // Intercept the actual file download — use named function so we can remove it
+        // Intercept the actual file download � use named function so we can remove it
         const onWillDownload = (_e: Electron.Event, item: Electron.DownloadItem): void => {
           // Remove listener immediately to prevent double-fire on next download
           beamngSession.removeListener('will-download', onWillDownload)
@@ -5403,7 +5404,7 @@ export function registerIpcHandlers(): void {
         dlWin.webContents.on('did-finish-load', () => {
           pageLoads++
           if (pageLoads >= 3 && !resolved && !dlWin.isDestroyed() && !dlWin.isVisible()) {
-            dlWin.setTitle('BeamNG.com — Complete download')
+            dlWin.setTitle('BeamNG.com � Complete download')
             dlWin.show()
           }
         })
@@ -5413,9 +5414,9 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // ── Repo Thumbnail Cache ──
+  // -- Repo Thumbnail Cache --
 
-  // ── BeamNG.com Account ──
+  // -- BeamNG.com Account --
   ipcMain.handle('repo:beamngLoggedIn', async (): Promise<{ loggedIn: boolean; username: string }> => {
     const beamngSession = session.fromPartition('persist:beamng')
     const cookies = await beamngSession.cookies.get({ url: 'https://www.beamng.com' })
@@ -5434,7 +5435,7 @@ export function registerIpcHandlers(): void {
         height: 700,
         parent: mainWin || undefined,
         autoHideMenuBar: true,
-        title: 'BeamNG.com — Log in',
+        title: 'BeamNG.com � Log in',
         backgroundColor: '#111113',
         webPreferences: {
           session: beamngSession,
@@ -5467,7 +5468,7 @@ export function registerIpcHandlers(): void {
 
       beamngSession.cookies.on('changed', onCookieChanged)
 
-      // Watch navigation — after login, XenForo redirects away from /login/
+      // Watch navigation � after login, XenForo redirects away from /login/
       loginWin.webContents.on('did-navigate', async (_e, url) => {
         if (resolved) return
         const onLoginPage = url.includes('/login') || url.includes('/register')
@@ -5475,7 +5476,7 @@ export function registerIpcHandlers(): void {
           startedOnLogin = true
           return
         }
-        // Navigated away from login — login succeeded (xf_session is enough)
+        // Navigated away from login � login succeeded (xf_session is enough)
         if (startedOnLogin) {
           finish(true)
         }
@@ -5495,7 +5496,7 @@ export function registerIpcHandlers(): void {
     await beamngSession.clearStorageData()
   })
 
-  // ── Repo Thumbnail Cache ──
+  // -- Repo Thumbnail Cache --
   const thumbMemCache = new LRUCache<string, string>(150)
   const thumbCacheDir = join(app.getPath('userData'), 'cache', 'repo-thumbs')
 
@@ -5556,13 +5557,13 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // ── Server Queue (Wait-to-Join) ──
+  // -- Server Queue (Wait-to-Join) --
   let queueTimer: ReturnType<typeof setInterval> | null = null
   let queueTarget: { ip: string; port: string; sname: string } | null = null
   let queueStartedAt: number = 0
   const QUEUE_POLL_MS = 1000
 
-  // Direct TCP info query — sends 'I' byte to the server, gets back JSON info
+  // Direct TCP info query � sends 'I' byte to the server, gets back JSON info
   function queryServerDirect(
     ip: string,
     port: string
@@ -5614,7 +5615,7 @@ export function registerIpcHandlers(): void {
     })
   }
 
-  // Full TCP probe — returns all server fields for direct-connect display
+  // Full TCP probe � returns all server fields for direct-connect display
   interface ProbeResult {
     online: boolean
     sname?: string
@@ -5755,7 +5756,7 @@ export function registerIpcHandlers(): void {
             port: queueTarget!.port,
             sname: queueTarget!.sname,
             elapsed: Date.now() - queueStartedAt,
-            message: 'Server unreachable — retrying...'
+            message: 'Server unreachable � retrying...'
           })
           return
         }
@@ -5764,7 +5765,7 @@ export function registerIpcHandlers(): void {
         const elapsed = Date.now() - queueStartedAt
 
         if (players < maxPlayers) {
-          // Slot available — auto-join immediately
+          // Slot available � auto-join immediately
           if (queueTimer) clearInterval(queueTimer)
           queueTimer = null
           const savedTarget = { ...queueTarget! }
@@ -5822,7 +5823,7 @@ export function registerIpcHandlers(): void {
             })()
           }
         } else {
-          // Still full — update status
+          // Still full � update status
           win?.webContents.send('queue:status', {
             active: true,
             ip: queueTarget!.ip,
@@ -5831,11 +5832,11 @@ export function registerIpcHandlers(): void {
             elapsed,
             players,
             maxPlayers,
-            message: `Server full (${players}/${maxPlayers}) — polling every second...`
+            message: `Server full (${players}/${maxPlayers}) � polling every second...`
           })
         }
       } catch (err) {
-        // Network error — keep trying
+        // Network error � keep trying
         win?.webContents.send('queue:status', {
           active: true,
           ip: queueTarget?.ip ?? '',
@@ -5878,7 +5879,7 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // ── Hosted Server Manager ──
+  // -- Hosted Server Manager --
 
   ipcMain.handle('hostedServer:list', async () => {
     return serverManagerService.listServers()
@@ -5946,6 +5947,889 @@ export function registerIpcHandlers(): void {
     return serverManagerService.restartServer(id)
   })
 
+  // -- Hosted Server Support Tickets --
+
+  ipcMain.handle('hostedServer:listSupportTickets', async (_event, id: string) => {
+    return serverManagerService.listSupportTickets(id)
+  })
+
+  ipcMain.handle('hostedServer:createSupportTicket', async (_event, id: string, input: SupportTicketCreateInput) => {
+    return serverManagerService.createSupportTicket(id, input)
+  })
+
+  ipcMain.handle('hostedServer:updateSupportTicket', async (_event, id: string, ticketId: string, patch: SupportTicketUpdateInput) => {
+    return serverManagerService.updateSupportTicket(id, ticketId, patch)
+  })
+
+  ipcMain.handle('hostedServer:deleteSupportTicket', async (_event, id: string, ticketId: string) => {
+    return serverManagerService.deleteSupportTicket(id, ticketId)
+  })
+
+  ipcMain.handle('hostedServer:getSupportIngestStatus', async (_event, id: string) => {
+    return serverManagerService.getSupportIngestStatus(id)
+  })
+
+  ipcMain.handle('hostedServer:updateSupportIngestConfig', async (_event, id: string, patch: Partial<HostedServerSupportIngestConfig>) => {
+    return serverManagerService.updateSupportIngestConfig(id, patch)
+  })
+
+  ipcMain.handle('hostedServer:startSupportIngest', async (_event, id: string) => {
+    return serverManagerService.startSupportIngest(id)
+  })
+
+  ipcMain.handle('hostedServer:stopSupportIngest', async (_event, id: string) => {
+    return serverManagerService.stopSupportIngest(id)
+  })
+
+  ipcMain.handle('hostedServer:getSupportTicketUiConfig', async (_event, id: string) => {
+    return serverManagerService.getSupportTicketUiConfig(id)
+  })
+
+  ipcMain.handle('hostedServer:updateSupportTicketUiConfig', async (_event, id: string, patch: Partial<HostedServerSupportTicketUiConfig>) => {
+    return serverManagerService.updateSupportTicketUiConfig(id, patch)
+  })
+
+  // exportSupportSenderMod removed � CM only manages local servers; use deploySupportSenderMod toggle instead.
+
+  ipcMain.handle('hostedServer:deploySupportSenderMod', async (_event, id: string): Promise<{ success: boolean; filePath?: string; error?: string }> => {
+    try {
+      const status = await serverManagerService.getSupportIngestStatus(id)
+      const uiConfig = await serverManagerService.getSupportTicketUiConfig(id)
+      const config = await serverManagerService.getServerConfig(id)
+
+      // Resolve the same versions shown in the app footer at deploy time.
+      const appCfg = configService.get()
+      let deployGameVersion = appCfg.gamePaths?.gameVersion ?? null
+      if (!deployGameVersion && appCfg.gamePaths?.userDir) {
+        deployGameVersion = await discoveryService.readGameVersion(appCfg.gamePaths.userDir).catch(() => null)
+      }
+      let deployLauncherVersion = launcherService.getLauncherVersion()
+      try {
+        const lRes = await fetch('https://api.github.com/repos/BeamMP/BeamMP-Launcher/releases/latest')
+        if (lRes.ok) {
+          const d = await lRes.json() as { tag_name?: string }
+          if (d.tag_name) deployLauncherVersion = d.tag_name.replace(/^v/, '')
+        }
+      } catch { /* use cached */ }
+      if (!config) return { success: false, error: 'Server not found' }
+      const serverDir = serverManagerService.getServerDir(id)
+      const targetDir = join(serverDir, config.resourceFolder, 'Client')
+      await mkdir(targetDir, { recursive: true })
+      const targetPath = join(targetDir, 'beamcm-support-sender.zip')
+      const legacyZipNames = [
+        'beamcm_support_sender.zip',
+        'beammp_cm_support_sender.zip',
+      ]
+
+      for (const name of legacyZipNames) {
+        const legacyPath = join(targetDir, name)
+        try {
+          await unlink(legacyPath)
+        } catch (err: unknown) {
+          const code = (err as NodeJS.ErrnoException).code
+          if (code !== 'ENOENT') throw err
+        }
+      }
+
+      const readme = `Per-server Support Ticket Sender\n\nTarget server id: ${id}\nPOST endpoint: ${status.endpointExample}\nAuth token: ${status.config.token}\n\nThis package includes:\n- UI sender app with checkbox-based capture controls\n- Lua extension exposing collectors for logs/session/location/mods/versions/pc\n\nCollection mechanics:\n1) UI app calls extension functions via engineLua.\n2) Each enabled checkbox requests its collector (best-effort).\n3) The UI assembles payload + message fields and POSTs to /ticket with Bearer token.\n`
+  const luaTopicsLiteral = `{ ${uiConfig.topics.map((topic) => JSON.stringify(topic)).join(', ')} }`
+      const generatedLuaExtension = `-- Auto-generated by BeamMP Content Manager
+-- Support ticket sender: data collectors + ImGui HUD + TCP submit
+local M = {}
+local imgui = ui_imgui
+local socketLib = socket
+local UI_EXPANDED = true
+local LAST_STATUS = "Ready"
+local LAST_STATUS_ERR = false
+local HUD_X = 24
+local HUD_Y = 120
+local FORCE_WINDOW_RESET = true
+local INGEST_HOST = ${JSON.stringify(status.config.publicHost)}
+local INGEST_PORT = ${status.config.port}
+local AUTH_TOKEN = "${status.config.token}"
+local CONTENT_MANAGER_VERSION = ${JSON.stringify(app.getVersion())}
+local BEAMNG_VERSION = ${JSON.stringify(deployGameVersion ?? '')}
+local BEAMMP_CLIENT_VERSION = ${JSON.stringify(deployLauncherVersion ?? '')}
+local APP_RENDERER_MODE = ${JSON.stringify(configService.get().renderer ?? 'auto')}
+local UI_TOPICS = ${luaTopicsLiteral}
+local UI_MAX_MESSAGE_LENGTH = ${uiConfig.maxMessageLength}
+local UI_ENABLE_PRIORITY_DROPDOWN = ${uiConfig.enablePriorityDropdown ? 'true' : 'false'}
+local UI_REPORTER_IDENTITY_MODE = ${JSON.stringify(uiConfig.reporterIdentityMode)}
+local UI_INCLUDE_LOGS = ${uiConfig.includeLogsSnapshot ? 'true' : 'false'}
+local UI_INCLUDE_SESSION = ${uiConfig.includeSessionMetadata ? 'true' : 'false'}
+local UI_INCLUDE_LOCATION = ${uiConfig.includeLocation ? 'true' : 'false'}
+local UI_INCLUDE_MODS = ${uiConfig.includeLoadedMods ? 'true' : 'false'}
+local UI_INCLUDE_VERSIONS = ${uiConfig.includeVersions ? 'true' : 'false'}
+local UI_INCLUDE_PC = ${uiConfig.includePcSpecs ? 'true' : 'false'}
+local SELECTED_TOPIC_INDEX = 1
+local PRIORITY_OPTIONS = { "low", "normal", "high" }
+local SELECTED_PRIORITY_INDEX = 2
+local OPTIN_INCLUDE_LOGS = UI_INCLUDE_LOGS
+local OPTIN_INCLUDE_SESSION = UI_INCLUDE_SESSION
+local OPTIN_INCLUDE_LOCATION = UI_INCLUDE_LOCATION
+local OPTIN_INCLUDE_MODS = UI_INCLUDE_MODS
+local OPTIN_INCLUDE_VERSIONS = UI_INCLUDE_VERSIONS
+local OPTIN_INCLUDE_PC = UI_INCLUDE_PC
+local MESSAGE_TEXT = ""
+local MESSAGE_BUFFER = nil
+local MESSAGE_BUFFER_SIZE = math.max(256, (tonumber(UI_MAX_MESSAGE_LENGTH) or 1500) + 1)
+local TOPIC_INDEX_PTR = nil
+local PRIORITY_INDEX_PTR = nil
+local TOPIC_ITEMS_PTR = nil
+local PRIORITY_ITEMS_PTR = nil
+local OPTIN_INCLUDE_LOGS_PTR = nil
+local OPTIN_INCLUDE_SESSION_PTR = nil
+local OPTIN_INCLUDE_LOCATION_PTR = nil
+local OPTIN_INCLUDE_MODS_PTR = nil
+local OPTIN_INCLUDE_VERSIONS_PTR = nil
+local OPTIN_INCLUDE_PC_PTR = nil
+local ffiOk, ffiLib = pcall(require, "ffi")
+
+local function getMap()
+  local raw = getMissionFilename and getMissionFilename() or nil
+  if not raw then return nil end
+  -- "/levels/west_coast_usa/info.json" → "west_coast_usa"
+  local name = raw:match("^/?levels/([^/]+)")
+  return name or raw
+end
+
+local function readTail(path, maxLines)
+  local f = io.open(path, "r")
+  if not f then return "" end
+  local out = {}
+  for line in f:lines() do
+    out[#out + 1] = line
+    if #out > maxLines then table.remove(out, 1) end
+  end
+  f:close()
+  return table.concat(out, "\\n")
+end
+
+local function collectLogs()
+  local text = readTail("beamng.log", 200)
+  if text == "" then text = readTail("BeamNG.drive.log", 200) end
+  return { text = text, lines = 200 }
+end
+
+local function collectSession()
+  local players = {}
+  local seenPlayers = {}
+  local playerCount = 0
+
+  local function pushPlayer(rawName)
+    local name = type(rawName) == "string" and rawName:match("^%s*(.-)%s*$") or nil
+    if not name or name == "" or seenPlayers[name] then return end
+    seenPlayers[name] = true
+    players[#players + 1] = name
+  end
+
+  -- Primary: MPVehicleGE.getPlayers() — keyed table {[playerID] = {name=...}}
+  local mpvge = extensions and extensions.MPVehicleGE
+  if mpvge and mpvge.getPlayers then
+    local ok, mpPlayers = pcall(mpvge.getPlayers)
+    if ok and type(mpPlayers) == "table" then
+      for _, p in pairs(mpPlayers) do
+        playerCount = playerCount + 1
+        if type(p) == "table" then pushPlayer(p.name or p.playerName or p.nickname) end
+      end
+    end
+  end
+
+  -- Fallback: core_networking.getPlayers() (BeamNG singleplayer local list)
+  if playerCount == 0 then
+    local net = extensions and extensions.core_networking
+    if net and net.getPlayers then
+      local ok, list = pcall(net.getPlayers)
+      if ok and type(list) == "table" then
+        for _, p in ipairs(list) do
+          if type(p) == "table" then
+            playerCount = playerCount + 1
+            pushPlayer(p.name or p.playerName or p.nickname)
+          end
+        end
+      end
+    end
+  end
+
+  local veh = be and be:getPlayerVehicle(0)
+  local vehicleName = nil
+  if veh and veh.getJBeamFilename then
+    local ok, name = pcall(function() return veh:getJBeamFilename() end)
+    if ok then vehicleName = tostring(name) end
+  end
+
+  local localPresent = veh ~= nil
+  if playerCount == 0 and localPresent then
+    playerCount = 1
+    players[#players + 1] = "local-player"
+  end
+
+  local serverName = tostring(_G.BeamMPServerName or _G.ServerName or "")
+  local serverIdent = tostring(_G.BeamMPServerIdent or _G.BeamMPServerIdentifier or _G.BeamMPServerId or "")
+  local sessionId = tostring(_G.BeamMPSessionId or _G.BeamMPSessionID or "")
+
+  return {
+    serverName = serverName ~= "" and serverName or nil,
+    serverIdent = serverIdent ~= "" and serverIdent or nil,
+    sessionId = sessionId ~= "" and sessionId or nil,
+    map = getMap(),
+    playerCount = playerCount,
+    players = players,
+    vehicle = vehicleName
+  }
+end
+
+local function collectLocation()
+  -- Try vehicle position first
+  local veh = be and be:getPlayerVehicle(0)
+  if veh then
+    local ok, p = pcall(function() return veh:getPosition() end)
+    if ok and p then
+      local speed = 0
+      if veh.getVelocity then
+        local vok, v = pcall(function() return veh:getVelocity() end)
+        if vok and v and v.length then speed = v:length() * 3.6 end
+      end
+      return { map = getMap(), x = p.x, y = p.y, z = p.z, speedKph = speed }
+    end
+  end
+  -- Fallback: camera position (works when on foot / spectating)
+  local camPos = nil
+  local cam = extensions and extensions.core_camera
+  if cam and cam.getPosition then
+    local ok, p = pcall(function() return cam.getPosition() end)
+    if ok and p then camPos = p end
+  end
+  if not camPos and Camera and Camera.getPosition then
+    local ok, p = pcall(function() return Camera.getPosition() end)
+    if ok and p then camPos = p end
+  end
+  if camPos then
+    return { map = getMap(), x = camPos.x, y = camPos.y, z = camPos.z }
+  end
+  return { map = getMap() }
+end
+
+local function collectMods()
+  local names = {}
+  local allNames = {}
+  local mm = extensions and extensions.core_modmanager
+  if mm and mm.getMods then
+    local ok, mods = pcall(mm.getMods)
+    if ok and type(mods) == "table" then
+      for _, m in pairs(mods) do
+        if type(m) == "table" then
+          local n = m.modname or m.name or m.filename
+          if n then
+            allNames[#allNames + 1] = tostring(n)
+            -- Only include mods that are currently active/enabled
+            local isActive = m.active == true or m.isActive == true or m.enabled == true
+            if not isActive then
+              local state = tostring(m.state or m.status or "")
+              isActive = (state == "active" or state == "enabled" or state == "loaded")
+            end
+            if isActive then names[#names + 1] = tostring(n) end
+          end
+        end
+      end
+    end
+  end
+  -- If active filtering returned nothing but we have mods, fall back to all mods
+  -- so the list isn't misleadingly empty (e.g. API uses a flag we don't know yet).
+  if #names == 0 and #allNames > 0 then return allNames end
+  return names
+end
+
+local function collectVersions()
+  -- Versions are baked in at deploy time from the app footer data sources.
+  return {
+    game = BEAMNG_VERSION,
+    beammpClient = BEAMMP_CLIENT_VERSION,
+    contentManager = CONTENT_MANAGER_VERSION
+  }
+end
+
+local function collectPc()
+  local gpuName = ""
+  local rendererApi = ""
+  local vramGb = nil
+
+  if Engine and Engine.Platform and Engine.Platform.getGPUInfo then
+    local ok, gpuInfo = pcall(function() return Engine.Platform.getGPUInfo() end)
+    if ok and type(gpuInfo) == "table" then
+      if gpuInfo.name then gpuName = tostring(gpuInfo.name) end
+      if type(gpuInfo.renderer) == "string" and gpuInfo.renderer ~= "" then rendererApi = gpuInfo.renderer end
+      if type(gpuInfo.api) == "string" and gpuInfo.api ~= "" then rendererApi = gpuInfo.api end
+      if type(gpuInfo.graphicsAPI) == "string" and gpuInfo.graphicsAPI ~= "" then rendererApi = gpuInfo.graphicsAPI end
+      local memMb = tonumber(gpuInfo.memoryMB or gpuInfo.vramMB)
+      if memMb and memMb > 0 then
+        vramGb = math.floor((memMb / 1024) * 10 + 0.5) / 10
+      end
+    end
+  end
+
+  if gpuName == "" and GFXDevice and GFXDevice.getAdapterName then
+    local ok, name = pcall(function() return GFXDevice.getAdapterName() end)
+    if ok and name then gpuName = tostring(name) end
+  end
+
+  if rendererApi == "" and GFXDevice and GFXDevice.getRenderer then
+    local ok, api = pcall(function() return GFXDevice.getRenderer() end)
+    if ok and api then rendererApi = tostring(api) end
+  end
+
+  if rendererApi == "" then
+    if APP_RENDERER_MODE == "vulkan" then rendererApi = "Vulkan"
+    elseif APP_RENDERER_MODE == "dx11" then rendererApi = "DirectX 11"
+    else rendererApi = "Auto" end
+  end
+
+  local rendererApiLower = string.lower(tostring(rendererApi))
+  if string.find(rendererApiLower, "vk", 1, true) or string.find(rendererApiLower, "vulkan", 1, true) then
+    rendererApi = "Vulkan"
+  elseif string.find(rendererApiLower, "dx", 1, true) or string.find(rendererApiLower, "directx", 1, true) then
+    rendererApi = "DirectX 11"
+  end
+
+  return {
+    os = (jit and jit.os) and tostring(jit.os) or "",
+    cpu = (jit and jit.arch) and tostring(jit.arch) or "",
+    arch = (jit and jit.arch) and tostring(jit.arch) or "",
+    gpu = gpuName,
+    renderer = rendererApi,
+    vramGb = vramGb
+  }
+end
+
+local function collectReporter()
+  local out = { name = "", beammpId = "" }
+  local net = extensions and extensions.core_networking
+  if net and net.getPlayers then
+    local ok, list = pcall(net.getPlayers)
+    if ok and type(list) == "table" then
+      for _, p in ipairs(list) do
+        if type(p) == "table" then
+          local name = p.name or p.playerName or p.nickname
+          local id = p.beammpId or p.id or p.playerID or p.auth
+          if name and out.name == "" then out.name = tostring(name) end
+          if id and out.beammpId == "" then out.beammpId = tostring(id) end
+          if out.name ~= "" and out.beammpId ~= "" then break end
+        end
+      end
+    end
+  end
+
+  if out.name == "" then
+    local session = collectSession()
+    if type(session.players) == "table" and #session.players > 0 then
+      out.name = tostring(session.players[1])
+    end
+  end
+
+  if out.beammpId == "" then
+    local fallbackId = _G.BeamMPPlayerID or _G.BeamMPPlayerId or _G.BeamMPAuthId
+    if fallbackId then out.beammpId = tostring(fallbackId) end
+  end
+
+  return out
+end
+
+function M.collect(kind)
+  if kind == "logs" then return collectLogs() end
+  if kind == "session" then return collectSession() end
+  if kind == "location" then return collectLocation() end
+  if kind == "mods" then return collectMods() end
+  if kind == "versions" then return collectVersions() end
+  if kind == "pc" then return collectPc() end
+  if kind == "reporter" then return collectReporter() end
+  return nil
+end
+
+local function buildPayload()
+  local payload = {}
+  if OPTIN_INCLUDE_LOGS then payload.logsSnapshot = collectLogs() end
+  if OPTIN_INCLUDE_SESSION then payload.sessionMetadata = collectSession() end
+  if OPTIN_INCLUDE_LOCATION then payload.location = collectLocation() end
+  if OPTIN_INCLUDE_MODS then payload.loadedMods = collectMods() end
+  if OPTIN_INCLUDE_VERSIONS then payload.versions = collectVersions() end
+  if OPTIN_INCLUDE_PC then payload.pcSpecs = collectPc() end
+  return payload
+end
+
+local function topicAt(index)
+  if type(UI_TOPICS) ~= "table" then return "General" end
+  local v = UI_TOPICS[index]
+  if type(v) == "string" and v ~= "" then return v end
+  return "General"
+end
+
+local function postTicket(priority)
+  local host = tostring(INGEST_HOST or "")
+  if host == "" then host = "127.0.0.1" end
+  if not socketLib or type(socketLib.tcp) ~= "function" then return false, "socket.tcp unavailable" end
+
+  local reporter = nil
+  if UI_REPORTER_IDENTITY_MODE == "auto" then
+    reporter = collectReporter()
+  end
+
+  local maxMessageLength = math.max(1, tonumber(UI_MAX_MESSAGE_LENGTH) or 1500)
+  local autoMessage = "Submitted from in-game support HUD at " .. os.date("!%Y-%m-%dT%H:%M:%SZ")
+  local messageValue = tostring(MESSAGE_TEXT or "")
+  if messageValue == "" then messageValue = autoMessage end
+  local trimmedMessage = string.sub(messageValue, 1, maxMessageLength)
+  local body = {
+    source = "in-game",
+    priority = priority or "normal",
+    subject = topicAt(SELECTED_TOPIC_INDEX),
+    message = trimmedMessage,
+    reporterName = (reporter and reporter.name) or nil,
+    reporterBeammpId = (reporter and reporter.beammpId) or nil,
+    payload = buildPayload(),
+  }
+
+  local json = jsonEncode and jsonEncode(body) or "{}"
+  local sock = socketLib.tcp()
+  if not sock then return false, "socket init failed" end
+  sock:settimeout(4)
+
+  local hostUsed = host
+  local ok, err = sock:connect(host, INGEST_PORT)
+  if (not ok) and host ~= "127.0.0.1" then
+    local errText = string.lower(tostring(err or ""))
+    if string.find(errText, "restricted", 1, true) then
+      pcall(function() sock:close() end)
+      sock = socketLib.tcp()
+      if not sock then return false, "socket init failed" end
+      sock:settimeout(4)
+      hostUsed = "127.0.0.1"
+      ok, err = sock:connect(hostUsed, INGEST_PORT)
+    end
+  end
+  if not ok then
+    pcall(function() sock:close() end)
+    return false, "connect failed: " .. tostring(err)
+  end
+
+  local req =
+    "POST /ticket HTTP/1.1\\r\\n" ..
+    "Host: " .. hostUsed .. ":" .. tostring(INGEST_PORT) .. "\\r\\n" ..
+    "Authorization: Bearer " .. AUTH_TOKEN .. "\\r\\n" ..
+    "Content-Type: application/json\\r\\n" ..
+    "Content-Length: " .. tostring(#json) .. "\\r\\n" ..
+    "Connection: close\\r\\n\\r\\n" ..
+    json
+
+  local sent, sendErr = sock:send(req)
+  if not sent then
+    pcall(function() sock:close() end)
+    return false, "send failed: " .. tostring(sendErr)
+  end
+
+  local chunks = {}
+  while true do
+    local chunk, recvErr, partial = sock:receive(1024)
+    if chunk and #chunk > 0 then chunks[#chunks + 1] = chunk end
+    if partial and #partial > 0 then chunks[#chunks + 1] = partial end
+    if recvErr == "closed" then break end
+    if recvErr and recvErr ~= "timeout" then break end
+    if not chunk and not partial and recvErr == nil then break end
+  end
+  pcall(function() sock:close() end)
+
+  local response = table.concat(chunks)
+  local code = tonumber(response:match("HTTP/%d%.%d%s+(%d%d%d)")) or 0
+  if code >= 200 and code < 300 then return true, "Submitted" end
+  return false, "HTTP " .. tostring(code)
+end
+
+local _imguiWarned = false
+
+local function getDisplayRect()
+  local io = imgui.GetIO and imgui.GetIO() or nil
+  local dx = 0
+  local dy = 0
+  local dw = 1920
+  local dh = 1080
+  if io and io.DisplayPos then
+    dx = tonumber(io.DisplayPos.x) or 0
+    dy = tonumber(io.DisplayPos.y) or 0
+  end
+  if io and io.DisplaySize then
+    dw = tonumber(io.DisplaySize.x) or 1920
+    dh = tonumber(io.DisplaySize.y) or 1080
+  end
+  return dx, dy, dw, dh
+end
+
+local function getMousePos()
+  local io = imgui.GetIO and imgui.GetIO() or nil
+  local mx = nil
+  local my = nil
+  if io and io.MousePos then
+    mx = tonumber(io.MousePos.x)
+    my = tonumber(io.MousePos.y)
+  end
+  return mx, my
+end
+
+local function clamp(v, lo, hi)
+  if v < lo then return lo end
+  if v > hi then return hi end
+  return v
+end
+
+local function ensureWidgetPtrs()
+  if not imgui then return end
+  local topicOptions = (type(UI_TOPICS) == "table" and #UI_TOPICS > 0) and UI_TOPICS or { "General" }
+  if not TOPIC_ITEMS_PTR and imgui.ArrayCharPtrByTbl then
+    local ok, ptr = pcall(function() return imgui.ArrayCharPtrByTbl(topicOptions) end)
+    if ok and ptr then TOPIC_ITEMS_PTR = ptr end
+  end
+  if not PRIORITY_ITEMS_PTR and imgui.ArrayCharPtrByTbl then
+    local ok, ptr = pcall(function() return imgui.ArrayCharPtrByTbl(PRIORITY_OPTIONS) end)
+    if ok and ptr then PRIORITY_ITEMS_PTR = ptr end
+  end
+  if not TOPIC_INDEX_PTR and imgui.IntPtr then
+    local ok, ptr = pcall(function() return imgui.IntPtr(math.max(0, SELECTED_TOPIC_INDEX - 1)) end)
+    if ok and ptr then TOPIC_INDEX_PTR = ptr end
+  end
+  if not PRIORITY_INDEX_PTR and imgui.IntPtr then
+    local ok, ptr = pcall(function() return imgui.IntPtr(math.max(0, SELECTED_PRIORITY_INDEX - 1)) end)
+    if ok and ptr then PRIORITY_INDEX_PTR = ptr end
+  end
+  if not OPTIN_INCLUDE_LOGS_PTR and imgui.BoolPtr then
+    local ok, ptr = pcall(function() return imgui.BoolPtr(OPTIN_INCLUDE_LOGS) end)
+    if ok and ptr then OPTIN_INCLUDE_LOGS_PTR = ptr end
+  end
+  if not OPTIN_INCLUDE_SESSION_PTR and imgui.BoolPtr then
+    local ok, ptr = pcall(function() return imgui.BoolPtr(OPTIN_INCLUDE_SESSION) end)
+    if ok and ptr then OPTIN_INCLUDE_SESSION_PTR = ptr end
+  end
+  if not OPTIN_INCLUDE_LOCATION_PTR and imgui.BoolPtr then
+    local ok, ptr = pcall(function() return imgui.BoolPtr(OPTIN_INCLUDE_LOCATION) end)
+    if ok and ptr then OPTIN_INCLUDE_LOCATION_PTR = ptr end
+  end
+  if not OPTIN_INCLUDE_MODS_PTR and imgui.BoolPtr then
+    local ok, ptr = pcall(function() return imgui.BoolPtr(OPTIN_INCLUDE_MODS) end)
+    if ok and ptr then OPTIN_INCLUDE_MODS_PTR = ptr end
+  end
+  if not OPTIN_INCLUDE_VERSIONS_PTR and imgui.BoolPtr then
+    local ok, ptr = pcall(function() return imgui.BoolPtr(OPTIN_INCLUDE_VERSIONS) end)
+    if ok and ptr then OPTIN_INCLUDE_VERSIONS_PTR = ptr end
+  end
+  if not OPTIN_INCLUDE_PC_PTR and imgui.BoolPtr then
+    local ok, ptr = pcall(function() return imgui.BoolPtr(OPTIN_INCLUDE_PC) end)
+    if ok and ptr then OPTIN_INCLUDE_PC_PTR = ptr end
+  end
+end
+
+local function ensureMessageBuffer()
+  if MESSAGE_BUFFER or not imgui or not imgui.ArrayChar then return end
+  local ok, buffer = pcall(function() return imgui.ArrayChar(MESSAGE_BUFFER_SIZE, MESSAGE_TEXT or "") end)
+  if ok and buffer then MESSAGE_BUFFER = buffer end
+end
+
+local function readMessageBuffer()
+  if not MESSAGE_BUFFER then return tostring(MESSAGE_TEXT or "") end
+  if ffiOk and ffiLib and ffiLib.string then
+    local ok, value = pcall(function() return ffiLib.string(MESSAGE_BUFFER) end)
+    if ok and type(value) == "string" then return value end
+  end
+  return tostring(MESSAGE_TEXT or "")
+end
+
+local function drawBoolCheckbox(label, ptr, fallbackValue)
+  if imgui.Checkbox and ptr then
+    local ok = pcall(function() imgui.Checkbox(label, ptr) end)
+    if ok then return ptr[0] end
+  end
+  local prefix = fallbackValue and "[x] " or "[ ] "
+  if imgui.Button(prefix .. tostring(label), imgui.ImVec2(160, 22)) then
+    return not fallbackValue
+  end
+  return fallbackValue
+end
+
+local function drawSupportHud()
+  if not imgui then
+    if not _imguiWarned then
+      _imguiWarned = true
+      pcall(function() if guihooks and guihooks.trigger then guihooks.trigger("toastrMsg", {type="warning", title="BeamCM Support", msg="imgui unavailable"}) end end)
+      log("W", "beamcmSupport", "imgui unavailable in drawSupportHud")
+    end
+    return
+  end
+
+  local dx, dy, dw, dh = getDisplayRect()
+  ensureWidgetPtrs()
+  if FORCE_WINDOW_RESET then
+    local mx, my = getMousePos()
+    local baseX = (mx and mx > -100000 and mx < 100000) and (mx + 20) or (dx + HUD_X)
+    local baseY = (my and my > -100000 and my < 100000) and (my + 16) or (dy + HUD_Y)
+    imgui.SetNextWindowPos(imgui.ImVec2(baseX, baseY), imgui.Cond_Always)
+  else
+    imgui.SetNextWindowPos(imgui.ImVec2(dx + HUD_X, dy + HUD_Y), imgui.Cond_FirstUseEver)
+  end
+  imgui.SetNextWindowSize(imgui.ImVec2(360, 0), imgui.Cond_FirstUseEver)
+  if imgui.Begin("BeamCM Support Ticket##beamcm_support_panel") then
+    if FORCE_WINDOW_RESET then FORCE_WINDOW_RESET = false end
+    imgui.Text("In-Game Support")
+    imgui.TextWrapped("Drag this window by its title bar. Use Reset Position to snap near your cursor.")
+    local topicOptions = (type(UI_TOPICS) == "table" and #UI_TOPICS > 0) and UI_TOPICS or { "General" }
+    if imgui.Combo1 and TOPIC_INDEX_PTR and TOPIC_ITEMS_PTR then
+      local ok = pcall(function() return imgui.Combo1("Topic", TOPIC_INDEX_PTR, TOPIC_ITEMS_PTR, #topicOptions) end)
+      if ok then SELECTED_TOPIC_INDEX = (tonumber(TOPIC_INDEX_PTR[0]) or 0) + 1 end
+    elseif imgui.Button("Next Topic", imgui.ImVec2(140, 24)) then
+      local topicCount = #topicOptions
+      if topicCount > 0 then SELECTED_TOPIC_INDEX = (SELECTED_TOPIC_INDEX % topicCount) + 1 end
+    end
+
+    if UI_ENABLE_PRIORITY_DROPDOWN then
+      if imgui.Combo1 and PRIORITY_INDEX_PTR and PRIORITY_ITEMS_PTR then
+        local ok = pcall(function() return imgui.Combo1("Priority", PRIORITY_INDEX_PTR, PRIORITY_ITEMS_PTR, #PRIORITY_OPTIONS) end)
+        if ok then SELECTED_PRIORITY_INDEX = (tonumber(PRIORITY_INDEX_PTR[0]) or 1) + 1 end
+      elseif imgui.Button("Next Priority", imgui.ImVec2(140, 24)) then
+        SELECTED_PRIORITY_INDEX = (SELECTED_PRIORITY_INDEX % #PRIORITY_OPTIONS) + 1
+      end
+    else
+      SELECTED_PRIORITY_INDEX = 2
+      imgui.Text("Priority: normal")
+    end
+
+    if imgui.Button("Reset Position", imgui.ImVec2(140, 24)) then
+      FORCE_WINDOW_RESET = true
+    end
+
+    imgui.Separator()
+    imgui.TextWrapped("Configured from server settings. Reporter mode: " .. tostring(UI_REPORTER_IDENTITY_MODE) .. ", max message: " .. tostring(UI_MAX_MESSAGE_LENGTH))
+    imgui.Text("Message")
+    ensureMessageBuffer()
+    if MESSAGE_BUFFER and imgui.InputTextMultiline then
+      local ok = pcall(function() return imgui.InputTextMultiline("##beamcm_support_message", MESSAGE_BUFFER, MESSAGE_BUFFER_SIZE, imgui.ImVec2(330, 92), nil) end)
+      if not ok and imgui.InputText then
+        pcall(function() imgui.InputText("##beamcm_support_message", MESSAGE_BUFFER, MESSAGE_BUFFER_SIZE) end)
+      end
+      MESSAGE_TEXT = string.sub(readMessageBuffer(), 1, math.max(1, tonumber(UI_MAX_MESSAGE_LENGTH) or 1500))
+    elseif MESSAGE_BUFFER and imgui.InputText then
+      pcall(function() imgui.InputText("##beamcm_support_message", MESSAGE_BUFFER, MESSAGE_BUFFER_SIZE) end)
+      MESSAGE_TEXT = string.sub(readMessageBuffer(), 1, math.max(1, tonumber(UI_MAX_MESSAGE_LENGTH) or 1500))
+    else
+      imgui.TextWrapped("Message input is unavailable in this BeamNG ImGui build.")
+    end
+
+    imgui.Separator()
+    imgui.Text("Data options")
+    OPTIN_INCLUDE_LOGS = drawBoolCheckbox("Logs Snapshot", OPTIN_INCLUDE_LOGS_PTR, OPTIN_INCLUDE_LOGS)
+    OPTIN_INCLUDE_SESSION = drawBoolCheckbox("Session Metadata", OPTIN_INCLUDE_SESSION_PTR, OPTIN_INCLUDE_SESSION)
+    OPTIN_INCLUDE_LOCATION = drawBoolCheckbox("Location", OPTIN_INCLUDE_LOCATION_PTR, OPTIN_INCLUDE_LOCATION)
+    OPTIN_INCLUDE_MODS = drawBoolCheckbox("Loaded Mods", OPTIN_INCLUDE_MODS_PTR, OPTIN_INCLUDE_MODS)
+    OPTIN_INCLUDE_VERSIONS = drawBoolCheckbox("Versions", OPTIN_INCLUDE_VERSIONS_PTR, OPTIN_INCLUDE_VERSIONS)
+    OPTIN_INCLUDE_PC = drawBoolCheckbox("PC Specs", OPTIN_INCLUDE_PC_PTR, OPTIN_INCLUDE_PC)
+
+    imgui.Separator()
+    if imgui.Button("Submit Ticket", imgui.ImVec2(330, 30)) then
+      local selectedPriority = tostring(PRIORITY_OPTIONS[SELECTED_PRIORITY_INDEX] or "normal")
+      local submitOk, msg = postTicket(selectedPriority)
+      LAST_STATUS = tostring(msg)
+      LAST_STATUS_ERR = not submitOk
+    end
+    imgui.Separator()
+    imgui.Text((LAST_STATUS_ERR and "Error: " or "Status: ") .. tostring(LAST_STATUS))
+  end
+  imgui.End()
+end
+
+local function onExtensionLoaded()
+  pcall(function() setExtensionUnloadMode(M, "manual") end)
+  pcall(function()
+    if guihooks and guihooks.trigger then
+      guihooks.trigger("toastrMsg", {type="info", title="BeamCM Support", msg="Extension loaded"})
+    end
+  end)
+  log("I", "beamcmSupport", "beamcmsupport extension loaded")
+end
+
+local function onPreRender(dtReal, dtSim, dtRaw)
+  drawSupportHud()
+end
+
+M.onExtensionLoaded = onExtensionLoaded
+M.onPreRender = onPreRender
+M.onInit = function() pcall(function() setExtensionUnloadMode(M, "manual") end) end
+
+return M
+`
+      const schema = JSON.stringify({
+        type: 'object',
+        required: ['subject', 'message', 'payload'],
+        properties: {
+          subject: { type: 'string' },
+          message: { type: 'string' },
+          reporterName: { type: 'string' },
+          reporterBeammpId: { type: 'string' },
+          payload: { type: 'object' },
+        }
+      }, null, 2)
+      // Match the same style used by BeamMP bridge patching (load + manual unload mode),
+      // with a fallback to extensions.load when available.
+      const generatedModScript = `local function isLoaded()
+  if not extensions then return false end
+  if type(extensions.isExtensionLoaded) == 'function' then
+    local ok, v = pcall(function() return extensions.isExtensionLoaded('beamcmsupport') end)
+    if ok and v then return true end
+  end
+  return false
+end
+
+local loaded = false
+
+if extensions and type(extensions.load) == 'function' then
+  local okExt, errExt = pcall(function() extensions.load('beamcmsupport') end)
+  if not okExt then
+    log('W', 'beamcmSupport', 'extensions.load failed: ' .. tostring(errExt))
+  end
+  loaded = isLoaded()
+end
+
+if (not loaded) and type(load) == 'function' then
+  local okLoad, errLoad = pcall(function() load('beamcmsupport') end)
+  if not okLoad then
+    log('W', 'beamcmSupport', 'load(beamcmsupport) failed: ' .. tostring(errLoad))
+  end
+  loaded = isLoaded()
+end
+
+if loaded then
+  pcall(function() setExtensionUnloadMode('beamcmsupport', 'manual') end)
+else
+  log('E', 'beamcmSupport', 'Failed to load beamcmsupport extension from modScript')
+end
+`
+
+      const { createWriteStream } = await import('node:fs')
+      const archiver = await import('archiver')
+      const output = createWriteStream(targetPath)
+      const archive = archiver.default('zip', { zlib: { level: 9 } })
+      await new Promise<void>((resolve, reject) => {
+        output.on('close', resolve)
+        archive.on('error', reject)
+        archive.pipe(output)
+        archive.append(readme, { name: 'README.txt' })
+        archive.append(schema, { name: 'support-ticket-schema.json' })
+        archive.append(generatedModScript, { name: 'scripts/BeamMP/modScript.lua' })
+        archive.append(generatedModScript, { name: 'scripts/beamcm-support-sender/modScript.lua' })
+        archive.append(generatedModScript, { name: 'scripts/beamcm_support_sender/modScript.lua' })
+        archive.append(generatedModScript, { name: 'scripts/beammp_cm_support_sender/modScript.lua' })
+        archive.append(generatedLuaExtension, { name: 'lua/ge/extensions/beamcmsupport.lua' })
+        archive.finalize()
+      })
+
+      // Mark ingest as enabled now that the sender mod is deployed.
+      // updateSupportIngestConfig will also start the HTTP ingest immediately
+      // if the server is already running.
+      await serverManagerService.updateSupportIngestConfig(id, { enabled: true })
+
+      return { success: true, filePath: targetPath }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('hostedServer:simulateSupportTicketSubmit', async (_event, id: string): Promise<{ success: boolean; statusCode?: number; ticketId?: string; error?: string }> => {
+    try {
+      let status = await serverManagerService.getSupportIngestStatus(id)
+      const uiConfig = await serverManagerService.getSupportTicketUiConfig(id)
+      if (!status.running) status = await serverManagerService.startSupportIngest(id)
+
+      const simulatedPayload: NonNullable<SupportTicketCreateInput['payload']> = {}
+      if (uiConfig.includeLogsSnapshot) simulatedPayload.logsSnapshot = 'simulated log line 1\\nsimulated log line 2'
+      if (uiConfig.includeSessionMetadata) simulatedPayload.sessionMetadata = { map: 'simulated_map', players: ['SimulatedPlayer'], playerCount: 1 }
+      if (uiConfig.includeLocation) simulatedPayload.location = { map: 'simulated_map', x: 123.45, y: 678.9, z: 11.22 }
+      if (uiConfig.includeLoadedMods) simulatedPayload.loadedMods = ['beamcm-support-sender.zip']
+      if (uiConfig.includeVersions) simulatedPayload.versions = { game: 'simulated', beammp: 'simulated', launcher: 'simulated', contentManager: app.getVersion() }
+      if (uiConfig.includePcSpecs) simulatedPayload.pcSpecs = { os: process.platform, cpu: process.arch }
+
+      const simulationMessage = 'Synthetic ticket generated by BeamMP CM to verify Support ingest end-to-end.'
+
+      const simulated: SupportTicketCreateInput = {
+        source: 'in-game',
+        priority: 'normal',
+        subject: `[Simulation] ${uiConfig.topics[0] ?? 'General'}`,
+        message: simulationMessage.slice(0, uiConfig.maxMessageLength),
+        reporterName: 'CM Simulation',
+        reporterBeammpId: 'simulated-client',
+        payload: simulatedPayload,
+      }
+
+      const body = JSON.stringify(simulated)
+      const response = await new Promise<{ statusCode: number; body: string }>((resolve, reject) => {
+        const req = httpRequest({
+          host: '127.0.0.1',
+          port: status.config.port,
+          method: 'POST',
+          path: '/ticket',
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(body),
+            Authorization: `Bearer ${status.config.token}`,
+          },
+        }, (res) => {
+          const chunks: Buffer[] = []
+          res.on('data', (c: Buffer) => chunks.push(c))
+          res.on('end', () => resolve({ statusCode: res.statusCode ?? 0, body: Buffer.concat(chunks).toString('utf-8') }))
+        })
+        req.on('error', reject)
+        req.write(body)
+        req.end()
+      })
+
+      let ticketId: string | undefined
+      try {
+        const parsed = JSON.parse(response.body) as { id?: string }
+        if (typeof parsed.id === 'string') ticketId = parsed.id
+      } catch { /* ignore */ }
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return { success: false, statusCode: response.statusCode, error: response.body || `HTTP ${response.statusCode}` }
+      }
+      return { success: true, statusCode: response.statusCode, ticketId }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('hostedServer:undeploySupportSenderMod', async (_event, id: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const config = await serverManagerService.getServerConfig(id)
+      if (!config) return { success: false, error: 'Server not found' }
+      const serverDir = serverManagerService.getServerDir(id)
+      const clientDir = join(serverDir, config.resourceFolder, 'Client')
+      const zipNames = [
+        'beamcm-support-sender.zip',
+        'beamcm_support_sender.zip',
+        'beammp_cm_support_sender.zip',
+      ]
+
+      for (const name of zipNames) {
+        const targetPath = join(clientDir, name)
+        try {
+          await unlink(targetPath)
+        } catch (err: unknown) {
+          const code = (err as NodeJS.ErrnoException).code
+          if (code !== 'ENOENT') throw err
+        }
+      }
+
+      // Disable and stop the ingest now that the sender mod is removed.
+      await serverManagerService.updateSupportIngestConfig(id, { enabled: false })
+
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
   ipcMain.handle('hostedServer:getConsole', async (_event, id: string) => {
     return serverManagerService.getConsole(id)
   })
@@ -5980,7 +6864,7 @@ export function registerIpcHandlers(): void {
     return serverManagerService.installExeFromPath(result.filePaths[0])
   })
 
-  // ── Server File Manager ──
+  // -- Server File Manager --
 
   ipcMain.handle('hostedServer:deployedMods', async (_event, id: string) => {
     return serverManagerService.getDeployedMods(id)
@@ -6060,7 +6944,7 @@ export function registerIpcHandlers(): void {
           await serverManagerService.setDeployMapping(id, basename(modFilePath), deployedNames)
           result = { success: true }
         } else {
-          // Not a Resources-layout zip — fall back to copying the full zip
+          // Not a Resources-layout zip � fall back to copying the full zip
           await serverManagerService.copyModToServer(id, modFilePath)
           result = { success: true }
         }
@@ -6089,7 +6973,7 @@ export function registerIpcHandlers(): void {
       )
 
       if (serverFiles && serverFiles.length > 0) {
-        // Server files were already extracted — copy them to this server
+        // Server files were already extracted � copy them to this server
         for (const sf of serverFiles) {
           const idx = sf.replace(/\\/g, '/').indexOf('/Resources/Server/')
           if (idx >= 0) {
@@ -6109,7 +6993,7 @@ export function registerIpcHandlers(): void {
         }
       }
       } else {
-        // Manual mod — extract Resources/Server/ entries from the zip
+        // Manual mod � extract Resources/Server/ entries from the zip
         const serverDir = serverManagerService.getServerDir(id)
         try {
           const extracted = await registryService.extractServerComponentFromZip(modFilePath, serverDir)
@@ -6290,12 +7174,12 @@ export function registerIpcHandlers(): void {
             }).on('error', reject)
           })
         } catch {
-          // IP lookup failed — continue without it
+          // IP lookup failed � continue without it
         }
       }
       return result
     } catch {
-      // Primary API failed entirely — try ipify.org + TCP check as fallback
+      // Primary API failed entirely � try ipify.org + TCP check as fallback
       try {
         const ipResult = await new Promise<string>((resolve, reject) => {
           httpsGet('https://api.ipify.org', (res) => {
@@ -6390,7 +7274,7 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // ── GPS Routes & Player Positions ──
+  // -- GPS Routes & Player Positions --
 
   ipcMain.handle('hostedServer:getRoutes', async (_event, id: string) => {
     return serverManagerService.getRoutes(id)
@@ -6441,7 +7325,7 @@ export function registerIpcHandlers(): void {
     return serverManagerService.undeployVoicePlugin(id)
   })
 
-  // ── Backup Schedule ──
+  // -- Backup Schedule --
 
   ipcMain.handle('hostedServer:getSchedule', async (_event, id: string) => {
     return backupSchedulerService.getSchedule(id)
@@ -6467,7 +7351,7 @@ export function registerIpcHandlers(): void {
     return backupSchedulerService.restoreBackup(id, filename)
   })
 
-  // ── Scheduled Tasks ──
+  // -- Scheduled Tasks --
 
   ipcMain.handle('hostedServer:getTasks', async (_event, id: string) => {
     return taskSchedulerService.getTasks(id)
@@ -6489,7 +7373,7 @@ export function registerIpcHandlers(): void {
     return taskSchedulerService.runTaskNow(id, taskId)
   })
 
-  // ── Analytics ──
+  // -- Analytics --
 
   ipcMain.handle('hostedServer:getAnalytics', async (_event, id: string) => {
     return analyticsService.getAnalytics(id)
@@ -6497,6 +7381,23 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('hostedServer:clearAnalytics', async (_event, id: string) => {
     return analyticsService.clearAnalytics(id)
+  })
+
+  ipcMain.handle('hostedServer:setIpMeta', async (_event, id: string, ip: string, patch: { nickname?: string | null; banned?: boolean }) => {
+    await analyticsService.setIpMeta(id, ip, patch)
+    // Auto-deploy ban plugin if setting a ban, auto-undeploy if no more bans exist
+    if (patch.banned === true) {
+      await serverManagerService.deployBanPlugin(id)
+    } else if (patch.banned === false) {
+      const hasAnyBans = await serverManagerService.isAnyIpBanned(id)
+      if (!hasAnyBans) {
+        await serverManagerService.undeployBanPlugin(id)
+      }
+    }
+  })
+
+  ipcMain.handle('hostedServer:isBanPluginDeployed', async (_event, id: string) => {
+    return serverManagerService.isBanPluginDeployed(id)
   })
 
   ipcMain.handle('hostedServer:updatePlayerTracking', async (_event, id: string, playerNames: string[]) => {
@@ -6507,7 +7408,7 @@ export function registerIpcHandlers(): void {
     return analyticsService.endAllSessions(id)
   })
 
-  // ── Mod Registry ──
+  // -- Mod Registry --
 
   ipcMain.handle('registry:getStatus', async () => {
     return registryService.getStatus()
@@ -6636,7 +7537,7 @@ export function registerIpcHandlers(): void {
     return resolver.findSupporters(identifier)
   })
 
-  // News feed – cached for 1 hour
+  // News feed � cached for 1 hour
   let newsFeedCache: {
     items: Array<{ id: string; source: 'steam' | 'beammp'; title: string; url: string; date: number; summary: string }>
     fetchedAt: number
@@ -6740,13 +7641,13 @@ export function registerIpcHandlers(): void {
     return items
   })
 
-  // ── Tailscale ──
+  // -- Tailscale --
 
   ipcMain.handle('tailscale:getStatus', async () => {
     return tailscaleService.getStatus()
   })
 
-  // ── Friends ──
+  // -- Friends --
 
   ipcMain.handle('friends:getAll', async () => {
     return configService.getFriends()
@@ -6772,7 +7673,7 @@ export function registerIpcHandlers(): void {
     return configService.recordSession(serverIdent, serverName, players)
   })
 
-  // ── Career Save Management ──
+  // ?????? Career Save Management ??????
   careerSaveService = new CareerSaveService(configService)
 
   ipcMain.handle('career:listProfiles', async () => {
@@ -6858,7 +7759,7 @@ export function registerIpcHandlers(): void {
     return careerSaveService.getAllServerAssociations()
   })
 
-  // ── Career Mod Management ──
+  // ?????? Career Mod Management ??????
   const careerModService = new CareerModService()
 
   ipcMain.handle('career:fetchCareerMPReleases', async () => {
@@ -6907,7 +7808,7 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // ── Career Plugin Browser ──
+  // -- Career Plugin Browser --
   const careerPluginService = new CareerPluginService()
 
   ipcMain.handle('career:listPluginCatalog', async () => {
@@ -6930,7 +7831,7 @@ export function registerIpcHandlers(): void {
     return careerPluginService.getInstalledPlugins(serverDir)
   })
 
-  // ── Server Admin Tools (CEI / CobaltEssentials / etc) ──
+  // -- Server Admin Tools (CEI / CobaltEssentials / etc) --
   // These reuse CareerPluginService with the 'admin' category and resolve hosted server dirs by id.
   ipcMain.handle('serverAdmin:listPluginCatalog', async () => {
     return careerPluginService.listCatalog('admin')
@@ -6973,7 +7874,7 @@ export function registerIpcHandlers(): void {
     return serverManagerService.getServerDir(serverId)
   })
 
-  // ── Custom Executable Paths ──
+  // -- Custom Executable Paths --
 
   ipcMain.handle('config:browseServerExe', async () => {
     const win = BrowserWindow.getFocusedWindow()
@@ -6989,7 +7890,7 @@ export function registerIpcHandlers(): void {
     return result.filePaths[0]
   })
 
-  // ── Controls / Input Bindings ──
+  // -- Controls / Input Bindings --
 
   ipcMain.handle('controls:getDevices', async () => {
     const cfg = configService.get()
@@ -7096,7 +7997,7 @@ export function registerIpcHandlers(): void {
     return inputBindingsService.importPreset(jsonString)
   })
 
-  // ── Livery Editor ──
+  // -- Livery Editor --
 
   ipcMain.handle('livery:getUVTemplate', async (_event, vehicleName: string): Promise<{ template: string | null; width: number; height: number }> => {
     const cfg = configService.get()
@@ -7134,7 +8035,7 @@ export function registerIpcHandlers(): void {
       }
     }
 
-    // No UV template found — look for skin baseColor textures to determine resolution
+    // No UV template found � look for skin baseColor textures to determine resolution
     const skinTexPattern = new RegExp(`^vehicles/${vehicleName}/[^/]*\\.color\\.(png|dds)$`, 'i')
     const texResult = await readFirstMatchWithName(zipPath, skinTexPattern)
     if (texResult && texResult.fileName.toLowerCase().endsWith('.png')) {

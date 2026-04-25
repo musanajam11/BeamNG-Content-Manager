@@ -45,6 +45,13 @@
     "goBack": "Go back",
     "more": "more"
   },
+  "analytics": {
+    "banActivated": "IP Ban Activated",
+    "banRequiresRestart": "The server must be restarted for this ban to take effect.",
+    "banConfirmTitle": "Ban IP Address",
+    "banConfirmMessage": "This IP will be blocked from connecting. The server must be restarted for the ban to take effect.",
+    "banConfirmAction": "Ban IP"
+  },
   "time": {
     "justNow": "just now",
     "minutesAgo": "{{n}}m ago",
@@ -59,6 +66,7 @@
     "vehicles": "Vehicles",
     "maps": "Maps",
     "mods": "Mods",
+    "support": "Support",
     "serverManager": "Server Manager",
     "launcher": "BeamMP Launcher",
     "controls": "Controls",
@@ -1295,6 +1303,9 @@
     "deleteProfileConfirm": "Permanently delete profile \"{{name}}\" and ALL its save slots? This cannot be undone.",
     "deleteSlotConfirm": "Permanently delete slot \"{{slot}}\" from profile \"{{profile}}\"? This cannot be undone.",
     "deleteBackupFirstPrompt": "Create a backup first so you can restore later if needed?",
+    "backupFirst": "Create Backup?",
+    "createBackup": "Create Backup",
+    "skipBackup": "Delete Without Backup",
     "deleteProfileSuccess": "Profile deleted",
     "deleteProfileSuccessWithBackup": "Profile deleted (backup saved as {{name}})",
     "deleteSlotSuccess": "Save slot deleted",

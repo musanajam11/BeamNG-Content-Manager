@@ -15,7 +15,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { BeamMPText } from '../BeamMPText'
 
-type Tab = 'status' | 'config' | 'console' | 'files' | 'mods' | 'heatmap' | 'schedule' | 'analytics'
+type Tab = 'status' | 'config' | 'console' | 'files' | 'mods' | 'heatmap' | 'schedule' | 'analytics' | 'support'
 
 interface NavItem {
   id: Tab | string
@@ -34,7 +34,7 @@ const navItems: NavItem[] = [
   { id: 'schedule', i18nKey: 'serverManager.sidebarSchedule', icon: <Calendar size={18} /> },
   { id: 'analytics', i18nKey: 'serverManager.sidebarAnalytics', icon: <BarChart3 size={18} /> },
   { id: 'heatmap', i18nKey: 'serverManager.sidebarPlayerHeatMap', icon: <Map size={18} /> },
-  { id: 'help', i18nKey: 'serverManager.sidebarSupport', icon: <HelpCircle size={18} />, disabled: true, badgeKey: 'serverManager.sidebarSoon' }
+  { id: 'support', i18nKey: 'serverManager.sidebarSupport', icon: <HelpCircle size={18} /> }
 ]
 
 interface SidebarNavProps {

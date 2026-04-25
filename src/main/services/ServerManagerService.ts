@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir, readdir, unlink, stat, copyFile, rm, chmod,
 import { existsSync, createWriteStream } from 'fs'
 import { join, basename, dirname, relative, sep, posix } from 'path'
 import { app, BrowserWindow, safeStorage } from 'electron'
+import { createServer as createHttpServer, type Server as HttpServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { AnalyticsService } from './AnalyticsService'
 import { spawn, ChildProcess } from 'child_process'
 import { randomUUID } from 'crypto'
@@ -19,7 +20,14 @@ import type {
   ServerFileEntry,
   ServerFileSearchResult,
   GPSRoute,
-  PlayerPosition
+  PlayerPosition,
+  SupportTicket,
+  SupportTicketStatus,
+  SupportTicketCreateInput,
+  SupportTicketUpdateInput,
+  HostedServerSupportIngestConfig,
+  HostedServerSupportTicketUiConfig,
+  HostedServerSupportIngestStatus,
 } from '../../shared/types'
 
 const DEFAULT_CONFIG: Omit<HostedServerConfig, 'id'> = {
@@ -50,6 +58,12 @@ interface RunningServer {
   resourceTimer: ReturnType<typeof setInterval> | null
   connectionPollTimer: ReturnType<typeof setInterval> | null
   analyticsPollerTimer: ReturnType<typeof setInterval> | null
+}
+
+interface RunningSupportIngest {
+  server: HttpServer
+  port: number
+  token: string
 }
 
 const MAX_CONSOLE_LINES = 2000
@@ -94,6 +108,7 @@ export class ServerManagerService {
   private customExeResolver: (() => string | null) | null = null
   private onServerStartCallback: ((id: string, serverDir: string, resourceFolder: string) => void) | null = null
   private analyticsService: AnalyticsService | null = null
+  private supportIngest = new Map<string, RunningSupportIngest>()
 
   constructor() {
     const base = join(app.getPath('appData'), 'BeamMP-ContentManager')
@@ -790,6 +805,412 @@ export class ServerManagerService {
     }
   }
 
+  /* ── Ban Enforcer Plugin Deploy ── */
+
+  async deployBanPlugin(id: string): Promise<void> {
+    const config = await this.getServerConfig(id)
+    if (!config) throw new Error('Server not found')
+    const pluginDir = join(this.serversDir, id, config.resourceFolder, 'Server', 'BeamMPCMBans')
+    if (!existsSync(pluginDir)) await mkdir(pluginDir, { recursive: true })
+    const pluginPath = join(pluginDir, 'main.lua')
+    const serverDir = join(this.serversDir, id)
+    await writeFile(pluginPath, buildBanEnforcerPlugin(serverDir), 'utf-8')
+  }
+
+  async isBanPluginDeployed(id: string): Promise<boolean> {
+    const config = await this.getServerConfig(id)
+    if (!config) return false
+    const pluginPath = join(this.serversDir, id, config.resourceFolder, 'Server', 'BeamMPCMBans', 'main.lua')
+    return existsSync(pluginPath)
+  }
+
+  async undeployBanPlugin(id: string): Promise<void> {
+    const config = await this.getServerConfig(id)
+    if (!config) throw new Error('Server not found')
+    const pluginDir = join(this.serversDir, id, config.resourceFolder, 'Server', 'BeamMPCMBans')
+    if (existsSync(pluginDir)) {
+      await rm(pluginDir, { recursive: true, force: true })
+    }
+  }
+
+  async isAnyIpBanned(id: string): Promise<boolean> {
+    try {
+      const raw = await readFile(join(this.serversDir, id, 'ip_meta.json'), 'utf-8')
+      const parsed: unknown = JSON.parse(raw)
+      if (typeof parsed === 'object' && parsed !== null) {
+        for (const meta of Object.values(parsed)) {
+          if (typeof meta === 'object' && meta !== null && (meta as Record<string, unknown>).banned === true) {
+            return true
+          }
+        }
+      }
+    } catch {
+      // File doesn't exist or is invalid
+    }
+    return false
+  }
+
+  /* ── Per-Server Support Tickets ── */
+
+  private supportDir(id: string): string {
+    return join(this.serversDir, id, 'support')
+  }
+
+  private supportTicketsPath(id: string): string {
+    return join(this.supportDir(id), 'tickets.json')
+  }
+
+  private supportConfigPath(id: string): string {
+    return join(this.supportDir(id), 'ingest.json')
+  }
+
+  private supportTicketUiConfigPath(id: string): string {
+    return join(this.supportDir(id), 'ticket-ui.json')
+  }
+
+  private async ensureSupportDir(id: string): Promise<void> {
+    const dir = this.supportDir(id)
+    if (!existsSync(dir)) await mkdir(dir, { recursive: true })
+  }
+
+  private async getSupportConfig(id: string): Promise<HostedServerSupportIngestConfig> {
+    await this.ensureSupportDir(id)
+    const cfgPath = this.supportConfigPath(id)
+    const serverCfg = await this.getServerConfig(id)
+    const fallbackPort = (serverCfg?.port ?? 30814) + 1000
+    const fallback: HostedServerSupportIngestConfig = {
+      enabled: false,
+      port: fallbackPort,
+      token: randomUUID(),
+      publicHost: '',
+    }
+    if (!existsSync(cfgPath)) {
+      await writeFile(cfgPath, JSON.stringify(fallback, null, 2), 'utf-8')
+      return fallback
+    }
+    try {
+      const parsed = JSON.parse(await readFile(cfgPath, 'utf-8')) as Partial<HostedServerSupportIngestConfig>
+      const merged: HostedServerSupportIngestConfig = {
+        enabled: parsed.enabled === true,
+        port: typeof parsed.port === 'number' && parsed.port > 0 ? parsed.port : fallback.port,
+        token: typeof parsed.token === 'string' && parsed.token.trim().length > 0 ? parsed.token : fallback.token,
+        publicHost: typeof parsed.publicHost === 'string' ? parsed.publicHost.trim() : fallback.publicHost,
+      }
+      if (
+        merged.token !== parsed.token
+        || merged.port !== parsed.port
+        || merged.enabled !== parsed.enabled
+        || merged.publicHost !== parsed.publicHost
+      ) {
+        await writeFile(cfgPath, JSON.stringify(merged, null, 2), 'utf-8')
+      }
+      return merged
+    } catch {
+      await writeFile(cfgPath, JSON.stringify(fallback, null, 2), 'utf-8')
+      return fallback
+    }
+  }
+
+  private async setSupportConfig(id: string, config: HostedServerSupportIngestConfig): Promise<void> {
+    await this.ensureSupportDir(id)
+    await writeFile(this.supportConfigPath(id), JSON.stringify(config, null, 2), 'utf-8')
+  }
+
+  async getSupportTicketUiConfig(id: string): Promise<HostedServerSupportTicketUiConfig> {
+    await this.ensureSupportDir(id)
+    const cfgPath = this.supportTicketUiConfigPath(id)
+    const fallback: HostedServerSupportTicketUiConfig = {
+      topics: ['Bug Report', 'Gameplay Issue', 'Player Report', 'Connection Problem', 'Other'],
+      maxMessageLength: 1500,
+      enablePriorityDropdown: false,
+      reporterIdentityMode: 'auto',
+      includeLogsSnapshot: true,
+      includeSessionMetadata: true,
+      includeLocation: true,
+      includeLoadedMods: true,
+      includeVersions: true,
+      includePcSpecs: true,
+    }
+
+    const normalize = (raw: Partial<HostedServerSupportTicketUiConfig>): HostedServerSupportTicketUiConfig => {
+      const topics = Array.isArray(raw.topics)
+        ? raw.topics
+          .map((v) => (typeof v === 'string' ? v.trim() : ''))
+          .filter((v) => v.length > 0)
+          .slice(0, 20)
+          .map((v) => v.slice(0, 64))
+        : fallback.topics
+      return {
+        topics: topics.length > 0 ? topics : fallback.topics,
+        maxMessageLength: typeof raw.maxMessageLength === 'number'
+          ? Math.min(5000, Math.max(120, Math.floor(raw.maxMessageLength)))
+          : fallback.maxMessageLength,
+        enablePriorityDropdown: raw.enablePriorityDropdown ?? fallback.enablePriorityDropdown,
+        reporterIdentityMode: raw.reporterIdentityMode === 'manual' ? 'manual' : 'auto',
+        includeLogsSnapshot: raw.includeLogsSnapshot ?? fallback.includeLogsSnapshot,
+        includeSessionMetadata: raw.includeSessionMetadata ?? fallback.includeSessionMetadata,
+        includeLocation: raw.includeLocation ?? fallback.includeLocation,
+        includeLoadedMods: raw.includeLoadedMods ?? fallback.includeLoadedMods,
+        includeVersions: raw.includeVersions ?? fallback.includeVersions,
+        includePcSpecs: raw.includePcSpecs ?? fallback.includePcSpecs,
+      }
+    }
+
+    if (!existsSync(cfgPath)) {
+      await writeFile(cfgPath, JSON.stringify(fallback, null, 2), 'utf-8')
+      return fallback
+    }
+
+    try {
+      const parsed = JSON.parse(await readFile(cfgPath, 'utf-8')) as Partial<HostedServerSupportTicketUiConfig>
+      const merged = normalize(parsed)
+      if (JSON.stringify(parsed) !== JSON.stringify(merged)) {
+        await writeFile(cfgPath, JSON.stringify(merged, null, 2), 'utf-8')
+      }
+      return merged
+    } catch {
+      await writeFile(cfgPath, JSON.stringify(fallback, null, 2), 'utf-8')
+      return fallback
+    }
+  }
+
+  async updateSupportTicketUiConfig(id: string, patch: Partial<HostedServerSupportTicketUiConfig>): Promise<HostedServerSupportTicketUiConfig> {
+    const current = await this.getSupportTicketUiConfig(id)
+    const nextTopics = Array.isArray(patch.topics)
+      ? patch.topics
+        .map((v) => (typeof v === 'string' ? v.trim() : ''))
+        .filter((v) => v.length > 0)
+        .slice(0, 20)
+        .map((v) => v.slice(0, 64))
+      : current.topics
+
+    const next: HostedServerSupportTicketUiConfig = {
+      topics: nextTopics.length > 0 ? nextTopics : current.topics,
+      maxMessageLength: typeof patch.maxMessageLength === 'number'
+        ? Math.min(5000, Math.max(120, Math.floor(patch.maxMessageLength)))
+        : current.maxMessageLength,
+      enablePriorityDropdown: patch.enablePriorityDropdown ?? current.enablePriorityDropdown,
+      reporterIdentityMode: patch.reporterIdentityMode === 'manual'
+        ? 'manual'
+        : (patch.reporterIdentityMode === 'auto' ? 'auto' : current.reporterIdentityMode),
+      includeLogsSnapshot: patch.includeLogsSnapshot ?? current.includeLogsSnapshot,
+      includeSessionMetadata: patch.includeSessionMetadata ?? current.includeSessionMetadata,
+      includeLocation: patch.includeLocation ?? current.includeLocation,
+      includeLoadedMods: patch.includeLoadedMods ?? current.includeLoadedMods,
+      includeVersions: patch.includeVersions ?? current.includeVersions,
+      includePcSpecs: patch.includePcSpecs ?? current.includePcSpecs,
+    }
+
+    await this.ensureSupportDir(id)
+    await writeFile(this.supportTicketUiConfigPath(id), JSON.stringify(next, null, 2), 'utf-8')
+    return next
+  }
+
+  async getSupportIngestStatus(id: string): Promise<HostedServerSupportIngestStatus> {
+    const config = await this.getSupportConfig(id)
+    const serverConfig = await this.getServerConfig(id)
+    const senderDeployed = serverConfig
+      ? existsSync(join(this.getServerDir(id), serverConfig.resourceFolder, 'Client', 'beamcm-support-sender.zip'))
+      : false
+    const endpointHost = config.publicHost || '<server-ip>'
+    return {
+      running: this.supportIngest.has(id),
+      senderDeployed,
+      config,
+      endpointPath: '/ticket',
+      endpointExample: `http://${endpointHost}:${config.port}/ticket`,
+    }
+  }
+
+  async updateSupportIngestConfig(id: string, patch: Partial<HostedServerSupportIngestConfig>): Promise<HostedServerSupportIngestStatus> {
+    const current = await this.getSupportConfig(id)
+    const next: HostedServerSupportIngestConfig = {
+      enabled: patch.enabled ?? current.enabled,
+      port: patch.port ?? current.port,
+      token: patch.token ?? current.token,
+      publicHost: typeof patch.publicHost === 'string' ? patch.publicHost.trim() : current.publicHost,
+    }
+    await this.setSupportConfig(id, next)
+
+    const running = this.supportIngest.get(id)
+    if (running && (running.port !== next.port || running.token !== next.token || !next.enabled)) {
+      await this.stopSupportIngest(id)
+    }
+    if (next.enabled && !this.supportIngest.has(id)) {
+      await this.startSupportIngest(id)
+    }
+    return this.getSupportIngestStatus(id)
+  }
+
+  async listSupportTickets(id: string): Promise<SupportTicket[]> {
+    await this.ensureSupportDir(id)
+    const p = this.supportTicketsPath(id)
+    if (!existsSync(p)) return []
+    try {
+      const parsed = JSON.parse(await readFile(p, 'utf-8')) as SupportTicket[]
+      if (!Array.isArray(parsed)) return []
+      let changed = false
+      const normalized = parsed.map((ticket) => {
+        if ((ticket.status as string) === 'waiting-on-user') {
+          changed = true
+          return { ...ticket, status: 'in-progress' as SupportTicketStatus }
+        }
+        return ticket
+      })
+      if (changed) {
+        await this.saveSupportTickets(id, normalized)
+      }
+      return [...normalized].sort((a, b) => b.createdAt - a.createdAt)
+    } catch {
+      return []
+    }
+  }
+
+  private async saveSupportTickets(id: string, tickets: SupportTicket[]): Promise<void> {
+    await this.ensureSupportDir(id)
+    await writeFile(this.supportTicketsPath(id), JSON.stringify(tickets, null, 2), 'utf-8')
+  }
+
+  async createSupportTicket(id: string, input: SupportTicketCreateInput): Promise<SupportTicket> {
+    const now = Date.now()
+    const created: SupportTicket = {
+      id: randomUUID(),
+      createdAt: now,
+      updatedAt: now,
+      source: input.source ?? 'desktop',
+      status: 'new',
+      priority: input.priority ?? 'normal',
+      subject: input.subject,
+      message: input.message,
+      reporterName: input.reporterName,
+      reporterBeammpId: input.reporterBeammpId,
+      tags: input.tags ?? [],
+      payload: input.payload ?? {},
+    }
+    const tickets = await this.listSupportTickets(id)
+    tickets.unshift(created)
+    await this.saveSupportTickets(id, tickets)
+    return created
+  }
+
+  async updateSupportTicket(id: string, ticketId: string, patch: SupportTicketUpdateInput): Promise<SupportTicket | null> {
+    const tickets = await this.listSupportTickets(id)
+    const ticket = tickets.find((t) => t.id === ticketId)
+    if (!ticket) return null
+    if (patch.status !== undefined) ticket.status = patch.status
+    if (patch.priority !== undefined) ticket.priority = patch.priority
+    if (patch.subject !== undefined) ticket.subject = patch.subject
+    if (patch.message !== undefined) ticket.message = patch.message
+    if (patch.assignedTo !== undefined) ticket.assignedTo = patch.assignedTo
+    if (patch.tags !== undefined) ticket.tags = patch.tags
+    if (patch.internalNotes !== undefined) ticket.internalNotes = patch.internalNotes
+    if (patch.payload !== undefined) ticket.payload = patch.payload
+    ticket.updatedAt = Date.now()
+    await this.saveSupportTickets(id, tickets)
+    return ticket
+  }
+
+  async deleteSupportTicket(id: string, ticketId: string): Promise<boolean> {
+    const tickets = await this.listSupportTickets(id)
+    const next = tickets.filter((t) => t.id !== ticketId)
+    if (next.length === tickets.length) return false
+    await this.saveSupportTickets(id, next)
+    return true
+  }
+
+  private async readSupportRequestBody(req: IncomingMessage): Promise<string> {
+    return await new Promise<string>((resolve, reject) => {
+      const chunks: Buffer[] = []
+      let total = 0
+      req.on('data', (chunk: Buffer) => {
+        total += chunk.length
+        if (total > 2 * 1024 * 1024) {
+          reject(new Error('Request body too large'))
+          req.destroy()
+          return
+        }
+        chunks.push(chunk)
+      })
+      req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')))
+      req.on('error', reject)
+    })
+  }
+
+  private writeJson(res: ServerResponse, code: number, payload: unknown): void {
+    res.statusCode = code
+    res.setHeader('Content-Type', 'application/json')
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.end(JSON.stringify(payload))
+  }
+
+  async startSupportIngest(id: string): Promise<HostedServerSupportIngestStatus> {
+    if (this.supportIngest.has(id)) return this.getSupportIngestStatus(id)
+    const config = await this.getSupportConfig(id)
+    const server = createHttpServer(async (req, res) => {
+      if (req.method === 'OPTIONS') {
+        res.statusCode = 204
+        res.setHeader('Access-Control-Allow-Origin', '*')
+        res.setHeader('Access-Control-Allow-Methods', 'POST,GET,OPTIONS')
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Support-Token')
+        res.end()
+        return
+      }
+
+      if (req.method === 'GET' && req.url === '/health') {
+        this.writeJson(res, 200, { ok: true, serverId: id })
+        return
+      }
+
+      if (req.method !== 'POST' || req.url !== '/ticket') {
+        this.writeJson(res, 404, { success: false, error: 'Not found' })
+        return
+      }
+
+      const authHeader = req.headers.authorization
+      const bearer = typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
+        ? authHeader.slice('Bearer '.length).trim()
+        : ''
+      const tokenHeader = typeof req.headers['x-support-token'] === 'string' ? req.headers['x-support-token'] : ''
+      const providedToken = bearer || tokenHeader
+      if (providedToken !== config.token) {
+        this.writeJson(res, 401, { success: false, error: 'Unauthorized' })
+        return
+      }
+
+      try {
+        const raw = await this.readSupportRequestBody(req)
+        const parsed = JSON.parse(raw) as SupportTicketCreateInput
+        if (!parsed || typeof parsed.subject !== 'string' || typeof parsed.message !== 'string') {
+          this.writeJson(res, 400, { success: false, error: 'Invalid payload' })
+          return
+        }
+        const created = await this.createSupportTicket(id, { ...parsed, source: 'in-game' })
+        this.writeJson(res, 200, { success: true, id: created.id })
+      } catch (err) {
+        this.writeJson(res, 500, { success: false, error: String(err) })
+      }
+    })
+
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(config.port, '0.0.0.0', () => {
+        server.off('error', reject)
+        resolve()
+      })
+    })
+
+    this.supportIngest.set(id, { server, port: config.port, token: config.token })
+    return this.getSupportIngestStatus(id)
+  }
+
+  async stopSupportIngest(id: string): Promise<HostedServerSupportIngestStatus> {
+    const running = this.supportIngest.get(id)
+    if (!running) return this.getSupportIngestStatus(id)
+    await new Promise<void>((resolve) => running.server.close(() => resolve()))
+    this.supportIngest.delete(id)
+    return this.getSupportIngestStatus(id)
+  }
+
   async isVoicePluginDeployed(id: string): Promise<boolean> {
     const config = await this.getServerConfig(id)
     if (!config) return false
@@ -880,6 +1301,9 @@ export class ServerManagerService {
   async deleteServer(id: string): Promise<void> {
     if (this.running.has(id)) {
       this.stopServer(id)
+    }
+    if (this.supportIngest.has(id)) {
+      await this.stopSupportIngest(id)
     }
     const dir = join(this.serversDir, id)
     await rm(dir, { recursive: true, force: true })
@@ -1067,6 +1491,22 @@ export class ServerManagerService {
       console.warn('[ServerManager] onServerStart callback failed:', err)
     }
 
+    // Auto-start ingest if enabled in config OR if the sender mod is deployed
+    // (handles the case where ingest.json got out of sync with what's actually deployed).
+    try {
+      const supportCfg = await this.getSupportConfig(id)
+      const ingestStatus = await this.getSupportIngestStatus(id)
+      if ((supportCfg.enabled || ingestStatus.senderDeployed) && !this.supportIngest.has(id)) {
+        await this.startSupportIngest(id)
+        if (ingestStatus.senderDeployed && !supportCfg.enabled) {
+          // Keep config in sync so subsequent starts work without this fallback.
+          await this.setSupportConfig(id, { ...supportCfg, enabled: true })
+        }
+      }
+    } catch {
+      // Non-fatal: server still starts even if ingest fails to bind.
+    }
+
     this.emitStatusChange(id)
     return { success: true }
   }
@@ -1081,6 +1521,8 @@ export class ServerManagerService {
     entry.state = 'stopped'
     entry.process.kill()
     this.running.delete(id)
+    // Auto-stop ingest when server stops
+    this.stopSupportIngest(id).catch(() => {})
     this.emitStatusChange(id)
   }
 
@@ -1757,6 +2199,56 @@ function writePositions()
 end
 
 writeAnalytics()
+
+print(TAG .. "Plugin loaded successfully")
+`
+}
+
+function buildBanEnforcerPlugin(serverDir: string): string {
+  // Minimal IP ban enforcer — independent of analytics/tracker
+  const ipMetaPath = serverDir.replace(/\\/g, '/') + '/ip_meta.json'
+  return `-- BeamMPCM IP Ban Enforcer Plugin
+-- Auto-deployed by BeamMP Content Manager
+-- Enforces IP-based bans from ip_meta.json
+
+local TAG = "[BeamCM-Bans] "
+local banMetaFile = "${ipMetaPath}"
+local bannedIPs = {}
+
+local function loadBanList()
+  bannedIPs = {}
+  local f = io.open(banMetaFile, "r")
+  if not f then return end
+  local raw = f:read("*a")
+  f:close()
+  if not raw or raw == "" then return end
+  local ok, decoded = pcall(Util.JsonDecode, raw)
+  if not ok or type(decoded) ~= "table" then
+    print(TAG .. "WARNING: Failed to decode " .. banMetaFile)
+    return
+  end
+  for ip, meta in pairs(decoded) do
+    if type(meta) == "table" and meta.banned == true then
+      bannedIPs[ip] = true
+    end
+  end
+  print(TAG .. "Loaded " .. tostring(#bannedIPs) .. " banned IP(s)")
+end
+
+print(TAG .. "IP ban enforcer loading...")
+print(TAG .. "Ban list file: " .. banMetaFile)
+
+loadBanList()
+
+MP.RegisterEvent("onPlayerAuth", "handlePlayerAuth")
+
+function handlePlayerAuth(player_name, player_role, is_guest, identifiers)
+  local ip = identifiers and identifiers.ip or nil
+  if ip and bannedIPs[ip] then
+    print(TAG .. "Rejecting banned IP: " .. tostring(ip) .. " (player: " .. tostring(player_name) .. ")")
+    return "You are banned from this server."
+  end
+end
 
 print(TAG .. "Plugin loaded successfully")
 `

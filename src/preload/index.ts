@@ -278,6 +278,34 @@ const api = {
   hostedServerStart: (id: string) => ipcRenderer.invoke('hostedServer:start', id),
   hostedServerStop: (id: string) => ipcRenderer.invoke('hostedServer:stop', id),
   hostedServerRestart: (id: string) => ipcRenderer.invoke('hostedServer:restart', id),
+  hostedServerListSupportTickets: (id: string) =>
+    ipcRenderer.invoke('hostedServer:listSupportTickets', id) as Promise<import('../shared/types').SupportTicket[]>,
+  hostedServerCreateSupportTicket: (id: string, input: import('../shared/types').SupportTicketCreateInput) =>
+    ipcRenderer.invoke('hostedServer:createSupportTicket', id, input) as Promise<import('../shared/types').SupportTicket>,
+  hostedServerUpdateSupportTicket: (id: string, ticketId: string, patch: import('../shared/types').SupportTicketUpdateInput) =>
+    ipcRenderer.invoke('hostedServer:updateSupportTicket', id, ticketId, patch) as Promise<import('../shared/types').SupportTicket | null>,
+  hostedServerDeleteSupportTicket: (id: string, ticketId: string) =>
+    ipcRenderer.invoke('hostedServer:deleteSupportTicket', id, ticketId) as Promise<boolean>,
+  hostedServerGetSupportIngestStatus: (id: string) =>
+    ipcRenderer.invoke('hostedServer:getSupportIngestStatus', id) as Promise<import('../shared/types').HostedServerSupportIngestStatus>,
+  hostedServerUpdateSupportIngestConfig: (id: string, patch: Partial<import('../shared/types').HostedServerSupportIngestConfig>) =>
+    ipcRenderer.invoke('hostedServer:updateSupportIngestConfig', id, patch) as Promise<import('../shared/types').HostedServerSupportIngestStatus>,
+  hostedServerStartSupportIngest: (id: string) =>
+    ipcRenderer.invoke('hostedServer:startSupportIngest', id) as Promise<import('../shared/types').HostedServerSupportIngestStatus>,
+  hostedServerStopSupportIngest: (id: string) =>
+    ipcRenderer.invoke('hostedServer:stopSupportIngest', id) as Promise<import('../shared/types').HostedServerSupportIngestStatus>,
+  hostedServerGetSupportTicketUiConfig: (id: string) =>
+    ipcRenderer.invoke('hostedServer:getSupportTicketUiConfig', id) as Promise<import('../shared/types').HostedServerSupportTicketUiConfig>,
+  hostedServerUpdateSupportTicketUiConfig: (id: string, patch: Partial<import('../shared/types').HostedServerSupportTicketUiConfig>) =>
+    ipcRenderer.invoke('hostedServer:updateSupportTicketUiConfig', id, patch) as Promise<import('../shared/types').HostedServerSupportTicketUiConfig>,
+  hostedServerExportSupportSenderMod: (id: string) =>
+    ipcRenderer.invoke('hostedServer:exportSupportSenderMod', id) as Promise<{ success: boolean; filePath?: string; error?: string }>,
+  hostedServerDeploySupportSenderMod: (id: string) =>
+    ipcRenderer.invoke('hostedServer:deploySupportSenderMod', id) as Promise<{ success: boolean; filePath?: string; error?: string }>,
+  hostedServerUndeploySupportSenderMod: (id: string) =>
+    ipcRenderer.invoke('hostedServer:undeploySupportSenderMod', id) as Promise<{ success: boolean; error?: string }>,
+  hostedServerSimulateSupportTicketSubmit: (id: string) =>
+    ipcRenderer.invoke('hostedServer:simulateSupportTicketSubmit', id) as Promise<{ success: boolean; statusCode?: number; ticketId?: string; error?: string }>,
   hostedServerGetConsole: (id: string) =>
     ipcRenderer.invoke('hostedServer:getConsole', id) as Promise<string[]>,
   hostedServerSendCommand: (id: string, command: string) =>
@@ -402,6 +430,10 @@ const api = {
     ipcRenderer.invoke('hostedServer:getAnalytics', id),
   hostedServerClearAnalytics: (id: string) =>
     ipcRenderer.invoke('hostedServer:clearAnalytics', id),
+  hostedServerSetIpMeta: (id: string, ip: string, patch: { nickname?: string | null; banned?: boolean }) =>
+    ipcRenderer.invoke('hostedServer:setIpMeta', id, ip, patch),
+  hostedServerIsBanPluginDeployed: (id: string) =>
+    ipcRenderer.invoke('hostedServer:isBanPluginDeployed', id),
   hostedServerUpdatePlayerTracking: (id: string, playerNames: string[]) =>
     ipcRenderer.invoke('hostedServer:updatePlayerTracking', id, playerNames),
   hostedServerEndAllSessions: (id: string) =>

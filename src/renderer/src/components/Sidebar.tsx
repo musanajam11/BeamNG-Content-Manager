@@ -3,7 +3,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/useAppStore'
 import { useThemeStore } from '../stores/useThemeStore'
@@ -14,13 +14,21 @@ import type { AppPage } from '../../../shared/types'
 const itemMap = new Map(ALL_NAV_ITEMS.map((item) => [item.id, item]))
 
 const bottomItems: NavItem[] = [
-  { id: 'settings', labelKey: 'sidebar.settings', icon: Settings }
+  { id: 'settings', labelKey: 'sidebar.settings', icon: Settings, hintDesc: 'Customize the UI and turn off hints here' }
 ]
 
 export function Sidebar(): React.JSX.Element {
   const { currentPage, setPage, sidebarCollapsed, toggleSidebar } = useAppStore()
   const { appearance } = useThemeStore()
   const { t } = useTranslation()
+
+  // Track which pages have been visited this session so their hint icons disappear after first click
+  const [visitedPages, setVisitedPages] = useState<Set<AppPage>>(() => new Set([currentPage]))
+
+  const handleSetPage = useCallback((id: AppPage) => {
+    setVisitedPages((prev) => { const next = new Set(prev); next.add(id); return next })
+    setPage(id)
+  }, [setPage])
 
   const visibleItems = useMemo(() => {
     const hidden = new Set(appearance.sidebarHidden ?? [])
@@ -48,21 +56,28 @@ export function Sidebar(): React.JSX.Element {
     return ordered
   }, [appearance.sidebarOrder, appearance.sidebarHidden])
 
-  const renderItem = ({ id, labelKey, icon: Icon, wip }: NavItem): React.JSX.Element => {
+  const renderItem = ({ id, labelKey, icon: Icon, wip, hintDesc }: NavItem): React.JSX.Element => {
     const active = currentPage === id
     const label = t(labelKey)
-    const titleText = wip
-      ? sidebarCollapsed
-        ? `${label} (WIP)`
-        : 'Work in progress'
-      : sidebarCollapsed
-        ? label
+    const showHints = appearance.showHints ?? true
+    // Sleek ping-dot only on Settings to guide users there; disappears once visited
+    const showSettingsPing = showHints && id === 'settings' && !visitedPages.has('settings')
+
+    const titleText = sidebarCollapsed
+      ? showHints && hintDesc
+        ? `${label} — ${hintDesc}`
+        : wip
+          ? `${label} (WIP)`
+          : label
+      : wip
+        ? 'Work in progress'
         : undefined
+
     return (
       <button
         key={id}
-        onClick={() => setPage(id)}
-        className={`group relative flex items-center gap-3 w-full rounded-xl transition-all duration-150 ${
+        onClick={() => handleSetPage(id)}
+        className={`group relative flex items-center gap-3 w-full rounded-xl transition-all duration-150 overflow-visible ${
           sidebarCollapsed ? 'justify-center px-0 py-2.5' : 'px-3 py-2'
         } ${
           active
@@ -79,6 +94,13 @@ export function Sidebar(): React.JSX.Element {
               aria-hidden="true"
             />
           )}
+          {/* Subtle ping dot on Settings icon — guides user to turn off hints */}
+          {showSettingsPing && (
+            <span className="absolute -top-1 -right-1" aria-hidden="true">
+              <span className="block w-2 h-2 rounded-full bg-[var(--color-accent)] animate-ping opacity-75" />
+              <span className="absolute inset-0 block w-2 h-2 rounded-full bg-[var(--color-accent)]" />
+            </span>
+          )}
         </span>
         {!sidebarCollapsed && (
           <>
@@ -90,6 +112,18 @@ export function Sidebar(): React.JSX.Element {
             )}
           </>
         )}
+
+        {/* Hover tooltip — accent background, fully readable */}
+        {showHints && hintDesc && !sidebarCollapsed && (
+          <div
+            className="pointer-events-none absolute left-full ml-3 top-1/2 -translate-y-1/2 z-50 w-56 rounded-lg px-3 py-2.5 text-xs shadow-xl opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+            style={{ background: 'var(--color-accent)', color: '#fff' }}
+          >
+            <span className="font-semibold opacity-80">💡 </span>
+            <span className="font-semibold">{label}</span>
+            <p className="mt-1 leading-snug opacity-90">{hintDesc}</p>
+          </div>
+        )}
       </button>
     )
   }
@@ -99,11 +133,11 @@ export function Sidebar(): React.JSX.Element {
       className="flex flex-col border-r-2 border-[var(--color-border)] transition-all duration-200 bg-[var(--color-scrim-20)] backdrop-blur-sm"
       style={{ width: sidebarCollapsed ? '52px' : 'var(--sidebar-width)' }}
     >
-      <nav className="flex-1 flex flex-col gap-1 p-3 pt-3">
+      <nav className="flex-1 flex flex-col gap-1 p-3 pt-3 overflow-visible">
         {visibleItems.map(renderItem)}
       </nav>
 
-      <div className="flex flex-col gap-1 p-3 border-t border-[var(--color-border)]">
+      <div className="flex flex-col gap-1 p-3 border-t border-[var(--color-border)] overflow-visible">
         {bottomItems.map(renderItem)}
         <button
           onClick={toggleSidebar}

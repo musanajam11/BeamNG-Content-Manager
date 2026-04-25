@@ -43,7 +43,8 @@ const DEFAULT_APPEARANCE: AppearanceSettings = {
   filterBrightness: 1.0,
   filterContrast: 1.0,
   filterSaturation: 1.1,
-  serverListChunkSize: 250
+  serverListChunkSize: 250,
+  showHints: true
 }
 
 /** Preset accent color palettes */

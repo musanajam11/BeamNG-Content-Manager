@@ -1,15 +1,16 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
-import { BarChart3, Users, Clock, Trash2, Loader2, ChevronDown } from 'lucide-react'
-import type { AnalyticsData, PlayerSummary, PlayerSession } from '../../../../shared/types'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { BarChart3, Users, Clock, Trash2, Loader2, ChevronDown, Pencil, Ban, ShieldCheck } from 'lucide-react'
+import type { AnalyticsData, IpSummary, PlayerSession } from '../../../../shared/types'
 import { useTranslation } from 'react-i18next'
 import { useNow } from '../../hooks/useNow'
+import { useConfirmDialog } from '../../hooks/useConfirmDialog'
 
 interface AnalyticsPanelProps {
   serverId: string
 }
 
 type Period = '1d' | '7d' | '30d' | '90d'
-type SortKey = 'totalTimeMs' | 'totalSessions' | 'lastSeen' | 'playerName'
+type IpSortKey = 'totalTimeMs' | 'totalSessions' | 'lastSeen' | 'ipAddress'
 
 interface ChartPoint {
   label: string
@@ -48,15 +49,22 @@ function formatSessionEnd(session: PlayerSession): string {
 
 export function AnalyticsPanel({ serverId }: AnalyticsPanelProps): React.JSX.Element {
   const { t } = useTranslation()
+  const { dialog: confirmDialog, confirm } = useConfirmDialog()
   const [data, setData] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useState<Period>('7d')
-  const [sortKey, setSortKey] = useState<SortKey>('totalTimeMs')
-  const [sortAsc, setSortAsc] = useState(false)
+  const [ipSortKey, setIpSortKey] = useState<IpSortKey>('totalTimeMs')
+  const [ipSortAsc, setIpSortAsc] = useState(false)
+  const [editingNickname, setEditingNickname] = useState<{ ip: string; value: string } | null>(null)
+  const [expandedIps, setExpandedIps] = useState<Set<string>>(new Set())
+  const [banPluginDeployed, setBanPluginDeployed] = useState(false)
+  const nicknameInputRef = useRef<HTMLInputElement>(null)
 
   const loadData = useCallback(async () => {
     const d = await window.api.hostedServerGetAnalytics(serverId)
     setData(d)
+    const deployed = await window.api.hostedServerIsBanPluginDeployed(serverId)
+    setBanPluginDeployed(deployed)
     setLoading(false)
   }, [serverId])
 
@@ -146,7 +154,7 @@ export function AnalyticsPanel({ serverId }: AnalyticsPanelProps): React.JSX.Ele
       const d = dayMap.get(dateStr)
       points.push({
         label: dayLabel(dateStr),
-        value: d?.uniquePlayers ?? 0,
+        value: d?.peakPlayers ?? 0,
         sessions: daySessionCount.get(dateStr) ?? 0,
         playerNames: d?.playerNames ?? [],
       })
@@ -154,27 +162,59 @@ export function AnalyticsPanel({ serverId }: AnalyticsPanelProps): React.JSX.Ele
     return points
   }, [period, filteredDays, filteredSessions, cutoffTime])
 
-  const sortedPlayers = useMemo(() => {
-    if (!displayData) return []
-    const list = displayData.playerSummaries.filter((p) => p.lastSeen >= cutoffTime)
+  const sortedIps = useMemo((): IpSummary[] => {
+    if (!displayData?.ipSummaries) return []
+    const list = displayData.ipSummaries.filter((ip) => ip.lastSeen >= cutoffTime)
     list.sort((a, b) => {
-      const av = a[sortKey]
-      const bv = b[sortKey]
-      if (typeof av === 'string' && typeof bv === 'string') {
-        return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av)
+      if (ipSortKey === 'ipAddress') {
+        const an = a.nickname ?? a.ipAddress
+        const bn = b.nickname ?? b.ipAddress
+        return ipSortAsc ? an.localeCompare(bn) : bn.localeCompare(an)
       }
-      return sortAsc ? (av as number) - (bv as number) : (bv as number) - (av as number)
+      return ipSortAsc ? (a[ipSortKey] as number) - (b[ipSortKey] as number) : (b[ipSortKey] as number) - (a[ipSortKey] as number)
     })
     return list
-  }, [displayData, sortKey, sortAsc, cutoffTime])
+  }, [displayData, ipSortKey, ipSortAsc, cutoffTime])
 
-  const handleSort = (key: SortKey): void => {
-    if (sortKey === key) {
-      setSortAsc(!sortAsc)
+  const handleIpSort = (key: IpSortKey): void => {
+    if (ipSortKey === key) {
+      setIpSortAsc(!ipSortAsc)
     } else {
-      setSortKey(key)
-      setSortAsc(false)
+      setIpSortKey(key)
+      setIpSortAsc(false)
     }
+  }
+
+  const saveNickname = async (ip: string, value: string): Promise<void> => {
+    const trimmed = value.trim() || null
+    await window.api.hostedServerSetIpMeta(serverId, ip, { nickname: trimmed })
+    setEditingNickname(null)
+    loadData()
+  }
+
+  const toggleBan = useCallback(async (ip: string, currentlyBanned: boolean): Promise<void> => {
+    if (!currentlyBanned) {
+      // Confirm before banning — also informs about restart requirement
+      const ok = await confirm({
+        title: t('analytics.banConfirmTitle'),
+        message: t('analytics.banConfirmMessage'),
+        confirmLabel: t('analytics.banConfirmAction'),
+        cancelLabel: t('common.cancel'),
+        variant: 'danger'
+      })
+      if (!ok) return
+    }
+    await window.api.hostedServerSetIpMeta(serverId, ip, { banned: !currentlyBanned })
+    await loadData()
+  }, [serverId, confirm, t, loadData])
+
+  const toggleExpandIp = (ip: string): void => {
+    setExpandedIps((prev) => {
+      const next = new Set(prev)
+      if (next.has(ip)) next.delete(ip)
+      else next.add(ip)
+      return next
+    })
   }
 
   const visibleSessions = useMemo(() => filteredSessions.slice(0, 100), [filteredSessions])
@@ -232,6 +272,13 @@ export function AnalyticsPanel({ serverId }: AnalyticsPanelProps): React.JSX.Ele
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        {/* Ban Plugin Status */}
+        {banPluginDeployed && (
+          <div className="text-xs text-[var(--color-text-muted)] bg-green-500/5 border border-green-500/20 rounded-lg px-3 py-2">
+            ✓ IP ban enforcer is <span className="font-semibold text-green-400">active</span> — bans take effect on next player connect/disconnect cycle.
+          </div>
+        )}
+
         {/* Summary Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           <SummaryCard
@@ -343,16 +390,16 @@ export function AnalyticsPanel({ serverId }: AnalyticsPanelProps): React.JSX.Ele
           <LineChart points={chartPoints} />
         </div>
 
-        {/* Player Table */}
+        {/* IP Summary Table */}
         <div>
           <div className="flex items-center gap-2 mb-3">
             <Users size={14} className="text-[var(--color-text-muted)]" />
             <span className="text-sm font-medium text-[var(--color-text-primary)]">
-              Player Summary ({sortedPlayers.length})
+              IP Summary ({sortedIps.length})
             </span>
           </div>
 
-          {sortedPlayers.length === 0 ? (
+          {sortedIps.length === 0 ? (
             <div className="text-sm text-[var(--color-text-muted)] text-center py-6 border border-dashed border-[var(--color-border)] rounded-lg">
               No player data recorded yet.
             </div>
@@ -361,32 +408,100 @@ export function AnalyticsPanel({ serverId }: AnalyticsPanelProps): React.JSX.Ele
               <table className="w-full text-sm min-w-[760px]">
                 <thead>
                   <tr className="bg-[var(--color-surface)]">
-                    <SortHeader label="Player" sortKey="playerName" currentKey={sortKey} asc={sortAsc} onSort={handleSort} />
-                    <SortHeader label="Sessions" sortKey="totalSessions" currentKey={sortKey} asc={sortAsc} onSort={handleSort} />
-                    <th className="px-4 py-2 text-left text-xs text-[var(--color-text-muted)] font-medium">IPs</th>
-                    <SortHeader label="Total Time" sortKey="totalTimeMs" currentKey={sortKey} asc={sortAsc} onSort={handleSort} />
-                    <SortHeader label="Last Seen" sortKey="lastSeen" currentKey={sortKey} asc={sortAsc} onSort={handleSort} />
+                    <IpSortHeader label="IP / Nickname" sortKey="ipAddress" currentKey={ipSortKey} asc={ipSortAsc} onSort={handleIpSort} />
+                    <th className="px-4 py-2 text-left text-xs text-[var(--color-text-muted)] font-medium">Names</th>
+                    <IpSortHeader label="Sessions" sortKey="totalSessions" currentKey={ipSortKey} asc={ipSortAsc} onSort={handleIpSort} />
+                    <IpSortHeader label="Total Time" sortKey="totalTimeMs" currentKey={ipSortKey} asc={ipSortAsc} onSort={handleIpSort} />
+                    <IpSortHeader label="Last Seen" sortKey="lastSeen" currentKey={ipSortKey} asc={ipSortAsc} onSort={handleIpSort} />
+                    <th className="px-4 py-2 text-left text-xs text-[var(--color-text-muted)] font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedPlayers.map((p: PlayerSummary) => (
-                    <tr key={p.playerName} className="border-t border-[var(--color-border)] hover:bg-[var(--color-surface-hover)]">
-                      <td className="px-4 py-2 text-[var(--color-text-primary)]">
-                        <div className="font-medium">{p.playerName}</div>
-                        <div className="text-xs text-[var(--color-text-muted)] mt-0.5">
-                          {p.beammpId ? `BeamMP ${p.beammpId}` : 'No BeamMP ID'}
-                          {p.discordId ? ` • Discord ${p.discordId}` : ''}
-                          {p.roles.length > 0 ? ` • ${p.roles.join(', ')}` : ''}
-                          {p.isGuest ? ' • Guest' : ''}
+                  {sortedIps.map((ip: IpSummary) => (
+                    <tr
+                      key={ip.ipAddress}
+                      className={`border-t border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] ${ip.banned ? 'opacity-60' : ''}`}
+                    >
+                      {/* IP / Nickname cell */}
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-1.5">
+                          {editingNickname?.ip === ip.ipAddress ? (
+                            <input
+                              ref={nicknameInputRef}
+                              className="text-sm px-1.5 py-0.5 rounded border border-[var(--color-accent)] bg-[var(--color-surface)] text-[var(--color-text-primary)] outline-none w-36"
+                              value={editingNickname.value}
+                              autoFocus
+                              onChange={(e) => setEditingNickname({ ip: ip.ipAddress, value: e.target.value })}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') saveNickname(ip.ipAddress, editingNickname.value)
+                                if (e.key === 'Escape') setEditingNickname(null)
+                              }}
+                              onBlur={() => saveNickname(ip.ipAddress, editingNickname.value)}
+                            />
+                          ) : (
+                            <button
+                              className="text-left group flex items-center gap-1"
+                              onClick={() => setEditingNickname({ ip: ip.ipAddress, value: ip.nickname ?? '' })}
+                              title="Click to set nickname"
+                            >
+                              {ip.nickname ? (
+                                <>
+                                  <span className="font-medium text-[var(--color-text-primary)]">{ip.nickname}</span>
+                                  <span className="text-xs text-[var(--color-text-muted)]">{ip.ipAddress}</span>
+                                </>
+                              ) : (
+                                <span className="font-medium text-[var(--color-text-primary)]">{ip.ipAddress}</span>
+                              )}
+                              <Pencil size={10} className="text-[var(--color-text-muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </button>
+                          )}
+                          {ip.banned && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20 ml-1">Banned</span>
+                          )}
                         </div>
                       </td>
-                      <td className="px-4 py-2 text-[var(--color-text-muted)]">{p.totalSessions}</td>
+                      {/* Names cell */}
                       <td className="px-4 py-2 text-[var(--color-text-muted)]">
-                        <div>{p.uniqueIpCount}</div>
-                        <div className="text-xs mt-0.5">{p.lastIpAddress ?? 'Unknown'}</div>
+                        {ip.playerNames.length === 0 ? (
+                          <span className="text-xs">—</span>
+                        ) : ip.playerNames.length === 1 ? (
+                          <span className="text-xs">{ip.playerNames[0]}</span>
+                        ) : (
+                          <div>
+                            <button
+                              className="text-xs flex items-center gap-1 hover:text-[var(--color-text-primary)] transition-colors"
+                              onClick={() => toggleExpandIp(ip.ipAddress)}
+                            >
+                              <span>{ip.playerNames[0]}</span>
+                              <span className="text-[var(--color-accent)]">+{ip.playerNames.length - 1}</span>
+                              <ChevronDown size={10} className={`transition-transform ${expandedIps.has(ip.ipAddress) ? 'rotate-180' : ''}`} />
+                            </button>
+                            {expandedIps.has(ip.ipAddress) && (
+                              <div className="mt-1 space-y-0.5">
+                                {ip.playerNames.slice(1).map((name) => (
+                                  <div key={name} className="text-xs text-[var(--color-text-muted)]">{name}</div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </td>
-                      <td className="px-4 py-2 text-[var(--color-text-muted)]">{formatDuration(p.totalTimeMs)}</td>
-                      <td className="px-4 py-2 text-[var(--color-text-muted)]">{formatDate(p.lastSeen)}</td>
+                      <td className="px-4 py-2 text-[var(--color-text-muted)]">{ip.totalSessions}</td>
+                      <td className="px-4 py-2 text-[var(--color-text-muted)]">{formatDuration(ip.totalTimeMs)}</td>
+                      <td className="px-4 py-2 text-[var(--color-text-muted)]">{formatDate(ip.lastSeen)}</td>
+                      <td className="px-4 py-2">
+                        <button
+                          onClick={() => toggleBan(ip.ipAddress, ip.banned)}
+                          title={ip.banned ? 'Unban this IP' : 'Ban this IP'}
+                          className={`p-1.5 rounded transition-colors ${
+                            ip.banned
+                              ? 'text-green-400 hover:bg-green-400/10'
+                              : 'text-[var(--color-text-muted)] hover:text-red-400 hover:bg-red-400/10'
+                          }`}
+                        >
+                          {ip.banned ? <ShieldCheck size={14} /> : <Ban size={14} />}
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -395,6 +510,7 @@ export function AnalyticsPanel({ serverId }: AnalyticsPanelProps): React.JSX.Ele
           )}
         </div>
       </div>
+      {confirmDialog}
     </div>
   )
 }
@@ -550,7 +666,7 @@ function SummaryCard({ label, value, icon }: { label: string; value: string; ico
   )
 }
 
-function SortHeader({
+function IpSortHeader({
   label,
   sortKey,
   currentKey,
@@ -558,10 +674,10 @@ function SortHeader({
   onSort
 }: {
   label: string
-  sortKey: SortKey
-  currentKey: SortKey
+  sortKey: IpSortKey
+  currentKey: IpSortKey
   asc: boolean
-  onSort: (key: SortKey) => void
+  onSort: (key: IpSortKey) => void
 }): React.JSX.Element {
   const isActive = currentKey === sortKey
   return (

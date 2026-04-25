@@ -14,6 +14,7 @@ import { ModsPanel } from '../components/server-manager/ModsPanel'
 import HeatMapPanel from '../components/server-manager/HeatMapPanel'
 import { SchedulePanel } from '../components/server-manager/SchedulePanel'
 import { AnalyticsPanel } from '../components/server-manager/AnalyticsPanel'
+import { SupportPanel } from '../components/server-manager/SupportPanel'
 import { ToastContainer } from '../components/server-manager/ToastContainer'
 import { CumulativeMetrics } from '../components/server-manager/CumulativeMetrics'
 
@@ -122,6 +123,8 @@ export function ServerManagerPage(): React.JSX.Element {
               <SchedulePanel serverId={selected.config.id} />
             ) : store.tab === 'analytics' ? (
               <AnalyticsPanel serverId={selected.config.id} />
+            ) : store.tab === 'support' ? (
+              <SupportPanel serverId={selected.config.id} />
             ) : (
               <ModsPanel serverId={selected.config.id} mods={store.mods} onRefresh={() => { store.loadMods(); store.loadFiles(selected.config.id, store.filePath) }} />
             )}

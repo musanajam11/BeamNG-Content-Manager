@@ -43,6 +43,7 @@ import {
   Info
 } from 'lucide-react'
 import { BuberIcon, BankingIcon, DynamicTrafficIcon, pluginPreviewImage } from '../components/server-manager/PluginIcons'
+import { useConfirmDialog } from '../hooks/useConfirmDialog'
 
 import { PluginReadmeToggle } from '../components/server-manager/PluginReadme'
 
@@ -235,6 +236,7 @@ const SKILL_ICONS: Record<string, React.ComponentType<{ size?: number; className
 
 export function CareerPage(): React.JSX.Element {
   const { t } = useTranslation()
+  const { dialog: confirmDialog, confirm } = useConfirmDialog()
 
   // Top-level tab: saves vs mod manager
   type TopTab = 'saves' | 'mods'
@@ -655,11 +657,21 @@ export function CareerPage(): React.JSX.Element {
 
   const handleDeleteProfile = useCallback(async () => {
     if (!selectedProfile) return
-    const confirmed = window.confirm(
-      t('career.deleteProfileConfirm', { name: selectedProfile.name })
-    )
+    const confirmed = await confirm({
+      title: t('career.deleteProfile'),
+      message: t('career.deleteProfileConfirm', { name: selectedProfile.name }),
+      confirmLabel: t('common.delete'),
+      cancelLabel: t('common.cancel'),
+      variant: 'danger'
+    })
     if (!confirmed) return
-    const withBackup = window.confirm(t('career.deleteBackupFirstPrompt'))
+    const withBackup = await confirm({
+      title: t('career.backupFirst'),
+      message: t('career.deleteBackupFirstPrompt'),
+      confirmLabel: t('career.createBackup'),
+      cancelLabel: t('career.skipBackup'),
+      variant: 'warning'
+    })
     setDeleting(true)
     setActionMsg(null)
     try {
@@ -687,17 +699,27 @@ export function CareerPage(): React.JSX.Element {
     } finally {
       setDeleting(false)
     }
-  }, [selectedProfile, loadProfiles, t])
+  }, [selectedProfile, loadProfiles, t, confirm])
 
   const handleDeleteSlot = useCallback(async (slotName?: string) => {
     if (!selectedProfile) return
     const targetSlot = slotName ?? selectedSlot?.name
     if (!targetSlot) return
-    const confirmed = window.confirm(
-      t('career.deleteSlotConfirm', { slot: targetSlot, profile: selectedProfile.name })
-    )
+    const confirmed = await confirm({
+      title: t('career.deleteSlot'),
+      message: t('career.deleteSlotConfirm', { slot: targetSlot, profile: selectedProfile.name }),
+      confirmLabel: t('common.delete'),
+      cancelLabel: t('common.cancel'),
+      variant: 'danger'
+    })
     if (!confirmed) return
-    const withBackup = window.confirm(t('career.deleteBackupFirstPrompt'))
+    const withBackup = await confirm({
+      title: t('career.backupFirst'),
+      message: t('career.deleteBackupFirstPrompt'),
+      confirmLabel: t('career.createBackup'),
+      cancelLabel: t('career.skipBackup'),
+      variant: 'warning'
+    })
     setDeleting(true)
     setActionMsg(null)
     try {
@@ -730,7 +752,7 @@ export function CareerPage(): React.JSX.Element {
     } finally {
       setDeleting(false)
     }
-  }, [selectedProfile, selectedSlot, loadProfiles, t])
+  }, [selectedProfile, selectedSlot, loadProfiles, t, confirm])
 
   const handleBrowseSavePath = useCallback(async () => {
     const path = await window.api.careerBrowseSavePath()
@@ -1013,6 +1035,7 @@ export function CareerPage(): React.JSX.Element {
             {t('career.noData')}
           </div>
         )}
+      {confirmDialog}
       </div>
     )
   }
@@ -1290,6 +1313,7 @@ export function CareerPage(): React.JSX.Element {
             </div>
           )}
         </div>
+      {confirmDialog}
       </div>
     )
   }
@@ -1423,6 +1447,7 @@ export function CareerPage(): React.JSX.Element {
           t={t}
         />
       )}
+      {confirmDialog}
     </div>
   )
 }

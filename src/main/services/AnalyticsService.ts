@@ -1,7 +1,7 @@
 import { readFile, writeFile, mkdir, unlink } from 'fs/promises'
 import { join } from 'path'
 import { app } from 'electron'
-import type { PlayerSession, DailyStats, PlayerSummary, AnalyticsData } from '../../shared/types'
+import type { PlayerSession, DailyStats, PlayerSummary, IpSummary, AnalyticsData } from '../../shared/types'
 
 interface AnalyticsStore {
   sessions: PlayerSession[]
@@ -120,6 +120,27 @@ export class AnalyticsService {
 
   private trackerFilePath(serverId: string): string {
     return join(this.serversDir, serverId, 'player_analytics.json')
+  }
+
+  private ipMetaPath(serverId: string): string {
+    return join(this.serversDir, serverId, 'ip_meta.json')
+  }
+
+  async getIpMeta(serverId: string): Promise<Record<string, { nickname?: string | null; banned?: boolean }>> {
+    try {
+      const raw = await readFile(this.ipMetaPath(serverId), 'utf-8')
+      const parsed: unknown = JSON.parse(raw)
+      return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, { nickname?: string | null; banned?: boolean }>) : {}
+    } catch {
+      return {}
+    }
+  }
+
+  async setIpMeta(serverId: string, ip: string, patch: { nickname?: string | null; banned?: boolean }): Promise<void> {
+    const meta = await this.getIpMeta(serverId)
+    meta[ip] = { ...(meta[ip] ?? {}), ...patch }
+    await mkdir(join(this.serversDir, serverId), { recursive: true })
+    await writeFile(this.ipMetaPath(serverId), JSON.stringify(meta, null, 2), 'utf-8')
   }
 
   private async loadStore(serverId: string): Promise<AnalyticsStore> {
@@ -451,6 +472,67 @@ export class AnalyticsService {
     const playerSummaries = Array.from(playerMap.values())
       .sort((a, b) => b.totalTimeMs - a.totalTimeMs)
 
+    // IP summaries — group sessions by IP address
+    const ipMetaRecord = await this.getIpMeta(serverId)
+    const ipMap = new Map<string, {
+      playerNames: Set<string>
+      totalSessions: number
+      totalTimeMs: number
+      lastSeen: number
+      firstSeen: number
+      beammpIds: Set<string>
+      discordIds: Set<string>
+      roles: Set<string>
+      isGuest: boolean
+    }>()
+    for (const s of allSessions) {
+      if (!s.ipAddress) continue
+      let entry = ipMap.get(s.ipAddress)
+      if (!entry) {
+        entry = {
+          playerNames: new Set(),
+          totalSessions: 0,
+          totalTimeMs: 0,
+          lastSeen: 0,
+          firstSeen: s.joinedAt,
+          beammpIds: new Set(),
+          discordIds: new Set(),
+          roles: new Set(),
+          isGuest: false
+        }
+        ipMap.set(s.ipAddress, entry)
+      }
+      entry.playerNames.add(s.playerName)
+      entry.totalSessions++
+      entry.totalTimeMs += s.durationMs
+      if (s.joinedAt < entry.firstSeen) entry.firstSeen = s.joinedAt
+      const seen = s.leftAt ?? s.lastSeenAt ?? s.joinedAt
+      if (seen > entry.lastSeen) entry.lastSeen = seen
+      if (s.beammpId) entry.beammpIds.add(s.beammpId)
+      if (s.discordId) entry.discordIds.add(s.discordId)
+      if (s.role) entry.roles.add(s.role)
+      if (s.isGuest) entry.isGuest = true
+    }
+    const ipSummaries: IpSummary[] = Array.from(ipMap.entries())
+      .map(([ip, d]) => {
+        const ipMeta = ipMetaRecord[ip] ?? {}
+        return {
+          ipAddress: ip,
+          nickname: ipMeta.nickname ?? null,
+          playerNames: Array.from(d.playerNames),
+          totalSessions: d.totalSessions,
+          totalTimeMs: d.totalTimeMs,
+          lastSeen: d.lastSeen,
+          firstSeen: d.firstSeen,
+          banned: ipMeta.banned ?? false,
+          beammpIds: Array.from(d.beammpIds),
+          discordIds: Array.from(d.discordIds),
+          roles: Array.from(d.roles),
+          isGuest: d.isGuest
+        }
+      })
+      .sort((a, b) => b.totalTimeMs - a.totalTimeMs)
+
     const uniqueIpCount = new Set(
       allSessions
         .map((session) => session.ipAddress)
@@ -462,6 +544,7 @@ export class AnalyticsService {
     return {
       dailyStats,
       playerSummaries,
+      ipSummaries,
       activeSessions,
       sessionHistory,
       totalSessions: store.sessions.length,

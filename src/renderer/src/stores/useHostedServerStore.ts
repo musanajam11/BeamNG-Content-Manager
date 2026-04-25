@@ -8,7 +8,7 @@ import type {
 } from '../../../shared/types'
 import { useToastStore } from './useToastStore'
 
-export type Tab = 'status' | 'config' | 'console' | 'files' | 'mods' | 'heatmap' | 'schedule' | 'analytics'
+export type Tab = 'status' | 'config' | 'console' | 'files' | 'mods' | 'heatmap' | 'schedule' | 'analytics' | 'support'
 type ViewMode = 'grid' | 'detail'
 
 interface HostedServerState {

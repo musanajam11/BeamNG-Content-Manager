@@ -2,7 +2,9 @@ import { readFile, writeFile, mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
-import type { AppConfig } from '../../shared/types'
+import type {
+  AppConfig,
+} from '../../shared/types'
 
 const DEFAULT_CONFIG: AppConfig = {
   gamePaths: {
@@ -31,30 +33,31 @@ const DEFAULT_CONFIG: AppConfig = {
     bgGradient2: null,
     sidebarWidth: 200,
     bgImagePath: null,
-    bgImageBlur: 0,
-    bgImageOpacity: 0.3,
+    bgImageBlur: 5,
+    bgImageOpacity: 0.45,
     bgImageList: [],
-    bgCycleOnLaunch: false,
-    sidebarOrder: ['home', 'servers', 'friends', 'vehicles', 'maps', 'mods', 'career', 'server-admin', 'launcher', 'controls'],
+    bgCycleOnLaunch: true,
+    sidebarOrder: ['home', 'servers', 'friends', 'vehicles', 'maps', 'mods', 'career', 'server-admin', 'launcher', 'controls', 'live-gps', 'livery-editor', 'voice-chat', 'lua-console', 'world-edit-sync'],
     sidebarHidden: [],
     customCSS: '',
     customCSSEnabled: false,
     cornerRadius: 0,
-    buttonSize: 'default',
+    buttonSize: 'comfortable',
     fontFamily: 'system',
     scrollbarStyle: 'rounded',
-    animationSpeed: 'normal',
-    overlayEffect: 'none',
+    animationSpeed: 'slow',
+    overlayEffect: 'noise',
     borderStyle: 'normal',
     effectPageFade: true,
-    effectFrostedGlass: false,
+    effectFrostedGlass: true,
     effectAccentSelection: true,
     effectHoverGlow: false,
-    effectHoverLift: false,
+    effectHoverLift: true,
     filterBrightness: 1.0,
     filterContrast: 1.0,
-    filterSaturation: 1.0,
-    serverListChunkSize: 250
+    filterSaturation: 1.1,
+    serverListChunkSize: 250,
+    showHints: true
   },
   setupComplete: false,
   loadOrderEnforcement: false,

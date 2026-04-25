@@ -1,10 +1,29 @@
 
 import { useState, useEffect, useRef } from 'react'
-import { Loader2, CheckCircle, AlertCircle, FolderOpen, Globe, ArrowRight, Download } from 'lucide-react'
+import { Loader2, CheckCircle, AlertCircle, FolderOpen, Globe, ArrowRight, ArrowLeft, Download } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/useAppStore'
+import { useThemeStore } from '../stores/useThemeStore'
+import type { AppPage } from '../../../shared/types'
 
 type WizardStep = 'welcome' | 'paths' | 'backend' | 'beammp' | 'done'
+
+const SERVER_MANAGER_ONLY_HIDDEN: AppPage[] = [
+  'home',
+  'servers',
+  'friends',
+  'vehicles',
+  'maps',
+  'mods',
+  'career',
+  'launcher',
+  'controls',
+  'live-gps',
+  'livery-editor',
+  'voice-chat',
+  'lua-console',
+  'world-edit-sync',
+]
 
 const TIPS = [
   'Manage all your BeamNG mods, maps, and vehicles in one place.',
@@ -20,6 +39,8 @@ const TIPS = [
 export function SetupWizard(): React.JSX.Element {
   const { t } = useTranslation()
   const [step, setStep] = useState<WizardStep>('welcome')
+  const [mode, setMode] = useState<'full' | 'server-manager-only'>('full')
+  const [agreedToLicense, setAgreedToLicense] = useState(false)
   const [installDir, setInstallDir] = useState('')
   const [userDir, setUserDir] = useState('')
   const [detecting, setDetecting] = useState(false)
@@ -101,9 +122,22 @@ export function SetupWizard(): React.JSX.Element {
     }
   }
 
+  const goBack = (): void => {
+    if (step === 'paths') setStep('welcome')
+    else if (step === 'backend') setStep('paths')
+    else if (step === 'beammp') setStep('backend')
+    else if (step === 'done') setStep(mode === 'server-manager-only' ? 'welcome' : 'beammp')
+  }
+
   const handleFinish = async (): Promise<void> => {
     const url = backendType === 'official' ? 'https://backend.beammp.com' : backendUrl
     await window.api.setBackendUrl(url)
+    if (mode === 'server-manager-only') {
+      await useThemeStore.getState().update({
+        sidebarHidden: [...SERVER_MANAGER_ONLY_HIDDEN],
+      })
+      useAppStore.getState().setPage('server-admin')
+    }
     await useAppStore.getState().markSetupComplete()
     await useAppStore.getState().loadConfig()
   }
@@ -154,12 +188,60 @@ export function SetupWizard(): React.JSX.Element {
               <p className="text-[var(--color-text-secondary)] text-sm max-w-sm">
                 {t('setup.welcomeDesc')}
               </p>
+
+              <div className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-scrim-30)] p-4 text-left backdrop-blur-sm space-y-3">
+                <div className="text-xs font-semibold text-[var(--color-text-primary)]">How do you want to use CM?</div>
+                <label className="flex items-start gap-2 text-xs text-[var(--color-text-secondary)] cursor-pointer">
+                  <input
+                    type="radio"
+                    name="setup-mode"
+                    checked={mode === 'full'}
+                    onChange={() => setMode('full')}
+                    className="mt-0.5 accent-[var(--accent-primary)]"
+                  />
+                  <span>
+                    <span className="text-[var(--color-text-primary)] font-medium">Full experience</span>
+                    {' — '}setup game paths, backend, and BeamMP integration.
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-xs text-[var(--color-text-secondary)] cursor-pointer">
+                  <input
+                    type="radio"
+                    name="setup-mode"
+                    checked={mode === 'server-manager-only'}
+                    onChange={() => setMode('server-manager-only')}
+                    className="mt-0.5 accent-[var(--accent-primary)]"
+                  />
+                  <span>
+                    <span className="text-[var(--color-text-primary)] font-medium">Server Manager only</span>
+                    {' — '}only the Server Manager page will stay visible in the sidebar.
+                  </span>
+                </label>
+              </div>
+
+              <label className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-scrim-30)] p-3 backdrop-blur-sm text-left flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={agreedToLicense}
+                  onChange={(e) => setAgreedToLicense(e.target.checked)}
+                  className="mt-0.5 accent-[var(--accent-primary)]"
+                />
+                <span className="text-xs text-[var(--color-text-secondary)]">
+                  I'm chill (not aggro)
+                </span>
+              </label>
+
               <button
                 onClick={() => {
+                  if (mode === 'server-manager-only') {
+                    setStep('done')
+                    return
+                  }
                   setStep('paths')
-                  handleAutoDetect()
+                  void handleAutoDetect()
                 }}
-                className="flex items-center gap-2 px-8 py-3 rounded-xl bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-[var(--color-text-primary)] font-semibold transition-colors shadow-lg mt-2"
+                disabled={!agreedToLicense}
+                className="flex items-center gap-2 px-8 py-3 rounded-xl bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-[var(--color-text-primary)] font-semibold transition-colors shadow-lg mt-2 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {t('setup.getStarted')}
                 <ArrowRight size={18} />
@@ -222,14 +304,23 @@ export function SetupWizard(): React.JSX.Element {
                 </p>
               )}
 
-              <button
-                onClick={handleValidatePaths}
-                disabled={detecting || !installDir || !userDir}
-                className="self-end flex items-center gap-2 px-6 py-2.5 rounded-lg bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-[var(--color-text-primary)] text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {t('common.continue')}
-                <ArrowRight size={16} />
-              </button>
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={goBack}
+                  className="flex items-center gap-1 px-4 py-2.5 rounded-lg text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] text-sm transition-colors"
+                >
+                  <ArrowLeft size={16} />
+                  {t('common.back')}
+                </button>
+                <button
+                  onClick={handleValidatePaths}
+                  disabled={detecting || !installDir || !userDir}
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-[var(--color-text-primary)] text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {t('common.continue')}
+                  <ArrowRight size={16} />
+                </button>
+              </div>
             </div>
           )}
 
@@ -311,17 +402,26 @@ export function SetupWizard(): React.JSX.Element {
                 )}
               </div>
 
-              <button
-                onClick={async () => {
-                  setStep('beammp')
-                  const installed = await window.api.checkBeamMPInstalled()
-                  setBeammpInstalled(installed)
-                }}
-                className="self-end flex items-center gap-2 px-6 py-2.5 rounded-lg bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-[var(--color-text-primary)] text-sm font-medium transition-colors"
-              >
-                {t('common.continue')}
-                <ArrowRight size={16} />
-              </button>
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={goBack}
+                  className="flex items-center gap-1 px-4 py-2.5 rounded-lg text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] text-sm transition-colors"
+                >
+                  <ArrowLeft size={16} />
+                  {t('common.back')}
+                </button>
+                <button
+                  onClick={async () => {
+                    setStep('beammp')
+                    const installed = await window.api.checkBeamMPInstalled()
+                    setBeammpInstalled(installed)
+                  }}
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-[var(--color-text-primary)] text-sm font-medium transition-colors"
+                >
+                  {t('common.continue')}
+                  <ArrowRight size={16} />
+                </button>
+              </div>
             </div>
           )}
 
@@ -384,13 +484,22 @@ export function SetupWizard(): React.JSX.Element {
                 </div>
               )}
 
-              <button
-                onClick={() => setStep('done')}
-                className="self-end flex items-center gap-2 px-6 py-2.5 rounded-lg bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-[var(--color-text-primary)] text-sm font-medium transition-colors"
-              >
-                {t('common.continue')}
-                <ArrowRight size={16} />
-              </button>
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={goBack}
+                  className="flex items-center gap-1 px-4 py-2.5 rounded-lg text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] text-sm transition-colors"
+                >
+                  <ArrowLeft size={16} />
+                  {t('common.back')}
+                </button>
+                <button
+                  onClick={() => setStep('done')}
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-[var(--color-text-primary)] text-sm font-medium transition-colors"
+                >
+                  {t('common.continue')}
+                  <ArrowRight size={16} />
+                </button>
+              </div>
             </div>
           )}
 
@@ -402,12 +511,26 @@ export function SetupWizard(): React.JSX.Element {
               <p className="text-[var(--color-text-secondary)] text-sm max-w-sm">
                 {t('setup.allSetDesc')}
               </p>
-              <button
-                onClick={handleFinish}
-                className="px-8 py-3 rounded-xl bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-[var(--color-text-primary)] font-semibold transition-colors shadow-lg"
-              >
-                {t('setup.launchApp')}
-              </button>
+              {mode === 'server-manager-only' && (
+                <p className="text-xs text-[var(--color-text-muted)] max-w-sm">
+                  Server Manager mode enabled. BeamMP server binaries will auto-download on demand when missing.
+                </p>
+              )}
+              <div className="flex flex-col items-center gap-3">
+                <button
+                  onClick={handleFinish}
+                  className="px-8 py-3 rounded-xl bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-[var(--color-text-primary)] font-semibold transition-colors shadow-lg"
+                >
+                  {t('setup.launchApp')}
+                </button>
+                <button
+                  onClick={goBack}
+                  className="flex items-center gap-1 text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors"
+                >
+                  <ArrowLeft size={13} />
+                  {t('common.back')}
+                </button>
+              </div>
             </div>
           )}
 

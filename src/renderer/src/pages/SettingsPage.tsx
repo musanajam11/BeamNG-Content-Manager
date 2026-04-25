@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { FolderOpen, Globe, Globe2, Check, AlertCircle, Package, Download, Upload, Palette, RotateCcw, Monitor, Type, Layers, Maximize2, PanelLeft, Eye, EyeOff, Image, X, Plus, Shuffle, Network, Languages, Terminal, Server, GripVertical, Wrench, Trash2, Shield, HardDriveDownload, Loader2, Sun, Moon, SlidersHorizontal, Sparkles, Square, Circle, MousePointer, Zap } from 'lucide-react'
+import { FolderOpen, Globe, Globe2, Check, AlertCircle, Package, Download, Upload, Palette, RotateCcw, Monitor, Type, Layers, Maximize2, PanelLeft, Eye, EyeOff, Image, X, Plus, Shuffle, Network, Languages, Terminal, Server, GripVertical, Wrench, Trash2, Shield, HardDriveDownload, Loader2, Sun, Moon, SlidersHorizontal, Sparkles, Square, Circle, MousePointer, Zap, Lightbulb } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../stores/useAppStore'
 import { useThemeStore, ACCENT_PRESETS, BG_STYLES, DEFAULT_SIDEBAR_ORDER } from '../stores/useThemeStore'
@@ -12,7 +12,10 @@ type SettingsTab = 'general' | 'appearance'
 
 export function SettingsPage(): React.JSX.Element {
   const config = useAppStore((s) => s.config)
-  const [tab, setTab] = useState<SettingsTab>('general')
+  // Auto-open Appearance tab on first visit when hints are on, so the hints banner is immediately visible
+  const [tab, setTab] = useState<SettingsTab>(() =>
+    (useThemeStore.getState().appearance.showHints ?? true) ? 'appearance' : 'general'
+  )
   const { t } = useTranslation()
 
   return (
@@ -673,6 +676,23 @@ function AppearanceSettingsPanel(): React.JSX.Element {
   return (
     <div className="max-w-2xl">
       <div className="flex flex-col gap-8">
+        {/* Hints banner */}
+        {(appearance.showHints ?? true) && (
+          <div className="flex items-start gap-3 rounded-xl border-2 border-[var(--color-accent)] bg-[var(--color-accent-subtle)] p-4 ring-2 ring-[var(--color-accent)] ring-offset-2 ring-offset-[var(--color-bg)]">
+            <Lightbulb size={18} className="shrink-0 mt-0.5 text-[var(--color-accent)]" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-[var(--color-text-primary)]">Customize your UI here</p>
+              <p className="text-xs text-[var(--color-text-secondary)] mt-0.5">Adjust colors, layout, animations, effects, and more. Turn off hints using the button on the right when you&apos;re done.</p>
+            </div>
+            <button
+              onClick={() => update({ showHints: false })}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-[var(--color-accent)] text-white hover:opacity-90 transition-opacity shrink-0"
+            >
+              <Lightbulb size={11} />
+              Turn off hints
+            </button>
+          </div>
+        )}
         {/* Color Mode */}
         <section>
           <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2" style={{ marginBottom: 20 }}>
@@ -1209,7 +1229,8 @@ function AppearanceSettingsPanel(): React.JSX.Element {
               { key: 'effectAccentSelection' as const, label: t('settings.effectAccentSelection', 'Accent text selection'), desc: t('settings.effectAccentSelectionDesc', 'Highlight selected text with your accent color') },
               { key: 'effectFrostedGlass' as const, label: t('settings.effectFrostedGlass', 'Frosted glass panels'), desc: t('settings.effectFrostedGlassDesc', 'Extra blur + saturation on overlay panels') },
               { key: 'effectHoverGlow' as const, label: t('settings.effectHoverGlow', 'Hover glow'), desc: t('settings.effectHoverGlowDesc', 'Accent glow effect when hovering cards') },
-              { key: 'effectHoverLift' as const, label: t('settings.effectHoverLift', 'Hover lift'), desc: t('settings.effectHoverLiftDesc', 'Cards lift slightly when hovered') }
+              { key: 'effectHoverLift' as const, label: t('settings.effectHoverLift', 'Hover lift'), desc: t('settings.effectHoverLiftDesc', 'Cards lift slightly when hovered') },
+              { key: 'showHints' as const, label: t('settings.showHints', 'Show hints'), desc: t('settings.showHintsDesc', 'Hover tooltip hints on sidebar items explaining what each page does') }
             ] as const).map(({ key, label, desc }) => (
               <label key={key} className="flex items-center gap-3 cursor-pointer">
                 <button
