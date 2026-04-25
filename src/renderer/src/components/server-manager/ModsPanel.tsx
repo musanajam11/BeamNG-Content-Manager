@@ -35,6 +35,15 @@ interface ModsPanelProps {
   onRefresh: () => void
 }
 
+type BulkOp = 'deploy' | 'undeploy'
+
+interface BulkProgressState {
+  op: BulkOp
+  done: number
+  total: number
+  currentItem: string | null
+}
+
 function SortableServerModRow({
   mod,
   isDeployed,
@@ -145,6 +154,9 @@ export function ModsPanel({ serverId, mods, onRefresh }: ModsPanelProps): React.
   const [registryMeta, setRegistryMeta] = useState<Record<string, { multiplayer_scope?: string }>>({})
   const [copying, setCopying] = useState<string | null>(null)
   const [undeploying, setUndeploying] = useState<string | null>(null)
+  const [bulkDeploying, setBulkDeploying] = useState(false)
+  const [bulkUndeploying, setBulkUndeploying] = useState(false)
+  const [bulkProgress, setBulkProgress] = useState<BulkProgressState | null>(null)
   const [deployedNames, setDeployedNames] = useState<Set<string>>(new Set())
   const [deployedOrder, setDeployedOrder] = useState<string[]>([])
   const { dialog: confirmDialogEl, confirm } = useConfirmDialog()
@@ -232,6 +244,72 @@ export function ModsPanel({ serverId, mods, onRefresh }: ModsPanelProps): React.
     }
   }
 
+  const handleDeployAll = async (): Promise<void> => {
+    const toDeploy = sortedMods.filter((m) => {
+      const fileName = m.filePath.replace(/\\/g, '/').split('/').pop()?.toLowerCase() ?? ''
+      return !deployedNames.has(fileName)
+    })
+    if (toDeploy.length === 0) return
+
+    setBulkDeploying(true)
+    setBulkProgress({ op: 'deploy', done: 0, total: toDeploy.length, currentItem: null })
+    try {
+      for (let i = 0; i < toDeploy.length; i++) {
+        const mod = toDeploy[i]
+        const currentName = mod.name || mod.key
+        setBulkProgress({ op: 'deploy', done: i, total: toDeploy.length, currentItem: currentName })
+        try {
+          await window.api.hostedServerCopyMod(serverId, mod.filePath)
+        } catch {
+          // Best effort: keep deploying remaining mods.
+        }
+        setBulkProgress({ op: 'deploy', done: i + 1, total: toDeploy.length, currentItem: currentName })
+      }
+      await fetchDeployed()
+      await fetchOrder()
+      onRefresh()
+    } finally {
+      setBulkDeploying(false)
+      setBulkProgress(null)
+    }
+  }
+
+  const handleUndeployAll = async (): Promise<void> => {
+    const deployedFileNames = sortedMods
+      .map((m) => m.filePath.replace(/\\/g, '/').split('/').pop()?.toLowerCase() ?? '')
+      .filter((fileName) => deployedNames.has(fileName))
+    if (deployedFileNames.length === 0) return
+
+    const ok = await confirm({
+      title: t('serverManager.undeployMod'),
+      message: t('serverManager.undeployModMessage', { fileName: `${deployedFileNames.length} ${t('common.all')}` }),
+      confirmLabel: t('serverManager.undeployLabel'),
+      variant: 'danger'
+    })
+    if (!ok) return
+
+    setBulkUndeploying(true)
+    setBulkProgress({ op: 'undeploy', done: 0, total: deployedFileNames.length, currentItem: null })
+    try {
+      for (let i = 0; i < deployedFileNames.length; i++) {
+        const fileName = deployedFileNames[i]
+        setBulkProgress({ op: 'undeploy', done: i, total: deployedFileNames.length, currentItem: fileName })
+        try {
+          await window.api.hostedServerUndeployMod(serverId, fileName)
+        } catch {
+          // Best effort: keep undeploying remaining mods.
+        }
+        setBulkProgress({ op: 'undeploy', done: i + 1, total: deployedFileNames.length, currentItem: fileName })
+      }
+      await fetchDeployed()
+      await fetchOrder()
+      onRefresh()
+    } finally {
+      setBulkUndeploying(false)
+      setBulkProgress(null)
+    }
+  }
+
   const handleDragEnd = (event: DragEndEvent): void => {
     const { active, over } = event
     if (!over || active.id === over.id) return
@@ -265,12 +343,63 @@ export function ModsPanel({ serverId, mods, onRefresh }: ModsPanelProps): React.
     return a.name.localeCompare(b.name)
   })
 
+  const deployableCount = sortedMods.filter((m) => {
+    const fileName = m.filePath.replace(/\\/g, '/').split('/').pop()?.toLowerCase() ?? ''
+    return !deployedNames.has(fileName)
+  }).length
+
+  const deployedCount = sortedMods.filter((m) => {
+    const fileName = m.filePath.replace(/\\/g, '/').split('/').pop()?.toLowerCase() ?? ''
+    return deployedNames.has(fileName)
+  }).length
+
   return (
     <>
       <div className="flex-1 flex flex-col min-h-0">
-        <div className="px-4 py-2 border-b border-[var(--color-border)] text-xs text-[var(--color-text-muted)]">
-          {t('serverManager.deployModsDescription')}
+        <div className="px-4 py-2 border-b border-[var(--color-border)] flex items-center justify-between gap-3">
+          <span className="text-xs text-[var(--color-text-muted)]">{t('serverManager.deployModsDescription')}</span>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleDeployAll}
+              disabled={bulkDeploying || bulkUndeploying || deployableCount === 0}
+              className="text-xs px-2.5 py-1 bg-[var(--color-accent)]/20 text-[var(--color-accent)] border border-[var(--color-accent)]/30 hover:bg-[var(--color-accent)]/30 transition-colors disabled:opacity-50"
+            >
+              {bulkDeploying
+                ? t('serverManager.deploying')
+                : `${t('serverManager.deployToServer')} (${t('common.all')})`}
+            </button>
+            <button
+              onClick={handleUndeployAll}
+              disabled={bulkDeploying || bulkUndeploying || deployedCount === 0}
+              className="text-xs px-2 py-1 text-red-400 bg-red-400/10 border border-red-400/20 hover:bg-red-400/20 transition-colors disabled:opacity-50"
+            >
+              {bulkUndeploying
+                ? t('serverManager.removing')
+                : `${t('serverManager.undeployLabel')} (${t('common.all')})`}
+            </button>
+          </div>
         </div>
+        {bulkProgress && (
+          <div className="px-4 py-2 border-b border-[var(--color-border)] bg-[var(--color-scrim-20)]">
+            <div className="flex items-center justify-between text-[11px] text-[var(--color-text-secondary)] mb-1">
+              <span>
+                {bulkProgress.op === 'deploy' ? t('serverManager.deploying') : t('serverManager.removing')}
+              </span>
+              <span>{bulkProgress.done}/{bulkProgress.total}</span>
+            </div>
+            <div className="h-1.5 w-full rounded bg-[var(--color-surface)] overflow-hidden border border-[var(--color-border)]">
+              <div
+                className="h-full bg-[var(--color-accent)] transition-[width] duration-150"
+                style={{ width: `${bulkProgress.total > 0 ? (bulkProgress.done / bulkProgress.total) * 100 : 0}%` }}
+              />
+            </div>
+            {bulkProgress.currentItem && (
+              <div className="mt-1 text-[11px] text-[var(--color-text-muted)] truncate" title={bulkProgress.currentItem}>
+                {bulkProgress.currentItem}
+              </div>
+            )}
+          </div>
+        )}
       <div className="flex-1 overflow-y-auto">
         {mods.length === 0 ? (
           <div className="text-[var(--color-text-muted)] text-center py-8 text-sm">
