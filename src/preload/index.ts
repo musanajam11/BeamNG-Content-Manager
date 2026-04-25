@@ -603,10 +603,55 @@ const api = {
     ipcRenderer.invoke('career:fetchCareerMPReleases'),
   careerFetchRLSReleases: () =>
     ipcRenderer.invoke('career:fetchRLSReleases'),
+  careerFetchGreatRebalanceRlsReleases: () =>
+    ipcRenderer.invoke('career:fetchGreatRebalanceRlsReleases') as Promise<Array<{
+      version: string
+      name: string
+      prerelease: boolean
+      publishedAt: string
+      downloadUrl: string
+    }>>,
+  careerFetchGreatRebalancePatchReleases: () =>
+    ipcRenderer.invoke('career:fetchGreatRebalancePatchReleases') as Promise<Array<{
+      version: string
+      name: string
+      prerelease: boolean
+      publishedAt: string
+      downloadUrl: string
+    }>>,
   careerInstallCareerMP: (downloadUrl: string, version: string, serverDir: string) =>
     ipcRenderer.invoke('career:installCareerMP', downloadUrl, version, serverDir) as Promise<{ success: boolean; error?: string }>,
   careerInstallRLS: (downloadUrl: string, version: string, traffic: boolean, serverDir: string) =>
     ipcRenderer.invoke('career:installRLS', downloadUrl, version, traffic, serverDir) as Promise<{ success: boolean; error?: string }>,
+  careerInstallRLSGreatRebalance: (
+    careerMpDownloadUrl: string,
+    careerMpVersion: string,
+    rlsDownloadUrl: string,
+    rlsVersion: string,
+    patchDownloadUrl: string,
+    patchVersion: string,
+    serverDir: string
+  ) =>
+    ipcRenderer.invoke(
+      'career:installRLSGreatRebalance',
+      careerMpDownloadUrl,
+      careerMpVersion,
+      rlsDownloadUrl,
+      rlsVersion,
+      patchDownloadUrl,
+      patchVersion,
+      serverDir
+    ) as Promise<{ success: boolean; error?: string }>,
+  careerGetPythonRuntimeStatus: () =>
+    ipcRenderer.invoke('career:getPythonRuntimeStatus') as Promise<{
+      available: boolean
+      command?: 'python' | 'py'
+      version?: string
+      canAutoInstall: boolean
+      message?: string
+    }>,
+  careerInstallPythonRuntime: () =>
+    ipcRenderer.invoke('career:installPythonRuntime') as Promise<{ success: boolean; error?: string }>,
   careerGetInstalledMods: (serverDir: string) =>
     ipcRenderer.invoke('career:getInstalledMods', serverDir),
   careerBrowseServerDir: () =>

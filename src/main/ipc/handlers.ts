@@ -7770,12 +7770,52 @@ end
     return careerModService.fetchRLSReleases()
   })
 
+  ipcMain.handle('career:fetchGreatRebalanceRlsReleases', async () => {
+    return careerModService.fetchGreatRebalanceRlsReleases()
+  })
+
+  ipcMain.handle('career:fetchGreatRebalancePatchReleases', async () => {
+    return careerModService.fetchGreatRebalancePatchReleases()
+  })
+
   ipcMain.handle('career:installCareerMP', async (_event, downloadUrl: string, version: string, serverDir: string) => {
     return careerModService.installCareerMP(downloadUrl, version, serverDir)
   })
 
   ipcMain.handle('career:installRLS', async (_event, downloadUrl: string, version: string, traffic: boolean, serverDir: string) => {
     return careerModService.installRLS(downloadUrl, version, traffic, serverDir)
+  })
+
+  ipcMain.handle(
+    'career:installRLSGreatRebalance',
+    async (
+      _event,
+      careerMpDownloadUrl: string,
+      careerMpVersion: string,
+      rlsDownloadUrl: string,
+      rlsVersion: string,
+      patchDownloadUrl: string,
+      patchVersion: string,
+      serverDir: string
+    ) => {
+      return careerModService.installRLSGreatRebalance(
+        careerMpDownloadUrl,
+        careerMpVersion,
+        rlsDownloadUrl,
+        rlsVersion,
+        patchDownloadUrl,
+        patchVersion,
+        serverDir
+      )
+    }
+  )
+
+  ipcMain.handle('career:getPythonRuntimeStatus', async () => {
+    return careerModService.getPythonRuntimeStatus()
+  })
+
+  ipcMain.handle('career:installPythonRuntime', async () => {
+    return careerModService.installPythonRuntime()
   })
 
   ipcMain.handle('career:getInstalledMods', async (_event, serverDir: string) => {

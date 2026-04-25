@@ -505,8 +505,39 @@ interface AppAPI {
     noTrafficSize: number
     downloads: number
   }>>
+  careerFetchGreatRebalanceRlsReleases(): Promise<Array<{
+    version: string
+    name: string
+    prerelease: boolean
+    publishedAt: string
+    downloadUrl: string
+  }>>
+  careerFetchGreatRebalancePatchReleases(): Promise<Array<{
+    version: string
+    name: string
+    prerelease: boolean
+    publishedAt: string
+    downloadUrl: string
+  }>>
   careerInstallCareerMP(downloadUrl: string, version: string, serverDir: string): Promise<{ success: boolean; error?: string }>
   careerInstallRLS(downloadUrl: string, version: string, traffic: boolean, serverDir: string): Promise<{ success: boolean; error?: string }>
+  careerInstallRLSGreatRebalance(
+    careerMpDownloadUrl: string,
+    careerMpVersion: string,
+    rlsDownloadUrl: string,
+    rlsVersion: string,
+    patchDownloadUrl: string,
+    patchVersion: string,
+    serverDir: string
+  ): Promise<{ success: boolean; error?: string }>
+  careerGetPythonRuntimeStatus(): Promise<{
+    available: boolean
+    command?: 'python' | 'py'
+    version?: string
+    canAutoInstall: boolean
+    message?: string
+  }>
+  careerInstallPythonRuntime(): Promise<{ success: boolean; error?: string }>
   careerGetInstalledMods(serverDir: string): Promise<{
     careerMP: { version: string; installedAt: string } | null
     rls: { version: string; traffic: boolean; installedAt: string } | null

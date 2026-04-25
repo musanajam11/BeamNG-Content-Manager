@@ -1,9 +1,10 @@
 import { get as httpsGet } from 'https'
 import { createWriteStream, existsSync } from 'fs'
 import { mkdir, readFile, writeFile, rm, readdir, rmdir } from 'node:fs/promises'
-import { join, dirname } from 'node:path'
+import { join, dirname, basename } from 'node:path'
 import { app } from 'electron'
 import { open as yauzlOpen, type Entry } from 'yauzl'
+import { spawn } from 'node:child_process'
 
 /* ── Types ── */
 
@@ -46,6 +47,14 @@ export interface RLSRelease {
   trafficSize: number
   noTrafficSize: number
   downloads: number
+}
+
+export interface GreatRebalanceDependencyRelease {
+  version: string
+  name: string
+  prerelease: boolean
+  publishedAt: string
+  downloadUrl: string
 }
 
 export interface InstalledCareerMods {
@@ -270,6 +279,71 @@ export class CareerModService {
       })
   }
 
+  async fetchGreatRebalanceRlsReleases(): Promise<GreatRebalanceDependencyRelease[]> {
+    const raw = await this.fetchJson(
+      'https://api.github.com/repos/RLS-Modding/rls_career_overhaul/releases?per_page=30'
+    )
+    if (!Array.isArray(raw)) return []
+
+    const releases = raw as GitHubRelease[]
+    return releases
+      .map((r) => {
+        const zipAsset = r.assets.find((a) => a.name.toLowerCase().endsWith('.zip'))
+        return {
+          version: r.tag_name,
+          name: r.name || r.tag_name,
+          prerelease: r.prerelease,
+          publishedAt: r.published_at,
+          downloadUrl: zipAsset?.browser_download_url ?? ''
+        }
+      })
+      .filter((r) => /^v?2\.6\.5(\.|$)/i.test(r.version) && !!r.downloadUrl)
+      .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
+  }
+
+  async fetchGreatRebalancePatchReleases(): Promise<GreatRebalanceDependencyRelease[]> {
+    const raw = await this.fetchJson(
+      'https://api.github.com/repos/ChiarelloB/RLS-CareerMP-Compatibility-Patch---Online-Career-Mode/releases?per_page=30'
+    )
+    if (!Array.isArray(raw)) {
+      return [
+        {
+          version: 'main',
+          name: 'main',
+          prerelease: false,
+          publishedAt: '',
+          downloadUrl:
+            'https://codeload.github.com/ChiarelloB/RLS-CareerMP-Compatibility-Patch---Online-Career-Mode/zip/refs/heads/main'
+        }
+      ]
+    }
+
+    const releases = raw as GitHubRelease[]
+    const mapped = releases
+      .map((r) => ({
+        version: r.tag_name,
+        name: r.name || r.tag_name,
+        prerelease: r.prerelease,
+        publishedAt: r.published_at,
+        // Use codeload tar/zip of the tagged source tree so build_release.py is always present.
+        downloadUrl: `https://codeload.github.com/ChiarelloB/RLS-CareerMP-Compatibility-Patch---Online-Career-Mode/zip/refs/tags/${encodeURIComponent(r.tag_name)}`
+      }))
+      .filter((r) => !!r.version && !!r.downloadUrl)
+      .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
+
+    if (mapped.length > 0) return mapped
+    return [
+      {
+        version: 'main',
+        name: 'main',
+        prerelease: false,
+        publishedAt: '',
+        downloadUrl:
+          'https://codeload.github.com/ChiarelloB/RLS-CareerMP-Compatibility-Patch---Online-Career-Mode/zip/refs/heads/main'
+      }
+    ]
+  }
+
   /* ── Install CareerMP ── */
 
   async installCareerMP(
@@ -319,7 +393,10 @@ export class CareerModService {
   ): Promise<{ success: boolean; error?: string }> {
     try {
       await mkdir(this.tmpDir, { recursive: true })
-      const fileName = `RLS_${version}${traffic ? '' : '_NoTraffic'}.zip`
+      const sourceNameRaw = basename(new URL(downloadUrl).pathname)
+      const sourceName = decodeURIComponent(sourceNameRaw || '')
+      const fallbackName = `RLS_${version}${traffic ? '' : '_NoTraffic'}.zip`
+      const fileName = sourceName.toLowerCase().endsWith('.zip') ? sourceName : fallbackName
       const zipPath = join(this.tmpDir, fileName)
       const clientDir = join(serverDir, 'Resources', 'Client')
       await mkdir(clientDir, { recursive: true })
@@ -354,6 +431,227 @@ export class CareerModService {
     } catch (err) {
       return { success: false, error: String(err) }
     }
+  }
+
+  async installRLSGreatRebalance(
+    careerMpDownloadUrl: string,
+    careerMpVersion: string,
+    rlsDownloadUrl: string,
+    rlsVersion: string,
+    patchDownloadUrl: string,
+    patchVersion: string,
+    serverDir: string
+  ): Promise<{ success: boolean; error?: string }> {
+    const workDir = join(this.tmpDir, `grb-build-${Date.now()}`)
+    const originalsDir = join(workDir, 'originals')
+    const outDir = join(workDir, 'built')
+
+    try {
+      await mkdir(originalsDir, { recursive: true })
+      await mkdir(outDir, { recursive: true })
+
+      // CareerMP GitHub releases contain ONLY the server-side plugin zip
+      // (Resources/Server/CareerMP/careerMP.lua).  The BeamNG client mod zip
+      // (lua/ge/extensions/, ui/, scripts/, etc.) is a separate artefact that
+      // lives at https://raw.githubusercontent.com/StanleyDudek/CareerMP/main/
+      // Resources/Client/CareerMP.zip.  build_release.py needs the CLIENT zip
+      // as --careermp-original; extracting to the server root needs the SERVER
+      // zip.  Using the server zip as build input was the root cause of
+      // lua/ge/extensions/careerMPEnabler.lua ending up at the server root.
+      const CAREERMP_RAW_CLIENT_URL =
+        'https://raw.githubusercontent.com/StanleyDudek/CareerMP/main/Resources/Client/CareerMP.zip'
+
+      const careerMpServerZip = join(originalsDir, `CareerMP_server_${careerMpVersion}.zip`)
+      const careerMpClientZip = join(originalsDir, 'CareerMP_client.zip')
+      const rlsZip = join(originalsDir, `rls_${rlsVersion}.zip`)
+      const patchRepoZip = join(workDir, 'patch-repo.zip')
+      const patchExtractDir = join(workDir, 'patch-repo')
+
+      // Download all four inputs in parallel.
+      await Promise.all([
+        this.downloadFile(careerMpDownloadUrl, careerMpServerZip),
+        this.downloadFile(CAREERMP_RAW_CLIENT_URL, careerMpClientZip),
+        this.downloadFile(rlsDownloadUrl, rlsZip),
+        this.downloadFile(patchDownloadUrl, patchRepoZip),
+      ])
+      await this.extractZipToDir(patchRepoZip, patchExtractDir)
+
+      const buildScript = await this.findFileByName(patchExtractDir, 'build_release.py')
+      if (!buildScript) {
+        return { success: false, error: 'Unable to locate build_release.py in the compatibility patch package.' }
+      }
+
+      const buildArgs = [
+        buildScript,
+        '--rls-original',
+        rlsZip,
+        '--careermp-original',
+        careerMpClientZip,   // <-- client mod zip, not the server zip
+        '--out-dir',
+        outDir
+      ]
+
+      const buildWithPython = await this.tryRunPythonBuilder(buildArgs)
+      if (!buildWithPython.success) {
+        return { success: false, error: buildWithPython.error }
+      }
+
+      const builtCareerMpPath = join(outDir, 'CareerMP.zip')
+      const builtEntries = await readdir(outDir)
+      const builtRlsName = builtEntries.find((n) => /careermp_compatible\.zip$/i.test(n))
+      if (!builtRlsName) {
+        return { success: false, error: 'Builder finished but no compatible RLS zip was generated.' }
+      }
+      const builtRlsPath = join(outDir, builtRlsName)
+
+      // 1. Extract ONLY careerMP.lua from the server zip into the correct server
+      //    plugin directory.  Never call extractZipToDir on the server zip because
+      //    different CareerMP release versions have had inconsistent zip layouts
+      //    and any surprise entries would pollute the server root.
+      await this.removePreviouslyInstalledFiles(serverDir, 'careerMP')
+      const serverPluginDir = join(serverDir, 'Resources', 'Server', 'CareerMP')
+      await mkdir(serverPluginDir, { recursive: true })
+      const serverCareerMpLuaPath = join(serverPluginDir, 'careerMP.lua')
+      await this.extractSingleFileFromZip(careerMpServerZip, 'Resources/Server/CareerMP/careerMP.lua', serverCareerMpLuaPath)
+
+      // 2. Place the Chiarello-patched CLIENT zip at Resources/Client/CareerMP.zip.
+      //    This is what BeamMP distributes to connecting players.  Do NOT extract
+      //    this zip to the server root (it is a BeamNG mod archive, not a plugin).
+      const { copyFile } = await import('node:fs/promises')
+      const clientCareerMpPath = join(serverDir, 'Resources', 'Client', 'CareerMP.zip')
+      await mkdir(join(serverDir, 'Resources', 'Client'), { recursive: true })
+      await copyFile(builtCareerMpPath, clientCareerMpPath)
+      await this.saveInstalledVersion(serverDir, 'careerMP', {
+        version: `${careerMpVersion} (GRB patched: ${patchVersion})`,
+        installedAt: new Date().toISOString(),
+        installedFiles: [serverCareerMpLuaPath, clientCareerMpPath]
+      })
+
+      // Install generated compatible RLS zip to Resources/Client with robust cleanup.
+      // clientDir and copyFile are already available from the CareerMP step above.
+      const clientDir = join(serverDir, 'Resources', 'Client')
+      await this.removeStaleRlsZips(clientDir)
+
+      const finalRlsName = basename(builtRlsPath)
+      const finalRlsPath = join(clientDir, finalRlsName)
+      await copyFile(builtRlsPath, finalRlsPath)
+      await this.saveInstalledVersion(serverDir, 'rls', {
+        version: `${rlsVersion} (GRB compatible: ${patchVersion})`,
+        traffic: true,
+        installedAt: new Date().toISOString(),
+        installedFile: finalRlsPath
+      })
+
+      // Disable CareerMP auto-update so it doesn't overwrite the patched client zip
+      // when the server restarts.  Resources/Server/CareerMP/ was just created by
+      // extracting the original CareerMP release zip, so the config directory is safe
+      // to write.  Fail the whole install if this step fails — a silently running
+      // auto-update would undo all of the patching work above.
+      const { readFile: readFileFs, writeFile: writeFileFs } = await import('node:fs/promises')
+      const autoUpdateConfigPath = join(
+        serverDir,
+        'Resources',
+        'Server',
+        'CareerMP',
+        'config',
+        'config.json'
+      )
+      let cfg: Record<string, unknown> = {}
+      try {
+        const raw = await readFileFs(autoUpdateConfigPath, 'utf-8')
+        cfg = JSON.parse(raw) as Record<string, unknown>
+      } catch {
+        // Config doesn't exist yet — create a minimal one.
+      }
+      if (typeof cfg.server !== 'object' || cfg.server === null) cfg.server = {}
+      ;(cfg.server as Record<string, unknown>).autoUpdate = false
+      await mkdir(join(serverDir, 'Resources', 'Server', 'CareerMP', 'config'), { recursive: true })
+      await writeFileFs(autoUpdateConfigPath, JSON.stringify(cfg, null, 2), 'utf-8')
+
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    } finally {
+      await rm(workDir, { recursive: true, force: true }).catch(() => {})
+    }
+  }
+
+  async getPythonRuntimeStatus(): Promise<{
+    available: boolean
+    command?: 'python' | 'py'
+    version?: string
+    canAutoInstall: boolean
+    message?: string
+  }> {
+    const pythonProbe = await this.runProcess('python', ['--version'])
+    if (pythonProbe.code === 0) {
+      return {
+        available: true,
+        command: 'python',
+        version: (pythonProbe.stdout || pythonProbe.stderr).trim(),
+        canAutoInstall: process.platform === 'win32'
+      }
+    }
+
+    const pyProbe = await this.runProcess('py', ['--version'])
+    if (pyProbe.code === 0) {
+      return {
+        available: true,
+        command: 'py',
+        version: (pyProbe.stdout || pyProbe.stderr).trim(),
+        canAutoInstall: process.platform === 'win32'
+      }
+    }
+
+    return {
+      available: false,
+      canAutoInstall: process.platform === 'win32',
+      message: 'Python 3 runtime was not detected (checked both python and py commands).'
+    }
+  }
+
+  async installPythonRuntime(): Promise<{ success: boolean; error?: string }> {
+    if (process.platform !== 'win32') {
+      return {
+        success: false,
+        error: 'Automatic Python install is currently only supported on Windows. Please install Python 3 manually.'
+      }
+    }
+
+    const wingetProbe = await this.runProcess('winget', ['--version'])
+    if (wingetProbe.code !== 0) {
+      return {
+        success: false,
+        error:
+          'winget is not available on this system. Install Python 3 manually from https://www.python.org/downloads/ and relaunch BeamCM.'
+      }
+    }
+
+    const install = await this.runProcess('winget', [
+      'install',
+      '--id', 'Python.Python.3.12',
+      '-e',
+      '--accept-package-agreements',
+      '--accept-source-agreements'
+    ])
+
+    if (install.code !== 0) {
+      return {
+        success: false,
+        error: install.stderr || install.stdout || 'winget Python install failed.'
+      }
+    }
+
+    const post = await this.getPythonRuntimeStatus()
+    if (!post.available) {
+      return {
+        success: false,
+        error:
+          'Python install finished but Python is still not detectable in the current process. Please restart BeamCM and try again.'
+      }
+    }
+
+    return { success: true }
   }
 
   /* ── CareerMP server config.json ── */
@@ -475,12 +773,33 @@ export class CareerModService {
   async getInstalledMods(serverDir: string): Promise<InstalledCareerMods> {
     const metaPath = join(serverDir, 'career-mods.json')
     if (!existsSync(metaPath)) return { careerMP: null, rls: null }
+    let parsed: InstalledCareerMods
     try {
-      const raw = await readFile(metaPath, 'utf-8')
-      return JSON.parse(raw)
+      parsed = JSON.parse(await readFile(metaPath, 'utf-8')) as InstalledCareerMods
     } catch {
       return { careerMP: null, rls: null }
     }
+
+    // Validate tracked files actually exist on disk. If the key files are gone
+    // (e.g. the user deleted Resources/ manually) treat as not installed so the
+    // UI doesn't show stale state.
+    const careerMP = parsed.careerMP
+    if (careerMP) {
+      const files = (careerMP as { installedFiles?: string[] }).installedFiles
+      if (files && files.length > 0 && !files.some((f) => existsSync(f))) {
+        parsed.careerMP = null
+      }
+    }
+
+    const rls = parsed.rls
+    if (rls) {
+      const file = (rls as { installedFile?: string }).installedFile
+      if (file && !existsSync(file)) {
+        parsed.rls = null
+      }
+    }
+
+    return parsed
   }
 
   /* ── Internals ── */
@@ -497,6 +816,39 @@ export class CareerModService {
     }
     existing[key] = data
     await writeFile(metaPath, JSON.stringify(existing, null, 2), 'utf-8')
+  }
+
+  /**
+   * Extract exactly one file from a zip by its in-archive path and write it to
+   * `destPath`.  Throws if the entry is not found.
+   */
+  private extractSingleFileFromZip(zipPath: string, entryName: string, destPath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      yauzlOpen(zipPath, { lazyEntries: true }, (err, zipFile) => {
+        if (err || !zipFile) { reject(err ?? new Error('Failed to open zip')); return }
+        let found = false
+        zipFile.readEntry()
+        zipFile.on('entry', (entry: Entry) => {
+          const normalized = entry.fileName.replace(/\\/g, '/')
+          if (normalized === entryName) {
+            found = true
+            zipFile.openReadStream(entry, (sErr, stream) => {
+              if (sErr || !stream) { zipFile.close(); reject(sErr ?? new Error('Failed to read entry')); return }
+              const ws = createWriteStream(destPath)
+              stream.pipe(ws)
+              ws.on('finish', () => { ws.close(); zipFile.close(); resolve() })
+              ws.on('error', (e) => { zipFile.close(); reject(e) })
+            })
+          } else {
+            zipFile.readEntry()
+          }
+        })
+        zipFile.on('end', () => {
+          if (!found) reject(new Error(`Entry '${entryName}' not found in ${zipPath}`))
+        })
+        zipFile.on('error', (e) => reject(e))
+      })
+    })
   }
 
   private extractZipToDir(zipPath: string, destDir: string): Promise<string[]> {
@@ -541,7 +893,7 @@ export class CareerModService {
   }
 
   /**
-   * Delete every `RLS*.zip` (and `RLS*_NoTraffic.zip`) currently sitting in
+   * Delete every RLS-related zip currently sitting in
    * the server's `Resources/Client` directory. Called immediately before
    * deploying a fresh RLS zip so version switches don't leave the previous
    * version's client zip behind for the BeamMP launcher to also serve.
@@ -551,11 +903,63 @@ export class CareerModService {
     try {
       const entries = await readdir(clientDir)
       for (const name of entries) {
-        if (/^RLS.*\.zip$/i.test(name)) {
+        // Covers legacy names (RLS_*.zip), newer overhaul names, and
+        // generated compatibility outputs that can change across updates.
+        if (/\.zip$/i.test(name) && /(rls|career_overhaul)/i.test(name)) {
           await rm(join(clientDir, name), { force: true }).catch(() => {})
         }
       }
     } catch { /* ignore */ }
+  }
+
+  private async findFileByName(root: string, fileName: string): Promise<string | null> {
+    const stack: string[] = [root]
+    while (stack.length > 0) {
+      const current = stack.pop() as string
+      const entries = await readdir(current, { withFileTypes: true })
+      for (const entry of entries) {
+        const full = join(current, entry.name)
+        if (entry.isDirectory()) {
+          stack.push(full)
+          continue
+        }
+        if (entry.isFile() && entry.name === fileName) return full
+      }
+    }
+    return null
+  }
+
+  private async tryRunPythonBuilder(args: string[]): Promise<{ success: boolean; error?: string }> {
+    const attempts: Array<{ cmd: string; args: string[] }> = [
+      { cmd: 'python', args },
+      { cmd: 'py', args }
+    ]
+
+    const errors: string[] = []
+    for (const attempt of attempts) {
+      const result = await this.runProcess(attempt.cmd, attempt.args)
+      if (result.code === 0) return { success: true }
+      errors.push(`${attempt.cmd}: ${result.stderr || result.stdout || `exit code ${String(result.code)}`}`)
+    }
+
+    return {
+      success: false,
+      error:
+        'PYTHON_MISSING: Failed to run compatibility builder. Install Python 3 (or py launcher) and try again.\n' +
+        errors.join('\n')
+    }
+  }
+
+  private runProcess(command: string, args: string[]): Promise<{ code: number | null; stdout: string; stderr: string }> {
+    return new Promise((resolve) => {
+      const child = spawn(command, args, { windowsHide: true })
+      let stdout = ''
+      let stderr = ''
+      child.stdout.on('data', (d) => { stdout += d.toString() })
+      child.stderr.on('data', (d) => { stderr += d.toString() })
+      child.on('error', (err) => resolve({ code: -1, stdout, stderr: String(err) }))
+      child.on('close', (code) => resolve({ code, stdout, stderr }))
+    })
   }
 
   /**

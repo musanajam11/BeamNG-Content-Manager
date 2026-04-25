@@ -8,6 +8,7 @@ import rehypeRaw from 'rehype-raw'
 import careermpModMd from '../../assets/readmes/careermp-mod.md?raw'
 import rlsModMd from '../../assets/readmes/rls-mod.md?raw'
 import careermpBankingMd from '../../assets/readmes/careermp-banking.md?raw'
+import rlsCareerMpCompatPatchMd from '../../assets/readmes/rls-careermp-compat-patch.md?raw'
 import buberMd from '../../assets/readmes/buber.md?raw'
 import dynamicTrafficMd from '../../assets/readmes/dynamic-traffic.md?raw'
 import cobaltEssentialsMd from '../../assets/readmes/cobalt-essentials.md?raw'
@@ -45,6 +46,7 @@ import ceiGallery12 from '../../assets/cei-readme/gallery12.png'
 const README_BY_ID: Record<string, string> = {
   'careermp-mod': careermpModMd,
   'rls-mod': rlsModMd,
+  'rls-careermp-compat-patch': rlsCareerMpCompatPatchMd,
   'careermp-banking': careermpBankingMd,
   buber: buberMd,
   'dynamic-traffic': dynamicTrafficMd,

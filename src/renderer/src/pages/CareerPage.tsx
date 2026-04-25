@@ -182,6 +182,18 @@ interface InstalledCareerMods {
   rls: { version: string; traffic: boolean; installedAt: string } | null
 }
 
+interface InstalledCareerPlugin {
+  pluginId: string
+  version: string
+  installedAt: string
+  artifacts: string[]
+}
+
+interface GreatRebalanceDependencyRelease {
+  version: string
+  downloadUrl: string
+}
+
 /* ── helpers ── */
 function formatMoney(v: number): string {
   return v.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
@@ -301,12 +313,29 @@ export function CareerPage(): React.JSX.Element {
   const [rlsTraffic, setRlsTraffic] = useState(true)
   const [rlsInstalling, setRlsInstalling] = useState(false)
   const [rlsMsg, setRlsMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [grbInstalling, setGrbInstalling] = useState(false)
+  const [grbMsg, setGrbMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [grbRlsReleases, setGrbRlsReleases] = useState<GreatRebalanceDependencyRelease[]>([])
+  const [grbBankingReleases, setGrbBankingReleases] = useState<GreatRebalanceDependencyRelease[]>([])
+  const [grbPatchReleases, setGrbPatchReleases] = useState<GreatRebalanceDependencyRelease[]>([])
+  const [grbRlsVersion, setGrbRlsVersion] = useState('')
+  const [grbBankingVersion, setGrbBankingVersion] = useState('')
+  const [grbPatchVersion, setGrbPatchVersion] = useState('')
 
   // Server target
   const [servers, setServers] = useState<ServerEntry[]>([])
   const [selectedServerId, setSelectedServerId] = useState<string>('')
   const [customServerDir, setCustomServerDir] = useState<string | null>(null)
   const [installedMods, setInstalledMods] = useState<InstalledCareerMods | null>(null)
+  const [installedPlugins, setInstalledPlugins] = useState<Record<string, InstalledCareerPlugin>>({})
+  const [pythonStatus, setPythonStatus] = useState<{
+    available: boolean
+    command?: 'python' | 'py'
+    version?: string
+    canAutoInstall: boolean
+    message?: string
+  } | null>(null)
+  const [pythonInstallBusy, setPythonInstallBusy] = useState(false)
 
   const loadSavePath = useCallback(async () => {
     const path = await window.api.careerGetSavePath()
@@ -387,10 +416,46 @@ export function CareerPage(): React.JSX.Element {
     } catch { /* no servers configured */ }
   }, [])
 
+  const loadGreatRebalanceDependencies = useCallback(async () => {
+    // All GitHub fetches go through main-process IPC (Node.js) so they bypass
+    // the renderer CSP which only allows connect-src 'self' vehicle-asset:.
+    const [bankingReleases, rlsReleases, patchReleases] = await Promise.all([
+      window.api.careerFetchPluginReleases('careermp-banking').catch(() => [] as GreatRebalanceDependencyRelease[]),
+      window.api.careerFetchGreatRebalanceRlsReleases().catch(() => [] as GreatRebalanceDependencyRelease[]),
+      window.api.careerFetchGreatRebalancePatchReleases().catch(() => [] as GreatRebalanceDependencyRelease[])
+    ])
+
+    const banking = (bankingReleases as GreatRebalanceDependencyRelease[])
+      .filter((r) => !!r.downloadUrl)
+      .map((r) => ({ version: r.version, downloadUrl: r.downloadUrl }))
+    setGrbBankingReleases(banking)
+    if (banking.length > 0 && (!grbBankingVersion || !banking.some((r) => r.version === grbBankingVersion))) {
+      setGrbBankingVersion(banking[0].version)
+    }
+
+    const rls = (rlsReleases as GreatRebalanceDependencyRelease[])
+      .filter((r) => !!r.version && !!r.downloadUrl)
+    setGrbRlsReleases(rls)
+    if (rls.length > 0 && (!grbRlsVersion || !rls.some((r) => r.version === grbRlsVersion))) {
+      setGrbRlsVersion(rls[0].version)
+    }
+
+    const patches = (patchReleases as GreatRebalanceDependencyRelease[])
+      .filter((r) => !!r.version && !!r.downloadUrl)
+    setGrbPatchReleases(patches)
+    if (patches.length > 0 && (!grbPatchVersion || !patches.some((r) => r.version === grbPatchVersion))) {
+      setGrbPatchVersion(patches[0].version)
+    }
+  }, [grbBankingVersion, grbPatchVersion, grbRlsVersion])
+
   useEffect(() => {
     if (topTab === 'mods') {
       loadModReleases()
       loadServers()
+      loadGreatRebalanceDependencies()
+      window.api.careerGetPythonRuntimeStatus().then(setPythonStatus).catch(() => {
+        setPythonStatus({ available: false, canAutoInstall: false, message: 'Unable to detect Python runtime.' })
+      })
     }
   }, [topTab]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -402,11 +467,18 @@ export function CareerPage(): React.JSX.Element {
 
   const loadInstalledMods = useCallback(async () => {
     const dir = await getActiveServerDir()
-    if (!dir) { setInstalledMods(null); return }
+    if (!dir) { setInstalledMods(null); setInstalledPlugins({}); return }
     try {
-      const mods = await window.api.careerGetInstalledMods(dir)
+      const [mods, plugins] = await Promise.all([
+        window.api.careerGetInstalledMods(dir),
+        window.api.careerGetInstalledPlugins(dir)
+      ])
       setInstalledMods(mods)
-    } catch { setInstalledMods(null) }
+      setInstalledPlugins(plugins)
+    } catch {
+      setInstalledMods(null)
+      setInstalledPlugins({})
+    }
   }, [getActiveServerDir])
 
   useEffect(() => { loadInstalledMods() }, [loadInstalledMods])
@@ -475,6 +547,119 @@ export function CareerPage(): React.JSX.Element {
       setRlsInstalling(false)
     }
   }, [getActiveServerDir, rlsReleases, rlsSelectedVersion, rlsTraffic, cmpReleases, rlsCmpVersion, loadInstalledMods, t])
+
+  const handleInstallRLSGreatRebalance = useCallback(async () => {
+    const dir = await getActiveServerDir()
+    if (!dir) return
+
+    setGrbInstalling(true)
+    setGrbMsg(null)
+
+    try {
+      const cmpRelease = cmpReleases.find((r) => r.version === rlsCmpVersion)
+      if (!cmpRelease) {
+        setGrbMsg({ type: 'error', text: 'Selected CareerMP dependency version was not found.' })
+        return
+      }
+
+      const selectedRls = grbRlsReleases.find((r) => r.version === grbRlsVersion)
+      if (!selectedRls?.downloadUrl) {
+        setGrbMsg({ type: 'error', text: 'Selected RLS 2.6.5 dependency release is not available.' })
+        return
+      }
+
+      const selectedPatch = grbPatchReleases.find((r) => r.version === grbPatchVersion)
+      if (!selectedPatch?.downloadUrl) {
+        setGrbMsg({ type: 'error', text: 'Selected Chiarello compatibility patch release is not available.' })
+        return
+      }
+
+      const buildResult = await window.api.careerInstallRLSGreatRebalance(
+        cmpRelease.downloadUrl,
+        cmpRelease.version,
+        selectedRls.downloadUrl,
+        selectedRls.version,
+        selectedPatch.downloadUrl,
+        selectedPatch.version,
+        dir
+      )
+      if (!buildResult.success) {
+        if ((buildResult.error ?? '').includes('PYTHON_MISSING')) {
+          const shouldInstall = await confirm({
+            title: 'Python 3 Required',
+            message: 'RLS-TGR builder requires Python 3. Install Python automatically now?',
+            confirmLabel: 'Install Python',
+            cancelLabel: 'Cancel',
+            variant: 'warning'
+          })
+          if (shouldInstall) {
+            setPythonInstallBusy(true)
+            const pyInstall = await window.api.careerInstallPythonRuntime()
+            setPythonInstallBusy(false)
+            const nextStatus = await window.api.careerGetPythonRuntimeStatus().catch(() => null)
+            if (nextStatus) setPythonStatus(nextStatus)
+
+            if (!pyInstall.success) {
+              setGrbMsg({ type: 'error', text: `Python install failed: ${pyInstall.error || 'Unknown error'}` })
+              return
+            }
+
+            // Retry once after successful Python installation.
+            const retryResult = await window.api.careerInstallRLSGreatRebalance(
+              cmpRelease.downloadUrl,
+              cmpRelease.version,
+              selectedRls.downloadUrl,
+              selectedRls.version,
+              selectedPatch.downloadUrl,
+              selectedPatch.version,
+              dir
+            )
+            if (!retryResult.success) {
+              setGrbMsg({ type: 'error', text: `RLS-TGR build/install failed: ${retryResult.error || 'Unknown error'}` })
+              return
+            }
+          } else {
+            setGrbMsg({ type: 'error', text: 'RLS-TGR install canceled: Python runtime is required.' })
+            return
+          }
+        } else {
+          setGrbMsg({ type: 'error', text: `RLS-TGR build/install failed: ${buildResult.error || 'Unknown error'}` })
+          return
+        }
+      }
+
+      const bankingRelease = grbBankingReleases.find((r) => r.version === grbBankingVersion)
+      if (!bankingRelease?.downloadUrl) {
+        setGrbMsg({ type: 'error', text: 'RLS-TGR was built, but CareerMP Banking release could not be resolved.' })
+        return
+      }
+
+      const bankingResult = await window.api.careerInstallPlugin('careermp-banking', bankingRelease.version, bankingRelease.downloadUrl, dir)
+      if (!bankingResult.success) {
+        setGrbMsg({ type: 'error', text: `RLS-TGR was built, but CareerMP Banking install failed: ${bankingResult.error || 'Unknown error'}` })
+        return
+      }
+
+      setGrbMsg({ type: 'success', text: 'Installed RLS-TGR Multiplayer stack (patched CareerMP + compatible RLS 2.6.5 + CareerMP Banking). autoUpdate set to false to protect the patches.' })
+      await loadInstalledMods()
+    } catch (err) {
+      setGrbMsg({ type: 'error', text: String(err) })
+    } finally {
+      setGrbInstalling(false)
+    }
+  }, [
+    getActiveServerDir,
+    cmpReleases,
+    rlsCmpVersion,
+    grbRlsReleases,
+    grbRlsVersion,
+    grbPatchReleases,
+    grbPatchVersion,
+    grbBankingReleases,
+    grbBankingVersion,
+    loadInstalledMods,
+    confirm
+  ])
 
   const openProfile = useCallback((profile: CareerProfile) => {
     setSelectedProfile(profile)
@@ -1432,17 +1617,48 @@ export function CareerPage(): React.JSX.Element {
           setRlsTraffic={setRlsTraffic}
           cmpInstalling={cmpInstalling}
           rlsInstalling={rlsInstalling}
+          grbInstalling={grbInstalling}
           cmpMsg={cmpMsg}
           rlsMsg={rlsMsg}
+          grbMsg={grbMsg}
           servers={servers}
           selectedServerId={selectedServerId}
           setSelectedServerId={setSelectedServerId}
           customServerDir={customServerDir}
           installedMods={installedMods}
+          installedPlugins={installedPlugins}
+          pythonStatus={pythonStatus}
+          pythonInstallBusy={pythonInstallBusy}
+          grbRlsReleases={grbRlsReleases}
+          grbRlsVersion={grbRlsVersion}
+          setGrbRlsVersion={setGrbRlsVersion}
+          grbBankingReleases={grbBankingReleases}
+          grbBankingVersion={grbBankingVersion}
+          setGrbBankingVersion={setGrbBankingVersion}
+          grbPatchReleases={grbPatchReleases}
+          grbPatchVersion={grbPatchVersion}
+          setGrbPatchVersion={setGrbPatchVersion}
+          refreshPythonStatus={() => {
+            window.api.careerGetPythonRuntimeStatus().then(setPythonStatus).catch(() => {
+              setPythonStatus({ available: false, canAutoInstall: false, message: 'Unable to detect Python runtime.' })
+            })
+          }}
+          installPythonRuntime={async () => {
+            setPythonInstallBusy(true)
+            const result = await window.api.careerInstallPythonRuntime()
+            setPythonInstallBusy(false)
+            const next = await window.api.careerGetPythonRuntimeStatus().catch(() => null)
+            if (next) setPythonStatus(next)
+            return result
+          }}
           handleBrowseServerDir={handleBrowseServerDir}
           handleInstallCareerMP={handleInstallCareerMP}
           handleInstallRLS={handleInstallRLS}
-          loadModReleases={loadModReleases}
+          handleInstallRLSGreatRebalance={handleInstallRLSGreatRebalance}
+          loadModReleases={() => {
+            loadModReleases()
+            loadGreatRebalanceDependencies()
+          }}
           getActiveServerDir={getActiveServerDir}
           t={t}
         />
@@ -1453,7 +1669,7 @@ export function CareerPage(): React.JSX.Element {
 }
 
 /* ── Mod Manager Panel sub-component ── */
-function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSelectedVersion, setCmpSelectedVersion, rlsSelectedVersion, setRlsSelectedVersion, rlsCmpVersion, setRlsCmpVersion, rlsTraffic, setRlsTraffic, cmpInstalling, rlsInstalling, cmpMsg, rlsMsg, servers, selectedServerId, setSelectedServerId, customServerDir, installedMods, handleBrowseServerDir, handleInstallCareerMP, handleInstallRLS, loadModReleases, getActiveServerDir, t }: {
+function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSelectedVersion, setCmpSelectedVersion, rlsSelectedVersion, setRlsSelectedVersion, rlsCmpVersion, setRlsCmpVersion, rlsTraffic, setRlsTraffic, cmpInstalling, rlsInstalling, grbInstalling, cmpMsg, rlsMsg, grbMsg, servers, selectedServerId, setSelectedServerId, customServerDir, installedMods, installedPlugins, pythonStatus, pythonInstallBusy, grbRlsReleases, grbRlsVersion, setGrbRlsVersion, grbBankingReleases, grbBankingVersion, setGrbBankingVersion, grbPatchReleases, grbPatchVersion, setGrbPatchVersion, refreshPythonStatus, installPythonRuntime, handleBrowseServerDir, handleInstallCareerMP, handleInstallRLS, handleInstallRLSGreatRebalance, loadModReleases, getActiveServerDir, t }: {
   modLoading: boolean
   modError: string | null
   cmpReleases: CareerMPRelease[]
@@ -1468,20 +1684,50 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
   setRlsTraffic: (v: boolean) => void
   cmpInstalling: boolean
   rlsInstalling: boolean
+  grbInstalling: boolean
   cmpMsg: { type: 'success' | 'error'; text: string } | null
   rlsMsg: { type: 'success' | 'error'; text: string } | null
+  grbMsg: { type: 'success' | 'error'; text: string } | null
   servers: ServerEntry[]
   selectedServerId: string
   setSelectedServerId: (v: string) => void
   customServerDir: string | null
   installedMods: InstalledCareerMods | null
+  installedPlugins: Record<string, InstalledCareerPlugin>
+  pythonStatus: {
+    available: boolean
+    command?: 'python' | 'py'
+    version?: string
+    canAutoInstall: boolean
+    message?: string
+  } | null
+  pythonInstallBusy: boolean
+  grbRlsReleases: GreatRebalanceDependencyRelease[]
+  grbRlsVersion: string
+  setGrbRlsVersion: (v: string) => void
+  grbBankingReleases: GreatRebalanceDependencyRelease[]
+  grbBankingVersion: string
+  setGrbBankingVersion: (v: string) => void
+  grbPatchReleases: GreatRebalanceDependencyRelease[]
+  grbPatchVersion: string
+  setGrbPatchVersion: (v: string) => void
+  refreshPythonStatus: () => void
+  installPythonRuntime: () => Promise<{ success: boolean; error?: string }>
   handleBrowseServerDir: () => void
   handleInstallCareerMP: () => void
   handleInstallRLS: () => void
+  handleInstallRLSGreatRebalance: () => void
   loadModReleases: () => void
   getActiveServerDir: () => Promise<string | null>
   t: (key: string, opts?: Record<string, unknown>) => string
 }): React.JSX.Element {
+  const grbInstalled = Boolean(
+    installedMods?.careerMP &&
+    installedMods?.rls &&
+    /compatible/i.test(installedMods.rls.version) &&
+    installedPlugins['careermp-banking']
+  )
+
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-6">
       {/* Server target selector */}
@@ -1491,7 +1737,10 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
             <Server size={16} /> {t('career.mod.selectServer')}
           </h3>
           <button
-            onClick={loadModReleases}
+            onClick={() => {
+              loadModReleases()
+              refreshPythonStatus()
+            }}
             disabled={modLoading}
             title={t('common.refresh')}
             className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg bg-[var(--color-surface)] hover:bg-[var(--color-surface-active)] border border-[var(--color-border)] transition-colors disabled:opacity-50"
@@ -1534,10 +1783,8 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
         </div>
       ) : (
         <>
-          {/* CareerMP & RLS side-by-side */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* CareerMP section */}
-            <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4 flex flex-col">
+          {/* CareerMP full-width section */}
+          <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4 flex flex-col">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
                 <Package size={16} className="text-[var(--color-accent)]" /> {t('career.mod.careerMP')}
@@ -1592,102 +1839,263 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
             <PluginReadmeToggle pluginId="careermp-mod" />
           </div>
 
-          {/* RLS section */}
-          <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4 flex flex-col">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
-                <Star size={16} className="text-purple-400" /> {t('career.mod.rls')}
-              </h3>
-              <a
-                href="https://github.com/PapiCheesecake/rls_careermp"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-[var(--text-muted)] hover:text-[var(--color-accent)] flex items-center gap-1"
-              >
-                <ExternalLink size={12} /> GitHub
-              </a>
-            </div>
-            <p className="text-xs text-[var(--text-muted)] mb-3">{t('career.mod.rlsBlurb')}</p>
-
-            <div className="flex items-start gap-2 mb-3 px-3 py-2 bg-amber-500/10 rounded-lg border border-amber-500/20">
-              <Info size={14} className="text-amber-300 mt-0.5 shrink-0" />
-              <p className="text-[11px] leading-snug text-amber-200/90">{t('career.mod.rlsNote')}</p>
-            </div>
-
-            {installedMods?.rls && (
-              <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-green-500/10 rounded-lg border border-green-500/20">
-                <Check size={14} className="text-green-400" />
-                <span className="text-xs text-green-300">
-                  {t('career.mod.installed')}: v{installedMods.rls.version}
-                  {installedMods.rls.traffic ? ` (${t('career.mod.traffic')})` : ` (${t('career.mod.noTraffic')})`}
-                </span>
-              </div>
-            )}
-
-            {/* RLS version picker */}
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-[var(--text-muted)] mb-1 block">{t('career.mod.version')}</label>
-                <select
-                  value={rlsSelectedVersion}
-                  onChange={(e) => setRlsSelectedVersion(e.target.value)}
-                  className="w-full px-3 py-1.5 text-sm bg-[var(--color-scrim-20)] rounded-lg border border-[var(--color-border)] text-[var(--color-text-primary)]"
+          {/* RLS options row */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* RLS section */}
+            <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4 flex flex-col">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
+                  <Star size={16} className="text-purple-400" /> {t('career.mod.rls')}
+                </h3>
+                <a
+                  href="https://github.com/PapiCheesecake/rls_careermp"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-[var(--text-muted)] hover:text-[var(--color-accent)] flex items-center gap-1"
                 >
-                  {rlsReleases.map((r) => (
-                    <option key={r.version} value={r.version}>
-                      {r.version} (RLS base {r.rlsBaseVersion}) — {(r.trafficSize / 1024 / 1024).toFixed(0)} MB
-                    </option>
-                  ))}
-                </select>
+                  <ExternalLink size={12} /> GitHub
+                </a>
+              </div>
+              <p className="text-xs text-[var(--text-muted)] mb-3">{t('career.mod.rlsBlurb')}</p>
+
+              <div className="flex items-start gap-2 mb-3 px-3 py-2 bg-amber-500/10 rounded-lg border border-amber-500/20">
+                <Info size={14} className="text-amber-300 mt-0.5 shrink-0" />
+                <p className="text-[11px] leading-snug text-amber-200/90">{t('career.mod.rlsNote')}</p>
               </div>
 
-              {/* CareerMP dependency version for RLS */}
-              <div>
-                <label className="text-xs text-[var(--text-muted)] mb-1 block flex items-center gap-1">
-                  <GitBranch size={12} /> {t('career.mod.cmpDependency')}
-                </label>
-                <select
-                  value={rlsCmpVersion}
-                  onChange={(e) => setRlsCmpVersion(e.target.value)}
-                  className="w-full px-3 py-1.5 text-sm bg-[var(--color-scrim-20)] rounded-lg border border-[var(--color-border)] text-[var(--color-text-primary)]"
-                >
-                  {cmpReleases.map((r) => (
-                    <option key={r.version} value={r.version}>
-                      CareerMP {r.version} {r.prerelease ? '(pre-release)' : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {installedMods?.rls && (
+                <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-green-500/10 rounded-lg border border-green-500/20">
+                  <Check size={14} className="text-green-400" />
+                  <span className="text-xs text-green-300">
+                    {t('career.mod.installed')}: v{installedMods.rls.version}
+                    {installedMods.rls.traffic ? ` (${t('career.mod.traffic')})` : ` (${t('career.mod.noTraffic')})`}
+                  </span>
+                </div>
+              )}
 
-              {/* Traffic toggle */}
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-[var(--text-muted)]">{t('career.mod.traffic')}</span>
+              {/* RLS version picker */}
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs text-[var(--text-muted)] mb-1 block">{t('career.mod.version')}</label>
+                  <select
+                    value={rlsSelectedVersion}
+                    onChange={(e) => setRlsSelectedVersion(e.target.value)}
+                    className="w-full px-3 py-1.5 text-sm bg-[var(--color-scrim-20)] rounded-lg border border-[var(--color-border)] text-[var(--color-text-primary)]"
+                  >
+                    {rlsReleases.map((r) => (
+                      <option key={r.version} value={r.version}>
+                        {r.version} (RLS base {r.rlsBaseVersion}) - {(r.trafficSize / 1024 / 1024).toFixed(0)} MB
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* CareerMP dependency version for RLS */}
+                <div>
+                  <label className="text-xs text-[var(--text-muted)] mb-1 block flex items-center gap-1">
+                    <GitBranch size={12} /> {t('career.mod.cmpDependency')}
+                  </label>
+                  <select
+                    value={rlsCmpVersion}
+                    onChange={(e) => setRlsCmpVersion(e.target.value)}
+                    className="w-full px-3 py-1.5 text-sm bg-[var(--color-scrim-20)] rounded-lg border border-[var(--color-border)] text-[var(--color-text-primary)]"
+                  >
+                    {cmpReleases.map((r) => (
+                      <option key={r.version} value={r.version}>
+                        CareerMP {r.version} {r.prerelease ? '(pre-release)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Traffic toggle */}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-[var(--text-muted)]">{t('career.mod.traffic')}</span>
+                  <button
+                    onClick={() => setRlsTraffic(!rlsTraffic)}
+                    className="flex items-center gap-2 text-sm"
+                  >
+                    {rlsTraffic ? (
+                      <><ToggleRight size={24} className="text-green-400" /><span className="text-xs text-green-400">{t('career.mod.traffic')}</span></>
+                    ) : (
+                      <><ToggleLeft size={24} className="text-[var(--text-muted)]" /><span className="text-xs text-[var(--text-muted)]">{t('career.mod.noTraffic')}</span></>
+                    )}
+                  </button>
+                </div>
+
                 <button
-                  onClick={() => setRlsTraffic(!rlsTraffic)}
-                  className="flex items-center gap-2 text-sm"
+                  onClick={handleInstallRLS}
+                  disabled={rlsInstalling || !selectedServerId && !customServerDir}
+                  className="w-full flex items-center justify-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-purple-600 hover:bg-purple-500 text-[var(--color-text-primary)] font-medium transition-colors disabled:opacity-50"
                 >
-                  {rlsTraffic ? (
-                    <><ToggleRight size={24} className="text-green-400" /><span className="text-xs text-green-400">{t('career.mod.traffic')}</span></>
-                  ) : (
-                    <><ToggleLeft size={24} className="text-[var(--text-muted)]" /><span className="text-xs text-[var(--text-muted)]">{t('career.mod.noTraffic')}</span></>
-                  )}
+                  {rlsInstalling ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                  Install CareerMP+RLS
                 </button>
               </div>
-
-              <button
-                onClick={handleInstallRLS}
-                disabled={rlsInstalling || !selectedServerId && !customServerDir}
-                className="w-full flex items-center justify-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-purple-600 hover:bg-purple-500 text-[var(--color-text-primary)] font-medium transition-colors disabled:opacity-50"
-              >
-                {rlsInstalling ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                Install CareerMP+RLS
-              </button>
+              {rlsMsg && (
+                <p className={`text-xs mt-2 ${rlsMsg.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{rlsMsg.text}</p>
+              )}
+              <PluginReadmeToggle pluginId="rls-mod" />
             </div>
-            {rlsMsg && (
-              <p className={`text-xs mt-2 ${rlsMsg.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{rlsMsg.text}</p>
-            )}
-            <PluginReadmeToggle pluginId="rls-mod" />
-          </div>
+
+            {/* Great Rebalance section */}
+            <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4 flex flex-col">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
+                  <Star size={16} className="text-fuchsia-400" /> RLS Career Overhaul - TGR (Multiplayer)
+                </h3>
+                <a
+                  href="https://github.com/ChiarelloB/RLS-CareerMP-Compatibility-Patch---Online-Career-Mode/tree/main"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-[var(--text-muted)] hover:text-[var(--color-accent)] flex items-center gap-1"
+                >
+                  <ExternalLink size={12} /> GitHub
+                </a>
+              </div>
+
+              <div className={`mb-3 px-3 py-2 rounded-lg border ${pythonStatus?.available ? 'bg-green-500/10 border-green-500/20 text-green-300' : 'bg-amber-500/10 border-amber-500/20 text-amber-200'}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs">
+                    {pythonStatus?.available
+                      ? `Python detected: ${pythonStatus.version ?? pythonStatus.command ?? 'available'}`
+                      : `Python not detected. ${pythonStatus?.message ?? 'Required for patch builder.'}`}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={refreshPythonStatus}
+                      className="text-[11px] px-2 py-1 rounded border border-[var(--color-border)] hover:bg-[var(--color-surface-active)]"
+                    >
+                      Re-check
+                    </button>
+                    {!pythonStatus?.available && pythonStatus?.canAutoInstall && (
+                      <button
+                        onClick={async () => {
+                          const res = await installPythonRuntime()
+                          if (!res.success) {
+                            window.alert(`Python install failed: ${res.error || 'Unknown error'}`)
+                          }
+                        }}
+                        disabled={pythonInstallBusy}
+                        className="text-[11px] px-2 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white disabled:opacity-50"
+                      >
+                        {pythonInstallBusy ? 'Installing...' : 'Install Python'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {grbInstalled && (
+                <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-green-500/10 rounded-lg border border-green-500/20">
+                  <Check size={14} className="text-green-400" />
+                  <span className="text-xs text-green-300">Installed: compatible RLS zip + patched CareerMP + CareerMP Banking</span>
+                </div>
+              )}
+
+              <p className="text-xs text-[var(--text-muted)] mb-3">
+                Installs the RLS Career Overhaul - The Great Rebalance (TGR) multiplayer stack using the Chiarello compatibility patch. Generates patched CareerMP + compatible RLS zip via Python builder, then deploys with CareerMP Banking.
+              </p>
+
+              <div className="flex items-start gap-2 mb-3 px-3 py-2 bg-amber-500/10 rounded-lg border border-amber-500/20">
+                <Info size={14} className="text-amber-300 mt-0.5 shrink-0" />
+                <p className="text-[11px] leading-snug text-amber-200/90">
+                  Dependencies installed in order: CareerMP (selected below), CareerMP Banking, RLS Career Overhaul v2.6.5, then Chiarello compatibility patch.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs text-[var(--text-muted)] mb-1 block">RLS 2.6.5 dependency</label>
+                  <select
+                    value={grbRlsVersion}
+                    onChange={(e) => setGrbRlsVersion(e.target.value)}
+                    className="w-full px-3 py-1.5 text-sm bg-[var(--color-scrim-20)] rounded-lg border border-[var(--color-border)] text-[var(--color-text-primary)]"
+                    disabled={grbRlsReleases.length === 0}
+                  >
+                    {grbRlsReleases.length === 0 ? (
+                      <option value="">No RLS 2.6.5 releases found</option>
+                    ) : (
+                      grbRlsReleases.map((r) => (
+                        <option key={r.version} value={r.version}>
+                          {r.version}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs text-[var(--text-muted)] mb-1 block flex items-center gap-1">
+                    <GitBranch size={12} /> {t('career.mod.cmpDependency')}
+                  </label>
+                  <select
+                    value={rlsCmpVersion}
+                    onChange={(e) => setRlsCmpVersion(e.target.value)}
+                    className="w-full px-3 py-1.5 text-sm bg-[var(--color-scrim-20)] rounded-lg border border-[var(--color-border)] text-[var(--color-text-primary)]"
+                  >
+                    {cmpReleases.map((r) => (
+                      <option key={r.version} value={r.version}>
+                        CareerMP {r.version} {r.prerelease ? '(pre-release)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs text-[var(--text-muted)] mb-1 block">CareerMP Banking dependency</label>
+                  <select
+                    value={grbBankingVersion}
+                    onChange={(e) => setGrbBankingVersion(e.target.value)}
+                    className="w-full px-3 py-1.5 text-sm bg-[var(--color-scrim-20)] rounded-lg border border-[var(--color-border)] text-[var(--color-text-primary)]"
+                    disabled={grbBankingReleases.length === 0}
+                  >
+                    {grbBankingReleases.length === 0 ? (
+                      <option value="">No Banking releases found</option>
+                    ) : (
+                      grbBankingReleases.map((r) => (
+                        <option key={r.version} value={r.version}>
+                          {r.version}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs text-[var(--text-muted)] mb-1 block">Chiarello compatibility patch</label>
+                  <select
+                    value={grbPatchVersion}
+                    onChange={(e) => setGrbPatchVersion(e.target.value)}
+                    className="w-full px-3 py-1.5 text-sm bg-[var(--color-scrim-20)] rounded-lg border border-[var(--color-border)] text-[var(--color-text-primary)]"
+                    disabled={grbPatchReleases.length === 0}
+                  >
+                    {grbPatchReleases.length === 0 ? (
+                      <option value="">No patch releases found</option>
+                    ) : (
+                      grbPatchReleases.map((r) => (
+                        <option key={r.version} value={r.version}>
+                          {r.version}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+
+                <button
+                  onClick={handleInstallRLSGreatRebalance}
+                  disabled={grbInstalling || (!selectedServerId && !customServerDir) || !grbRlsVersion || !grbBankingVersion || !grbPatchVersion}
+                  className="w-full flex items-center justify-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-fuchsia-600 hover:bg-fuchsia-500 text-[var(--color-text-primary)] font-medium transition-colors disabled:opacity-50"
+                >
+                  {grbInstalling ? <Loader2 size={14} className="animate-spin" /> : grbInstalled ? <RefreshCw size={14} /> : <Download size={14} />}
+                  {grbInstalled ? 'Update / Reinstall CareerMP + RLS-TGR' : 'Install CareerMP + RLS-TGR'}
+                </button>
+              </div>
+              {grbMsg && (
+                <p className={`text-xs mt-2 ${grbMsg.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{grbMsg.text}</p>
+              )}
+              <PluginReadmeToggle pluginId="rls-careermp-compat-patch" />
+            </div>
           </div>
 
           {/* Plugin Browser */}
@@ -1781,7 +2189,7 @@ function PluginBrowserPanel({ getActiveServerDir, t }: {
     setLoading(true)
     setError(null)
     try {
-      const list = await window.api.careerListPluginCatalog()
+      const list = (await window.api.careerListPluginCatalog()).filter((p) => p.id !== 'rls-careermp-compat-patch')
       setCatalog(list)
       // Fetch releases in parallel
       const results = await Promise.all(

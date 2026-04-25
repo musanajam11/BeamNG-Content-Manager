@@ -164,7 +164,10 @@ const CAREER_TRACKING_FILE = 'career-plugins.json'
 const ADMIN_TRACKING_FILE = 'server-admin-plugins.json'
 
 function catalogFor(category: PluginCategory): PluginCatalogEntry[] {
-  return category === 'admin' ? SERVER_ADMIN_CATALOG : PLUGIN_CATALOG
+  const base = category === 'admin' ? SERVER_ADMIN_CATALOG : PLUGIN_CATALOG
+  // Great Rebalance compatibility patch is managed by the dedicated GR flow,
+  // not by the generic plugin browser.
+  return base.filter((p) => p.id !== 'rls-careermp-compat-patch')
 }
 
 function trackingFileFor(category: PluginCategory): string {
