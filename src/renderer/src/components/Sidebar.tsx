@@ -130,7 +130,7 @@ export function Sidebar(): React.JSX.Element {
 
   return (
     <aside
-      className="flex flex-col border-r-2 border-[var(--color-border)] transition-all duration-200 bg-[var(--color-scrim-20)] backdrop-blur-sm"
+      className="relative z-30 flex flex-col border-r-2 border-[var(--color-border)] transition-all duration-200 bg-[var(--color-scrim-20)] backdrop-blur-sm"
       style={{ width: sidebarCollapsed ? '52px' : 'var(--sidebar-width)' }}
     >
       <nav className="flex-1 flex flex-col gap-1 p-3 pt-3 overflow-visible">
