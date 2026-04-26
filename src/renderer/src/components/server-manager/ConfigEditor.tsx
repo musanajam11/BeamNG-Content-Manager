@@ -6,8 +6,9 @@ import { BeamMPNameEditor } from './BeamMPNameEditor'
 import { CareerMPConfigSection } from './CareerMPConfigSection'
 import { DynamicTrafficConfigSection } from './DynamicTrafficConfigSection'
 import { ModGateConfigSection } from './ModGateConfigSection'
+import { useConfirmDialog } from '../../hooks/useConfirmDialog'
 
-type MapEntry = { name: string; source: 'stock' | 'mod'; levelDir?: string }
+type MapEntry = { name: string; source: 'stock' | 'mod'; levelDir?: string; modZipPath?: string }
 
 interface ConfigEditorProps {
   draft: Partial<HostedServerConfig>
@@ -50,6 +51,10 @@ export function ConfigEditor({
   const errorMap = useMemo(() => new Map(errors.map((e) => [e.field, e.message])), [errors])
   const hasErrors = errors.length > 0
 
+  const { dialog: deployMapDialog, confirm: confirmDeployMap } = useConfirmDialog()
+  const [deployingMapMod, setDeployingMapMod] = useState(false)
+  const [deployMapMsg, setDeployMapMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
   const [customImage, setCustomImage] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
@@ -60,6 +65,55 @@ export function ConfigEditor({
   useEffect(() => {
     window.api.listMaps().then((maps) => setMapList(maps))
   }, [])
+
+  const handleMapChange = useCallback(async (newValue: string) => {
+    setDeployMapMsg(null)
+
+    // ── 1. Undeploy previous mod map if switching away from one ──
+    const prevValue = draft.map ?? ''
+    const prevEntry = mapList.find((m) => `/levels/${m.levelDir || m.name}/info.json` === prevValue)
+    if (prevEntry && prevEntry.source === 'mod' && prevEntry.modZipPath) {
+      const prevFileName = prevEntry.modZipPath.replace(/\\/g, '/').split('/').pop() ?? ''
+      try {
+        const deployed = await window.api.hostedServerDeployedMods(serverId)
+        if (deployed.some((f) => f.toLowerCase() === prevFileName.toLowerCase())) {
+          await window.api.hostedServerUndeployMod(serverId, prevFileName)
+        }
+      } catch { /* ignore — cleanup is best-effort */ }
+    }
+
+    // ── 2. Apply new map value ────────────────────────────────────
+    setDraft({ ...draft, map: newValue })
+
+    // ── 3. Offer to deploy new mod map if it isn't yet deployed ──
+    const entry = mapList.find((m) => `/levels/${m.levelDir || m.name}/info.json` === newValue)
+    if (!entry || entry.source !== 'mod' || !entry.modZipPath) return
+    const zipPath = entry.modZipPath
+    const fileName = zipPath.replace(/\\/g, '/').split('/').pop() ?? ''
+    let alreadyDeployed = false
+    try {
+      const deployed = await window.api.hostedServerDeployedMods(serverId)
+      alreadyDeployed = deployed.some((f) => f.toLowerCase() === fileName.toLowerCase())
+    } catch { /* ignore */ }
+    if (alreadyDeployed) return
+    const yes = await confirmDeployMap({
+      title: 'Deploy map mod to server?',
+      message: `"${entry.name}" is a modded map. Deploy "${fileName}" to this server's Resources/Client so players can download it?`,
+      confirmLabel: 'Deploy',
+      cancelLabel: 'Skip',
+      variant: 'default'
+    })
+    if (!yes) return
+    setDeployingMapMod(true)
+    try {
+      await window.api.hostedServerCopyMod(serverId, zipPath)
+      setDeployMapMsg({ ok: true, text: `"${fileName}" deployed to server.` })
+    } catch (err) {
+      setDeployMapMsg({ ok: false, text: `Deploy failed: ${err instanceof Error ? err.message : String(err)}` })
+    } finally {
+      setDeployingMapMod(false)
+    }
+  }, [draft, setDraft, mapList, serverId, confirmDeployMap])
 
   // Load existing custom image on mount
   useEffect(() => {
@@ -173,7 +227,7 @@ export function ConfigEditor({
           <span className="text-xs text-[var(--color-text-muted)]">{t('serverManager.configMap')}</span>
           <select
             value={draft.map ?? ''}
-            onChange={(e) => setDraft({ ...draft, map: e.target.value })}
+            onChange={(e) => { void handleMapChange(e.target.value) }}
             className="px-2 py-1.5 text-sm bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-primary)] focus:border-[var(--color-border-accent)] outline-none rounded"
           >
             <option value="" disabled>{t('serverManager.selectMap')}</option>
@@ -188,6 +242,12 @@ export function ConfigEditor({
               )
             })}
           </select>
+          {deployingMapMod && (
+            <span className="text-xs text-[var(--color-text-muted)]">Deploying map mod...</span>
+          )}
+          {deployMapMsg && (
+            <span className={`text-xs ${deployMapMsg.ok ? 'text-green-400' : 'text-red-400'}`}>{deployMapMsg.text}</span>
+          )}
         </label>
         {field(t('serverManager.configTags'), 'tags')}
         {field(t('serverManager.configResourceFolder'), 'resourceFolder')}
@@ -307,6 +367,8 @@ export function ConfigEditor({
           }
         }}
       />
+
+      {deployMapDialog}
 
       {/* Actions */}
       <div className="mt-4 flex items-center gap-3">

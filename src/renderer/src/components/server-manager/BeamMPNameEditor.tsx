@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Bold, Italic, Underline, Strikethrough, Eraser, Palette, Code } from 'lucide-react'
+import { Bold, Italic, Underline, Strikethrough, Eraser, Palette, Code, Smile } from 'lucide-react'
 import { BeamMPText } from '../BeamMPText'
 import { useTranslation } from 'react-i18next'
 
@@ -25,6 +25,14 @@ const COLORS: { code: string; hex: string; label: string }[] = [
 ]
 
 const CODE_HEX: Record<string, string> = Object.fromEntries(COLORS.map((c) => [c.code, c.hex]))
+
+/* ── emoji groups ──────────────────────────────────────────────── */
+
+const EMOJI_GROUPS: { label: string; emojis: string[] }[] = [
+  { label: 'Cars', emojis: ['🚗','🏎️','🚕','🚙','🛻','🚓','🚑','🚒','🏍️','🛵','🚲','🛴','🚀','✈️','🚂','⛵'] },
+  { label: 'Gaming', emojis: ['🎮','🕹️','🏆','🥇','🎯','🎲','🔥','⚡','💥','✨','🌟','⭐','💫','🎉','🏁','🚦'] },
+  { label: 'Symbols', emojis: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','🔴','🟠','🟡','🟢','🔵','🟣','⚫','⚪'] },
+]
 
 /* ── character model ───────────────────────────────────────────── */
 
@@ -209,6 +217,7 @@ export function BeamMPNameEditor({ value, onChange, error }: BeamMPNameEditorPro
   const modelRef = useRef<StyledChar[]>(parseModel(value))
   const [rawMode, setRawMode] = useState(false)
   const [showColors, setShowColors] = useState(false)
+  const [showEmojis, setShowEmojis] = useState(false)
   const focusedRef = useRef(false)
   const composingRef = useRef(false)
   const renderingRef = useRef(false)
@@ -337,6 +346,13 @@ export function BeamMPNameEditor({ value, onChange, error }: BeamMPNameEditorPro
     renderHtml(sel)
   }
 
+  function insertEmoji(emoji: string): void {
+    if (!editorRef.current) return
+    editorRef.current.focus()
+    document.execCommand('insertText', false, emoji)
+    setShowEmojis(false)
+  }
+
   /* ── helpers ─────────────────────────────────────────────────── */
 
   const prevent = (e: React.MouseEvent): void => e.preventDefault()
@@ -375,7 +391,7 @@ export function BeamMPNameEditor({ value, onChange, error }: BeamMPNameEditorPro
           <button
             type="button"
             onMouseDown={prevent}
-            onClick={() => setShowColors(!showColors)}
+            onClick={() => { setShowColors(!showColors); setShowEmojis(false) }}
             title={t('serverManager.textColour')}
             className={btnCls(showColors)}
           >
@@ -407,6 +423,44 @@ export function BeamMPNameEditor({ value, onChange, error }: BeamMPNameEditorPro
                   )
                 })}
               </div>
+            </div>
+          )}
+        </div>
+
+        <div className="w-px h-4 bg-[var(--color-surface-active)] mx-1" />
+
+        {/* emoji picker */}
+        <div className="relative">
+          <button
+            type="button"
+            onMouseDown={prevent}
+            onClick={() => { setShowEmojis(!showEmojis); setShowColors(false) }}
+            title="Insert emoji"
+            className={btnCls(showEmojis)}
+          >
+            <Smile size={13} />
+          </button>
+          {showEmojis && (
+            <div className="absolute top-full left-0 mt-1 z-50 p-2 rounded border border-[var(--color-border)] bg-[var(--color-surface)] shadow-lg w-[272px]">
+              {EMOJI_GROUPS.map((group) => (
+                <div key={group.label} className="mb-2 last:mb-0">
+                  <div className="text-[9px] uppercase tracking-widest text-[var(--color-text-muted)] mb-1 px-0.5">{group.label}</div>
+                  <div className="flex flex-wrap gap-0.5">
+                    {group.emojis.map((em) => (
+                      <button
+                        key={em}
+                        type="button"
+                        onMouseDown={prevent}
+                        onClick={() => insertEmoji(em)}
+                        className="text-base w-8 h-8 flex items-center justify-center rounded hover:bg-[var(--color-surface-active)] transition-colors"
+                        title={em}
+                      >
+                        {em}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
