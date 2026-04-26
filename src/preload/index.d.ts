@@ -97,7 +97,7 @@ interface AppAPI {
   // Game Launcher
   launchGame(): Promise<{ success: boolean; error?: string }>
   launchVanilla(config?: { mode?: string; level?: string; vehicle?: string }): Promise<{ success: boolean; error?: string }>
-  listMaps(): Promise<{ name: string; source: 'stock' | 'mod'; modZipPath?: string; levelDir?: string; modKey?: string }[]>
+  listMaps(): Promise<{ name: string; source: 'stock' | 'mod'; modZipPath?: string; levelDir?: string; modKey?: string; previewImage?: string | null }[]>
   listVehicles(): Promise<{
     name: string; displayName: string; brand: string; type: string;
     bodyStyle: string; country: string; source: 'stock' | 'mod'; configCount: number

@@ -8,7 +8,7 @@ import { DynamicTrafficConfigSection } from './DynamicTrafficConfigSection'
 import { ModGateConfigSection } from './ModGateConfigSection'
 import { useConfirmDialog } from '../../hooks/useConfirmDialog'
 
-type MapEntry = { name: string; source: 'stock' | 'mod'; levelDir?: string; modZipPath?: string }
+type MapEntry = { name: string; source: 'stock' | 'mod'; levelDir?: string; modZipPath?: string; previewImage?: string | null }
 
 interface ConfigEditorProps {
   draft: Partial<HostedServerConfig>
@@ -56,6 +56,7 @@ export function ConfigEditor({
   const [deployMapMsg, setDeployMapMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
   const [customImage, setCustomImage] = useState<string | null>(null)
+  const [mapPreview, setMapPreview] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -65,6 +66,28 @@ export function ConfigEditor({
   useEffect(() => {
     window.api.listMaps().then((maps) => setMapList(maps))
   }, [])
+
+  // Fetch map thumbnail for the currently selected map (used as banner fallback).
+  // For mod maps, use the previewImage already extracted by ModManagerService
+  // (the same icon shown in the Mods page). Fall back to getMapPreview only
+  // for stock maps or mod maps whose previewImage is null.
+  useEffect(() => {
+    let cancelled = false
+    setMapPreview(null)
+    if (mapList.length === 0 || !draft.map) return
+    const entry = mapList.find((m) => `/levels/${m.levelDir || m.name}/info.json` === draft.map)
+    if (!entry) return
+    // Use already-extracted mod icon if available
+    if (entry.previewImage) {
+      setMapPreview(entry.previewImage)
+      return
+    }
+    const levelPath = `/levels/${entry.levelDir || entry.name}/`
+    window.api.getMapPreview(levelPath, entry.modZipPath).then((img) => {
+      if (!cancelled) setMapPreview(img ?? null)
+    })
+    return () => { cancelled = true }
+  }, [draft.map, mapList])
 
   const handleMapChange = useCallback(async (newValue: string) => {
     setDeployMapMsg(null)
@@ -290,6 +313,24 @@ export function ConfigEditor({
                 >
                   <X size={12} />
                 </button>
+              </div>
+            </div>
+          ) : mapPreview ? (
+            /* No custom image — show map thumbnail as preview with upload overlay */
+            <div
+              className="relative rounded border border-[var(--color-border)] overflow-hidden cursor-pointer group"
+              onClick={() => fileInputRef.current?.click()}
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+            >
+              <img src={mapPreview} alt="Map preview" className="w-full h-32 object-cover" />
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-[var(--color-scrim-60)] opacity-0 group-hover:opacity-100 transition-opacity">
+                <Upload size={16} className="text-[var(--color-text-primary)]" />
+                <span className="text-[11px] text-[var(--color-text-primary)]">{t('serverManager.configDragOrClick')}</span>
+              </div>
+              <div className="absolute bottom-1.5 left-2">
+                <span className="text-[10px] text-white/70 bg-black/40 px-1.5 py-0.5 rounded">Map preview</span>
               </div>
             </div>
           ) : (

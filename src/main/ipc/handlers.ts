@@ -4106,11 +4106,11 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  ipcMain.handle('game:listMaps', async (): Promise<{ name: string; source: 'stock' | 'mod'; modZipPath?: string; levelDir?: string; modKey?: string }[]> => {
+  ipcMain.handle('game:listMaps', async (): Promise<{ name: string; source: 'stock' | 'mod'; modZipPath?: string; levelDir?: string; modKey?: string; previewImage?: string | null }[]> => {
     const config = configService.get()
     const installDir = config.gamePaths?.installDir
     const userDir = config.gamePaths?.userDir
-    const maps: { name: string; source: 'stock' | 'mod'; modZipPath?: string; levelDir?: string; modKey?: string }[] = []
+    const maps: { name: string; source: 'stock' | 'mod'; modZipPath?: string; levelDir?: string; modKey?: string; previewImage?: string | null }[] = []
     const seen = new Set<string>()
 
     // 1) Stock maps from installDir/content/levels/
@@ -4158,6 +4158,7 @@ export function registerIpcHandlers(): void {
           modZipPath: mod.filePath,
           levelDir,
           modKey: mod.key,
+          previewImage: mod.previewImage,
         })
       }
     } catch { /* ignore */ }
@@ -4414,7 +4415,10 @@ export function registerIpcHandlers(): void {
       const levelName = mapPath.replace(/^\/levels\//, '').replace(/\/info\.json$/, '').replace(/\/$/, '')
       if (!levelName) return null
 
-      if (mapPreviewCache.has(levelName)) return mapPreviewCache.get(levelName)!
+      // Use a compound cache key so a lookup with modZipPath doesn't
+      // collide with a prior null-result lookup that had no zip.
+      const cacheKey = modZipPath ? `${levelName}\0${modZipPath}` : levelName
+      if (mapPreviewCache.has(cacheKey)) return mapPreviewCache.get(cacheKey)!
 
       // 1) Check userDir for mod/custom maps (unpacked folders)
       if (userDir) {
@@ -4428,7 +4432,7 @@ export function registerIpcHandlers(): void {
             const ext = file.split('.').pop() || 'jpg'
             const mime = ext === 'png' ? 'image/png' : 'image/jpeg'
             const result = `data:${mime};base64,${buffer.toString('base64')}`
-            mapPreviewCache.set(levelName, result)
+            mapPreviewCache.set(cacheKey, result)
             return result
           } catch {
             // try next
@@ -4441,7 +4445,7 @@ export function registerIpcHandlers(): void {
           if (preview) {
             const buffer = await readFile(join(userLevelDir, preview))
             const result = `data:image/jpeg;base64,${buffer.toString('base64')}`
-            mapPreviewCache.set(levelName, result)
+            mapPreviewCache.set(cacheKey, result)
             return result
           }
         } catch {
@@ -4456,25 +4460,25 @@ export function registerIpcHandlers(): void {
           await access(zipPath)
           const result = await readPreviewFromZip(zipPath, levelName)
           if (result) {
-            mapPreviewCache.set(levelName, result)
+            mapPreviewCache.set(cacheKey, result)
             return result
           }
         } catch { /* not a stock map */ }
       }
 
-      // 3) Try mod zip � use wildcard level name since mod internal folder may differ
+      // 3) Try mod zip — use wildcard level name since mod internal folder may differ
       if (modZipPath) {
         try {
           await access(modZipPath)
           const result = await readPreviewFromZip(modZipPath, '[^/]+')
           if (result) {
-            mapPreviewCache.set(levelName, result)
+            mapPreviewCache.set(cacheKey, result)
             return result
           }
         } catch { /* mod zip not accessible */ }
       }
 
-      mapPreviewCache.set(levelName, null)
+      mapPreviewCache.set(cacheKey, null)
       return null
     } catch {
       return null

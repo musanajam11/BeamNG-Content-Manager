@@ -25,6 +25,22 @@ export function InstancesGrid({
 }: InstancesGridProps): React.JSX.Element {
   const { t } = useTranslation()
 
+  // Build a map of levelPath → modZipPath so each card can call getMapPreview
+  // with the zip path — otherwise mod map previews can't be found.
+  const [modZipLookup, setModZipLookup] = useState<Record<string, string>>({})
+  useEffect(() => {
+    window.api.listMaps().then((maps) => {
+      const lookup: Record<string, string> = {}
+      for (const m of maps) {
+        if (m.modZipPath) {
+          const key = `/levels/${m.levelDir || m.name}/info.json`
+          lookup[key] = m.modZipPath
+        }
+      }
+      setModZipLookup(lookup)
+    })
+  }, [])
+
   if (servers.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-[var(--color-text-muted)] text-sm">
@@ -40,6 +56,7 @@ export function InstancesGrid({
           <InstanceCard
             key={s.config.id}
             server={s}
+            modZipLookup={modZipLookup}
             onOpen={onOpen}
             onStart={onStart}
             onStop={onStop}
@@ -54,6 +71,7 @@ export function InstancesGrid({
 
 function InstanceCard({
   server,
+  modZipLookup,
   onOpen,
   onStart,
   onStop,
@@ -61,6 +79,7 @@ function InstanceCard({
   onDuplicate
 }: {
   server: HostedServerEntry
+  modZipLookup: Record<string, string>
   onOpen: (id: string, tab?: Tab) => void
   onStart: (id: string) => void
   onStop: (id: string) => void
@@ -102,17 +121,18 @@ function InstanceCard({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset on dependency change
     setBannerImage(null)
-    // Try custom image first, then map preview
+    // Try custom image first, then getMapPreview (with modZipPath for mod maps)
     window.api.hostedServerGetCustomImage(config.id).then((img) => {
       if (img) {
         setBannerImage(img)
       } else if (config.map) {
-        window.api.getMapPreview(config.map).then((preview) => {
+        const modZipPath = modZipLookup[config.map]
+        window.api.getMapPreview(config.map, modZipPath).then((preview) => {
           if (preview) setBannerImage(preview)
         })
       }
     })
-  }, [config.id, config.map, config.customImage])
+  }, [config.id, config.map, config.customImage, modZipLookup])
 
   return (
     <div className="border border-[var(--color-border)] bg-[var(--color-surface)] flex flex-col overflow-hidden">

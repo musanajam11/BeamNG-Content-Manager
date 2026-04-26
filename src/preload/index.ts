@@ -36,7 +36,7 @@ const api = {
   launchVanilla: (config?: { mode?: string; level?: string; vehicle?: string }) =>
     ipcRenderer.invoke('game:launchVanilla', config),
   listMaps: () =>
-    ipcRenderer.invoke('game:listMaps') as Promise<{ name: string; source: 'stock' | 'mod'; modZipPath?: string; levelDir?: string; modKey?: string }[]>,
+    ipcRenderer.invoke('game:listMaps') as Promise<{ name: string; source: 'stock' | 'mod'; modZipPath?: string; levelDir?: string; modKey?: string; previewImage?: string | null }[]>,
   listVehicles: () =>
     ipcRenderer.invoke('game:listVehicles'),
   getVehiclePreview: (vehicleName: string) =>
