@@ -63,6 +63,8 @@ import { useConfirmDialog } from '../hooks/useConfirmDialog'
 import { useBoundedCache } from '../hooks/useBoundedCache'
 import { useTranslation } from 'react-i18next'
 import { useModOrderStore } from '../stores/useModOrderStore'
+import { useToastStore } from '../stores/useToastStore'
+import { ToastContainer } from '../components/server-manager/ToastContainer'
 
 type ModFilter = string
 type ModsTab = 'installed' | 'browse' | 'registry'
@@ -187,6 +189,8 @@ export function ModsPage(): React.JSX.Element {
       <div className={activeTab === 'registry' ? 'flex flex-col flex-1 min-h-0' : 'hidden'}>
         <RegistryBrowseView onUpdatesChange={setRegistryUpdates} deleteVersion={deleteVersion} />
       </div>
+
+      <ToastContainer />
     </div>
   )
 }
@@ -394,6 +398,7 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
   const [scopeDialogIndex, setScopeDialogIndex] = useState(0)
   const { dialog: confirmDialogEl, confirm } = useConfirmDialog()
   const { t } = useTranslation()
+  const addToast = useToastStore((s) => s.addToast)
 
   // Load order store
   const {
@@ -421,6 +426,11 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
     // BeamMP is required for multiplayer and should never be bulk/row toggled.
     if (key === 'beammp' || fileName === 'beammp.zip') return false
     return true
+  }, [])
+
+  const shouldWarnOnSideloadEnable = useCallback((mod: ModInfo): boolean => {
+    const type = mod.modType.trim().toLowerCase()
+    return type !== 'ui_app' && type !== 'sound'
   }, [])
 
   const fetchMods = async (): Promise<void> => {
@@ -539,6 +549,9 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
         setMods((prev) =>
           prev.map((m) => (m.key === mod.key ? { ...m, enabled: newState } : m))
         )
+        if (newState && shouldWarnOnSideloadEnable(mod)) {
+          addToast(t('mods.sideloadMultiplayerWarning'), 'info')
+        }
         if (selectedMod?.key === mod.key) {
           setSelectedMod({ ...selectedMod, enabled: newState })
         }
@@ -573,6 +586,9 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
           const updated = refreshed.data?.find((m) => m.key === prev.key)
           return updated ?? prev
         })
+        if (enabled && modsToUpdate.some(shouldWarnOnSideloadEnable)) {
+          addToast(t('mods.sideloadMultiplayerWarning'), 'info')
+        }
       } else {
         await fetchMods()
       }

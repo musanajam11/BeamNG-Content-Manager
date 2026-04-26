@@ -76,12 +76,17 @@ interface ModGateConfigFile {
   vehicleDisplayNames?: Record<string, string>
   vehicleDeniedNames: string[]
   vehicleForcedAllowedNames: string[]
+  blockedMessage?: string
   updatedAt: string
 }
 
 interface SaveModGateConfigInput {
   allowedVehicleNames?: string[]
+  knownVehicleNames?: string[]
+  blockedMessage?: string
 }
+
+const DEFAULT_MOD_GATE_BLOCKED_MESSAGE = 'Vehicle blocked: only server-provided mod packs are allowed on this server.'
 
 const MAX_CONSOLE_LINES = 2000
 const POSITION_RETENTION_MS = 30 * 60 * 1000
@@ -120,6 +125,8 @@ export class ServerManagerService {
   private binDir: string
   private running = new Map<string, RunningServer>()
   private lastGoodPositions = new Map<string, { positions: PlayerPosition[]; updatedAtMs: number }>()
+  private modGateSaveQueue = new Map<string, Promise<void>>()
+  private modGateSyncQueue = new Map<string, Promise<void>>()
   private exePath: string | null = null
   private downloading = false
   private customExeResolver: (() => string | null) | null = null
@@ -930,16 +937,96 @@ export class ServerManagerService {
     }
   }
 
+  private readVehiclePreviewFromZip(zipPath: string, vehicleName: string): Promise<string | null> {
+    const nameLower = vehicleName.toLowerCase()
+    return new Promise((resolve) => {
+      yauzlOpen(zipPath, { lazyEntries: true }, (err, zipFile) => {
+        if (err || !zipFile) return resolve(null)
+
+        let done = false
+        const finish = (value: string | null): void => {
+          if (done) return
+          done = true
+          try { zipFile.close() } catch { /* ignore */ }
+          resolve(value)
+        }
+
+        zipFile.readEntry()
+        zipFile.on('entry', (entry: Entry) => {
+          const fn = entry.fileName
+          const jpgMatch = new RegExp(`^vehicles/${nameLower}/default\\.jpe?g$`, 'i')
+          const pngMatch = new RegExp(`^vehicles/${nameLower}/default\\.png$`, 'i')
+          if (!jpgMatch.test(fn) && !pngMatch.test(fn)) {
+            zipFile.readEntry()
+            return
+          }
+
+          zipFile.openReadStream(entry, (streamErr, stream) => {
+            if (streamErr || !stream) {
+              zipFile.readEntry()
+              return
+            }
+            const chunks: Buffer[] = []
+            stream.on('data', (c: Buffer) => chunks.push(c))
+            stream.on('error', () => finish(null))
+            stream.on('end', () => {
+              const buf = Buffer.concat(chunks)
+              const mime = /\.png$/i.test(fn) ? 'image/png' : 'image/jpeg'
+              finish(`data:${mime};base64,${buf.toString('base64')}`)
+            })
+          })
+        })
+
+        zipFile.on('end', () => finish(null))
+        zipFile.on('error', () => finish(null))
+      })
+    })
+  }
+
+  async getModGateVehiclePreview(id: string, vehicleName: string): Promise<string | null> {
+    const config = await this.getServerConfig(id)
+    if (!config) return null
+    const serverDir = join(this.serversDir, id)
+    const clientDir = join(serverDir, config.resourceFolder, 'Client')
+    if (!existsSync(clientDir)) return null
+
+    const files = await readdir(clientDir, { withFileTypes: true }).catch(() => [])
+    for (const f of files) {
+      if (!f.isFile() || !f.name.toLowerCase().endsWith('.zip')) continue
+      const zipPath = join(clientDir, f.name)
+      const preview = await this.readVehiclePreviewFromZip(zipPath, vehicleName)
+      if (preview) return preview
+    }
+    return null
+  }
+
   private normalizeNameList(input: unknown): string[] {
     if (!Array.isArray(input)) return []
     const out = new Set<string>()
     for (const v of input) {
       if (typeof v !== 'string') continue
-      const n = v.trim().toLowerCase()
+      const n = this.normalizeVehicleKey(v)
       if (!n) continue
       out.add(n)
     }
     return Array.from(out).sort((a, b) => a.localeCompare(b))
+  }
+
+  private normalizeVehicleKey(value: string): string {
+    let key = value.trim().toLowerCase()
+    if (!key) return ''
+    key = key.replace(/\\/g, '/')
+    key = key.replace(/^.*\//, '')
+    key = key.replace(/^vehicles\//, '')
+    key = key.replace(/\.zip$/i, '')
+    return key.trim()
+  }
+
+  private normalizeModGateBlockedMessage(input: unknown): string {
+    if (typeof input !== 'string') return DEFAULT_MOD_GATE_BLOCKED_MESSAGE
+    const msg = input.trim().replace(/\s+/g, ' ')
+    if (!msg) return DEFAULT_MOD_GATE_BLOCKED_MESSAGE
+    return msg.slice(0, 240)
   }
 
   private async readModGateConfigFile(cfgPath: string): Promise<Partial<ModGateConfigFile>> {
@@ -952,57 +1039,149 @@ export class ServerManagerService {
     }
   }
 
-  async getModGateConfig(id: string): Promise<{ exists: boolean; config: ModGateConfigFile | null }> {
-    const config = await this.getServerConfig(id)
-    if (!config) return { exists: false, config: null }
-    await this.syncModGatePlugin(id, config)
-    const cfgPath = join(this.serversDir, id, 'beamcm_mod_gate.json')
-    if (!existsSync(cfgPath)) return { exists: false, config: null }
+  private async writeTextFileAtomic(filePath: string, content: string): Promise<void> {
+    const tmp = `${filePath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    await writeFile(tmp, content, 'utf-8')
     try {
-      const parsed = JSON.parse(await readFile(cfgPath, 'utf-8')) as ModGateConfigFile
-      return { exists: true, config: parsed }
+      await rename(tmp, filePath)
     } catch {
-      return { exists: false, config: null }
+      // Fallback path for environments where rename-overwrite is blocked.
+      await writeFile(filePath, content, 'utf-8')
+      await rm(tmp, { force: true }).catch(() => undefined)
     }
   }
 
+  async getModGateConfig(id: string): Promise<{ exists: boolean; config: ModGateConfigFile | null }> {
+    const config = await this.getServerConfig(id)
+    if (!config) return { exists: false, config: null }
+    const serverDir = join(this.serversDir, id)
+    const cfgPath = join(serverDir, 'beamcm_mod_gate.json')
+
+    // Read-only: compute the display config in-memory from current disk state.
+    // Do NOT call syncModGatePlugin here — writing on every read would clobber
+    // a correctly saved deny list if any part of the recompute is stale.
+    const [existing, serverVehicles, stockVehicleNames, allowedArchives] = await Promise.all([
+      this.readModGateConfigFile(cfgPath),
+      this.listServerVehicles(serverDir, config.resourceFolder),
+      this.listStockVehicleNames(),
+      this.listClientArchives(serverDir, config.resourceFolder),
+    ])
+
+    const serverVehicleNames = serverVehicles.names
+    const vehicleDeniedNames = this.normalizeNameList(existing.vehicleDeniedNames)
+    const vehicleForcedAllowedNames = this.normalizeNameList(existing.vehicleForcedAllowedNames)
+    const blockedMessage = this.normalizeModGateBlockedMessage(existing.blockedMessage)
+
+    const baseline = new Set<string>([...serverVehicleNames, ...stockVehicleNames])
+    const allowedVehicleNames = new Set<string>(baseline)
+    for (const denied of vehicleDeniedNames) allowedVehicleNames.delete(denied)
+    for (const forced of vehicleForcedAllowedNames) allowedVehicleNames.add(forced)
+
+    const computed: ModGateConfigFile = {
+      enabled: !!config.clientContentGate,
+      allowedArchives,
+      allowedVehicleNames: Array.from(allowedVehicleNames).sort((a, b) => a.localeCompare(b)),
+      stockVehicleNames,
+      serverVehicleNames,
+      vehicleDisplayNames: serverVehicles.displayNames,
+      vehicleDeniedNames,
+      vehicleForcedAllowedNames,
+      blockedMessage,
+      updatedAt: (existing.updatedAt as string) ?? new Date().toISOString(),
+    }
+    return { exists: existsSync(cfgPath), config: computed }
+  }
+
   async saveModGateConfig(id: string, input: SaveModGateConfigInput): Promise<{ success: boolean; error?: string }> {
+    const prev = this.modGateSaveQueue.get(id) ?? Promise.resolve()
+    let release!: () => void
+    const next = new Promise<void>((resolve) => { release = resolve })
+    this.modGateSaveQueue.set(id, prev.then(() => next, () => next))
+
+    await prev.catch(() => undefined)
     try {
       const config = await this.getServerConfig(id)
       if (!config) return { success: false, error: 'Server not found' }
+      const normalized = this.normalizeNameList(input.allowedVehicleNames)
+      const knownVehicleNames = this.normalizeNameList(input.knownVehicleNames)
       const serverDir = join(this.serversDir, id)
       const cfgPath = join(serverDir, 'beamcm_mod_gate.json')
-
-      // Refresh discovered baseline first.
-      await this.syncModGatePlugin(id, config)
-
       const existing = await this.readModGateConfigFile(cfgPath)
-      const stock = this.normalizeNameList(existing.stockVehicleNames)
-      const server = this.normalizeNameList(existing.serverVehicleNames)
-      const baseline = new Set<string>([...stock, ...server])
-      const desired = new Set<string>(this.normalizeNameList(input.allowedVehicleNames))
+      const blockedMessage = this.normalizeModGateBlockedMessage(input.blockedMessage ?? existing.blockedMessage)
+      const previousAllowed = new Set(this.normalizeNameList(existing.allowedVehicleNames))
+      const nextAllowed = new Set(normalized)
+      const removed = Array.from(previousAllowed).filter((v) => !nextAllowed.has(v)).sort((a, b) => a.localeCompare(b))
+      const added = Array.from(nextAllowed).filter((v) => !previousAllowed.has(v)).sort((a, b) => a.localeCompare(b))
+      console.log(`[BeamCM-ModGate] save request server=${id} desiredAllowed=${normalized.length} knownVehicles=${knownVehicleNames.length} removed=${removed.slice(0, 6).join(',') || '-'} added=${added.slice(0, 6).join(',') || '-'}`)
+      // Fast-path for live checkbox edits: write config immediately from the
+      // currently persisted baseline instead of doing a full filesystem rescan.
+      // This keeps hot changes responsive enough to apply before the next spawn.
 
-      const denied: string[] = []
-      const forced: string[] = []
-      for (const v of baseline) {
-        if (!desired.has(v)) denied.push(v)
-      }
-      for (const v of desired) {
-        if (!baseline.has(v)) forced.push(v)
+      const stockVehicleNames = this.normalizeNameList(existing.stockVehicleNames)
+      const serverVehicleNames = this.normalizeNameList(existing.serverVehicleNames)
+      const previousDeniedNames = this.normalizeNameList(existing.vehicleDeniedNames)
+      const baseline = new Set<string>([
+        ...stockVehicleNames,
+        ...serverVehicleNames,
+        ...knownVehicleNames,
+        ...previousDeniedNames,
+        ...previousAllowed,
+      ])
+      const desired = new Set<string>(normalized)
+
+      // Recover from stale/corrupt baselines by doing one fresh scan when the
+      // config file does not have a usable universe yet.
+      if (baseline.size === 0) {
+        const [freshServerVehicles, freshStockVehicles] = await Promise.all([
+          this.listServerVehicles(serverDir, config.resourceFolder),
+          this.listStockVehicleNames(),
+        ])
+        for (const name of freshServerVehicles.names) baseline.add(name)
+        for (const name of freshStockVehicles) baseline.add(name)
       }
 
-      const next: Partial<ModGateConfigFile> = {
-        ...existing,
-        vehicleDeniedNames: denied.sort((a, b) => a.localeCompare(b)),
-        vehicleForcedAllowedNames: forced.sort((a, b) => a.localeCompare(b)),
-      }
-      await writeFile(cfgPath, JSON.stringify(next, null, 2), 'utf-8')
+      const vehicleDeniedNames = Array.from(baseline)
+        .filter((v) => !desired.has(v))
+        .sort((a, b) => a.localeCompare(b))
+      const vehicleForcedAllowedNames = Array.from(desired)
+        .filter((v) => !baseline.has(v))
+        .sort((a, b) => a.localeCompare(b))
 
-      // Rebuild effective allowlist from updated overrides.
-      await this.syncModGatePlugin(id, config)
+      const allowedArchives = Array.isArray(existing.allowedArchives)
+        ? existing.allowedArchives.filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+        : []
+      const vehicleDisplayNames = (typeof existing.vehicleDisplayNames === 'object' && existing.vehicleDisplayNames)
+        ? (existing.vehicleDisplayNames as Record<string, string>)
+        : {}
+
+      const finalStockVehicleNames = stockVehicleNames.length > 0
+        ? stockVehicleNames
+        : this.normalizeNameList(existing.stockVehicleNames)
+      const finalServerVehicleNames = serverVehicleNames.length > 0
+        ? serverVehicleNames
+        : this.normalizeNameList(existing.serverVehicleNames)
+
+      const cfg: ModGateConfigFile = {
+        enabled: !!config.clientContentGate,
+        allowedArchives,
+        allowedVehicleNames: Array.from(desired).sort((a, b) => a.localeCompare(b)),
+        stockVehicleNames: finalStockVehicleNames,
+        serverVehicleNames: finalServerVehicleNames,
+        vehicleDisplayNames,
+        vehicleDeniedNames,
+        vehicleForcedAllowedNames,
+        blockedMessage,
+        updatedAt: new Date().toISOString(),
+      }
+      await this.writeTextFileAtomic(cfgPath, JSON.stringify(cfg, null, 2))
+      console.log(`[BeamCM-ModGate] save fast-write server=${id} allowedVehicleNames=${cfg.allowedVehicleNames.length} deniedVehicles=${cfg.vehicleDeniedNames.length} updatedAt=${cfg.updatedAt}`)
+      console.log(`[BeamCM-ModGate] save complete server=${id} desiredAllowed=${normalized.length}`)
       return { success: true }
     } catch (err) {
       return { success: false, error: String(err) }
+    } finally {
+      release()
+      if (this.modGateSaveQueue.get(id) === next) this.modGateSaveQueue.delete(id)
     }
   }
 
@@ -1019,7 +1198,18 @@ export class ServerManagerService {
       .sort((a, b) => a.localeCompare(b))
   }
 
-  private async syncModGatePlugin(id: string, config: HostedServerConfig): Promise<void> {
+  private async syncModGatePlugin(
+    id: string,
+    config: HostedServerConfig,
+    overrides?: { desiredAllowedVehicleNames: string[] },
+  ): Promise<void> {
+    const prev = this.modGateSyncQueue.get(id) ?? Promise.resolve()
+    let release!: () => void
+    const next = new Promise<void>((resolve) => { release = resolve })
+    this.modGateSyncQueue.set(id, prev.then(() => next, () => next))
+
+    await prev.catch(() => undefined)
+    try {
     const serverDir = join(this.serversDir, id)
     const pluginDir = join(serverDir, config.resourceFolder, 'Server', 'BeamCMModGate')
     const pluginPath = join(pluginDir, 'main.lua')
@@ -1032,13 +1222,35 @@ export class ServerManagerService {
     ])
     const serverVehicleNames = serverVehicles.names
     const existing = await this.readModGateConfigFile(cfgPath)
-    const vehicleDeniedNames = this.normalizeNameList(existing.vehicleDeniedNames)
-    const vehicleForcedAllowedNames = this.normalizeNameList(existing.vehicleForcedAllowedNames)
+    const blockedMessage = this.normalizeModGateBlockedMessage(existing.blockedMessage)
 
-    const baseline = new Set<string>([...serverVehicleNames, ...stockVehicleNames])
-    const allowedVehicleNames = new Set<string>(baseline)
-    for (const denied of vehicleDeniedNames) allowedVehicleNames.delete(denied)
-    for (const forced of vehicleForcedAllowedNames) allowedVehicleNames.add(forced)
+    const freshBaseline = new Set<string>([...serverVehicleNames, ...stockVehicleNames])
+    let allowedVehicleNames: Set<string>
+    let vehicleDeniedNames: string[]
+    let vehicleForcedAllowedNames: string[]
+
+    if (overrides) {
+      // Caller explicitly provided the desired set — use it as the source of
+      // truth (avoids any stale-read race between concurrent saves).
+      const desired = new Set<string>(overrides.desiredAllowedVehicleNames)
+      allowedVehicleNames = desired
+      vehicleDeniedNames = Array.from(freshBaseline)
+        .filter((v) => !desired.has(v))
+        .sort((a, b) => a.localeCompare(b))
+      vehicleForcedAllowedNames = Array.from(desired)
+        .filter((v) => !freshBaseline.has(v))
+        .sort((a, b) => a.localeCompare(b))
+    } else {
+      // No explicit desired set — recompute from stored deny/force overrides
+      // relative to the current fresh baseline (e.g. new server vehicles appear).
+      const storedDenied = new Set<string>(this.normalizeNameList(existing.vehicleDeniedNames))
+      const storedForced = this.normalizeNameList(existing.vehicleForcedAllowedNames)
+      allowedVehicleNames = new Set<string>(freshBaseline)
+      for (const denied of storedDenied) allowedVehicleNames.delete(denied)
+      for (const forced of storedForced) allowedVehicleNames.add(forced)
+      vehicleDeniedNames = Array.from(storedDenied).sort((a, b) => a.localeCompare(b))
+      vehicleForcedAllowedNames = storedForced
+    }
 
     const cfg: ModGateConfigFile = {
       enabled: !!config.clientContentGate,
@@ -1049,9 +1261,11 @@ export class ServerManagerService {
       vehicleDisplayNames: serverVehicles.displayNames,
       vehicleDeniedNames,
       vehicleForcedAllowedNames,
+      blockedMessage,
       updatedAt: new Date().toISOString(),
     }
-    await writeFile(cfgPath, JSON.stringify(cfg, null, 2), 'utf-8')
+    console.log(`[BeamCM-ModGate] sync write server=${id} enabled=${cfg.enabled} allowedVehicleNames=${cfg.allowedVehicleNames.length} deniedVehicles=${cfg.vehicleDeniedNames.length} updatedAt=${cfg.updatedAt}`)
+    await this.writeTextFileAtomic(cfgPath, JSON.stringify(cfg, null, 2))
 
     if (!config.clientContentGate) {
       if (existsSync(pluginDir)) await rm(pluginDir, { recursive: true, force: true })
@@ -1059,7 +1273,18 @@ export class ServerManagerService {
     }
 
     if (!existsSync(pluginDir)) await mkdir(pluginDir, { recursive: true })
-    await writeFile(pluginPath, buildModGateLuaPlugin(serverDir), 'utf-8')
+    // Only write the Lua plugin file if it doesn't exist yet (or has changed).
+    // Do NOT overwrite a running plugin on every config save — BeamMP won't
+    // reload a replaced file mid-session. The running plugin polls
+    // beamcm_mod_gate.json itself and applies changes live without a restart.
+    const newLua = buildModGateLuaPlugin(serverDir)
+    if (!existsSync(pluginPath) || (await readFile(pluginPath, 'utf-8').catch(() => '')) !== newLua) {
+      await writeFile(pluginPath, newLua, 'utf-8')
+    }
+    } finally {
+      release()
+      if (this.modGateSyncQueue.get(id) === next) this.modGateSyncQueue.delete(id)
+    }
   }
 
   /* ── Ban Enforcer Plugin Deploy ── */
@@ -2131,8 +2356,28 @@ local cfgPath = "${cfgPath}"
 local gateEnabled = false
 local allowedArchives = {}
 local allowedVehicleNames = {}
+local deniedVehicleNames = {}
+local blockedChatMessage = "${DEFAULT_MOD_GATE_BLOCKED_MESSAGE.replace(/"/g, '\\"')}"
+local currentUpdatedAt = "n/a"
+local activeVehicles = {}
+local lastConfigRaw = nil
+local lastConfigReadAt = 0
+-- os.time() returns integer Unix seconds (wall-clock), unlike os.clock() which
+-- is CPU time and may barely advance on an idle server.
+local CONFIG_RELOAD_INTERVAL_SEC = 1
 
-local function readConfig()
+local function normKey(value)
+  local s = tostring(value or "")
+  if s == "" then return "" end
+  s = string.lower(s)
+  s = string.gsub(s, "\\\\", "/")
+  s = string.gsub(s, "^.*[/]", "")
+  s = string.gsub(s, "^vehicles/", "")
+  s = string.gsub(s, "%.zip$", "")
+  return s
+end
+
+local function readConfig(trigger)
   local f = io.open(cfgPath, "r")
   if not f then
     print(TAG .. "Config not found: " .. cfgPath)
@@ -2141,14 +2386,17 @@ local function readConfig()
   local raw = f:read("*a")
   f:close()
   if not raw or raw == "" then return end
+  if raw == lastConfigRaw then return end
   local ok, cfg = pcall(Util.JsonDecode, raw)
   if not ok or type(cfg) ~= "table" then
     print(TAG .. "Invalid JSON config")
     return
   end
+  lastConfigRaw = raw
   gateEnabled = cfg.enabled == true
   allowedArchives = {}
   allowedVehicleNames = {}
+  deniedVehicleNames = {}
   if type(cfg.allowedArchives) == "table" then
     for _, name in ipairs(cfg.allowedArchives) do
       if type(name) == "string" and name ~= "" then
@@ -2158,11 +2406,108 @@ local function readConfig()
   end
   if type(cfg.allowedVehicleNames) == "table" then
     for _, name in ipairs(cfg.allowedVehicleNames) do
-      if type(name) == "string" and name ~= "" then
-        allowedVehicleNames[string.lower(name)] = true
+      local key = normKey(name)
+      if key ~= "" then
+        allowedVehicleNames[key] = true
       end
     end
   end
+  if type(cfg.vehicleDeniedNames) == "table" then
+    for _, name in ipairs(cfg.vehicleDeniedNames) do
+      local key = normKey(name)
+      if key ~= "" then
+        deniedVehicleNames[key] = true
+      end
+    end
+  end
+  if type(cfg.blockedMessage) == "string" and cfg.blockedMessage ~= "" then
+    blockedChatMessage = tostring(cfg.blockedMessage)
+  else
+    blockedChatMessage = "${DEFAULT_MOD_GATE_BLOCKED_MESSAGE.replace(/"/g, '\\"')}"
+  end
+
+  local archivesCount = 0
+  for _ in pairs(allowedArchives) do archivesCount = archivesCount + 1 end
+  local vehiclesCount = 0
+  for _ in pairs(allowedVehicleNames) do vehiclesCount = vehiclesCount + 1 end
+  local deniedCount = 0
+  for _ in pairs(deniedVehicleNames) do deniedCount = deniedCount + 1 end
+  local updatedAt = tostring(cfg.updatedAt or "n/a")
+  currentUpdatedAt = updatedAt
+  print(TAG .. "Config reloaded (" .. tostring(trigger or "unknown") .. "): enabled=" .. tostring(gateEnabled)
+    .. ", allowedArchives=" .. tostring(archivesCount)
+    .. ", allowedVehicleNames=" .. tostring(vehiclesCount)
+    .. ", deniedVehicles=" .. tostring(deniedCount)
+    .. ", updatedAt=" .. updatedAt)
+end
+
+local function trackActiveVehicle(playerID, vehicleID, vehKey, vehNameKey, modelKey, vehName)
+  local pid = tostring(playerID)
+  local vid = tostring(vehicleID)
+  if activeVehicles[pid] == nil then activeVehicles[pid] = {} end
+  activeVehicles[pid][vid] = {
+    vehKey = tostring(vehKey or ""),
+    vehNameKey = tostring(vehNameKey or ""),
+    modelKey = tostring(modelKey or ""),
+    vehName = tostring(vehName or "unknown"),
+  }
+end
+
+local function hasKey(mapTable, k1, k2, k3)
+  if k1 ~= "" and mapTable[k1] then return true end
+  if k2 ~= "" and mapTable[k2] then return true end
+  if k3 ~= "" and mapTable[k3] then return true end
+  return false
+end
+
+local function untrackActiveVehicle(playerID, vehicleID)
+  local pid = tostring(playerID)
+  local byPlayer = activeVehicles[pid]
+  if byPlayer == nil then return end
+  byPlayer[tostring(vehicleID)] = nil
+  if next(byPlayer) == nil then activeVehicles[pid] = nil end
+end
+
+local function clearPlayerVehicles(playerID)
+  activeVehicles[tostring(playerID)] = nil
+end
+
+local function enforceActiveVehicles(trigger)
+  if not gateEnabled then return end
+  if not MP.RemoveVehicle then return end
+  for pid, byPlayer in pairs(activeVehicles) do
+    for vid, meta in pairs(byPlayer) do
+      local key = normKey((meta and meta.vehKey) or "")
+      local nameKey = normKey((meta and meta.vehNameKey) or "")
+      local modelKey = normKey((meta and meta.modelKey) or "")
+      if hasKey(deniedVehicleNames, key, nameKey, modelKey) then
+        local ok = pcall(MP.RemoveVehicle, tonumber(pid), tonumber(vid))
+        if ok then
+          if MP.SendChatMessage then
+            MP.SendChatMessage(tonumber(pid), blockedChatMessage)
+          end
+          print(TAG .. "ENFORCE active vehicle removed pid=" .. tostring(pid)
+            .. " vid=" .. tostring(vid)
+            .. " vehKey=" .. tostring(key)
+            .. " nameKey=" .. tostring(nameKey)
+            .. " modelKey=" .. tostring(modelKey)
+            .. " trigger=" .. tostring(trigger))
+          byPlayer[vid] = nil
+        end
+      end
+    end
+    if next(byPlayer) == nil then activeVehicles[pid] = nil end
+  end
+end
+
+-- The 1s wall-clock timer keeps config fresh between spawns.
+-- readConfig is cheap when nothing changed (raw string equality check).
+function onModGateConfigPoll()
+  local now = os.time()
+  if (now - lastConfigReadAt) < CONFIG_RELOAD_INTERVAL_SEC then return end
+  lastConfigReadAt = now
+  readConfig("hot-reload")
+  enforceActiveVehicles("hot-reload")
 end
 
 local function findZipHint(value)
@@ -2183,8 +2528,17 @@ end
 local function decodeSpawnData(raw)
   if type(raw) == "table" then return raw end
   if type(raw) ~= "string" or raw == "" then return nil end
-  local ok, decoded = pcall(Util.JsonDecode, raw)
-  if ok and type(decoded) == "table" then return decoded end
+
+  -- BeamMP often prefixes payloads with metadata like "USER:...:" before the
+  -- JSON body. Calling JsonDecode on the full raw string logs a very long parse
+  -- error every spawn. Only decode the full string when it actually looks like
+  -- JSON; otherwise jump straight to the first JSON object.
+  local first = string.sub(raw, 1, 1)
+  if first == "{" or first == "[" then
+    local ok, decoded = pcall(Util.JsonDecode, raw)
+    if ok and type(decoded) == "table" then return decoded end
+  end
+
   local start = string.find(raw, "{")
   if start then
     local ok2, decoded2 = pcall(Util.JsonDecode, string.sub(raw, start))
@@ -2194,8 +2548,12 @@ local function decodeSpawnData(raw)
 end
 
 function onInit()
-  readConfig()
+  readConfig("init")
   MP.RegisterEvent("onVehicleSpawn", "onVehicleSpawn")
+  MP.RegisterEvent("onVehicleDeleted", "onVehicleDeleted")
+  MP.RegisterEvent("onPlayerDisconnect", "onPlayerDisconnect")
+  MP.CreateEventTimer("onModGateConfigPoll", 1000)
+  MP.RegisterEvent("onModGateConfigPoll", "onModGateConfigPoll")
   print(TAG .. "Loaded. enabled=" .. tostring(gateEnabled) .. ", allowedArchives=" .. tostring((function()
     local c = 0
     for _ in pairs(allowedArchives) do c = c + 1 end
@@ -2205,9 +2563,14 @@ function onInit()
     for _ in pairs(allowedVehicleNames) do c = c + 1 end
     return c
   end)()))
+  print(TAG .. "Timer registered: onModGateConfigPoll (1000ms)")
 end
 
 function onVehicleSpawn(playerID, vehicleID, data)
+  -- Always read config before enforcing so a checkbox toggle applied
+  -- milliseconds before this spawn is never missed. readConfig is cheap:
+  -- if the file content hasn't changed the raw-equality check exits immediately.
+  readConfig("pre-spawn")
   if not gateEnabled then return end
   local decoded = decodeSpawnData(data)
   local name = MP.GetPlayerName(playerID) or ("player:" .. tostring(playerID))
@@ -2223,7 +2586,7 @@ function onVehicleSpawn(playerID, vehicleID, data)
       removed = ok
     end
     if MP.SendChatMessage then
-      MP.SendChatMessage(playerID, "Vehicle blocked: only server-provided mod packs are allowed on this server.")
+      MP.SendChatMessage(playerID, blockedChatMessage)
     end
     if not removed then
       print(TAG .. "WARNING: RemoveVehicle failed for pid=" .. tostring(playerID) .. " vid=" .. tostring(vehicleID))
@@ -2238,17 +2601,71 @@ function onVehicleSpawn(playerID, vehicleID, data)
 
   local archive = findZipHint(decoded)
   local veh = tostring(decoded.name or decoded.jbm or decoded.model or "unknown")
-  local vehKey = string.lower(tostring(decoded.jbm or decoded.model or decoded.name or ""))
+  local vehKey = normKey(decoded.jbm or decoded.model or decoded.name or "")
+  local vehNameKey = normKey(decoded.name or "")
+  local modelKey = normKey(decoded.model or "")
+  local archiveOut = archive or "<none>"
+  local allowHit = hasKey(allowedVehicleNames, vehKey, vehNameKey, modelKey)
+  local denyHit = hasKey(deniedVehicleNames, vehKey, vehNameKey, modelKey)
+
+  print(TAG .. "DECIDE player=" .. tostring(name)
+    .. " vehicle=" .. tostring(veh)
+    .. " vehKey=" .. tostring(vehKey)
+    .. " nameKey=" .. tostring(vehNameKey)
+    .. " modelKey=" .. tostring(modelKey)
+    .. " archive=" .. tostring(archiveOut)
+    .. " enabled=" .. tostring(gateEnabled)
+    .. " allowHit=" .. tostring(allowHit)
+    .. " denyHit=" .. tostring(denyHit)
+    .. " cfgUpdatedAt=" .. tostring(currentUpdatedAt))
+
+  -- Hard deny-set guard: explicit deny entries always block, independent of
+  -- allowlist state.
+  if denyHit then
+    untrackActiveVehicle(playerID, vehicleID)
+    return blockSpawn("vehicle-denylisted", archive, veh)
+  end
+
+  -- Enforce per-vehicle allowlist first. A disabled vehicle must stay blocked
+  -- even if it comes from an otherwise allowed client archive.
+  if not allowHit then
+    untrackActiveVehicle(playerID, vehicleID)
+    return blockSpawn("vehicle-not-allowlisted", archive, veh)
+  end
 
   -- No archive hint: allow only when the vehicle id/name is known to come from
   -- stock content or server-provided client archives.
   if not archive then
-    if vehKey ~= "" and allowedVehicleNames[vehKey] then return end
+    if allowHit then
+      trackActiveVehicle(playerID, vehicleID, vehKey, vehNameKey, modelKey, veh)
+      print(TAG .. "ALLOW spawn player=" .. tostring(name)
+        .. " vehicle=" .. tostring(veh)
+        .. " vehKey=" .. tostring(vehKey)
+        .. " archive=" .. tostring(archiveOut)
+        .. " reason=vehicle-allowlist-no-archive")
+      return
+    end
     return blockSpawn("no-archive-hint", nil, veh)
   end
-  if allowedArchives[archive] then return end
+  if allowedArchives[archive] then
+    trackActiveVehicle(playerID, vehicleID, vehKey, vehNameKey, modelKey, veh)
+    print(TAG .. "ALLOW spawn player=" .. tostring(name)
+      .. " vehicle=" .. tostring(veh)
+      .. " vehKey=" .. tostring(vehKey)
+      .. " archive=" .. tostring(archiveOut)
+      .. " reason=archive-allowlisted")
+    return
+  end
 
   return blockSpawn("archive-not-allowlisted", archive, veh)
+end
+
+function onVehicleDeleted(playerID, vehicleID)
+  untrackActiveVehicle(playerID, vehicleID)
+end
+
+function onPlayerDisconnect(playerID)
+  clearPlayerVehicles(playerID)
 end
 `
 }

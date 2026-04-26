@@ -291,11 +291,14 @@ const api = {
         vehicleDisplayNames?: Record<string, string>
         vehicleDeniedNames: string[]
         vehicleForcedAllowedNames: string[]
+        blockedMessage?: string
         updatedAt: string
       } | null
     }>,
-  hostedServerSaveModGateConfig: (id: string, input: { allowedVehicleNames?: string[] }) =>
+  hostedServerSaveModGateConfig: (id: string, input: { allowedVehicleNames?: string[]; knownVehicleNames?: string[]; blockedMessage?: string }) =>
     ipcRenderer.invoke('hostedServer:saveModGateConfig', id, input) as Promise<{ success: boolean; error?: string }>,
+  hostedServerGetModGateVehiclePreview: (id: string, vehicleName: string) =>
+    ipcRenderer.invoke('hostedServer:getModGateVehiclePreview', id, vehicleName) as Promise<string | null>,
   hostedServerListSupportTickets: (id: string) =>
     ipcRenderer.invoke('hostedServer:listSupportTickets', id) as Promise<import('../shared/types').SupportTicket[]>,
   hostedServerCreateSupportTicket: (id: string, input: import('../shared/types').SupportTicketCreateInput) =>

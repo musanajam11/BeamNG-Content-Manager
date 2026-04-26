@@ -377,6 +377,7 @@
     "tableActions": "Actions",
     "disableMod": "Disable mod",
     "enableMod": "Enable mod",
+    "sideloadMultiplayerWarning": "Sideloading mods before joining multiplayer lobbies can cause issues and result in a poor experience for other players.",
     "deleteMod": "Delete mod",
     "configuration": "Configuration",
     "release": "Release",

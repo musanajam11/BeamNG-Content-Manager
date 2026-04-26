@@ -4128,18 +4128,21 @@ export function registerIpcHandlers(): void {
       } catch { /* dir doesn't exist */ }
     }
 
-    // 2) Mod maps. We treat ANY enabled mod with a `levels/<dir>/`
-    //    folder (i.e. `levelDir` set) as a candidate map � the older
+    // 2) Mod maps. We treat any installed REPO mod with a `levels/<dir>/`
+    //    folder (i.e. `levelDir` set) as a candidate map — the older
     //    strict `modType === 'terrain' || 'map'` filter silently dropped
     //    map mods that BeamNG itself classified as `'unknown'` in db.json.
     //    `levelDir` is populated by `scanModZip` whenever the archive
     //    contains a `levels/` entry, which is the most reliable signal
     //    we have. We also fall back to `levelDir` when `title` is null
-    //    so the dropdown still shows a usable label.
+    //    so the dropdown still shows a usable label. We intentionally do
+    //    NOT require `mod.enabled` here because enabling now implies client
+    //    sideload behavior; server map selection should reflect installed
+    //    repo map availability, not runtime client toggle state.
     try {
       const mods = await modManagerService.listMods(userDir || '')
       for (const mod of mods) {
-        if (!mod.enabled) continue
+        if (mod.location !== 'repo') continue
         const isMapMod =
           mod.modType === 'terrain' ||
           mod.modType === 'map' ||
@@ -5990,8 +5993,12 @@ export function registerIpcHandlers(): void {
     return serverManagerService.getModGateConfig(id)
   })
 
-  ipcMain.handle('hostedServer:saveModGateConfig', async (_event, id: string, input: { allowedVehicleNames?: string[] }) => {
+  ipcMain.handle('hostedServer:saveModGateConfig', async (_event, id: string, input: { allowedVehicleNames?: string[]; knownVehicleNames?: string[]; blockedMessage?: string }) => {
     return serverManagerService.saveModGateConfig(id, input)
+  })
+
+  ipcMain.handle('hostedServer:getModGateVehiclePreview', async (_event, id: string, vehicleName: string) => {
+    return serverManagerService.getModGateVehiclePreview(id, vehicleName)
   })
 
   // -- Hosted Server Support Tickets --

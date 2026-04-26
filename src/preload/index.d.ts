@@ -54,6 +54,7 @@ export interface HostedServerModGateConfig {
   vehicleDisplayNames?: Record<string, string>
   vehicleDeniedNames: string[]
   vehicleForcedAllowedNames: string[]
+  blockedMessage?: string
   updatedAt: string
 }
 
@@ -283,7 +284,8 @@ interface AppAPI {
   hostedServerStop(id: string): Promise<{ success: boolean }>
   hostedServerRestart(id: string): Promise<{ success: boolean; error?: string }>
   hostedServerGetModGateConfig(id: string): Promise<{ exists: boolean; config: HostedServerModGateConfig | null }>
-  hostedServerSaveModGateConfig(id: string, input: { allowedVehicleNames?: string[] }): Promise<{ success: boolean; error?: string }>
+  hostedServerSaveModGateConfig(id: string, input: { allowedVehicleNames?: string[]; knownVehicleNames?: string[]; blockedMessage?: string }): Promise<{ success: boolean; error?: string }>
+  hostedServerGetModGateVehiclePreview(id: string, vehicleName: string): Promise<string | null>
   hostedServerListSupportTickets(id: string): Promise<SupportTicket[]>
   hostedServerCreateSupportTicket(id: string, input: SupportTicketCreateInput): Promise<SupportTicket>
   hostedServerUpdateSupportTicket(id: string, ticketId: string, patch: SupportTicketUpdateInput): Promise<SupportTicket | null>
