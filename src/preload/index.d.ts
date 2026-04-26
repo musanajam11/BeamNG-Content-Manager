@@ -522,6 +522,18 @@ interface AppAPI {
     noTrafficSize: number
     downloads: number
   }>>
+  careerFetchBetterCareerCompatReleases(): Promise<Array<{
+    version: string
+    name: string
+    changelog: string
+    prerelease: boolean
+    publishedAt: string
+    clientZipUrl: string | null
+    serverZipUrl: string | null
+    clientZipSize: number
+    serverZipSize: number
+    downloads: number
+  }>>
   careerFetchGreatRebalanceRlsReleases(): Promise<Array<{
     version: string
     name: string
@@ -538,6 +550,7 @@ interface AppAPI {
   }>>
   careerInstallCareerMP(downloadUrl: string, version: string, serverDir: string): Promise<{ success: boolean; error?: string }>
   careerInstallRLS(downloadUrl: string, version: string, traffic: boolean, serverDir: string): Promise<{ success: boolean; error?: string }>
+  careerInstallBetterCareerCompat(clientZipUrl: string, serverZipUrl: string, version: string, serverDir: string): Promise<{ success: boolean; error?: string }>
   careerInstallRLSGreatRebalance(
     careerMpDownloadUrl: string,
     careerMpVersion: string,
@@ -558,6 +571,7 @@ interface AppAPI {
   careerGetInstalledMods(serverDir: string): Promise<{
     careerMP: { version: string; installedAt: string } | null
     rls: { version: string; traffic: boolean; installedAt: string } | null
+    betterCareer: { version: string; installedAt: string } | null
   }>
   careerBrowseServerDir(): Promise<string | null>
   careerGetServerDir(serverId: string): Promise<string>

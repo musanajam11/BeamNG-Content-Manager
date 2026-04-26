@@ -1669,7 +1669,8 @@ export class ServerManagerService {
         const created = await this.createSupportTicket(id, { ...parsed, source: 'in-game' })
         this.writeJson(res, 200, { success: true, id: created.id })
       } catch (err) {
-        this.writeJson(res, 500, { success: false, error: String(err) })
+        console.error('[SupportIngest] ticket creation error:', err)
+        this.writeJson(res, 500, { success: false, error: 'Internal server error' })
       }
     })
 
@@ -2345,19 +2346,30 @@ export class ServerManagerService {
 }
 
 /* ── BeamCM Mod Gate Lua Plugin ── */
+
+/** Escape a JS string for safe embedding inside a Lua double-quoted string literal. */
+function escapeLuaString(s: string): string {
+  return s
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\0/g, '\\0')
+}
+
 function buildModGateLuaPlugin(serverDir: string): string {
   const cfgPath = serverDir.replace(/\\/g, '/') + '/beamcm_mod_gate.json'
   return `-- BeamCM Mod Gate
 -- Blocks vehicle spawns tied to client archives not provided by this server.
 
 local TAG = "[BeamCM-ModGate] "
-local cfgPath = "${cfgPath}"
+local cfgPath = "${escapeLuaString(cfgPath)}"
 
 local gateEnabled = false
 local allowedArchives = {}
 local allowedVehicleNames = {}
 local deniedVehicleNames = {}
-local blockedChatMessage = "${DEFAULT_MOD_GATE_BLOCKED_MESSAGE.replace(/"/g, '\\"')}"
+local blockedChatMessage = "${escapeLuaString(DEFAULT_MOD_GATE_BLOCKED_MESSAGE)}"
 local currentUpdatedAt = "n/a"
 local activeVehicles = {}
 local lastConfigRaw = nil
@@ -2423,7 +2435,7 @@ local function readConfig(trigger)
   if type(cfg.blockedMessage) == "string" and cfg.blockedMessage ~= "" then
     blockedChatMessage = tostring(cfg.blockedMessage)
   else
-    blockedChatMessage = "${DEFAULT_MOD_GATE_BLOCKED_MESSAGE.replace(/"/g, '\\"')}"
+    blockedChatMessage = "${escapeLuaString(DEFAULT_MOD_GATE_BLOCKED_MESSAGE)}"
   end
 
   local archivesCount = 0

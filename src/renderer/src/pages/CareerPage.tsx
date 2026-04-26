@@ -42,7 +42,8 @@ import {
   Unlock,
   Info
 } from 'lucide-react'
-import { BuberIcon, BankingIcon, DynamicTrafficIcon, pluginPreviewImage } from '../components/server-manager/PluginIcons'
+import { BuberIcon, BankingIcon, DynamicTrafficIcon, CitybusDisplaysSyncIcon, pluginPreviewImage } from '../components/server-manager/PluginIcons'
+import cmpDragStripImg from '../assets/careermp-readme/gallery6.png'
 import { useConfirmDialog } from '../hooks/useConfirmDialog'
 
 import { PluginReadmeToggle } from '../components/server-manager/PluginReadme'
@@ -173,6 +174,19 @@ interface RLSRelease {
   downloads: number
 }
 
+interface BetterCareerRelease {
+  version: string
+  name: string
+  changelog: string
+  prerelease: boolean
+  publishedAt: string
+  clientZipUrl: string | null
+  serverZipUrl: string | null
+  clientZipSize: number
+  serverZipSize: number
+  downloads: number
+}
+
 interface ServerEntry {
   config: { id: string; name: string }
 }
@@ -180,6 +194,7 @@ interface ServerEntry {
 interface InstalledCareerMods {
   careerMP: { version: string; installedAt: string } | null
   rls: { version: string; traffic: boolean; installedAt: string } | null
+  betterCareer: { version: string; installedAt: string } | null
 }
 
 interface InstalledCareerPlugin {
@@ -299,6 +314,7 @@ export function CareerPage(): React.JSX.Element {
   // ── Mod Manager state ──
   const [cmpReleases, setCmpReleases] = useState<CareerMPRelease[]>([])
   const [rlsReleases, setRlsReleases] = useState<RLSRelease[]>([])
+  const [betterCareerReleases, setBetterCareerReleases] = useState<BetterCareerRelease[]>([])
   const [modLoading, setModLoading] = useState(false)
   const [modError, setModError] = useState<string | null>(null)
 
@@ -313,6 +329,9 @@ export function CareerPage(): React.JSX.Element {
   const [rlsTraffic, setRlsTraffic] = useState(true)
   const [rlsInstalling, setRlsInstalling] = useState(false)
   const [rlsMsg, setRlsMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [betterCareerSelectedVersion, setBetterCareerSelectedVersion] = useState<string>('')
+  const [betterCareerInstalling, setBetterCareerInstalling] = useState(false)
+  const [betterCareerMsg, setBetterCareerMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [grbInstalling, setGrbInstalling] = useState(false)
   const [grbMsg, setGrbMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [grbRlsReleases, setGrbRlsReleases] = useState<GreatRebalanceDependencyRelease[]>([])
@@ -379,12 +398,14 @@ export function CareerPage(): React.JSX.Element {
     setModLoading(true)
     setModError(null)
     try {
-      const [cmp, rls] = await Promise.all([
+      const [cmp, rls, betterCareer] = await Promise.all([
         window.api.careerFetchCareerMPReleases(),
-        window.api.careerFetchRLSReleases()
+        window.api.careerFetchRLSReleases(),
+        window.api.careerFetchBetterCareerCompatReleases()
       ])
       setCmpReleases(cmp)
       setRlsReleases(rls)
+      setBetterCareerReleases(betterCareer)
       // Auto-select the latest release on first load AND whenever the
       // currently-selected version is no longer present in the fetched list
       // (e.g. it was a stale default or the cached selection points at a
@@ -400,12 +421,15 @@ export function CareerPage(): React.JSX.Element {
       if (cmp.length > 0 && (!rlsCmpVersion || !cmp.some((r) => r.version === rlsCmpVersion))) {
         setRlsCmpVersion(cmp[0].version)
       }
+      if (betterCareer.length > 0 && (!betterCareerSelectedVersion || !betterCareer.some((r) => r.version === betterCareerSelectedVersion))) {
+        setBetterCareerSelectedVersion(betterCareer[0].version)
+      }
     } catch (err) {
       setModError(String(err))
     } finally {
       setModLoading(false)
     }
-  }, [cmpSelectedVersion, rlsSelectedVersion, rlsCmpVersion])
+  }, [cmpSelectedVersion, rlsSelectedVersion, rlsCmpVersion, betterCareerSelectedVersion])
 
   const loadServers = useCallback(async () => {
     try {
@@ -547,6 +571,33 @@ export function CareerPage(): React.JSX.Element {
       setRlsInstalling(false)
     }
   }, [getActiveServerDir, rlsReleases, rlsSelectedVersion, rlsTraffic, cmpReleases, rlsCmpVersion, loadInstalledMods, t])
+
+  const handleInstallBetterCareer = useCallback(async () => {
+    const dir = await getActiveServerDir()
+    if (!dir) return
+    const release = betterCareerReleases.find((r) => r.version === betterCareerSelectedVersion)
+    if (!release?.clientZipUrl || !release.serverZipUrl) return
+    setBetterCareerInstalling(true)
+    setBetterCareerMsg(null)
+    try {
+      const result = await window.api.careerInstallBetterCareerCompat(
+        release.clientZipUrl,
+        release.serverZipUrl,
+        release.version,
+        dir
+      )
+      if (result.success) {
+        setBetterCareerMsg({ type: 'success', text: t('career.mod.installSuccess', { name: `CareerMP + Better Career ${release.version}` }) })
+        await loadInstalledMods()
+      } else {
+        setBetterCareerMsg({ type: 'error', text: result.error || t('career.mod.installFailed') })
+      }
+    } catch (err) {
+      setBetterCareerMsg({ type: 'error', text: String(err) })
+    } finally {
+      setBetterCareerInstalling(false)
+    }
+  }, [getActiveServerDir, betterCareerReleases, betterCareerSelectedVersion, loadInstalledMods, t])
 
   const handleInstallRLSGreatRebalance = useCallback(async () => {
     const dir = await getActiveServerDir()
@@ -1607,19 +1658,24 @@ export function CareerPage(): React.JSX.Element {
           modError={modError}
           cmpReleases={cmpReleases}
           rlsReleases={rlsReleases}
+          betterCareerReleases={betterCareerReleases}
           cmpSelectedVersion={cmpSelectedVersion}
           setCmpSelectedVersion={setCmpSelectedVersion}
           rlsSelectedVersion={rlsSelectedVersion}
           setRlsSelectedVersion={setRlsSelectedVersion}
+          betterCareerSelectedVersion={betterCareerSelectedVersion}
+          setBetterCareerSelectedVersion={setBetterCareerSelectedVersion}
           rlsCmpVersion={rlsCmpVersion}
           setRlsCmpVersion={setRlsCmpVersion}
           rlsTraffic={rlsTraffic}
           setRlsTraffic={setRlsTraffic}
           cmpInstalling={cmpInstalling}
           rlsInstalling={rlsInstalling}
+          betterCareerInstalling={betterCareerInstalling}
           grbInstalling={grbInstalling}
           cmpMsg={cmpMsg}
           rlsMsg={rlsMsg}
+          betterCareerMsg={betterCareerMsg}
           grbMsg={grbMsg}
           servers={servers}
           selectedServerId={selectedServerId}
@@ -1654,6 +1710,7 @@ export function CareerPage(): React.JSX.Element {
           handleBrowseServerDir={handleBrowseServerDir}
           handleInstallCareerMP={handleInstallCareerMP}
           handleInstallRLS={handleInstallRLS}
+          handleInstallBetterCareer={handleInstallBetterCareer}
           handleInstallRLSGreatRebalance={handleInstallRLSGreatRebalance}
           loadModReleases={() => {
             loadModReleases()
@@ -1669,24 +1726,29 @@ export function CareerPage(): React.JSX.Element {
 }
 
 /* ── Mod Manager Panel sub-component ── */
-function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSelectedVersion, setCmpSelectedVersion, rlsSelectedVersion, setRlsSelectedVersion, rlsCmpVersion, setRlsCmpVersion, rlsTraffic, setRlsTraffic, cmpInstalling, rlsInstalling, grbInstalling, cmpMsg, rlsMsg, grbMsg, servers, selectedServerId, setSelectedServerId, customServerDir, installedMods, installedPlugins, pythonStatus, pythonInstallBusy, grbRlsReleases, grbRlsVersion, setGrbRlsVersion, grbBankingReleases, grbBankingVersion, setGrbBankingVersion, grbPatchReleases, grbPatchVersion, setGrbPatchVersion, refreshPythonStatus, installPythonRuntime, handleBrowseServerDir, handleInstallCareerMP, handleInstallRLS, handleInstallRLSGreatRebalance, loadModReleases, getActiveServerDir, t }: {
+function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, betterCareerReleases, cmpSelectedVersion, setCmpSelectedVersion, rlsSelectedVersion, setRlsSelectedVersion, betterCareerSelectedVersion, setBetterCareerSelectedVersion, rlsCmpVersion, setRlsCmpVersion, rlsTraffic, setRlsTraffic, cmpInstalling, rlsInstalling, betterCareerInstalling, grbInstalling, cmpMsg, rlsMsg, betterCareerMsg, grbMsg, servers, selectedServerId, setSelectedServerId, customServerDir, installedMods, installedPlugins, pythonStatus, pythonInstallBusy, grbRlsReleases, grbRlsVersion, setGrbRlsVersion, grbBankingReleases, grbBankingVersion, setGrbBankingVersion, grbPatchReleases, grbPatchVersion, setGrbPatchVersion, refreshPythonStatus, installPythonRuntime, handleBrowseServerDir, handleInstallCareerMP, handleInstallRLS, handleInstallBetterCareer, handleInstallRLSGreatRebalance, loadModReleases, getActiveServerDir, t }: {
   modLoading: boolean
   modError: string | null
   cmpReleases: CareerMPRelease[]
   rlsReleases: RLSRelease[]
+  betterCareerReleases: BetterCareerRelease[]
   cmpSelectedVersion: string
   setCmpSelectedVersion: (v: string) => void
   rlsSelectedVersion: string
   setRlsSelectedVersion: (v: string) => void
+  betterCareerSelectedVersion: string
+  setBetterCareerSelectedVersion: (v: string) => void
   rlsCmpVersion: string
   setRlsCmpVersion: (v: string) => void
   rlsTraffic: boolean
   setRlsTraffic: (v: boolean) => void
   cmpInstalling: boolean
   rlsInstalling: boolean
+  betterCareerInstalling: boolean
   grbInstalling: boolean
   cmpMsg: { type: 'success' | 'error'; text: string } | null
   rlsMsg: { type: 'success' | 'error'; text: string } | null
+  betterCareerMsg: { type: 'success' | 'error'; text: string } | null
   grbMsg: { type: 'success' | 'error'; text: string } | null
   servers: ServerEntry[]
   selectedServerId: string
@@ -1716,6 +1778,7 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
   handleBrowseServerDir: () => void
   handleInstallCareerMP: () => void
   handleInstallRLS: () => void
+  handleInstallBetterCareer: () => void
   handleInstallRLSGreatRebalance: () => void
   loadModReleases: () => void
   getActiveServerDir: () => Promise<string | null>
@@ -1727,6 +1790,11 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
     /compatible/i.test(installedMods.rls.version) &&
     installedPlugins['careermp-banking']
   )
+
+  const rlsInstalled = Boolean(installedMods?.rls)
+  const betterCareerInstalled = Boolean(installedMods?.betterCareer)
+  const [rlsTrayOpen, setRlsTrayOpen] = useState(false)
+  const [betterCareerTrayOpen, setBetterCareerTrayOpen] = useState(false)
 
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -1784,64 +1852,93 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
       ) : (
         <>
           {/* CareerMP full-width section */}
-          <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4 flex flex-col">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
-                <Package size={16} className="text-[var(--color-accent)]" /> {t('career.mod.careerMP')}
-              </h3>
-              <a
-                href="https://github.com/StanleyDudek/CareerMP"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-[var(--text-muted)] hover:text-[var(--color-accent)] flex items-center gap-1"
-              >
-                <ExternalLink size={12} /> GitHub
-              </a>
-            </div>
-            <p className="text-xs text-[var(--text-muted)] mb-3">{t('career.mod.careerMPBlurb')}</p>
-
-            <div className="flex items-start gap-2 mb-3 px-3 py-2 bg-amber-500/10 rounded-lg border border-amber-500/20">
-              <Info size={14} className="text-amber-300 mt-0.5 shrink-0" />
-              <p className="text-[11px] leading-snug text-amber-200/90">{t('career.mod.careerMPNote')}</p>
-            </div>
-
-            {installedMods?.careerMP && (
-              <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-green-500/10 rounded-lg border border-green-500/20">
-                <Check size={14} className="text-green-400" />
-                <span className="text-xs text-green-300">{t('career.mod.installed')}: v{installedMods.careerMP.version}</span>
+          <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] overflow-hidden flex flex-col">
+            {/* Hero background image */}
+            <div
+              className="relative h-36 bg-cover bg-center"
+              style={{ backgroundImage: `url(${cmpDragStripImg})` }}
+            >
+              <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/30 to-black/75" />
+              <div className="absolute inset-0 flex items-end justify-between px-5 pb-4">
+                <h3 className="text-base font-bold text-white drop-shadow flex items-center gap-2">
+                  <Package size={17} className="text-[var(--color-accent)]" /> {t('career.mod.careerMP')}
+                </h3>
+                <a
+                  href="https://github.com/StanleyDudek/CareerMP"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-white/70 hover:text-white flex items-center gap-1"
+                >
+                  <ExternalLink size={12} /> GitHub
+                </a>
               </div>
-            )}
-
-            <div className="space-y-2">
-              <select
-                value={cmpSelectedVersion}
-                onChange={(e) => setCmpSelectedVersion(e.target.value)}
-                className="w-full px-3 py-1.5 text-sm bg-[var(--color-scrim-20)] rounded-lg border border-[var(--color-border)] text-[var(--color-text-primary)]"
-              >
-                {cmpReleases.map((r) => (
-                  <option key={r.version} value={r.version}>
-                    {r.version} {r.prerelease ? '(pre-release)' : ''} — {(r.size / 1024).toFixed(0)} KB
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={handleInstallCareerMP}
-                disabled={cmpInstalling || !selectedServerId && !customServerDir}
-                className="w-full flex items-center justify-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-[var(--color-text-primary)] font-medium transition-colors disabled:opacity-50"
-              >
-                {cmpInstalling ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                Install CareerMP Only
-              </button>
             </div>
-            {cmpMsg && (
-              <p className={`text-xs mt-2 ${cmpMsg.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{cmpMsg.text}</p>
-            )}
-            <PluginReadmeToggle pluginId="careermp-mod" />
+
+            {/* Body */}
+            <div className="p-5 flex flex-col gap-4">
+              <p className="text-xs text-[var(--text-muted)] leading-relaxed">{t('career.mod.careerMPBlurb')}</p>
+
+              <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-500/10 rounded-lg border border-amber-500/20">
+                <Info size={14} className="text-amber-300 mt-0.5 shrink-0" />
+                <p className="text-[11px] leading-snug text-amber-200/90">{t('career.mod.careerMPNote')}</p>
+              </div>
+
+              {installedMods?.careerMP && (
+                <div className="flex items-center gap-2 px-3 py-2.5 bg-green-500/10 rounded-lg border border-green-500/20">
+                  <Check size={14} className="text-green-400" />
+                  <span className="text-xs text-green-300">{t('career.mod.installed')}: v{installedMods.careerMP.version}</span>
+                </div>
+              )}
+
+              <div className="space-y-2.5">
+                <select
+                  value={cmpSelectedVersion}
+                  onChange={(e) => setCmpSelectedVersion(e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-[var(--color-scrim-20)] rounded-lg border border-[var(--color-border)] text-[var(--color-text-primary)]"
+                >
+                  {cmpReleases.map((r) => (
+                    <option key={r.version} value={r.version}>
+                      {r.version} {r.prerelease ? '(pre-release)' : ''} — {(r.size / 1024).toFixed(0)} KB
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={handleInstallCareerMP}
+                  disabled={cmpInstalling || !selectedServerId && !customServerDir}
+                  className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm rounded-lg bg-[var(--color-accent)] hover:bg-[var(--color-accent-hover)] text-[var(--color-text-primary)] font-medium transition-colors disabled:opacity-50"
+                >
+                  {cmpInstalling ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                  Install CareerMP Only
+                </button>
+              </div>
+              {cmpMsg && (
+                <p className={`text-xs ${cmpMsg.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{cmpMsg.text}</p>
+              )}
+              <PluginReadmeToggle pluginId="careermp-mod" />
+            </div>
           </div>
 
-          {/* RLS options row */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* RLS section */}
+          {/* RLS collapsible tray */}
+          <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] overflow-hidden">
+            <button
+              onClick={() => setRlsTrayOpen((o) => !o)}
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-[var(--color-surface-active)] transition-colors text-left"
+            >
+              <div className="flex items-center gap-2">
+                <Star size={16} className="text-purple-400" />
+                <span className="text-sm font-semibold text-[var(--color-text-primary)]">CareerMP + RLS</span>
+                {rlsInstalled && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full border bg-green-500/15 text-green-300 border-green-500/30 flex items-center gap-1">
+                    <Check size={10} /> {grbInstalled ? 'TGR installed' : `v${installedMods!.rls!.version}`}
+                  </span>
+                )}
+              </div>
+              {rlsTrayOpen ? <ChevronUp size={16} className="text-[var(--text-muted)]" /> : <ChevronDown size={16} className="text-[var(--text-muted)]" />}
+            </button>
+            {rlsTrayOpen && (
+              <div className="border-t border-[var(--color-border)] p-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {/* RLS section */}
             <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4 flex flex-col">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
@@ -2096,6 +2193,93 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, cmpSe
               )}
               <PluginReadmeToggle pluginId="rls-careermp-compat-patch" />
             </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Better Career collapsible tray */}
+          <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] overflow-hidden">
+            <button
+              onClick={() => setBetterCareerTrayOpen((o) => !o)}
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-[var(--color-surface-active)] transition-colors text-left"
+            >
+              <div className="flex items-center gap-2">
+                <Star size={16} className="text-cyan-400" />
+                <span className="text-sm font-semibold text-[var(--color-text-primary)]">CareerMP + Better Career</span>
+                {betterCareerInstalled && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full border bg-green-500/15 text-green-300 border-green-500/30 flex items-center gap-1">
+                    <Check size={10} /> v{installedMods!.betterCareer!.version}
+                  </span>
+                )}
+              </div>
+              {betterCareerTrayOpen ? <ChevronUp size={16} className="text-[var(--text-muted)]" /> : <ChevronDown size={16} className="text-[var(--text-muted)]" />}
+            </button>
+            {betterCareerTrayOpen && (
+              <div className="border-t border-[var(--color-border)] p-4">
+                <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4 flex flex-col">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
+                      <Star size={16} className="text-cyan-400" /> CareerMP + Better Career
+                    </h3>
+                    <a
+                      href="https://github.com/ChiarelloB/better-career-careermp-compat"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-[var(--text-muted)] hover:text-[var(--color-accent)] flex items-center gap-1"
+                    >
+                      <ExternalLink size={12} /> GitHub
+                    </a>
+                  </div>
+
+                  <p className="text-xs text-[var(--text-muted)] mb-3">
+                    Installs the Better Career compatibility stack for CareerMP. This deploys the release server package into Resources/Server and the client package as Resources/Client/CareerMP.zip.
+                  </p>
+
+                  <div className="flex items-start gap-2 mb-3 px-3 py-2 bg-amber-500/10 rounded-lg border border-amber-500/20">
+                    <Info size={14} className="text-amber-300 mt-0.5 shrink-0" />
+                    <p className="text-[11px] leading-snug text-amber-200/90">
+                      Better Career is an alternative stack to RLS. Installing this replaces any existing CareerMP client package and clears stale RLS client zips.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs text-[var(--text-muted)] mb-1 block">Compatibility release</label>
+                      <select
+                        value={betterCareerSelectedVersion}
+                        onChange={(e) => setBetterCareerSelectedVersion(e.target.value)}
+                        className="w-full px-3 py-1.5 text-sm bg-[var(--color-scrim-20)] rounded-lg border border-[var(--color-border)] text-[var(--color-text-primary)]"
+                        disabled={betterCareerReleases.length === 0}
+                      >
+                        {betterCareerReleases.length === 0 ? (
+                          <option value="">No Better Career compatibility releases found</option>
+                        ) : (
+                          betterCareerReleases.map((r) => (
+                            <option key={r.version} value={r.version}>
+                              {r.version} {r.prerelease ? '(pre-release)' : ''} - client {(r.clientZipSize / 1024 / 1024).toFixed(1)} MB, server {(r.serverZipSize / 1024).toFixed(0)} KB
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </div>
+
+                    <button
+                      onClick={handleInstallBetterCareer}
+                      disabled={betterCareerInstalling || (!selectedServerId && !customServerDir) || !betterCareerSelectedVersion}
+                      className="w-full flex items-center justify-center gap-1.5 px-4 py-2 text-sm rounded-lg bg-cyan-600 hover:bg-cyan-500 text-[var(--color-text-primary)] font-medium transition-colors disabled:opacity-50"
+                    >
+                      {betterCareerInstalling ? <Loader2 size={14} className="animate-spin" /> : betterCareerInstalled ? <RefreshCw size={14} /> : <Download size={14} />}
+                      {betterCareerInstalled ? 'Update / Reinstall CareerMP + Better Career' : 'Install CareerMP + Better Career'}
+                    </button>
+                  </div>
+
+                  {betterCareerMsg && (
+                    <p className={`text-xs mt-2 ${betterCareerMsg.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{betterCareerMsg.text}</p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Plugin Browser */}
@@ -2139,17 +2323,16 @@ interface InstalledPlugin {
   artifacts: string[]
 }
 
-function compatBadge(compat: PluginCompat, t: (k: string) => string): { label: string; className: string } {
+function compatBadges(compat: PluginCompat, t: (k: string) => string): Array<{ label: string; className: string }> {
+  const cmp = { label: t('career.plugin.compatCMP'), className: 'bg-[var(--color-accent)]/15 text-[var(--color-accent)] border-[var(--color-accent)]/30' }
+  const rls = { label: t('career.plugin.compatRLS'), className: 'bg-purple-500/15 text-purple-300 border-purple-500/30' }
+  const beamMP = { label: t('career.plugin.compatBeamMP'), className: 'bg-sky-500/15 text-sky-300 border-sky-500/30' }
   switch (compat) {
-    case 'careerMP':
-      return { label: t('career.plugin.compatCMP'), className: 'bg-[var(--color-accent)]/15 text-[var(--color-accent)] border-[var(--color-accent)]/30' }
-    case 'rls':
-      return { label: t('career.plugin.compatRLS'), className: 'bg-purple-500/15 text-purple-300 border-purple-500/30' }
-    case 'both':
-      return { label: t('career.plugin.compatBoth'), className: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' }
+    case 'careerMP': return [cmp]
+    case 'rls':      return [rls]
+    case 'both':     return [cmp, rls]
     case 'beamMP':
-    default:
-      return { label: t('career.plugin.compatBeamMP'), className: 'bg-sky-500/15 text-sky-300 border-sky-500/30' }
+    default:         return [beamMP]
   }
 }
 
@@ -2166,6 +2349,8 @@ function pluginIcon(id: string): { Icon: React.ComponentType<{ size?: number; cl
       return { Icon: BuberIcon, className: 'text-sky-300' }
     case 'dynamic-traffic':
       return { Icon: DynamicTrafficIcon, className: 'text-orange-300' }
+    case 'citybus-displays-sync':
+      return { Icon: CitybusDisplaysSyncIcon, className: 'text-sky-400' }
     default:
       return { Icon: Package, className: 'text-[var(--color-accent)]' }
   }
@@ -2181,7 +2366,7 @@ function PluginBrowserPanel({ getActiveServerDir, t }: {
   const [installed, setInstalled] = useState<Record<string, InstalledPlugin>>({})
   const [busy, setBusy] = useState<Record<string, boolean>>({})
   const [msg, setMsg] = useState<Record<string, { type: 'success' | 'error'; text: string }>>({})
-  const [filter, setFilter] = useState<'all' | PluginCompat>('all')
+  const [filter, setFilter] = useState<'all' | 'careerMP' | 'rls'>('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -2276,7 +2461,8 @@ function PluginBrowserPanel({ getActiveServerDir, t }: {
 
   const filtered = catalog.filter((p) => {
     if (filter === 'all') return true
-    return p.compat === filter
+    // 'both' is compatible with both careerMP and rls — include it in either filter
+    return p.compat === filter || p.compat === 'both'
   })
 
   return (
@@ -2297,7 +2483,7 @@ function PluginBrowserPanel({ getActiveServerDir, t }: {
 
       {/* Compat filter */}
       <div className="flex flex-wrap gap-1.5">
-        {(['all', 'careerMP', 'rls', 'both'] as const).map((f) => (
+        {(['all', 'careerMP', 'rls'] as const).map((f) => (
           <button
             key={f}
             onClick={() => setFilter(f)}
@@ -2332,7 +2518,7 @@ function PluginBrowserPanel({ getActiveServerDir, t }: {
             const installedVer = installed[entry.id]?.version
             const isBusy = !!busy[entry.id]
             const m = msg[entry.id]
-            const badge = compatBadge(entry.compat, t)
+            const badges = compatBadges(entry.compat, t)
             const { Icon: PluginIcon, className: iconClass } = pluginIcon(entry.id)
             const previewSrc = pluginPreviewImage(entry.id)
             return (
@@ -2364,7 +2550,9 @@ function PluginBrowserPanel({ getActiveServerDir, t }: {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <h4 className="text-sm font-semibold text-[var(--color-text-primary)] truncate">{entry.name}</h4>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full border ${badge.className}`}>{badge.label}</span>
+                        {badges.map((b) => (
+                          <span key={b.label} className={`text-[10px] px-1.5 py-0.5 rounded-full border ${b.className}`}>{b.label}</span>
+                        ))}
                         {isInstalled && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full border bg-green-500/15 text-green-300 border-green-500/30 flex items-center gap-1">
                             <Check size={10} /> v{installedVer}

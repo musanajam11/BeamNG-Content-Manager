@@ -7828,6 +7828,10 @@ end
     return careerModService.fetchRLSReleases()
   })
 
+  ipcMain.handle('career:fetchBetterCareerCompatReleases', async () => {
+    return careerModService.fetchBetterCareerCompatReleases()
+  })
+
   ipcMain.handle('career:fetchGreatRebalanceRlsReleases', async () => {
     return careerModService.fetchGreatRebalanceRlsReleases()
   })
@@ -7843,6 +7847,13 @@ end
   ipcMain.handle('career:installRLS', async (_event, downloadUrl: string, version: string, traffic: boolean, serverDir: string) => {
     return careerModService.installRLS(downloadUrl, version, traffic, serverDir)
   })
+
+  ipcMain.handle(
+    'career:installBetterCareerCompat',
+    async (_event, clientZipUrl: string, serverZipUrl: string, version: string, serverDir: string) => {
+      return careerModService.installBetterCareerCompat(clientZipUrl, serverZipUrl, version, serverDir)
+    }
+  )
 
   ipcMain.handle(
     'career:installRLSGreatRebalance',

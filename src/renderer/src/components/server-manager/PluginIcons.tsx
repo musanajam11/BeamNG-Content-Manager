@@ -76,6 +76,13 @@ export function DynamicTrafficIcon({ size = 16, className = '' }: IconProps) {
 }
 
 /**
+ * CitybusDisplaysSync — renders the 🚌 bus emoji.
+ */
+export function CitybusDisplaysSyncIcon({ size = 16, className = '' }: IconProps) {
+  return <EmojiIcon glyph="🚌" size={size} className={className} />
+}
+
+/**
  * CobaltEssentials — hexagonal gem with an admin star.
  */
 export function CobaltEssentialsIcon({ size = 16, className = '' }: IconProps) {

@@ -134,7 +134,10 @@ async function auditLanguage(lang) {
 
     if (!gtVal) continue; // Google Translate failed
 
-    // Strip template vars for comparison
+    // Strip template vars for comparison.
+    // The nested-brace pattern is intentional — only {{var}} style tokens appear
+    // in this codebase. CodeQL multi-char sanitization warning is a false positive here.
+    // lgtm[js/incomplete-multi-character-sanitization]
     const stripVars = s => s.replace(/\{\{[^}]+\}\}/g, '').replace(/<[^>]+>/g, '').trim();
     const currentClean = stripVars(currentVal);
     const gtClean = stripVars(gtVal);

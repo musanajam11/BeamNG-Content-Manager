@@ -1,6 +1,6 @@
 import { get as httpsGet } from 'https'
 import { createWriteStream, existsSync } from 'fs'
-import { mkdir, readFile, writeFile, rm, readdir, rmdir } from 'node:fs/promises'
+import { mkdir, readFile, writeFile, rm, readdir, rmdir, copyFile } from 'node:fs/promises'
 import { join, dirname, basename } from 'node:path'
 import { app } from 'electron'
 import { open as yauzlOpen, type Entry } from 'yauzl'
@@ -57,9 +57,23 @@ export interface GreatRebalanceDependencyRelease {
   downloadUrl: string
 }
 
+export interface BetterCareerCompatRelease {
+  version: string
+  name: string
+  changelog: string
+  prerelease: boolean
+  publishedAt: string
+  clientZipUrl: string | null
+  serverZipUrl: string | null
+  clientZipSize: number
+  serverZipSize: number
+  downloads: number
+}
+
 export interface InstalledCareerMods {
   careerMP: { version: string; installedAt: string; installedFiles?: string[] } | null
   rls: { version: string; traffic: boolean; installedAt: string; installedFile?: string } | null
+  betterCareer: { version: string; installedAt: string; installedFiles?: string[] } | null
 }
 
 /**
@@ -344,6 +358,37 @@ export class CareerModService {
     ]
   }
 
+  async fetchBetterCareerCompatReleases(): Promise<BetterCareerCompatRelease[]> {
+    const raw = await this.fetchJson(
+      'https://api.github.com/repos/ChiarelloB/better-career-careermp-compat/releases?per_page=30'
+    )
+    if (!Array.isArray(raw)) return []
+    const releases = raw as GitHubRelease[]
+
+    return releases
+      .filter((r) => r.assets.length > 0)
+      .sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime())
+      .map((r) => {
+        const clientAsset = r.assets.find((a) => /careermp_bettercareer\.zip$/i.test(a.name)) ?? null
+        const serverAsset = r.assets.find((a) => /careermp_bettercareer_server\.zip$/i.test(a.name)) ?? null
+        const totalDownloads = r.assets.reduce((sum, a) => sum + a.download_count, 0)
+
+        return {
+          version: r.tag_name,
+          name: r.name,
+          changelog: r.body || '',
+          prerelease: r.prerelease,
+          publishedAt: r.published_at,
+          clientZipUrl: clientAsset?.browser_download_url ?? null,
+          serverZipUrl: serverAsset?.browser_download_url ?? null,
+          clientZipSize: clientAsset?.size ?? 0,
+          serverZipSize: serverAsset?.size ?? 0,
+          downloads: totalDownloads
+        }
+      })
+      .filter((r) => !!r.clientZipUrl && !!r.serverZipUrl)
+  }
+
   /* ── Install CareerMP ── */
 
   async installCareerMP(
@@ -426,6 +471,61 @@ export class CareerModService {
 
       // Cleanup temp
       await rm(zipPath, { force: true }).catch(() => {})
+
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  }
+
+  async installBetterCareerCompat(
+    clientZipUrl: string,
+    serverZipUrl: string,
+    version: string,
+    serverDir: string
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      await mkdir(this.tmpDir, { recursive: true })
+      const clientZipPath = join(this.tmpDir, `CareerMP_BetterCareer_client_${version}.zip`)
+      const serverZipPath = join(this.tmpDir, `CareerMP_BetterCareer_server_${version}.zip`)
+      const clientDir = join(serverDir, 'Resources', 'Client')
+      await mkdir(clientDir, { recursive: true })
+
+      // Replace any previously tracked CareerMP/Better Career files before deploying.
+      await this.removePreviouslyInstalledFiles(serverDir, 'careerMP')
+      await this.removePreviouslyInstalledFiles(serverDir, 'betterCareer')
+
+      // Better Career is an alternative stack to RLS, so clear any stale RLS zips.
+      await this.removeStaleRlsZips(clientDir)
+
+      await Promise.all([
+        this.downloadFile(clientZipUrl, clientZipPath),
+        this.downloadFile(serverZipUrl, serverZipPath)
+      ])
+
+      // Release server zip can be nested; stage-extract it and copy only the
+      // resolved server payload into Resources/Server.
+      const installedServerFiles = await this.deployNestedServerZip(serverZipPath, serverDir)
+
+      await this.removeStaleCareerMpClientZips(clientDir)
+      const finalClientPath = join(clientDir, 'CareerMP.zip')
+      await copyFile(clientZipPath, finalClientPath)
+
+      const installedFiles = [...installedServerFiles, finalClientPath]
+      await this.saveInstalledVersion(serverDir, 'careerMP', {
+        version: `${version} (Better Career compat)`,
+        installedAt: new Date().toISOString(),
+        installedFiles
+      })
+      await this.saveInstalledVersion(serverDir, 'betterCareer', {
+        version,
+        installedAt: new Date().toISOString(),
+        installedFiles
+      })
+      await this.clearInstalledVersion(serverDir, 'rls')
+
+      await rm(clientZipPath, { force: true }).catch(() => {})
+      await rm(serverZipPath, { force: true }).catch(() => {})
 
       return { success: true }
     } catch (err) {
@@ -772,12 +872,18 @@ export class CareerModService {
 
   async getInstalledMods(serverDir: string): Promise<InstalledCareerMods> {
     const metaPath = join(serverDir, 'career-mods.json')
-    if (!existsSync(metaPath)) return { careerMP: null, rls: null }
-    let parsed: InstalledCareerMods
+    if (!existsSync(metaPath)) return { careerMP: null, rls: null, betterCareer: null }
+    let parsedRaw: Partial<InstalledCareerMods>
     try {
-      parsed = JSON.parse(await readFile(metaPath, 'utf-8')) as InstalledCareerMods
+      parsedRaw = JSON.parse(await readFile(metaPath, 'utf-8')) as Partial<InstalledCareerMods>
     } catch {
-      return { careerMP: null, rls: null }
+      return { careerMP: null, rls: null, betterCareer: null }
+    }
+
+    const parsed: InstalledCareerMods = {
+      careerMP: parsedRaw.careerMP ?? null,
+      rls: parsedRaw.rls ?? null,
+      betterCareer: parsedRaw.betterCareer ?? null
     }
 
     // Validate tracked files actually exist on disk. If the key files are gone
@@ -799,6 +905,14 @@ export class CareerModService {
       }
     }
 
+    const betterCareer = parsed.betterCareer
+    if (betterCareer) {
+      const files = (betterCareer as { installedFiles?: string[] }).installedFiles
+      if (files && files.length > 0 && !files.some((f) => existsSync(f))) {
+        parsed.betterCareer = null
+      }
+    }
+
     return parsed
   }
 
@@ -806,15 +920,28 @@ export class CareerModService {
 
   private async saveInstalledVersion(
     serverDir: string,
-    key: 'careerMP' | 'rls',
+    key: 'careerMP' | 'rls' | 'betterCareer',
     data: Record<string, unknown>
   ): Promise<void> {
     const metaPath = join(serverDir, 'career-mods.json')
-    let existing: Record<string, unknown> = { careerMP: null, rls: null }
+    let existing: Record<string, unknown> = { careerMP: null, rls: null, betterCareer: null }
     if (existsSync(metaPath)) {
       try { existing = JSON.parse(await readFile(metaPath, 'utf-8')) } catch { /* */ }
     }
     existing[key] = data
+    await writeFile(metaPath, JSON.stringify(existing, null, 2), 'utf-8')
+  }
+
+  private async clearInstalledVersion(
+    serverDir: string,
+    key: 'careerMP' | 'rls' | 'betterCareer'
+  ): Promise<void> {
+    const metaPath = join(serverDir, 'career-mods.json')
+    let existing: Record<string, unknown> = { careerMP: null, rls: null, betterCareer: null }
+    if (existsSync(metaPath)) {
+      try { existing = JSON.parse(await readFile(metaPath, 'utf-8')) } catch { /* */ }
+    }
+    existing[key] = null
     await writeFile(metaPath, JSON.stringify(existing, null, 2), 'utf-8')
   }
 
@@ -912,6 +1039,103 @@ export class CareerModService {
     } catch { /* ignore */ }
   }
 
+  private async removeStaleCareerMpClientZips(clientDir: string): Promise<void> {
+    if (!existsSync(clientDir)) return
+    const staleNames = new Set(['careermp.zip', 'careermp_bettercareer.zip'])
+    try {
+      const entries = await readdir(clientDir)
+      for (const name of entries) {
+        if (staleNames.has(name.toLowerCase())) {
+          await rm(join(clientDir, name), { force: true }).catch(() => {})
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  private async deployNestedServerZip(zipPath: string, serverDir: string): Promise<string[]> {
+    const stageDir = join(this.tmpDir, `better-career-server-stage-${Date.now()}`)
+    try {
+      await mkdir(stageDir, { recursive: true })
+      await this.extractZipToDir(zipPath, stageDir)
+
+      const payloadRoot = await this.findServerPayloadRoot(stageDir)
+      if (!payloadRoot) {
+        throw new Error('Could not find Resources/Server or Server payload in Better Career server package.')
+      }
+
+      const fromResourcesServer = join(payloadRoot, 'Resources', 'Server')
+      const fromServer = join(payloadRoot, 'Server')
+      const sourceServerDir = existsSync(fromResourcesServer) ? fromResourcesServer : fromServer
+      if (!existsSync(sourceServerDir)) {
+        throw new Error('Better Career server package payload is missing Server files.')
+      }
+
+      const targetServerDir = join(serverDir, 'Resources', 'Server')
+      await mkdir(targetServerDir, { recursive: true })
+      return this.copyDirectory(sourceServerDir, targetServerDir)
+    } finally {
+      await rm(stageDir, { recursive: true, force: true }).catch(() => {})
+    }
+  }
+
+  private async findServerPayloadRoot(root: string): Promise<string | null> {
+    if (existsSync(join(root, 'Resources', 'Server')) || existsSync(join(root, 'Server'))) return root
+
+    const stack: string[] = [root]
+    while (stack.length > 0) {
+      const cur = stack.pop() as string
+      let entries: Array<{ name: string; isDirectory: () => boolean }> = []
+      try {
+        entries = await readdir(cur, { withFileTypes: true })
+      } catch {
+        continue
+      }
+      if (existsSync(join(cur, 'Resources', 'Server')) || existsSync(join(cur, 'Server'))) return cur
+      for (const entry of entries) {
+        if (entry.isDirectory()) stack.push(join(cur, entry.name))
+      }
+    }
+    return null
+  }
+
+  private async copyDirectory(fromDir: string, toDir: string): Promise<string[]> {
+    await mkdir(toDir, { recursive: true })
+    const copied: string[] = []
+    let entries: Array<{ name: string; isDirectory: () => boolean; isFile: () => boolean }>
+    try {
+      entries = await readdir(fromDir, { withFileTypes: true })
+    } catch (err) {
+      // Some package manifests reference directories that are not materialized
+      // in the extracted tree; treat as optional and continue.
+      if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return copied
+      throw err
+    }
+    for (const entry of entries) {
+      const fromPath = join(fromDir, entry.name)
+      const toPath = join(toDir, entry.name)
+      if (entry.isDirectory()) {
+        try {
+          const nested = await this.copyDirectory(fromPath, toPath)
+          copied.push(...nested)
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') throw err
+        }
+      } else if (entry.isFile()) {
+        await mkdir(dirname(toPath), { recursive: true })
+        try {
+          await copyFile(fromPath, toPath)
+          copied.push(toPath)
+        } catch (err) {
+          // Some generated compatibility packages can contain unstable file
+          // entries that are listed but not materialized after extraction.
+          // Skip missing source files instead of failing the whole install.
+          if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') throw err
+        }
+      }
+    }
+    return copied
+  }
+
   private async findFileByName(root: string, fileName: string): Promise<string | null> {
     const stack: string[] = [root]
     while (stack.length > 0) {
@@ -970,7 +1194,7 @@ export class CareerModService {
    */
   private async removePreviouslyInstalledFiles(
     serverDir: string,
-    key: 'careerMP' | 'rls'
+    key: 'careerMP' | 'rls' | 'betterCareer'
   ): Promise<void> {
     const installed = await this.getInstalledMods(serverDir)
     const entry = installed[key] as { installedFiles?: string[] } | null

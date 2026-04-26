@@ -1353,7 +1353,7 @@
       "noResults": "No plugins match the current filter",
       "noReleases": "No releases published yet",
       "compatCMP": "CareerMP",
-      "compatRLS": "RLS only",
+      "compatRLS": "RLS",
       "compatBoth": "CareerMP & RLS",
       "compatBeamMP": "Vanilla BeamMP",
       "filter": {

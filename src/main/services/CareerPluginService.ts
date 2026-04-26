@@ -71,6 +71,16 @@ export const PLUGIN_CATALOG: PluginCatalogEntry[] = [
     compat: 'both',
     installMethod: 'extract-to-root',
     serverPluginFolder: 'CareerMPTraffic'
+  },
+  {
+    id: 'citybus-displays-sync',
+    name: 'citybusDisplaysSync',
+    description: 'Fixes display bugs in BeamNG\'s citybus displays and busline UI app, and syncs bus displays across all players in BeamMP. Works great with CareerMP and Buber for bus route gameplay, as well as freeRoamMP.',
+    author: 'StanleyDudek',
+    repo: 'StanleyDudek/citybusDisplaysSync',
+    homepage: 'https://github.com/StanleyDudek/citybusDisplaysSync',
+    compat: 'careerMP',
+    installMethod: 'copy-client-zip'
   }
 ]
 

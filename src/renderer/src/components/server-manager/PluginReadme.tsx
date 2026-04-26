@@ -16,6 +16,7 @@ import cobaltEssentialsInterfaceMd from '../../assets/readmes/cobalt-essentials-
 import restartNotifierMd from '../../assets/readmes/restart-notifier.md?raw'
 import profilterMd from '../../assets/readmes/profilter.md?raw'
 import beammpQuickChatMd from '../../assets/readmes/beammp-quick-chat.md?raw'
+import citybusDisplaysSyncMd from '../../assets/readmes/citybus-displays-sync.md?raw'
 
 /* ── CareerMP local images (GitHub user-attachments don't load in Electron) ── */
 import cmpBanner from '../../assets/careermp-readme/banner.png'
@@ -54,7 +55,8 @@ const README_BY_ID: Record<string, string> = {
   'cobalt-essentials-interface': cobaltEssentialsInterfaceMd,
   'restart-notifier': restartNotifierMd,
   profilter: profilterMd,
-  'beammp-quick-chat': beammpQuickChatMd
+  'beammp-quick-chat': beammpQuickChatMd,
+  'citybus-displays-sync': citybusDisplaysSyncMd
 }
 
 /* ── Remote image URL → bundled local asset ── */

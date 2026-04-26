@@ -624,6 +624,19 @@ const api = {
     ipcRenderer.invoke('career:fetchCareerMPReleases'),
   careerFetchRLSReleases: () =>
     ipcRenderer.invoke('career:fetchRLSReleases'),
+  careerFetchBetterCareerCompatReleases: () =>
+    ipcRenderer.invoke('career:fetchBetterCareerCompatReleases') as Promise<Array<{
+      version: string
+      name: string
+      changelog: string
+      prerelease: boolean
+      publishedAt: string
+      clientZipUrl: string | null
+      serverZipUrl: string | null
+      clientZipSize: number
+      serverZipSize: number
+      downloads: number
+    }>>,
   careerFetchGreatRebalanceRlsReleases: () =>
     ipcRenderer.invoke('career:fetchGreatRebalanceRlsReleases') as Promise<Array<{
       version: string
@@ -644,6 +657,8 @@ const api = {
     ipcRenderer.invoke('career:installCareerMP', downloadUrl, version, serverDir) as Promise<{ success: boolean; error?: string }>,
   careerInstallRLS: (downloadUrl: string, version: string, traffic: boolean, serverDir: string) =>
     ipcRenderer.invoke('career:installRLS', downloadUrl, version, traffic, serverDir) as Promise<{ success: boolean; error?: string }>,
+  careerInstallBetterCareerCompat: (clientZipUrl: string, serverZipUrl: string, version: string, serverDir: string) =>
+    ipcRenderer.invoke('career:installBetterCareerCompat', clientZipUrl, serverZipUrl, version, serverDir) as Promise<{ success: boolean; error?: string }>,
   careerInstallRLSGreatRebalance: (
     careerMpDownloadUrl: string,
     careerMpVersion: string,
