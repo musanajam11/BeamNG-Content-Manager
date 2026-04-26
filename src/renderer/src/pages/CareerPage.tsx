@@ -2277,6 +2277,7 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, bette
                   {betterCareerMsg && (
                     <p className={`text-xs mt-2 ${betterCareerMsg.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{betterCareerMsg.text}</p>
                   )}
+                  <PluginReadmeToggle pluginId="better-career-careermp-compat" />
                 </div>
               </div>
             )}

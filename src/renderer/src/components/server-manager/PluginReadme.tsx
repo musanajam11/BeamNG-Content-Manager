@@ -17,6 +17,7 @@ import restartNotifierMd from '../../assets/readmes/restart-notifier.md?raw'
 import profilterMd from '../../assets/readmes/profilter.md?raw'
 import beammpQuickChatMd from '../../assets/readmes/beammp-quick-chat.md?raw'
 import citybusDisplaysSyncMd from '../../assets/readmes/citybus-displays-sync.md?raw'
+import betterCareerCareerMpCompatMd from '../../assets/readmes/better-career-careermp-compat.md?raw'
 
 /* ── CareerMP local images (GitHub user-attachments don't load in Electron) ── */
 import cmpBanner from '../../assets/careermp-readme/banner.png'
@@ -56,7 +57,8 @@ const README_BY_ID: Record<string, string> = {
   'restart-notifier': restartNotifierMd,
   profilter: profilterMd,
   'beammp-quick-chat': beammpQuickChatMd,
-  'citybus-displays-sync': citybusDisplaysSyncMd
+  'citybus-displays-sync': citybusDisplaysSyncMd,
+  'better-career-careermp-compat': betterCareerCareerMpCompatMd
 }
 
 /* ── Remote image URL → bundled local asset ── */
