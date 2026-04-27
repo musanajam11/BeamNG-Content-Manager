@@ -113,6 +113,29 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
+  // Safety net: if any anchor without target="_blank" tries to navigate the
+  // renderer away from the app (e.g. an external mod link), open it in the
+  // user's default browser instead and keep the React UI mounted. Without
+  // this, the renderer would replace itself with the external page and the
+  // user would have no way back short of restarting CM.
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    try {
+      const current = mainWindow?.webContents.getURL() ?? ''
+      const target = new URL(url)
+      const cur = current ? new URL(current) : null
+      const isInternal =
+        target.protocol === 'file:' ||
+        (cur && target.protocol === cur.protocol && target.host === cur.host)
+      if (!isInternal) {
+        event.preventDefault()
+        shell.openExternal(url)
+      }
+    } catch {
+      event.preventDefault()
+      shell.openExternal(url)
+    }
+  })
+
   // Always allow F12 / Ctrl+Shift+I to toggle DevTools, even in production
   // builds. `optimizer.watchWindowShortcuts` only enables this in dev mode,
   // which leaves end-users unable to capture renderer logs when something

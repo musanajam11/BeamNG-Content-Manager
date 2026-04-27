@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   Package,
   Search,
@@ -14,8 +14,6 @@ import {
   ExternalLink,
   Star,
   Download,
-  ChevronLeft,
-  ChevronRight,
   Globe,
   Loader2,
   LogIn,
@@ -61,6 +59,7 @@ import type { ModInfo, RepoMod, RepoCategory, RepoSortOrder } from '../../../sha
 import type { AvailableMod, BeamModMetadata, RegistrySearchResult, ResolutionResult, InstalledRegistryMod } from '../../../shared/registry-types'
 import { useConfirmDialog } from '../hooks/useConfirmDialog'
 import { useBoundedCache } from '../hooks/useBoundedCache'
+import { useLazyThumbnails, useLazyThumb, type ThumbnailLoader } from '../hooks/useLazyThumbnails'
 import { useTranslation } from 'react-i18next'
 import { useModOrderStore } from '../stores/useModOrderStore'
 import { useToastStore } from '../stores/useToastStore'
@@ -109,10 +108,94 @@ function modTypeIcon(modType: string): React.ReactNode {
     case 'automation':
       return <Cog size={13} className="text-orange-400" />
     case 'other':
-      return <Package size={13} className="text-[var(--color-text-secondary)]" />
+      return <Package size={13} className="text-slate-300" />
     default:
       return <HelpCircle size={13} className="text-[var(--color-text-muted)]" />
   }
+}
+
+// Per-type tint for the card chip. Keeps the same hue family as `modTypeIcon`
+// for visual consistency, but with a translucent background + tinted border.
+function modTypeChipClasses(modType: string): string {
+  switch (modType) {
+    case 'terrain':
+    case 'map':
+      return 'bg-emerald-500/15 border-emerald-400/40 text-emerald-200'
+    case 'vehicle':
+      return 'bg-sky-500/15 border-sky-400/40 text-sky-200'
+    case 'sound':
+      return 'bg-purple-500/15 border-purple-400/40 text-purple-200'
+    case 'ui_app':
+      return 'bg-cyan-500/15 border-cyan-400/40 text-cyan-200'
+    case 'scenario':
+      return 'bg-amber-500/15 border-amber-400/40 text-amber-200'
+    case 'skin':
+      return 'bg-pink-500/15 border-pink-400/40 text-pink-200'
+    case 'license_plate':
+      return 'bg-yellow-500/15 border-yellow-400/40 text-yellow-200'
+    case 'automation':
+      return 'bg-orange-500/15 border-orange-400/40 text-orange-200'
+    case 'other':
+      return 'bg-slate-500/20 border-slate-400/40 text-slate-200'
+    default:
+      return 'bg-[var(--color-base)]/70 border-[var(--color-border)] text-[var(--color-text-secondary)]'
+  }
+}
+
+function modTypeLabel(modType: string): string {
+  switch (modType) {
+    case 'terrain': case 'map': return 'Map'
+    case 'vehicle': return 'Vehicle'
+    case 'sound': return 'Sound'
+    case 'ui_app': return 'UI App'
+    case 'scenario': return 'Scenario'
+    case 'skin': return 'Skin'
+    case 'license_plate': return 'Plate'
+    case 'automation': return 'Automation'
+    case 'other': return 'Other'
+    default: return modType
+  }
+}
+
+// Inline-SVG verified badge. Rendered as an SVG so the global
+// `* { border-radius: 0 !important }` reset in main.css can't flatten its
+// pill shape. Matches the reference image: solid blue pill with a white
+// check inside a darker blue circle and bold "VERIFIED" text.
+function VerifiedBadge({ height = 18 }: { height?: number }): React.JSX.Element {
+  const w = height * (78 / 18)
+  return (
+    <svg
+      viewBox="0 0 78 18"
+      width={w}
+      height={height}
+      xmlns="http://www.w3.org/2000/svg"
+      aria-label="Verified"
+      role="img"
+      className="shrink-0"
+    >
+      <rect x="0" y="0" width="78" height="18" rx="9" ry="9" fill="#1d76e3" />
+      <circle cx="10" cy="9" r="6" fill="#0f56ad" />
+      <path
+        d="M7 9.2 L9.2 11.4 L13.2 7"
+        fill="none"
+        stroke="#ffffff"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <text
+        x="20"
+        y="13"
+        fontFamily="system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+        fontSize="10"
+        fontWeight="800"
+        letterSpacing="0.5"
+        fill="#ffffff"
+      >
+        VERIFIED
+      </text>
+    </svg>
+  )
 }
 
 export function ModsPage(): React.JSX.Element {
@@ -147,18 +230,6 @@ export function ModsPage(): React.JSX.Element {
               </span>
             </button>
             <button
-              onClick={() => setActiveTab('browse')}
-              className={`px-4 py-2.5 text-xs font-medium border-b-2 transition ${
-                activeTab === 'browse'
-                  ? 'border-[var(--color-accent)] text-[var(--color-accent-text)]'
-                  : 'border-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
-              }`}
-            >
-              <span className="inline-flex items-center gap-1.5">
-                <Globe size={13} /> {t('mods.browse')}
-              </span>
-            </button>
-            <button
               onClick={() => setActiveTab('registry')}
               className={`px-4 py-2.5 text-xs font-medium border-b-2 transition ${
                 activeTab === 'registry'
@@ -173,6 +244,18 @@ export function ModsPage(): React.JSX.Element {
                     {registryUpdates}
                   </span>
                 )}
+              </span>
+            </button>
+            <button
+              onClick={() => setActiveTab('browse')}
+              className={`px-4 py-2.5 text-xs font-medium border-b-2 transition ${
+                activeTab === 'browse'
+                  ? 'border-[var(--color-accent)] text-[var(--color-accent-text)]'
+                  : 'border-transparent text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]'
+              }`}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <Globe size={13} /> {t('mods.browse')}
               </span>
             </button>
           </div>
@@ -1308,6 +1391,81 @@ function formatCount(n: number): string {
   return String(n)
 }
 
+/**
+ * One Browse-tab card. Extracted so it can use `useLazyThumb` to fetch its
+ * own thumbnail only when scrolled into view, and re-fetch transparently if
+ * the LRU evicts it before the user scrolls back.
+ */
+function BrowseModCard({
+  mod,
+  selected,
+  onClick,
+  loader
+}: {
+  mod: RepoMod
+  selected: boolean
+  onClick: () => void
+  loader: ThumbnailLoader
+}): React.JSX.Element {
+  const { t } = useTranslation()
+  const { ref, src } = useLazyThumb<HTMLDivElement>(mod.thumbnailUrl, loader)
+  return (
+    <div
+      ref={ref}
+      onClick={onClick}
+      className={`border bg-[var(--color-surface)] transition cursor-pointer group ${
+        selected
+          ? 'border-[var(--color-accent-40)] bg-[var(--color-accent-5)]'
+          : 'border-[var(--color-border)] hover:border-[var(--color-border-hover)] hover:bg-[var(--color-surface)]'
+      }`}
+    >
+      {/* Thumbnail */}
+      <div className="relative aspect-video bg-[var(--color-scrim-30)] overflow-hidden">
+        {src ? (
+          <img src={src} alt={mod.title} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-[var(--color-text-dim)]">
+            {mod.thumbnailUrl ? (
+              <Loader2 size={20} className="animate-spin text-[var(--color-text-muted)]" />
+            ) : (
+              <Package size={32} strokeWidth={1} />
+            )}
+          </div>
+        )}
+        {mod.prefix && (
+          <span className="absolute top-2 left-2 px-1.5 py-0.5 text-[10px] font-medium bg-[var(--color-accent)] text-black">
+            {mod.prefix}
+          </span>
+        )}
+      </div>
+
+      {/* Info */}
+      <div className="p-4 space-y-1.5">
+        <h3 className="text-sm font-medium text-[var(--color-text-primary)] truncate">{mod.title}</h3>
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] text-[var(--color-text-secondary)] truncate">
+            {t('mods.byAuthor', { author: mod.author })}
+          </span>
+        </div>
+        {mod.tagLine && (
+          <p className="text-[11px] text-[var(--color-text-muted)] truncate">{mod.tagLine}</p>
+        )}
+        <div className="flex items-center justify-between pt-1">
+          <div className="flex items-center gap-2">
+            <StarRating rating={mod.rating} />
+            <span className="text-[10px] text-[var(--color-text-muted)]">({mod.ratingCount})</span>
+          </div>
+          <div className="flex items-center gap-1 text-[10px] text-[var(--color-text-muted)]">
+            <Download size={10} />
+            {formatCount(mod.downloads)}
+          </div>
+        </div>
+        <div className="text-[10px] text-[var(--color-text-dim)]">{mod.category}</div>
+      </div>
+    </div>
+  )
+}
+
 function BrowseModsView(): React.JSX.Element {
   const [categories, setCategories] = useState<RepoCategory[]>([])
   const [selectedCategory, setSelectedCategory] = useState(0)
@@ -1320,10 +1478,10 @@ function BrowseModsView(): React.JSX.Element {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const [selectedMod, setSelectedMod] = useState<RepoMod | null>(null)
-  // Bounded LRU cache for repo browse thumbnails. The user can paginate
-  // through hundreds of pages of mods; without bounding, every thumb
-  // (~10-100 KB base64) accumulates in renderer memory for the session.
-  const thumbCache = useBoundedCache<string>(120)
+  // Viewport-aware thumbnail loader. Cards request their own thumbnail when
+  // they scroll into view, and re-request automatically if the LRU evicts
+  // the entry while the user is scrolling further down.
+  const thumbLoader = useLazyThumbnails(window.api.getRepoThumbnails, 120)
   const [downloading, setDownloading] = useState<number | null>(null) // resourceId
   const [downloadProgress, setDownloadProgress] = useState<{
     received: number
@@ -1378,21 +1536,15 @@ function BrowseModsView(): React.JSX.Element {
     setBeamngLoggedIn(false)
   }
 
-  // Fetch thumbnails when mods change — proxy through main process to avoid CSP
-  useEffect(() => {
-    const urls = mods.map((m) => m.thumbnailUrl).filter(Boolean)
-    if (urls.length === 0) return
-    // Only fetch URLs we don't already have cached
-    const missing = urls.filter((u) => !thumbCache.has(u))
-    if (missing.length === 0) return
-    window.api.getRepoThumbnails(missing).then((result) => {
-      for (const [url, dataUrl] of Object.entries(result)) {
-        thumbCache.set(url, dataUrl as string)
-      }
-    })
-  }, [mods])
+  // Thumbnails are now fetched lazily per-card via `useLazyThumb`. The old
+  // bulk-fetch effect is gone: it pre-loaded everything in `mods` (memory
+  // pressure) and could not recover when the LRU evicted entries during
+  // long scrolls — scrolling back up left permanent spinners.
 
-  // Fetch mods when params change
+  // Fetch mods when params change. On page 1 we replace; on subsequent pages
+  // we append, so the user gets infinite-scroll behavior over the same
+  // server-paginated API. Memory stays bounded by `thumbCache` (LRU=120) and
+  // by the fact that mods only accumulate as the user actively scrolls.
   const fetchMods = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -1404,15 +1556,33 @@ function BrowseModsView(): React.JSX.Element {
         result = await window.api.browseRepoMods(selectedCategory, page, sort)
       }
       if (result.success && result.data) {
-        setMods(result.data.mods)
+        const fetched = result.data.mods
+        if (page === 1) {
+          setMods(fetched)
+        } else {
+          // Dedup by resourceId in case the API returns overlapping items
+          // between pages (defensive — the API shouldn't, but pages can shift
+          // when sort/filter state on the server side changes mid-scroll).
+          setMods((prev) => {
+            const seen = new Set(prev.map((m) => m.resourceId))
+            const merged = prev.slice()
+            for (const m of fetched) {
+              if (!seen.has(m.resourceId)) {
+                seen.add(m.resourceId)
+                merged.push(m)
+              }
+            }
+            return merged
+          })
+        }
         setTotalPages(result.data.totalPages)
       } else {
         setError(result.error || t('mods.failedToLoadMods'))
-        setMods([])
+        if (page === 1) setMods([])
       }
     } catch (err) {
       setError(String(err))
-      setMods([])
+      if (page === 1) setMods([])
     } finally {
       setLoading(false)
     }
@@ -1421,6 +1591,45 @@ function BrowseModsView(): React.JSX.Element {
   useEffect(() => {
     fetchMods()
   }, [fetchMods])
+
+  // Infinite-scroll: when the user gets near the bottom of the grid, advance
+  // to the next page (which will append). Mirrors ServerList.tsx so the two
+  // surfaces feel consistent and share the same memory-saving philosophy
+  // (only render what the user has actually requested).
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const loadingRef = useRef(loading)
+  useEffect(() => { loadingRef.current = loading }, [loading])
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    let raf = 0
+    const onScroll = (): void => {
+      if (raf) return
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+        if (distanceFromBottom < 600 && !loadingRef.current && page < totalPages) {
+          setPage((p) => (p < totalPages ? p + 1 : p))
+        }
+      })
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      el.removeEventListener('scroll', onScroll)
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [page, totalPages])
+
+  // Reset scroll position when the underlying query changes (filter/search/sort).
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0
+  }, [selectedCategory, sort, searchQuery])
+
+  // Ensure the selected mod's thumbnail is requested for the detail panel,
+  // even if its card has scrolled off-screen and been LRU-evicted.
+  useEffect(() => {
+    if (selectedMod?.thumbnailUrl) thumbLoader.request(selectedMod.thumbnailUrl)
+  }, [selectedMod, thumbLoader])
 
   const handleSearch = (): void => {
     const trimmed = searchInput.trim()
@@ -1596,7 +1805,7 @@ function BrowseModsView(): React.JSX.Element {
 
       {/* Content */}
       <div className="flex-1 flex min-h-0">
-        {loading ? (
+        {loading && mods.length === 0 ? (
           <div className="flex-1 flex items-center justify-center text-[var(--color-text-secondary)] text-sm gap-2">
             <Loader2 size={16} className="animate-spin" /> {t('mods.loadingMods')}
           </div>
@@ -1612,70 +1821,31 @@ function BrowseModsView(): React.JSX.Element {
             {/* Grid + optional detail panel */}
             <div className="flex-1 flex min-h-0">
               {/* Grid */}
-              <div className="flex-1 min-w-0 overflow-y-auto p-6">
+              <div ref={scrollRef} className="flex-1 min-w-0 overflow-y-auto p-6">
                 <div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
                   {mods.map((mod) => (
-                    <div
+                    <BrowseModCard
                       key={mod.resourceId}
+                      mod={mod}
+                      selected={selectedMod?.resourceId === mod.resourceId}
+                      loader={thumbLoader}
                       onClick={() =>
                         setSelectedMod(selectedMod?.resourceId === mod.resourceId ? null : mod)
                       }
-                      className={`border bg-[var(--color-surface)] transition cursor-pointer group ${
-                        selectedMod?.resourceId === mod.resourceId
-                          ? 'border-[var(--color-accent-40)] bg-[var(--color-accent-5)]'
-                          : 'border-[var(--color-border)] hover:border-[var(--color-border-hover)] hover:bg-[var(--color-surface)]'
-                      }`}
-                    >
-                      {/* Thumbnail */}
-                      <div className="relative aspect-video bg-[var(--color-scrim-30)] overflow-hidden">
-                        {thumbCache.get(mod.thumbnailUrl) ? (
-                          <img
-                            src={thumbCache.get(mod.thumbnailUrl)}
-                            alt={mod.title}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-[var(--color-text-dim)]">
-                            {mod.thumbnailUrl ? (
-                              <Loader2 size={20} className="animate-spin text-[var(--color-text-muted)]" />
-                            ) : (
-                              <Package size={32} strokeWidth={1} />
-                            )}
-                          </div>
-                        )}
-                        {mod.prefix && (
-                          <span className="absolute top-2 left-2 px-1.5 py-0.5 text-[10px] font-medium bg-[var(--color-accent)] text-black">
-                            {mod.prefix}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Info */}
-                      <div className="p-4 space-y-1.5">
-                        <h3 className="text-sm font-medium text-[var(--color-text-primary)] truncate">{mod.title}</h3>
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] text-[var(--color-text-secondary)] truncate">
-                            {t('mods.byAuthor', { author: mod.author })}
-                          </span>
-                        </div>
-                        {mod.tagLine && (
-                          <p className="text-[11px] text-[var(--color-text-muted)] truncate">{mod.tagLine}</p>
-                        )}
-                        <div className="flex items-center justify-between pt-1">
-                          <div className="flex items-center gap-2">
-                            <StarRating rating={mod.rating} />
-                            <span className="text-[10px] text-[var(--color-text-muted)]">({mod.ratingCount})</span>
-                          </div>
-                          <div className="flex items-center gap-1 text-[10px] text-[var(--color-text-muted)]">
-                            <Download size={10} />
-                            {formatCount(mod.downloads)}
-                          </div>
-                        </div>
-                        <div className="text-[10px] text-[var(--color-text-dim)]">{mod.category}</div>
-                      </div>
-                    </div>
+                    />
                   ))}
                 </div>
+                {/* Infinite-scroll footer */}
+                {page < totalPages ? (
+                  <div className="flex items-center justify-center gap-2 py-4 text-[11px] text-[var(--color-text-muted)]">
+                    {loading ? <Loader2 size={12} className="animate-spin" /> : null}
+                    <span>{t('mods.loadingMore')}</span>
+                  </div>
+                ) : mods.length > 0 ? (
+                  <div className="text-center py-4 text-[11px] text-[var(--color-text-dim)]">
+                    {t('mods.endOfResults')}
+                  </div>
+                ) : null}
               </div>
 
               {/* Detail panel */}
@@ -1685,10 +1855,10 @@ function BrowseModsView(): React.JSX.Element {
                   style={{ width: 320, padding: 12 }}
                 >
                   {/* Thumbnail */}
-                  {thumbCache.get(selectedMod.thumbnailUrl) && (
+                  {thumbLoader.get(selectedMod.thumbnailUrl) && (
                     <div className="aspect-video bg-[var(--color-scrim-30)] overflow-hidden">
                       <img
-                        src={thumbCache.get(selectedMod.thumbnailUrl)}
+                        src={thumbLoader.get(selectedMod.thumbnailUrl)}
                         alt={selectedMod.title}
                         className="w-full h-full object-cover"
                       />
@@ -1780,28 +1950,7 @@ function BrowseModsView(): React.JSX.Element {
               )}
             </div>
 
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="shrink-0 border-t border-[var(--color-border)] px-5 py-3 flex items-center justify-between">
-                <button
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1}
-                  className="inline-flex items-center gap-1 border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-text-secondary)] transition hover:bg-[var(--color-surface-active)] disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  <ChevronLeft size={13} /> {t('mods.previous')}
-                </button>
-                <span className="text-xs text-[var(--color-text-secondary)]">
-                  {t('mods.pageOf', { page, totalPages })}
-                </span>
-                <button
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page >= totalPages}
-                  className="inline-flex items-center gap-1 border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-text-secondary)] transition hover:bg-[var(--color-surface-active)] disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  {t('mods.next')} <ChevronRight size={13} />
-                </button>
-              </div>
-            )}
+            {/* Pagination removed — superseded by infinite scroll above. */}
           </div>
         )}
       </div>
@@ -1815,11 +1964,82 @@ function BrowseModsView(): React.JSX.Element {
 
 const MOD_TYPE_OPTIONS = MOD_TYPE_FILTERS
 
+/**
+ * One Registry-tab card. Extracted so it can lazy-load its thumbnail and
+ * re-load it after LRU eviction when the user scrolls back into view.
+ */
+function RegistryModCard({
+  mod,
+  selected,
+  isInstalled,
+  onClick,
+  loader
+}: {
+  mod: AvailableMod
+  selected: boolean
+  isInstalled: boolean
+  onClick: () => void
+  loader: ThumbnailLoader
+}): React.JSX.Element | null {
+  const latest = mod.versions[0]
+  const thumbUrl = latest?.thumbnail
+  const { ref, src: thumbSrc } = useLazyThumb<HTMLButtonElement>(thumbUrl, loader)
+  if (!latest) return null
+  const authors = Array.isArray(latest.author) ? latest.author.join(', ') : latest.author
+  return (
+    <button
+      ref={ref}
+      onClick={onClick}
+      className={`group relative text-left border overflow-hidden transition h-[148px] ${selected ? 'border-[var(--color-border-accent)] bg-[var(--color-accent-8)]' : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] hover:border-[var(--color-border-hover)]'}`}
+    >
+      {thumbSrc && (
+        <>
+          <div
+            aria-hidden
+            className="absolute inset-0 bg-center bg-cover transition-[filter,opacity] duration-200 [filter:blur(3px)_saturate(0.55)_brightness(0.55)] opacity-45 group-hover:[filter:blur(3px)_saturate(1.4)_brightness(0.75)] group-hover:opacity-70"
+            style={{ backgroundImage: `url(${thumbSrc})`, transform: 'scale(1.06)' }}
+          />
+          <div aria-hidden className="absolute inset-0 bg-[var(--color-surface)]/65 group-hover:bg-[var(--color-surface)]/40 transition-colors duration-200" />
+        </>
+      )}
+      <div className="relative h-full p-4 space-y-2 flex flex-col [text-shadow:0_1px_2px_rgba(0,0,0,0.55)]">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm font-bold text-[var(--color-text-primary)] truncate">{latest.name}</span>
+              {latest.x_verified && <VerifiedBadge height={14} />}
+              {isInstalled && <CheckCircle size={12} className="text-emerald-400 shrink-0" />}
+            </div>
+            <p className="text-[11px] font-medium text-[var(--color-text-secondary)] truncate mt-0.5">{authors}</p>
+          </div>
+          <span className="text-[11px] font-semibold text-[var(--color-text-secondary)] shrink-0">v{latest.version}</span>
+        </div>
+        <p className="text-[12px] font-medium text-[var(--color-text-primary)] line-clamp-2">{latest.abstract}</p>
+        <div className="mt-auto flex items-center gap-1.5 text-[11px] font-medium">
+          {latest.mod_type && (
+            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 border ${modTypeChipClasses(latest.mod_type)}`}>
+              {modTypeIcon(latest.mod_type)}
+              <span>{modTypeLabel(latest.mod_type)}</span>
+            </span>
+          )}
+          {latest.license && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 border border-indigo-400/40 bg-indigo-500/15 text-indigo-200">
+              <Shield size={11} />
+              <span>{Array.isArray(latest.license) ? latest.license[0] : latest.license}</span>
+            </span>
+          )}
+        </div>
+      </div>
+    </button>
+  )
+}
+
 function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChange: (n: number) => void; deleteVersion: number }): React.JSX.Element {
   const [searchQuery, setSearchQuery] = useState('')
   const [modType, setModType] = useState('')
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
+  const [totalMods, setTotalMods] = useState(0)
   const [mods, setMods] = useState<AvailableMod[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1835,11 +2055,14 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
   const [indexUpdating, setIndexUpdating] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState<{ received: number; total: number } | null>(null)
   const [uninstalling, setUninstalling] = useState<string | null>(null)
+  const [showRegistryHelp, setShowRegistryHelp] = useState(false)
+  const [registryLogo, setRegistryLogo] = useState<string | null>(null)
   const { dialog: confirmDialogEl, confirm } = useConfirmDialog()
   // External thumbnail URLs from registry metadata are blocked by CSP if loaded
   // directly. Proxy through the main process which returns base64 data URLs.
-  const thumbCache = useBoundedCache<string>(120)
-  const [thumbVersion, setThumbVersion] = useState(0)
+  // Cards request their own thumbnail via `useLazyThumb` only when scrolled
+  // into view, and re-request transparently if the LRU evicts the entry.
+  const thumbLoader = useLazyThumbnails(window.api.getRepoThumbnails, 120)
   const { t } = useTranslation()
   useEffect(() => {
     const unsub = window.api.onRegistryDownloadProgress((progress) => {
@@ -1848,14 +2071,42 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
     return unsub
   }, [])
 
+  // Lazy-fetch the registry repo logo via the existing thumbnail proxy so
+  // CSP doesn't block raw.githubusercontent.com. Falls back to the lucide
+  // Database icon if offline.
+  useEffect(() => {
+    const url = 'https://raw.githubusercontent.com/musanajam11/BeamNG-Mod-Registry/main/assets/logo.png'
+    window.api.getRepoThumbnails([url])
+      .then((res) => { if (res[url]) setRegistryLogo(res[url]) })
+      .catch(() => { /* keep fallback */ })
+  }, [])
+
   const fetchMods = useCallback(async (): Promise<void> => {
     setLoading(true); setError(null)
     try {
       const result: RegistrySearchResult = await window.api.registrySearch({
         query: searchQuery || undefined, mod_type: modType || undefined, page, per_page: 25
       })
-      setMods(result.mods); setTotalPages(result.total_pages)
-    } catch (err) { setError(String(err)) } finally { setLoading(false) }
+      // Page 1 replaces; later pages append (infinite scroll). Defensive
+      // dedup by identifier in case the index shifts mid-scroll.
+      if (page === 1) {
+        setMods(result.mods)
+      } else {
+        setMods((prev) => {
+          const seen = new Set(prev.map((m) => m.identifier))
+          const merged = prev.slice()
+          for (const m of result.mods) {
+            if (!seen.has(m.identifier)) {
+              seen.add(m.identifier)
+              merged.push(m)
+            }
+          }
+          return merged
+        })
+      }
+      setTotalPages(result.total_pages)
+      setTotalMods(result.total)
+    } catch (err) { setError(String(err)); if (page === 1) setMods([]) } finally { setLoading(false) }
   }, [searchQuery, modType, page])
 
   const fetchInstalled = useCallback(async () => {
@@ -1871,6 +2122,39 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
   useEffect(() => { if (deleteVersion > 0) fetchInstalled() }, [deleteVersion])
   useEffect(() => { fetchUpdates() }, [fetchUpdates])
   useEffect(() => { setPage(1) }, [searchQuery, modType])
+
+  // Infinite-scroll plumbing — see ServerList.tsx for the original pattern.
+  // Only mounts what the user has scrolled into; further pages are fetched
+  // and appended on demand. Memory is bounded by per_page (25) × pages
+  // visited, plus the LRU-bounded thumbnail cache above.
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const loadingRef = useRef(loading)
+  useEffect(() => { loadingRef.current = loading }, [loading])
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    let raf = 0
+    const onScroll = (): void => {
+      if (raf) return
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+        if (distanceFromBottom < 600 && !loadingRef.current && page < totalPages) {
+          setPage((p) => (p < totalPages ? p + 1 : p))
+        }
+      })
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      el.removeEventListener('scroll', onScroll)
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [page, totalPages])
+
+  // Reset scroll position when query/filter changes.
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0
+  }, [searchQuery, modType])
 
   // Installed-mod registry entries cached so they can be pinned to page 1
   // even when they don't appear in the current page's search slice.
@@ -1888,15 +2172,17 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
   }, [installed])
 
   // Display order: installed first, then verified, then everything else.
-  // On page 1 (with no search/filter) we cross-fetch installed entries so they
-  // always appear at the top regardless of pagination.
+  // When unfiltered we cross-fetch installed entries so they always appear at
+  // the top regardless of which page they happen to live on. Page is no
+  // longer part of this check because infinite scroll keeps `mods` as the
+  // running accumulation across all loaded pages.
   const sortedMods = useMemo(() => {
     const tier = (m: AvailableMod): number => {
       if (m.identifier in installed) return 0
       if (m.versions[0]?.x_verified) return 1
       return 2
     }
-    const showPinned = page === 1 && !searchQuery && !modType
+    const showPinned = !searchQuery && !modType
     const seen = new Set<string>()
     const merged: AvailableMod[] = []
     if (showPinned) {
@@ -1910,25 +2196,16 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
       seen.add(m.identifier); merged.push(m)
     }
     return merged.sort((a, b) => tier(a) - tier(b))
-  }, [mods, installed, installedEntries, page, searchQuery, modType])
+  }, [mods, installed, installedEntries, searchQuery, modType])
 
-  // Proxy-fetch external thumbnails so CSP doesn't block them.
+  // Bulk thumbnail prefetch removed: cards now request their own thumbs
+  // lazily via `useLazyThumb` when they enter the viewport. Make sure the
+  // selected mod's thumb is requested for the detail panel even if its
+  // card is far off-screen.
   useEffect(() => {
-    const urls = Array.from(new Set(
-      [...mods, ...installedEntries].map((m) => m.versions[0]?.thumbnail).filter((u): u is string => Boolean(u))
-    ))
-    const missing = urls.filter((u) => !thumbCache.has(u))
-    if (missing.length === 0) return
-    let cancelled = false
-    window.api.getRepoThumbnails(missing).then((result) => {
-      if (cancelled) return
-      for (const [url, dataUrl] of Object.entries(result)) {
-        thumbCache.set(url, dataUrl as string)
-      }
-      setThumbVersion((v) => v + 1)
-    }).catch(() => { /* ignore */ })
-    return () => { cancelled = true }
-  }, [mods, installedEntries, thumbCache])
+    const url = selectedMod?.versions[0]?.thumbnail
+    if (url) thumbLoader.request(url)
+  }, [selectedMod, thumbLoader])
 
   const handleRefreshIndex = async (): Promise<void> => {
     setIndexUpdating(true)
@@ -2006,7 +2283,7 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
       <div className="shrink-0 border-b border-[var(--color-border)] px-5 pt-2 pb-3 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-xs text-[var(--color-text-secondary)]">{mods.length > 0 ? t('mods.modCount', { count: mods.length }) : t('mods.registry')}</span>
+            <span className="text-xs text-[var(--color-text-secondary)]">{totalMods > 0 ? t('mods.modCount', { count: totalMods }) : t('mods.registry')}</span>
             {updates.length > 0 && (
               <button onClick={() => setShowUpdates(!showUpdates)}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium bg-[var(--color-accent-15)] text-[var(--color-accent-text)] border border-[var(--color-accent-20)] hover:bg-[var(--color-accent-25)]">
@@ -2014,11 +2291,58 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
               </button>
             )}
           </div>
-          <button onClick={handleRefreshIndex} disabled={indexUpdating}
-            className="inline-flex items-center gap-1.5 border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-active)]">
-            <RefreshCw size={13} className={indexUpdating ? 'animate-spin' : ''} />
-            {indexUpdating ? t('mods.updating') : t('common.refresh')}
-          </button>
+          <div className="flex items-center gap-2 relative">
+            <div
+              className="relative"
+              onMouseEnter={() => setShowRegistryHelp(true)}
+              onMouseLeave={() => setShowRegistryHelp(false)}
+            >
+              <button
+                onClick={() => window.api.openModPage('https://bmr.musanet.xyz/')}
+                title={t('mods.openRegistryWebsite')}
+                className="inline-flex items-center gap-2 border border-[var(--color-border)] bg-[var(--color-surface)] px-5 py-3 text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-active)] transition"
+              >
+                {registryLogo ? (
+                  <img src={registryLogo} alt="" className="w-7 h-7 object-contain shrink-0" />
+                ) : (
+                  <Database size={26} />
+                )}
+                <span>{t('mods.registryWebsite')}</span>
+                <ExternalLink size={14} className="opacity-70" />
+              </button>
+              {showRegistryHelp && (
+                <div className="absolute right-0 top-full pt-2 z-50 w-80">
+                  <div className="border border-[var(--color-border)] bg-[var(--color-base)] shadow-xl p-4 text-[11px] text-[var(--color-text-secondary)] space-y-2">
+                    <div className="flex items-center gap-2">
+                      {registryLogo ? (
+                        <img src={registryLogo} alt="" className="w-8 h-8 object-contain" />
+                      ) : (
+                        <Database size={28} className="text-[var(--color-accent-text)]" />
+                      )}
+                      <span className="text-xs font-semibold text-[var(--color-text-primary)]">
+                        {t('mods.aboutRegistry')}
+                      </span>
+                    </div>
+                    <p className="leading-relaxed text-[var(--color-text-primary)]">{t('mods.registryHelpBody')}</p>
+                    <button
+                      onClick={() => {
+                        window.api.openModPage('https://bmr.musanet.xyz/login')
+                        setShowRegistryHelp(false)
+                      }}
+                      className="w-full inline-flex items-center justify-center gap-1.5 border border-[var(--color-border-accent)] bg-[var(--color-accent-10)] px-3 py-1.5 text-[11px] font-medium text-[var(--color-accent-text)] hover:bg-[var(--color-accent-20)] transition mt-2"
+                    >
+                      <ExternalLink size={11} /> {t('mods.signInToRegistry')}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            <button onClick={handleRefreshIndex} disabled={indexUpdating}
+              className="inline-flex items-center gap-2 border border-[var(--color-border)] bg-[var(--color-surface)] px-6 py-3 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-active)]">
+              <RefreshCw size={26} className={indexUpdating ? 'animate-spin' : ''} />
+              {indexUpdating ? t('mods.updating') : t('common.refresh')}
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <div className="relative flex-1">
@@ -2066,7 +2390,7 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
 
       {/* Content */}
       <div className="flex-1 flex min-h-0">
-        {loading ? (
+        {loading && mods.length === 0 ? (
           <div className="flex-1 flex items-center justify-center text-[var(--color-text-secondary)] text-sm">
             <Loader2 size={16} className="animate-spin mr-2" /> {t('mods.loadingRegistry')}
           </div>
@@ -2081,68 +2405,39 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
           </div>
         ) : (
           <>
-            <div className="flex-1 min-w-0 overflow-y-auto p-6">
-              <div key={thumbVersion} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                {sortedMods.map((mod) => {
-                  const latest = mod.versions[0]; if (!latest) return null
-                  const authors = Array.isArray(latest.author) ? latest.author.join(', ') : latest.author
-                  const isInst = mod.identifier in installed
-                  const thumbSrc = latest.thumbnail ? thumbCache.get(latest.thumbnail) : undefined
-                  return (
-                    <button key={mod.identifier}
-                      onClick={() => setSelectedMod(selectedMod?.identifier === mod.identifier ? null : mod)}
-                      className={`relative text-left border overflow-hidden transition h-[148px] ${selectedMod?.identifier === mod.identifier ? 'border-[var(--color-border-accent)] bg-[var(--color-accent-8)]' : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] hover:border-[var(--color-border-hover)]'}`}>
-                      {thumbSrc && (
-                        <>
-                          <div
-                            aria-hidden
-                            className="absolute inset-0 bg-center bg-cover"
-                            style={{ backgroundImage: `url(${thumbSrc})`, filter: 'blur(3px) saturate(0.55) brightness(0.55)', transform: 'scale(1.06)', opacity: 0.45 }}
-                          />
-                          <div aria-hidden className="absolute inset-0 bg-[var(--color-surface)]/65" />
-                        </>
-                      )}
-                      <div className="relative h-full p-4 space-y-2 flex flex-col">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-semibold text-[var(--color-text-primary)] truncate">{latest.name}</span>
-                            {latest.x_verified && <BadgeCheck size={12} className="text-blue-400 shrink-0" />}
-                            {isInst && <CheckCircle size={12} className="text-emerald-400 shrink-0" />}
-                          </div>
-                          <p className="text-[10px] text-[var(--color-text-muted)] truncate mt-0.5">{authors}</p>
-                        </div>
-                        <span className="text-[10px] text-[var(--color-text-muted)] shrink-0">v{latest.version}</span>
-                      </div>
-                      <p className="text-[11px] text-[var(--color-text-secondary)] line-clamp-2">{latest.abstract}</p>
-                      <div className="mt-auto flex items-center gap-2 text-[10px] text-[var(--color-text-muted)]">
-                        {latest.mod_type && <span className="px-1.5 py-0.5 border border-[var(--color-border)] bg-[var(--color-surface)]">{latest.mod_type}</span>}
-                        {latest.license && <span className="inline-flex items-center gap-0.5"><Shield size={9} /> {Array.isArray(latest.license) ? latest.license[0] : latest.license}</span>}
-                      </div>
-                      </div>
-                    </button>
-                  )
-                })}
+            <div ref={scrollRef} className="flex-1 min-w-0 overflow-y-auto p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {sortedMods.map((mod) => (
+                  <RegistryModCard
+                    key={mod.identifier}
+                    mod={mod}
+                    selected={selectedMod?.identifier === mod.identifier}
+                    isInstalled={mod.identifier in installed}
+                    loader={thumbLoader}
+                    onClick={() =>
+                      setSelectedMod(selectedMod?.identifier === mod.identifier ? null : mod)
+                    }
+                  />
+                ))}
               </div>
+              {/* Infinite-scroll footer */}
+              {page < totalPages ? (
+                <div className="flex items-center justify-center gap-2 py-4 text-[11px] text-[var(--color-text-muted)]">
+                  {loading ? <Loader2 size={12} className="animate-spin" /> : null}
+                  <span>{t('mods.loadingMore')}</span>
+                </div>
+              ) : sortedMods.length > 0 ? (
+                <div className="text-center py-4 text-[11px] text-[var(--color-text-dim)]">
+                  {t('mods.endOfResults')}
+                </div>
+              ) : null}
             </div>
-            {selectedMod && <RegistryDetailPanel mod={selectedMod} installed={installed} installing={installing} uninstalling={uninstalling} onInstall={handleInstallClick} onUninstall={handleUninstall} thumbDataUrl={selectedMod.versions[0]?.thumbnail ? thumbCache.get(selectedMod.versions[0].thumbnail) : undefined} />}
+            {selectedMod && <RegistryDetailPanel mod={selectedMod} installed={installed} installing={installing} uninstalling={uninstalling} onInstall={handleInstallClick} onUninstall={handleUninstall} thumbDataUrl={selectedMod.versions[0]?.thumbnail ? thumbLoader.get(selectedMod.versions[0].thumbnail) : undefined} />}
           </>
         )}
       </div>
 
-      {totalPages > 1 && (
-        <div className="shrink-0 border-t border-[var(--color-border)] px-5 py-3 flex items-center justify-between">
-          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}
-            className="inline-flex items-center gap-1 border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-active)] disabled:opacity-30">
-            <ChevronLeft size={13} /> {t('mods.previous')}
-          </button>
-          <span className="text-xs text-[var(--color-text-secondary)]">{t('mods.pageOf', { page, totalPages })}</span>
-          <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
-            className="inline-flex items-center gap-1 border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5 text-xs text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-active)] disabled:opacity-30">
-            {t('mods.next')} <ChevronRight size={13} />
-          </button>
-        </div>
-      )}
+      {/* Pagination removed — superseded by infinite scroll above. */}
       {confirmDialogEl}
     </>
   )
@@ -2176,7 +2471,7 @@ function RegistryDetailPanel({
       <div>
         <div className="flex items-center gap-1.5">
           <h2 className="text-base font-semibold text-[var(--color-text-primary)]">{latest.name}</h2>
-          {latest.x_verified && <BadgeCheck size={14} className="text-blue-400 shrink-0" />}
+          {latest.x_verified && <VerifiedBadge height={16} />}
         </div>
         <p className="text-xs text-[var(--color-text-secondary)] mt-1">{latest.abstract}</p>
       </div>
@@ -2236,9 +2531,9 @@ function RegistryDetailPanel({
 
       {latest.resources && (
         <div className="border-t border-[var(--color-border)] pt-3 space-y-1">
-          {latest.resources.homepage && <a href={latest.resources.homepage} className="block text-[11px] text-[var(--color-accent)] hover:underline truncate"><ExternalLink size={10} className="inline mr-1" />{t('mods.homepage')}</a>}
-          {latest.resources.repository && <a href={latest.resources.repository} className="block text-[11px] text-[var(--color-accent)] hover:underline truncate"><ExternalLink size={10} className="inline mr-1" />{t('common.source')}</a>}
-          {latest.resources.beamng_resource && <a href={latest.resources.beamng_resource} className="block text-[11px] text-[var(--color-accent)] hover:underline truncate"><ExternalLink size={10} className="inline mr-1" />{t('mods.beamngCom')}</a>}
+          {latest.resources.homepage && <a href={latest.resources.homepage} target="_blank" rel="noopener noreferrer" className="block text-[11px] text-[var(--color-accent)] hover:underline truncate"><ExternalLink size={10} className="inline mr-1" />{t('mods.homepage')}</a>}
+          {latest.resources.repository && <a href={latest.resources.repository} target="_blank" rel="noopener noreferrer" className="block text-[11px] text-[var(--color-accent)] hover:underline truncate"><ExternalLink size={10} className="inline mr-1" />{t('common.source')}</a>}
+          {latest.resources.beamng_resource && <a href={latest.resources.beamng_resource} target="_blank" rel="noopener noreferrer" className="block text-[11px] text-[var(--color-accent)] hover:underline truncate"><ExternalLink size={10} className="inline mr-1" />{t('mods.beamngCom')}</a>}
         </div>
       )}
 
