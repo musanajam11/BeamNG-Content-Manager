@@ -5,14 +5,20 @@ import { configMocks } from './config'
 import { gameMocks } from './game'
 import { serverMocks } from './servers'
 import { modMocks } from './mods'
-import { miscMocks } from './misc'
+import { liveryMocks } from './livery'
+import { luaConsoleMocks } from './lua-console'
+import { voiceMocks } from './voice'
+import { worldEditMocks } from './world-edit'
 
 const mockApi = {
   ...configMocks,
   ...gameMocks,
   ...serverMocks,
   ...modMocks,
-  ...miscMocks
+  ...liveryMocks,
+  ...luaConsoleMocks,
+  ...voiceMocks,
+  ...worldEditMocks
 }
 
 // Install onto window so the renderer code's window.api.* calls work
