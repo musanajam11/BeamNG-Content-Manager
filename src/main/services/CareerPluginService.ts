@@ -23,8 +23,8 @@ export interface PluginCatalogEntry {
   name: string
   description: string
   author: string
-  /** GitHub `owner/repo`. */
-  repo: string
+  /** GitHub `owner/repo`. Optional when `source === 'beamng'`. */
+  repo?: string
   homepage: string
   compat: PluginCompat
   installMethod: PluginInstallMethod
@@ -35,6 +35,21 @@ export interface PluginCatalogEntry {
    * For `copy-client-zip`: not used (the downloaded zip's filename is tracked instead).
    */
   serverPluginFolder?: string
+  /**
+   * Mod source. Defaults to GitHub releases. `beamng` entries are downloaded from
+   * BeamNG.com using the same logged-in cookie session as the main mod browser,
+   * then deployed straight to `Resources/Client/` of the selected hosted server.
+   */
+  source?: 'github' | 'beamng'
+  /** BeamNG.com resource metadata, required when `source === 'beamng'`. */
+  beamngResource?: {
+    resourceId: number
+    slug: string
+    /** Display version label (BeamNG.com doesn't give us a real release feed via this flow). */
+    version: string
+    /** Optional changelog/notes text shown in the version row. */
+    notes?: string
+  }
 }
 
 /* ── Static catalog ── */
@@ -81,6 +96,49 @@ export const PLUGIN_CATALOG: PluginCatalogEntry[] = [
     homepage: 'https://github.com/StanleyDudek/citybusDisplaysSync',
     compat: 'careerMP',
     installMethod: 'copy-client-zip'
+  },
+  {
+    id: 'player-dealership-loaner',
+    name: 'Player Dealership + Loaner System',
+    description: 'Adds a player-run vehicle marketplace, timed temporary keys / loaners, party creation, and party-only shared vehicle visibility to CareerMP servers. Includes a dedicated in-game UI with Party, Dealership, and Loaners tabs. Works great with RLS + CareerMP.',
+    author: 'ChiarelloB',
+    repo: 'ChiarelloB/Player-Dealership-Loaner-System-for-CareerMP',
+    homepage: 'https://github.com/ChiarelloB/Player-Dealership-Loaner-System-for-CareerMP',
+    compat: 'both',
+    installMethod: 'extract-to-root',
+    serverPluginFolder: 'CareerMPPartySharedVehicles'
+  },
+  {
+    id: 'node-based-tire-wear',
+    name: 'Experimental Node Based Tire Wear',
+    description: 'Adds tire thermals and node based tire wear. Friction, wear, and mass are simulated for each node on the tire allowing for dynamic behaviors such as flatspots and natural camber wear.',
+    author: 'Jesus Goose',
+    homepage: 'https://www.beamng.com/resources/node-based-tire-wear.36502/',
+    compat: 'both',
+    installMethod: 'copy-client-zip',
+    source: 'beamng',
+    beamngResource: {
+      resourceId: 36502,
+      slug: 'node-based-tire-wear',
+      version: '2.61',
+      notes: 'Always installs the latest version published on BeamNG.com.'
+    }
+  },
+  {
+    id: 'individual-part-repair-menu',
+    name: 'Individual Part Repair Menu',
+    description: 'Allows for the repair of individual parts. Adds a new UI app called "Individual Part Repair Menu" that can be used to select individual parts for repair. It also introduces a custom beamstate save/load system that saves damage per vehicle configuration, allowing damage states to persist across maps and sessions.',
+    author: 'Jesus Goose',
+    homepage: 'https://www.beamng.com/resources/individual-part-repair-menu.35878/',
+    compat: 'both',
+    installMethod: 'copy-client-zip',
+    source: 'beamng',
+    beamngResource: {
+      resourceId: 35878,
+      slug: 'individual-part-repair-menu',
+      version: '3.71',
+      notes: 'Always installs the latest version published on BeamNG.com.'
+    }
   }
 ]
 
@@ -199,6 +257,24 @@ export class CareerPluginService {
 
   async fetchPluginReleases(pluginId: string, category: PluginCategory = 'career'): Promise<PluginRelease[]> {
     const entry = this.requireEntry(pluginId, category)
+    // BeamNG.com sourced plugins don't expose a release feed; we synthesise a single
+    // "latest" release whose downloadUrl is a sentinel `beamng://<resourceId>/<slug>`
+    // that the IPC layer recognises and routes through the cookie-authenticated
+    // BeamNG.com download flow.
+    if (entry.source === 'beamng' && entry.beamngResource) {
+      const r = entry.beamngResource
+      return [{
+        version: r.version,
+        name: `${entry.name} (${r.version})`,
+        changelog: r.notes || `Latest version of ${entry.name} from BeamNG.com.`,
+        prerelease: false,
+        publishedAt: new Date().toISOString(),
+        downloadUrl: `beamng://${r.resourceId}/${r.slug}`,
+        size: 0,
+        downloads: 0
+      }]
+    }
+    if (!entry.repo) return []
     const url = `https://api.github.com/repos/${entry.repo}/releases?per_page=20`
     interface RawAsset { name: string; browser_download_url: string; size: number; download_count: number }
     interface RawRelease { tag_name: string; name: string; body: string; prerelease: boolean; published_at: string; assets: RawAsset[] }
@@ -273,6 +349,48 @@ export class CareerPluginService {
       })
 
       await rm(zipPath, { force: true }).catch(() => {})
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  }
+
+  /**
+   * Install a plugin whose zip is already on disk (e.g. fetched via the BeamNG.com
+   * cookie-authenticated download flow). Currently only supports `copy-client-zip`
+   * style entries — the zip is copied verbatim into `Resources/Client/` of the
+   * selected hosted server and tracked for uninstall.
+   */
+  async installPluginFromLocalZip(
+    pluginId: string,
+    version: string,
+    localZipPath: string,
+    fileName: string,
+    serverDir: string,
+    category: PluginCategory = 'career'
+  ): Promise<{ success: boolean; error?: string }> {
+    const entry = this.requireEntry(pluginId, category)
+    if (entry.installMethod !== 'copy-client-zip') {
+      return { success: false, error: `installPluginFromLocalZip: unsupported installMethod ${entry.installMethod}` }
+    }
+    try {
+      // Wipe any prior install of this plugin first so we don't leave stale zips behind
+      // (e.g. a different filename from a previous version).
+      await this.uninstallPlugin(pluginId, serverDir, category).catch(() => { /* ignore */ })
+
+      const safeName = fileName.replace(/[\\/]/g, '_').replace(/[^a-zA-Z0-9._-]/g, '_') || `${entry.id}.zip`
+      const clientDir = join(serverDir, 'Resources', 'Client')
+      await mkdir(clientDir, { recursive: true })
+      const destPath = join(clientDir, safeName)
+      await copyFile(localZipPath, destPath)
+      const artifacts = [join('Resources', 'Client', safeName)]
+
+      await this.recordInstalled(serverDir, category, {
+        pluginId: entry.id,
+        version,
+        installedAt: new Date().toISOString(),
+        artifacts
+      })
       return { success: true }
     } catch (err) {
       return { success: false, error: String(err) }

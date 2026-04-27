@@ -42,7 +42,7 @@ import {
   Unlock,
   Info
 } from 'lucide-react'
-import { BuberIcon, BankingIcon, DynamicTrafficIcon, CitybusDisplaysSyncIcon, pluginPreviewImage } from '../components/server-manager/PluginIcons'
+import { BuberIcon, BankingIcon, DynamicTrafficIcon, CitybusDisplaysSyncIcon, PlayerDealershipLoanerIcon, NodeBasedTireWearIcon, IndividualPartRepairMenuIcon, pluginPreviewImage } from '../components/server-manager/PluginIcons'
 import cmpDragStripImg from '../assets/careermp-readme/gallery6.png'
 import { useConfirmDialog } from '../hooks/useConfirmDialog'
 
@@ -1898,7 +1898,7 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, bette
                 >
                   {cmpReleases.map((r) => (
                     <option key={r.version} value={r.version}>
-                      {r.version} {r.prerelease ? '(pre-release)' : ''} — {(r.size / 1024).toFixed(0)} KB
+                      {r.version} {r.prerelease ? '(pre-release)' : ''}{r.size > 0 ? ` — ${(r.size / 1024).toFixed(0)} KB` : ''}
                     </option>
                   ))}
                 </select>
@@ -2301,11 +2301,13 @@ interface PluginCatalogEntry {
   name: string
   description: string
   author: string
-  repo: string
+  repo?: string
   homepage: string
   compat: PluginCompat
   installMethod: 'extract-to-root' | 'extract-to-server-plugin' | 'copy-client-zip'
   serverPluginFolder?: string
+  source?: 'github' | 'beamng'
+  beamngResource?: { resourceId: number; slug: string; version: string; notes?: string }
 }
 interface PluginRelease {
   version: string
@@ -2352,6 +2354,12 @@ function pluginIcon(id: string): { Icon: React.ComponentType<{ size?: number; cl
       return { Icon: DynamicTrafficIcon, className: 'text-orange-300' }
     case 'citybus-displays-sync':
       return { Icon: CitybusDisplaysSyncIcon, className: 'text-sky-400' }
+    case 'player-dealership-loaner':
+      return { Icon: PlayerDealershipLoanerIcon, className: 'text-yellow-300' }
+    case 'node-based-tire-wear':
+      return { Icon: NodeBasedTireWearIcon, className: 'text-zinc-200' }
+    case 'individual-part-repair-menu':
+      return { Icon: IndividualPartRepairMenuIcon, className: 'text-amber-300' }
     default:
       return { Icon: Package, className: 'text-[var(--color-accent)]' }
   }
@@ -2370,6 +2378,7 @@ function PluginBrowserPanel({ getActiveServerDir, t }: {
   const [filter, setFilter] = useState<'all' | 'careerMP' | 'rls'>('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [trayOpen, setTrayOpen] = useState(false)
 
   const loadCatalog = useCallback(async () => {
     setLoading(true)
@@ -2412,7 +2421,10 @@ function PluginBrowserPanel({ getActiveServerDir, t }: {
     } catch { setInstalled({}) }
   }, [getActiveServerDir])
 
-  useEffect(() => { loadCatalog() }, [loadCatalog])
+  // Lazy-load: only fetch the catalog (and GitHub release feeds) once the user
+  // opens the tray. Always refresh installed plugin tracking so the badge stays
+  // accurate even while collapsed.
+  useEffect(() => { if (trayOpen) loadCatalog() }, [trayOpen, loadCatalog])
   useEffect(() => { refreshInstalled() }, [refreshInstalled])
 
   const handleInstall = useCallback(async (entry: PluginCatalogEntry) => {
@@ -2427,7 +2439,18 @@ function PluginBrowserPanel({ getActiveServerDir, t }: {
     setBusy((b) => ({ ...b, [entry.id]: true }))
     setMsg((m) => { const c = { ...m }; delete c[entry.id]; return c })
     try {
-      const result = await window.api.careerInstallPlugin(entry.id, release.version, release.downloadUrl, dir)
+      let result = await window.api.careerInstallPlugin(entry.id, release.version, release.downloadUrl, dir)
+      // BeamNG.com sourced plugin and the user isn't logged in yet — prompt the
+      // BeamNG.com login window (same flow as the main mod browser) and retry once.
+      if (!result.success && entry.source === 'beamng' && (result.error || '').includes('NOT_LOGGED_IN')) {
+        setMsg((m) => ({ ...m, [entry.id]: { type: 'error', text: t('career.plugin.beamngLoginRequired') } }))
+        const login = await window.api.beamngWebLogin()
+        if (!login.success) {
+          setMsg((m) => ({ ...m, [entry.id]: { type: 'error', text: t('career.plugin.beamngLoginCancelled') } }))
+          return
+        }
+        result = await window.api.careerInstallPlugin(entry.id, release.version, release.downloadUrl, dir)
+      }
       if (result.success) {
         setMsg((m) => ({ ...m, [entry.id]: { type: 'success', text: t('career.plugin.installSuccess', { name: entry.name }) } }))
         await refreshInstalled()
@@ -2466,40 +2489,56 @@ function PluginBrowserPanel({ getActiveServerDir, t }: {
     return p.compat === filter || p.compat === 'both'
   })
 
+  const installedCount = Object.keys(installed).length
+
   return (
-    <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
-          <Package size={16} className="text-[var(--color-accent)]" /> {t('career.plugin.title')}
-        </h3>
-        <button
-          onClick={() => { loadCatalog(); refreshInstalled() }}
-          disabled={loading}
-          className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg bg-[var(--color-surface)] hover:bg-[var(--color-surface-active)] border border-[var(--color-border)] transition-colors disabled:opacity-50"
-        >
-          <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> {t('common.refresh')}
-        </button>
-      </div>
-      <p className="text-xs text-[var(--text-muted)]">{t('career.plugin.blurb')}</p>
+    <div className="bg-[var(--color-surface)] rounded-xl border border-[var(--color-border)] overflow-hidden">
+      <button
+        onClick={() => setTrayOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-[var(--color-surface-active)] transition-colors text-left"
+      >
+        <div className="flex items-center gap-2">
+          <Package size={16} className="text-[var(--color-accent)]" />
+          <span className="text-sm font-semibold text-[var(--color-text-primary)]">{t('career.plugin.title')}</span>
+          {installedCount > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full border bg-green-500/15 text-green-300 border-green-500/30 flex items-center gap-1">
+              <Check size={10} /> {installedCount} installed
+            </span>
+          )}
+        </div>
+        {trayOpen ? <ChevronUp size={16} className="text-[var(--text-muted)]" /> : <ChevronDown size={16} className="text-[var(--text-muted)]" />}
+      </button>
+      {trayOpen && (
+        <div className="border-t border-[var(--color-border)] p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-[var(--text-muted)]">{t('career.plugin.blurb')}</p>
+            <button
+              onClick={() => { loadCatalog(); refreshInstalled() }}
+              disabled={loading}
+              className="shrink-0 ml-3 flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg bg-[var(--color-surface)] hover:bg-[var(--color-surface-active)] border border-[var(--color-border)] transition-colors disabled:opacity-50"
+            >
+              <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> {t('common.refresh')}
+            </button>
+          </div>
 
-      {/* Compat filter */}
-      <div className="flex flex-wrap gap-1.5">
-        {(['all', 'careerMP', 'rls'] as const).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
-              filter === f
-                ? 'bg-[var(--color-accent)] border-[var(--color-accent)] text-[var(--color-text-primary)]'
-                : 'bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--text-muted)] hover:text-[var(--color-text-primary)]'
-            }`}
-          >
-            {t(`career.plugin.filter.${f}`)}
-          </button>
-        ))}
-      </div>
+          {/* Compat filter */}
+          <div className="flex flex-wrap gap-1.5">
+            {(['all', 'careerMP', 'rls'] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                  filter === f
+                    ? 'bg-[var(--color-accent)] border-[var(--color-accent)] text-[var(--color-text-primary)]'
+                    : 'bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--text-muted)] hover:text-[var(--color-text-primary)]'
+                }`}
+              >
+                {t(`career.plugin.filter.${f}`)}
+              </button>
+            ))}
+          </div>
 
-      {loading ? (
+          {loading ? (
         <div className="flex items-center justify-center h-24">
           <Loader2 size={24} className="animate-spin text-[var(--color-accent)]" />
         </div>
@@ -2577,7 +2616,7 @@ function PluginBrowserPanel({ getActiveServerDir, t }: {
                   >
                     {releases.map((r) => (
                       <option key={r.version} value={r.version}>
-                        {r.version} {r.prerelease ? '(pre)' : ''} — {(r.size / 1024).toFixed(0)} KB
+                        {r.version} {r.prerelease ? '(pre)' : ''}{r.size > 0 ? ` — ${(r.size / 1024).toFixed(0)} KB` : ''}
                       </option>
                     ))}
                   </select>
@@ -2612,6 +2651,8 @@ function PluginBrowserPanel({ getActiveServerDir, t }: {
               </div>
             )
           })}
+        </div>
+      )}
         </div>
       )}
     </div>

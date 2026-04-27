@@ -877,6 +877,112 @@ async function readTextFromZip(zipPath: string, pattern: RegExp): Promise<string
   return result ? result.toString('utf-8') : null
 }
 
+/**
+ * Download a BeamNG.com resource zip into a temp file using the persistent
+ * `persist:beamng` cookie session (the same one the user signs into via the
+ * mod browser). Mirrors the page-and-click flow of the `repo:download`
+ * handler but skips the modManager install step \u2014 the caller decides what
+ * to do with the resulting file.
+ */
+async function downloadBeamngResourceToTemp(
+  resourceId: number,
+  slug: string
+): Promise<{ success: true; tmpPath: string; fileName: string } | { success: false; error: string }> {
+  const beamngSession = session.fromPartition('persist:beamng')
+  const cookies = await beamngSession.cookies.get({ url: 'https://www.beamng.com' })
+  const loggedIn = cookies.some((c) => c.name === 'xf_user' || c.name === 'xf_session')
+  if (!loggedIn) return { success: false, error: 'NOT_LOGGED_IN' }
+
+  const resourcePageUrl = `https://www.beamng.com/resources/${encodeURIComponent(slug)}.${resourceId}/`
+  const mainWin = BrowserWindow.getAllWindows()[0]
+
+  return new Promise((resolve) => {
+    const dlWin = new BrowserWindow({
+      width: 900,
+      height: 650,
+      show: false,
+      parent: mainWin || undefined,
+      autoHideMenuBar: true,
+      title: 'Downloading...',
+      webPreferences: { session: beamngSession, sandbox: true }
+    })
+
+    let resolved = false
+    const finish = (
+      result: { success: true; tmpPath: string; fileName: string } | { success: false; error: string }
+    ): void => {
+      if (resolved) return
+      resolved = true
+      beamngSession.removeListener('will-download', onWillDownload)
+      if (!dlWin.isDestroyed()) dlWin.close()
+      resolve(result)
+    }
+
+    const onWillDownload = (_e: Electron.Event, item: Electron.DownloadItem): void => {
+      beamngSession.removeListener('will-download', onWillDownload)
+      const fileName = item.getFilename()
+      const tmpPath = join(app.getPath('temp'), `beammp-plugin-dl-${Date.now()}-${fileName}`)
+      item.setSavePath(tmpPath)
+      if (!dlWin.isDestroyed()) dlWin.hide()
+
+      const sender = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w !== dlWin)
+      item.on('updated', (_ev, state) => {
+        if (state === 'progressing' && !item.isPaused()) {
+          const received = item.getReceivedBytes()
+          const total = item.getTotalBytes()
+          sender?.webContents.send('repo:download-progress', { received, total, fileName })
+        }
+      })
+
+      item.once('done', (_ev, state) => {
+        if (state === 'completed') {
+          finish({ success: true, tmpPath, fileName })
+        } else {
+          finish({ success: false, error: `Download ${state}` })
+        }
+      })
+    }
+
+    beamngSession.on('will-download', onWillDownload)
+
+    dlWin.on('closed', () => {
+      finish({ success: false, error: 'Cancelled' })
+    })
+
+    let pageLoads = 0
+    dlWin.webContents.on('did-finish-load', () => {
+      pageLoads++
+      if (pageLoads >= 3 && !resolved && !dlWin.isDestroyed() && !dlWin.isVisible()) {
+        dlWin.setTitle('BeamNG.com \u2014 Complete download')
+        dlWin.show()
+      }
+    })
+
+    dlWin.webContents.once('did-finish-load', async () => {
+      if (resolved || dlWin.isDestroyed()) return
+      try {
+        const downloadHref = await dlWin.webContents.executeJavaScript(`
+          (() => {
+            const link = document.querySelector('a.inner[href*="/download"]') ||
+                         document.querySelector('a[href*="/download"]') ||
+                         document.querySelector('.downloadButton a');
+            return link ? link.href : null;
+          })()
+        `)
+        if (downloadHref) {
+          dlWin.loadURL(downloadHref)
+        } else {
+          dlWin.loadURL(resourcePageUrl + 'download')
+        }
+      } catch {
+        finish({ success: false, error: 'Failed to extract download link' })
+      }
+    })
+
+    dlWin.loadURL(resourcePageUrl)
+  })
+}
+
 export function registerIpcHandlers(): void {
   // -- Config --
   ipcMain.handle('config:get', async (): Promise<AppConfig> => {
@@ -7929,6 +8035,24 @@ end
   })
 
   ipcMain.handle('career:installPlugin', async (_event, pluginId: string, version: string, downloadUrl: string, serverDir: string) => {
+    // BeamNG.com sourced plugins use a `beamng://<resourceId>/<slug>` sentinel URL.
+    // Route those through the cookie-authenticated browser download flow rather than
+    // the GitHub-style direct fetch.
+    if (downloadUrl.startsWith('beamng://')) {
+      const m = /^beamng:\/\/(\d+)\/([^/]+)$/.exec(downloadUrl)
+      if (!m) return { success: false, error: 'Invalid BeamNG download URL' }
+      const resourceId = Number(m[1])
+      const slug = m[2]
+      const dl = await downloadBeamngResourceToTemp(resourceId, slug)
+      if (!dl.success) return { success: false, error: dl.error }
+      try {
+        return await careerPluginService.installPluginFromLocalZip(
+          pluginId, version, dl.tmpPath!, dl.fileName!, serverDir
+        )
+      } finally {
+        try { await unlink(dl.tmpPath!) } catch { /* ignore */ }
+      }
+    }
     return careerPluginService.installPlugin(pluginId, version, downloadUrl, serverDir)
   })
 

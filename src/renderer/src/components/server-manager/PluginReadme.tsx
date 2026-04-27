@@ -18,6 +18,9 @@ import profilterMd from '../../assets/readmes/profilter.md?raw'
 import beammpQuickChatMd from '../../assets/readmes/beammp-quick-chat.md?raw'
 import citybusDisplaysSyncMd from '../../assets/readmes/citybus-displays-sync.md?raw'
 import betterCareerCareerMpCompatMd from '../../assets/readmes/better-career-careermp-compat.md?raw'
+import playerDealershipLoanerMd from '../../assets/readmes/player-dealership-loaner.md?raw'
+import nodeBasedTireWearMd from '../../assets/readmes/node-based-tire-wear.md?raw'
+import individualPartRepairMenuMd from '../../assets/readmes/individual-part-repair-menu.md?raw'
 
 /* ── CareerMP local images (GitHub user-attachments don't load in Electron) ── */
 import cmpBanner from '../../assets/careermp-readme/banner.png'
@@ -58,7 +61,10 @@ const README_BY_ID: Record<string, string> = {
   profilter: profilterMd,
   'beammp-quick-chat': beammpQuickChatMd,
   'citybus-displays-sync': citybusDisplaysSyncMd,
-  'better-career-careermp-compat': betterCareerCareerMpCompatMd
+  'better-career-careermp-compat': betterCareerCareerMpCompatMd,
+  'player-dealership-loaner': playerDealershipLoanerMd,
+  'node-based-tire-wear': nodeBasedTireWearMd,
+  'individual-part-repair-menu': individualPartRepairMenuMd
 }
 
 /* ── Remote image URL → bundled local asset ── */

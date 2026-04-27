@@ -599,11 +599,13 @@ interface AppAPI {
     name: string
     description: string
     author: string
-    repo: string
+    repo?: string
     homepage: string
     compat: 'careerMP' | 'rls' | 'both' | 'beamMP'
     installMethod: 'extract-to-root' | 'extract-to-server-plugin' | 'copy-client-zip'
     serverPluginFolder?: string
+    source?: 'github' | 'beamng'
+    beamngResource?: { resourceId: number; slug: string; version: string; notes?: string }
   }>>
   careerFetchPluginReleases(pluginId: string): Promise<Array<{
     version: string

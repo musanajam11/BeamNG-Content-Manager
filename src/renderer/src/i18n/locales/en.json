@@ -1347,6 +1347,8 @@
       "uninstall": "Uninstall",
       "installSuccess": "{{name}} installed",
       "installFailed": "Plugin install failed",
+      "beamngLoginRequired": "Sign in to BeamNG.com to download this mod…",
+      "beamngLoginCancelled": "BeamNG.com sign-in cancelled. Mod was not installed.",
       "uninstalled": "{{name}} removed",
       "uninstallFailed": "Uninstall failed",
       "noServer": "Select a target server first",

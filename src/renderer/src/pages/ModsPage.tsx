@@ -1828,6 +1828,10 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
   const [installed, setInstalled] = useState<Record<string, InstalledRegistryMod>>({})
   const [indexUpdating, setIndexUpdating] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState<{ received: number; total: number } | null>(null)
+  // External thumbnail URLs from registry metadata are blocked by CSP if loaded
+  // directly. Proxy through the main process which returns base64 data URLs.
+  const thumbCache = useBoundedCache<string>(120)
+  const [thumbVersion, setThumbVersion] = useState(0)
   const { t } = useTranslation()
   useEffect(() => {
     const unsub = window.api.onRegistryDownloadProgress((progress) => {
@@ -1859,6 +1863,64 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
   useEffect(() => { if (deleteVersion > 0) fetchInstalled() }, [deleteVersion])
   useEffect(() => { fetchUpdates() }, [fetchUpdates])
   useEffect(() => { setPage(1) }, [searchQuery, modType])
+
+  // Installed-mod registry entries cached so they can be pinned to page 1
+  // even when they don't appear in the current page's search slice.
+  const [installedEntries, setInstalledEntries] = useState<AvailableMod[]>([])
+  useEffect(() => {
+    let cancelled = false
+    const ids = Object.keys(installed)
+    if (ids.length === 0) { setInstalledEntries([]); return }
+    Promise.all(ids.map((id) => window.api.registryGetMod(id).catch(() => null)))
+      .then((results) => {
+        if (cancelled) return
+        setInstalledEntries(results.filter((m): m is AvailableMod => !!m))
+      })
+    return () => { cancelled = true }
+  }, [installed])
+
+  // Display order: installed first, then verified, then everything else.
+  // On page 1 (with no search/filter) we cross-fetch installed entries so they
+  // always appear at the top regardless of pagination.
+  const sortedMods = useMemo(() => {
+    const tier = (m: AvailableMod): number => {
+      if (m.identifier in installed) return 0
+      if (m.versions[0]?.x_verified) return 1
+      return 2
+    }
+    const showPinned = page === 1 && !searchQuery && !modType
+    const seen = new Set<string>()
+    const merged: AvailableMod[] = []
+    if (showPinned) {
+      for (const m of installedEntries) {
+        if (seen.has(m.identifier)) continue
+        seen.add(m.identifier); merged.push(m)
+      }
+    }
+    for (const m of mods) {
+      if (seen.has(m.identifier)) continue
+      seen.add(m.identifier); merged.push(m)
+    }
+    return merged.sort((a, b) => tier(a) - tier(b))
+  }, [mods, installed, installedEntries, page, searchQuery, modType])
+
+  // Proxy-fetch external thumbnails so CSP doesn't block them.
+  useEffect(() => {
+    const urls = Array.from(new Set(
+      [...mods, ...installedEntries].map((m) => m.versions[0]?.thumbnail).filter((u): u is string => Boolean(u))
+    ))
+    const missing = urls.filter((u) => !thumbCache.has(u))
+    if (missing.length === 0) return
+    let cancelled = false
+    window.api.getRepoThumbnails(missing).then((result) => {
+      if (cancelled) return
+      for (const [url, dataUrl] of Object.entries(result)) {
+        thumbCache.set(url, dataUrl as string)
+      }
+      setThumbVersion((v) => v + 1)
+    }).catch(() => { /* ignore */ })
+    return () => { cancelled = true }
+  }, [mods, installedEntries, thumbCache])
 
   const handleRefreshIndex = async (): Promise<void> => {
     setIndexUpdating(true)
@@ -1969,15 +2031,27 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
         ) : (
           <>
             <div className="flex-1 min-w-0 overflow-y-auto p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                {mods.map((mod) => {
+              <div key={thumbVersion} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {sortedMods.map((mod) => {
                   const latest = mod.versions[0]; if (!latest) return null
                   const authors = Array.isArray(latest.author) ? latest.author.join(', ') : latest.author
                   const isInst = mod.identifier in installed
+                  const thumbSrc = latest.thumbnail ? thumbCache.get(latest.thumbnail) : undefined
                   return (
                     <button key={mod.identifier}
                       onClick={() => setSelectedMod(selectedMod?.identifier === mod.identifier ? null : mod)}
-                      className={`text-left border p-4 transition space-y-2 ${selectedMod?.identifier === mod.identifier ? 'border-[var(--color-border-accent)] bg-[var(--color-accent-8)]' : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] hover:border-[var(--color-border-hover)]'}`}>
+                      className={`relative text-left border overflow-hidden transition h-[148px] ${selectedMod?.identifier === mod.identifier ? 'border-[var(--color-border-accent)] bg-[var(--color-accent-8)]' : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] hover:border-[var(--color-border-hover)]'}`}>
+                      {thumbSrc && (
+                        <>
+                          <div
+                            aria-hidden
+                            className="absolute inset-0 bg-center bg-cover"
+                            style={{ backgroundImage: `url(${thumbSrc})`, filter: 'blur(3px) saturate(0.55) brightness(0.55)', transform: 'scale(1.06)', opacity: 0.45 }}
+                          />
+                          <div aria-hidden className="absolute inset-0 bg-[var(--color-surface)]/65" />
+                        </>
+                      )}
+                      <div className="relative h-full p-4 space-y-2 flex flex-col">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
@@ -1990,16 +2064,17 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
                         <span className="text-[10px] text-[var(--color-text-muted)] shrink-0">v{latest.version}</span>
                       </div>
                       <p className="text-[11px] text-[var(--color-text-secondary)] line-clamp-2">{latest.abstract}</p>
-                      <div className="flex items-center gap-2 text-[10px] text-[var(--color-text-muted)]">
+                      <div className="mt-auto flex items-center gap-2 text-[10px] text-[var(--color-text-muted)]">
                         {latest.mod_type && <span className="px-1.5 py-0.5 border border-[var(--color-border)] bg-[var(--color-surface)]">{latest.mod_type}</span>}
                         {latest.license && <span className="inline-flex items-center gap-0.5"><Shield size={9} /> {Array.isArray(latest.license) ? latest.license[0] : latest.license}</span>}
+                      </div>
                       </div>
                     </button>
                   )
                 })}
               </div>
             </div>
-            {selectedMod && <RegistryDetailPanel mod={selectedMod} installed={installed} installing={installing} onInstall={handleInstallClick} />}
+            {selectedMod && <RegistryDetailPanel mod={selectedMod} installed={installed} installing={installing} onInstall={handleInstallClick} thumbDataUrl={selectedMod.versions[0]?.thumbnail ? thumbCache.get(selectedMod.versions[0].thumbnail) : undefined} />}
           </>
         )}
       </div>
@@ -2024,12 +2099,13 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
 /* ── Registry Detail Panel ── */
 
 function RegistryDetailPanel({
-  mod, installed, installing, onInstall
+  mod, installed, installing, onInstall, thumbDataUrl
 }: {
   mod: AvailableMod
   installed: Record<string, InstalledRegistryMod>
   installing: string | null
   onInstall: (id: string) => void
+  thumbDataUrl?: string
 }): React.JSX.Element {
   const latest = mod.versions[0]!
   const authors = Array.isArray(latest.author) ? latest.author.join(', ') : latest.author
@@ -2047,8 +2123,8 @@ function RegistryDetailPanel({
         <p className="text-xs text-[var(--color-text-secondary)] mt-1">{latest.abstract}</p>
       </div>
 
-      {latest.thumbnail && (
-        <img src={latest.thumbnail} alt={latest.name} className="w-full object-cover border border-[var(--color-border)]" />
+      {thumbDataUrl && (
+        <img src={thumbDataUrl} alt={latest.name} className="w-full object-cover border border-[var(--color-border)]" />
       )}
 
       <div className="space-y-2 text-xs">

@@ -83,6 +83,27 @@ export function CitybusDisplaysSyncIcon({ size = 16, className = '' }: IconProps
 }
 
 /**
+ * PlayerDealershipLoaner — renders the 🤝 handshake emoji (player-to-player deals).
+ */
+export function PlayerDealershipLoanerIcon({ size = 16, className = '' }: IconProps) {
+  return <EmojiIcon glyph="🤝" size={size} className={className} />
+}
+
+/**
+ * Node Based Tire Wear — renders the 🛞 wheel emoji.
+ */
+export function NodeBasedTireWearIcon({ size = 16, className = '' }: IconProps) {
+  return <EmojiIcon glyph="🛞" size={size} className={className} />
+}
+
+/**
+ * Individual Part Repair Menu — renders the 🔧 wrench emoji.
+ */
+export function IndividualPartRepairMenuIcon({ size = 16, className = '' }: IconProps) {
+  return <EmojiIcon glyph="🔧" size={size} className={className} />
+}
+
+/**
  * CobaltEssentials — hexagonal gem with an admin star.
  */
 export function CobaltEssentialsIcon({ size = 16, className = '' }: IconProps) {
