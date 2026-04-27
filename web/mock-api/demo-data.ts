@@ -301,6 +301,95 @@ export const DEMO_MAPS = [
   { name: 'pike_peak', source: 'mod' as const, modZipPath: '/mods/repo/pike_peak_map.zip' }
 ]
 
+export const DEMO_HOSTED_SERVERS = [
+  {
+    config: {
+      id: 'demo-server-1',
+      name: 'My Drift Server',
+      port: 30814,
+      authKey: 'AUTH-XXXX-XXXX-XXXX-XXXX',
+      maxPlayers: 16,
+      maxCars: 1,
+      map: '/levels/drift_playground/info.json',
+      private: false,
+      description: 'My personal drift server (demo)',
+      resourceFolder: 'C:/BeamMP-Server/demo-server-1/Resources',
+      tags: 'Drift,Casual',
+      allowGuests: true,
+      logChat: true,
+      debug: false,
+      clientContentGate: false
+    },
+    status: {
+      id: 'demo-server-1',
+      state: 'running' as const,
+      pid: 1234,
+      uptimeMs: 1000 * 60 * 47,
+      startedAt: Date.now() - 1000 * 60 * 47,
+      players: 4,
+      error: null,
+      memoryBytes: 384 * 1024 * 1024,
+      cpuPercent: 6.4,
+      totalMemoryBytes: 16 * 1024 * 1024 * 1024
+    }
+  },
+  {
+    config: {
+      id: 'demo-server-2',
+      name: 'Track Day Practice',
+      port: 30815,
+      authKey: 'AUTH-XXXX-XXXX-XXXX-XXXX',
+      maxPlayers: 8,
+      maxCars: 2,
+      map: '/levels/hirochi_raceway/info.json',
+      private: true,
+      description: 'Private track day server',
+      resourceFolder: 'C:/BeamMP-Server/demo-server-2/Resources',
+      tags: 'Racing,Private',
+      allowGuests: false,
+      logChat: true,
+      debug: false,
+      clientContentGate: true
+    },
+    status: {
+      id: 'demo-server-2',
+      state: 'stopped' as const,
+      pid: null,
+      uptimeMs: 0,
+      startedAt: null,
+      players: 0,
+      error: null,
+      memoryBytes: 0,
+      cpuPercent: 0,
+      totalMemoryBytes: 16 * 1024 * 1024 * 1024
+    }
+  }
+]
+
+export const DEMO_GPS_TELEMETRY = {
+  vehicleId: 'sunburst',
+  pos: [123.4, 56.7, 12.3] as [number, number, number],
+  rot: [0, 0, 0, 1] as [number, number, number, number],
+  velocity: [12.0, 0.4, 0.0] as [number, number, number],
+  speedKmh: 73,
+  rpm: 4200,
+  gear: 4,
+  fuel: 0.62,
+  damage: 0.04,
+  serverIdent: '1.2.3.4:30814',
+  timestamp: Date.now()
+}
+
+export const DEMO_REGISTRY_REPOS = [
+  { id: 'official', name: 'Official BeamMP Registry', url: 'https://registry.beammp.com', enabled: true, priority: 100 },
+  { id: 'community', name: 'Community Registry', url: 'https://community.beammp-mods.com', enabled: true, priority: 50 }
+]
+
+export const DEMO_REGISTRY_INSTALLED = {
+  'demo:drift-tires': { identifier: 'demo:drift-tires', version: '3.0.1', installedAt: Date.now() - 86400000 * 7, installedFiles: ['mods/repo/drift_tires.zip'], source: 'community', autoInstalled: false },
+  'demo:pikes-peak': { identifier: 'demo:pikes-peak', version: '2.1.0', installedAt: Date.now() - 86400000 * 14, installedFiles: ['mods/repo/pike_peak_map.zip'], source: 'official', autoInstalled: false }
+}
+
 export const DEMO_NEWS = [
   {
     id: 'steam-1',

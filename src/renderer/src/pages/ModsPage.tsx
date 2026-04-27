@@ -945,7 +945,10 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
 
             {/* Detail panel */}
             {selectedMod && (
-              <div className="w-[340px] shrink-0 border-l border-[var(--color-border)] overflow-y-auto p-5 space-y-4">
+              <div
+                className="shrink-0 border-l border-[var(--color-border)] overflow-y-auto space-y-4"
+                style={{ width: 340, padding: 12 }}
+              >
                 <div>
                   <h2 className="text-base font-semibold text-[var(--color-text-primary)]">
                     {selectedRegistryEntry?.metadata.name || selectedMod.title || selectedMod.fileName}
@@ -988,12 +991,12 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                 )}
 
                 <div className="space-y-2 text-xs">
-                  <div className="flex justify-between">
-                    <span className="text-[var(--color-text-muted)]">{t('common.file')}</span>
-                    <span className="text-[var(--color-text-secondary)] truncate ml-4 max-w-[180px]">{selectedMod.fileName}</span>
+                  <div className="flex justify-between gap-3 min-w-0">
+                    <span className="text-[var(--color-text-muted)] shrink-0">{t('common.file')}</span>
+                    <span className="text-[var(--color-text-secondary)] truncate text-right min-w-0" title={selectedMod.fileName}>{selectedMod.fileName}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-[var(--color-text-muted)]">{t('common.type')}</span>
+                  <div className="flex justify-between gap-3 min-w-0">
+                    <span className="text-[var(--color-text-muted)] shrink-0">{t('common.type')}</span>
                     {(selectedMod.modType === 'unknown' || selectedMod.modType === 'other') && !selectedRegistryEntry?.metadata.mod_type ? (
                       <select
                         value={selectedMod.modType}
@@ -1019,14 +1022,14 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                       </span>
                     )}
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-[var(--color-text-muted)]">{t('common.size')}</span>
-                    <span className="text-[var(--color-text-secondary)]">{formatBytes(selectedMod.sizeBytes)}</span>
+                  <div className="flex justify-between gap-3 min-w-0">
+                    <span className="text-[var(--color-text-muted)] shrink-0">{t('common.size')}</span>
+                    <span className="text-[var(--color-text-secondary)] truncate text-right min-w-0">{formatBytes(selectedMod.sizeBytes)}</span>
                   </div>
                   {(selectedRegistryEntry?.metadata.author || selectedMod.author) && (
-                    <div className="flex justify-between">
-                      <span className="text-[var(--color-text-muted)]">{t('common.author')}</span>
-                      <span className="text-[var(--color-text-secondary)]">
+                    <div className="flex justify-between gap-3 min-w-0">
+                      <span className="text-[var(--color-text-muted)] shrink-0">{t('common.author')}</span>
+                      <span className="text-[var(--color-text-secondary)] truncate text-right min-w-0">
                         {Array.isArray(selectedRegistryEntry?.metadata.author)
                           ? selectedRegistryEntry!.metadata.author.join(', ')
                           : selectedRegistryEntry?.metadata.author || selectedMod.author}
@@ -1034,17 +1037,17 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                     </div>
                   )}
                   {(selectedRegistryEntry?.metadata.version || selectedMod.version) && (
-                    <div className="flex justify-between">
-                      <span className="text-[var(--color-text-muted)]">{t('common.version')}</span>
-                      <span className="text-[var(--color-text-secondary)]">
+                    <div className="flex justify-between gap-3 min-w-0">
+                      <span className="text-[var(--color-text-muted)] shrink-0">{t('common.version')}</span>
+                      <span className="text-[var(--color-text-secondary)] truncate text-right min-w-0">
                         {selectedRegistryEntry?.metadata.version || selectedMod.version}
                       </span>
                     </div>
                   )}
                   {selectedRegistryEntry?.metadata.license && (
-                    <div className="flex justify-between">
-                      <span className="text-[var(--color-text-muted)]">{t('common.license')}</span>
-                      <span className="text-[var(--color-text-secondary)]">
+                    <div className="flex justify-between gap-3 min-w-0">
+                      <span className="text-[var(--color-text-muted)] shrink-0">{t('common.license')}</span>
+                      <span className="text-[var(--color-text-secondary)] truncate text-right min-w-0">
                         {Array.isArray(selectedRegistryEntry.metadata.license)
                           ? selectedRegistryEntry.metadata.license.join(', ')
                           : selectedRegistryEntry.metadata.license}
@@ -1052,9 +1055,9 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                     </div>
                   )}
                   {selectedRegistryEntry?.metadata.release_status && (
-                    <div className="flex justify-between">
-                      <span className="text-[var(--color-text-muted)]">{t('mods.release')}</span>
-                      <span className={`capitalize ${
+                    <div className="flex justify-between gap-3 min-w-0">
+                      <span className="text-[var(--color-text-muted)] shrink-0">{t('mods.release')}</span>
+                      <span className={`capitalize truncate text-right min-w-0 ${
                         selectedRegistryEntry.metadata.release_status === 'stable'
                           ? 'text-emerald-400'
                           : selectedRegistryEntry.metadata.release_status === 'testing'
@@ -1066,40 +1069,40 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                     </div>
                   )}
                   {selectedRegistryEntry?.metadata.release_date && (
-                    <div className="flex justify-between">
-                      <span className="text-[var(--color-text-muted)]">{t('mods.released')}</span>
-                      <span className="text-[var(--color-text-secondary)]">
+                    <div className="flex justify-between gap-3 min-w-0">
+                      <span className="text-[var(--color-text-muted)] shrink-0">{t('mods.released')}</span>
+                      <span className="text-[var(--color-text-secondary)] truncate text-right min-w-0">
                         {new Date(selectedRegistryEntry.metadata.release_date).toLocaleDateString()}
                       </span>
                     </div>
                   )}
                   {selectedRegistryEntry && (
-                    <div className="flex justify-between">
-                      <span className="text-[var(--color-text-muted)]">{t('common.source')}</span>
-                      <span className="text-[var(--color-text-secondary)] capitalize">{selectedRegistryEntry.install_source}</span>
+                    <div className="flex justify-between gap-3 min-w-0">
+                      <span className="text-[var(--color-text-muted)] shrink-0">{t('common.source')}</span>
+                      <span className="text-[var(--color-text-secondary)] capitalize truncate text-right min-w-0">{selectedRegistryEntry.install_source}</span>
                     </div>
                   )}
                   {selectedRegistryEntry && (
-                    <div className="flex justify-between">
-                      <span className="text-[var(--color-text-muted)]">{t('mods.installed')}</span>
-                      <span className="text-[var(--color-text-secondary)]">
+                    <div className="flex justify-between gap-3 min-w-0">
+                      <span className="text-[var(--color-text-muted)] shrink-0">{t('mods.installed')}</span>
+                      <span className="text-[var(--color-text-secondary)] truncate text-right min-w-0">
                         {new Date(selectedRegistryEntry.install_time).toLocaleDateString()}
                       </span>
                     </div>
                   )}
-                  <div className="flex justify-between">
-                    <span className="text-[var(--color-text-muted)]">{t('mods.location')}</span>
-                    <span className="text-[var(--color-text-secondary)]">{selectedMod.location}</span>
+                  <div className="flex justify-between gap-3 min-w-0">
+                    <span className="text-[var(--color-text-muted)] shrink-0">{t('mods.location')}</span>
+                    <span className="text-[var(--color-text-secondary)] truncate text-right min-w-0" title={selectedMod.location}>{selectedMod.location}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-[var(--color-text-muted)]">{t('common.status')}</span>
-                    <span className={selectedMod.enabled ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)]'}>
+                  <div className="flex justify-between gap-3 min-w-0">
+                    <span className="text-[var(--color-text-muted)] shrink-0">{t('common.status')}</span>
+                    <span className={`truncate text-right min-w-0 ${selectedMod.enabled ? 'text-[var(--color-accent)]' : 'text-[var(--color-text-muted)]'}`}>
                       {selectedMod.enabled ? t('common.enabled') : t('common.disabled')}
                     </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-[var(--color-text-muted)]">{t('mods.modified')}</span>
-                    <span className="text-[var(--color-text-secondary)]">
+                  <div className="flex justify-between gap-3 min-w-0">
+                    <span className="text-[var(--color-text-muted)] shrink-0">{t('mods.modified')}</span>
+                    <span className="text-[var(--color-text-secondary)] truncate text-right min-w-0">
                       {new Date(selectedMod.modifiedDate).toLocaleDateString()}
                     </span>
                   </div>
@@ -1677,7 +1680,10 @@ function BrowseModsView(): React.JSX.Element {
 
               {/* Detail panel */}
               {selectedMod && (
-                <div className="w-[320px] shrink-0 border-l border-[var(--color-border)] overflow-y-auto p-5 space-y-4">
+                <div
+                  className="shrink-0 border-l border-[var(--color-border)] overflow-y-auto space-y-4"
+                  style={{ width: 320, padding: 12 }}
+                >
                   {/* Thumbnail */}
                   {thumbCache.get(selectedMod.thumbnailUrl) && (
                     <div className="aspect-video bg-[var(--color-scrim-30)] overflow-hidden">
@@ -2163,7 +2169,10 @@ function RegistryDetailPanel({
   const { t } = useTranslation()
 
   return (
-    <div className="w-[340px] shrink-0 border-l border-[var(--color-border)] overflow-y-auto p-5 space-y-4">
+    <div
+      className="shrink-0 border-l border-[var(--color-border)] overflow-y-auto space-y-4"
+      style={{ width: 340, padding: 12 }}
+    >
       <div>
         <div className="flex items-center gap-1.5">
           <h2 className="text-base font-semibold text-[var(--color-text-primary)]">{latest.name}</h2>
@@ -2177,14 +2186,14 @@ function RegistryDetailPanel({
       )}
 
       <div className="space-y-2 text-xs">
-        <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">{t('mods.identifier')}</span><span className="text-[var(--color-text-secondary)] font-mono text-[11px]">{mod.identifier}</span></div>
-        <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">{t('common.version')}</span><span className="text-[var(--color-text-secondary)]">{latest.version}</span></div>
-        <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">{t('common.author')}</span><span className="text-[var(--color-text-secondary)] truncate ml-4 max-w-[180px]">{authors}</span></div>
-        {latest.mod_type && <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">{t('common.type')}</span><span className="text-[var(--color-text-secondary)]">{latest.mod_type}</span></div>}
-        {latest.license && <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">{t('common.license')}</span><span className="text-[var(--color-text-secondary)]">{Array.isArray(latest.license) ? latest.license.join(', ') : latest.license}</span></div>}
-        {latest.release_date && <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">{t('mods.released')}</span><span className="text-[var(--color-text-secondary)]">{latest.release_date}</span></div>}
-        {latest.release_status && <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">{t('common.status')}</span><span className="text-[var(--color-text-secondary)]">{latest.release_status}</span></div>}
-        {latest.beamng_version && <div className="flex justify-between"><span className="text-[var(--color-text-muted)]">{t('mods.gameVer')}</span><span className="text-[var(--color-text-secondary)]">{latest.beamng_version}</span></div>}
+        <div className="flex justify-between gap-3 min-w-0"><span className="text-[var(--color-text-muted)] shrink-0">{t('mods.identifier')}</span><span className="text-[var(--color-text-secondary)] font-mono text-[11px] truncate text-right min-w-0" title={mod.identifier}>{mod.identifier}</span></div>
+        <div className="flex justify-between gap-3 min-w-0"><span className="text-[var(--color-text-muted)] shrink-0">{t('common.version')}</span><span className="text-[var(--color-text-secondary)] truncate text-right min-w-0">{latest.version}</span></div>
+        <div className="flex justify-between gap-3 min-w-0"><span className="text-[var(--color-text-muted)] shrink-0">{t('common.author')}</span><span className="text-[var(--color-text-secondary)] truncate text-right min-w-0" title={authors}>{authors}</span></div>
+        {latest.mod_type && <div className="flex justify-between gap-3 min-w-0"><span className="text-[var(--color-text-muted)] shrink-0">{t('common.type')}</span><span className="text-[var(--color-text-secondary)] truncate text-right min-w-0">{latest.mod_type}</span></div>}
+        {latest.license && <div className="flex justify-between gap-3 min-w-0"><span className="text-[var(--color-text-muted)] shrink-0">{t('common.license')}</span><span className="text-[var(--color-text-secondary)] truncate text-right min-w-0">{Array.isArray(latest.license) ? latest.license.join(', ') : latest.license}</span></div>}
+        {latest.release_date && <div className="flex justify-between gap-3 min-w-0"><span className="text-[var(--color-text-muted)] shrink-0">{t('mods.released')}</span><span className="text-[var(--color-text-secondary)] truncate text-right min-w-0">{latest.release_date}</span></div>}
+        {latest.release_status && <div className="flex justify-between gap-3 min-w-0"><span className="text-[var(--color-text-muted)] shrink-0">{t('common.status')}</span><span className="text-[var(--color-text-secondary)] truncate text-right min-w-0">{latest.release_status}</span></div>}
+        {latest.beamng_version && <div className="flex justify-between gap-3 min-w-0"><span className="text-[var(--color-text-muted)] shrink-0">{t('mods.gameVer')}</span><span className="text-[var(--color-text-secondary)] truncate text-right min-w-0">{latest.beamng_version}</span></div>}
         {latest.multiplayer_scope && latest.multiplayer_scope !== 'client' && (
           <div className="flex justify-between">
             <span className="text-[var(--color-text-muted)]">{t('mods.scope')}</span>

@@ -7,6 +7,46 @@ import { useMemo } from 'react'
  * Style codes: ^l (bold), ^o (italic), ^n (underline), ^m (strikethrough), ^r (reset)
  */
 
+// Matches discord.gg/xxxx, discord.com/invite/xxxx, http(s):// URLs.
+// Unicode-safe: stops at whitespace and common punctuation that wouldn't appear in URLs.
+const URL_REGEX = /(https?:\/\/[^\s<>"'`]+|(?:www\.)?discord\.(?:gg|com\/invite)\/[A-Za-z0-9-]+)/gi
+
+function normalizeUrl(raw: string): string {
+  if (/^https?:\/\//i.test(raw)) return raw
+  return `https://${raw}`
+}
+
+function renderTextWithLinks(text: string, baseKey: string): React.ReactNode[] {
+  const out: React.ReactNode[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+  URL_REGEX.lastIndex = 0
+  let i = 0
+  while ((match = URL_REGEX.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      out.push(text.slice(lastIndex, match.index))
+    }
+    const url = match[0]
+    out.push(
+      <a
+        key={`${baseKey}-link-${i++}`}
+        href={normalizeUrl(url)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-[var(--color-accent-text)] underline hover:opacity-80"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {url}
+      </a>
+    )
+    lastIndex = match.index + url.length
+  }
+  if (lastIndex < text.length) {
+    out.push(text.slice(lastIndex))
+  }
+  return out
+}
+
 const COLOR_MAP: Record<string, string> = {
   '0': '#000000', // Black
   '1': '#0000AA', // Dark Blue
@@ -87,14 +127,16 @@ function parseBeamMP(raw: string): StyledSegment[] {
 interface BeamMPTextProps {
   text: string
   className?: string
+  /** When true, http(s):// and discord.gg/.. URLs are rendered as clickable links. */
+  linkify?: boolean
 }
 
-export function BeamMPText({ text, className }: BeamMPTextProps): React.JSX.Element {
+export function BeamMPText({ text, className, linkify = false }: BeamMPTextProps): React.JSX.Element {
   const segments = useMemo(() => parseBeamMP(text), [text])
 
-  // If no formatting codes found, render plain
+  // If no formatting codes found, render plain (optionally linkifying URLs)
   if (segments.length === 1 && !segments[0].color && !segments[0].bold && !segments[0].italic && !segments[0].underline && !segments[0].strikethrough) {
-    return <span className={className}>{text}</span>
+    return <span className={className}>{linkify ? renderTextWithLinks(text, 'plain') : text}</span>
   }
 
   return (
@@ -111,7 +153,7 @@ export function BeamMPText({ text, className }: BeamMPTextProps): React.JSX.Elem
 
         return (
           <span key={i} style={style}>
-            {seg.text}
+            {linkify ? renderTextWithLinks(seg.text, `seg-${i}`) : seg.text}
           </span>
         )
       })}

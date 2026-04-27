@@ -1,6 +1,6 @@
 {
   "name": "beamng-content-manager",
-  "version": "0.3.77",
+  "version": "0.3.78",
   "description": "A comprehensive content manager for BeamNG.drive and BeamMP — manage mods, vehicles, maps, servers, and more from a single desktop app.",
   "main": "./out/main/index.js",
   "author": "Justmusa",

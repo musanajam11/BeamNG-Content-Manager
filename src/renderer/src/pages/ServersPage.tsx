@@ -455,7 +455,10 @@ export function ServersPage(): React.JSX.Element {
               <ModSyncOverlay />
             </div>
             {selectedServer && (
-              <div className="w-[400px] shrink-0">
+              <div
+                className="shrink-0 border-l border-[var(--color-border)] overflow-hidden"
+                style={{ width: 400 }}
+              >
                 <ServerDetailPanel
                   server={selectedServer}
                   favorite={favorites.has(`${selectedServer.ip}:${selectedServer.port}`)}

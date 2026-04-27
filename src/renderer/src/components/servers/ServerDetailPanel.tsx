@@ -28,7 +28,10 @@ interface Props {
 
 function StatPill({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }): React.JSX.Element {
   return (
-    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
+    <div
+      className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
+      style={{ paddingLeft: 14, paddingRight: 14, paddingTop: 4, paddingBottom: 4 }}
+    >
       <div className="mb-0.5 flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
         {icon}
         <span>{label}</span>
@@ -143,7 +146,10 @@ export function ServerDetailPanel({
       </div>
 
       {/* Header */}
-      <div className="border-b border-[var(--color-border)] px-5 py-4">
+      <div
+        className="border-b border-[var(--color-border)]"
+        style={{ padding: 12 }}
+      >
         <div className="mb-2 flex items-center gap-2.5">
           {flagUrl ? (
             <img
@@ -154,7 +160,7 @@ export function ServerDetailPanel({
           ) : (
             <span className="text-lg">{countryFlag(server.location)}</span>
           )}
-          <BeamMPText text={server.sname} className="text-sm font-bold tracking-tight text-[var(--color-text-primary)] line-clamp-2 leading-snug flex-1" />
+          <BeamMPText text={server.sname} linkify className="text-sm font-bold tracking-tight text-[var(--color-text-primary)] line-clamp-2 leading-snug flex-1" />
         </div>
         {userLabel && (
           <div className="mt-1 flex items-center gap-1.5 text-[11px] text-[var(--color-text-secondary)]">
@@ -173,8 +179,8 @@ export function ServerDetailPanel({
 
         {/* Description */}
         {server.sdesc && (
-          <div className="mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-scrim-20)] p-3 text-xs leading-relaxed text-[var(--color-text-secondary)]">
-            <BeamMPText text={server.sdesc} />
+          <div className="mt-3 p-3 text-xs leading-relaxed text-[var(--color-text-secondary)]">
+            <BeamMPText text={server.sdesc} linkify />
           </div>
         )}
 
@@ -268,23 +274,35 @@ export function ServerDetailPanel({
       </div>
 
       {/* Scrollable sections */}
-      <div className="flex-1 space-y-3 overflow-y-auto px-5 py-5">
+      <div
+        className="flex-1 space-y-3 overflow-y-auto"
+        style={{ padding: 12 }}
+      >
         {/* Connection */}
-        <section className="rounded-lg border border-[var(--color-border)] bg-[var(--color-scrim-20)] p-3.5">
+        <section className="p-3.5">
           <div className="mb-2.5 text-xs font-semibold text-[var(--color-text-primary)]">{t('servers.connection')}</div>
           <div className="space-y-1.5 text-xs">
-            <div className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
+            <div
+              className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
+              style={{ paddingLeft: 14, paddingRight: 14, paddingTop: 4, paddingBottom: 4 }}
+            >
               <span className="text-[var(--color-text-secondary)] shrink-0">{t('servers.address')}</span>
               <span className="font-mono text-[var(--color-text-primary)] text-[11px] truncate ml-2">{server.ip}:{server.port}</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
+              <div
+                className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
+                style={{ paddingLeft: 14, paddingRight: 14, paddingTop: 4, paddingBottom: 4 }}
+              >
                 <div className="mb-0.5 flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
                   <Wifi size={10} /> {t('servers.access')}
                 </div>
                 <div className="text-xs font-medium text-[var(--color-text-primary)]">{server.password ? t('servers.restricted') : t('servers.openJoin')}</div>
               </div>
-              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
+              <div
+                className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
+                style={{ paddingLeft: 14, paddingRight: 14, paddingTop: 4, paddingBottom: 4 }}
+              >
                 <div className="mb-0.5 text-[10px] uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
                   {t('servers.version')}
                 </div>
@@ -295,7 +313,7 @@ export function ServerDetailPanel({
         </section>
 
         {/* Population */}
-        <section className="rounded-lg border border-[var(--color-border)] bg-[var(--color-scrim-20)] p-3.5">
+        <section className="p-3.5">
           <div className="mb-2 flex items-center justify-between">
             <div className="text-xs font-semibold text-[var(--color-text-primary)]">{t('servers.population')}</div>
             <div className="text-xs text-[var(--color-text-secondary)]">{t('servers.percentFull', { percent: Math.round(fillPct) })}</div>
@@ -317,7 +335,7 @@ export function ServerDetailPanel({
 
         {/* Online players */}
         {server.playerslist && (
-          <section className="rounded-lg border border-[var(--color-border)] bg-[var(--color-scrim-20)] p-3.5">
+          <section className="p-3.5">
             <div className="mb-2.5 text-xs font-semibold text-[var(--color-text-primary)]">{t('servers.onlinePlayers')}</div>
             <div className="flex flex-wrap gap-1.5">
               {server.playerslist.split(';').filter(Boolean).map((name) => (
@@ -331,7 +349,7 @@ export function ServerDetailPanel({
 
         {/* Mods */}
         {server.modlist && (
-          <section className="rounded-lg border border-[var(--color-border)] bg-[var(--color-scrim-20)] p-3.5">
+          <section className="p-3.5">
             <div className="mb-2.5 flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text-primary)]">
                 <Package size={13} />
@@ -354,7 +372,7 @@ export function ServerDetailPanel({
         )}
 
         {/* Extra info */}
-        <section className="rounded-lg border border-[var(--color-border)] bg-[var(--color-scrim-20)] p-3.5">
+        <section className="p-3.5">
           <div className="mb-2.5 text-xs font-semibold text-[var(--color-text-primary)]">{t('servers.details')}</div>
           <div className="space-y-1.5 text-xs">
             <div className="flex justify-between gap-2">

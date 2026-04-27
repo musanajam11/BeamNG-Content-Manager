@@ -348,7 +348,7 @@ function App(): React.JSX.Element {
         <Titlebar />
         <div className="flex flex-1 min-h-0">
           <Sidebar />
-          <main className="flex-1 min-w-0 overflow-clip p-6 pl-8">
+          <main className="flex-1 min-w-0 overflow-clip">
             <ErrorBoundary>
               <PageRouter />
             </ErrorBoundary>
