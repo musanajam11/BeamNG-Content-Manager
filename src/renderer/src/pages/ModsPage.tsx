@@ -1828,6 +1828,8 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
   const [installed, setInstalled] = useState<Record<string, InstalledRegistryMod>>({})
   const [indexUpdating, setIndexUpdating] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState<{ received: number; total: number } | null>(null)
+  const [uninstalling, setUninstalling] = useState<string | null>(null)
+  const { dialog: confirmDialogEl, confirm } = useConfirmDialog()
   // External thumbnail URLs from registry metadata are blocked by CSP if loaded
   // directly. Proxy through the main process which returns base64 data URLs.
   const thumbCache = useBoundedCache<string>(120)
@@ -1947,6 +1949,49 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
       if (!result.success) setInstallError(result.error || t('mods.installFailed'))
       await fetchInstalled(); await fetchUpdates()
     } catch (err) { setInstallError(String(err)) } finally { setInstalling(null); setDownloadProgress(null) }
+  }
+
+  const handleUninstall = async (identifier: string): Promise<void> => {
+    const entry = installed[identifier]
+    if (!entry) return
+    const name = entry.metadata?.name || identifier
+
+    // Warn if other installed mods depend on this one
+    let depBlock = ''
+    try {
+      const reverseDeps = await window.api.registryCheckReverseDeps([identifier])
+      if (reverseDeps.length > 0) depBlock = `\n\n${t('mods.dependsOn')}\n${reverseDeps.join(', ')}`
+    } catch { /* registry may not track — proceed */ }
+
+    const ok = await confirm({
+      title: t('mods.deleteMod'),
+      message: `${name}${depBlock}`,
+      confirmLabel: depBlock ? t('mods.deleteAnyway') : t('common.delete'),
+      variant: depBlock ? 'warning' : 'danger'
+    })
+    if (!ok) return
+
+    setUninstalling(identifier)
+    try {
+      // installed_files holds paths like "mods/Repo/foo.zip" relative to userDir.
+      // The mods:delete handler matches by registry id OR by basename, so we
+      // pass the registry identifier directly to trigger registry cleanup
+      // alongside file removal.
+      await window.api.deleteMod(identifier)
+      // Also remove any lingering files by basename in case the identifier
+      // didn't match a tracked mod entry (registry-only ghost entries).
+      for (const f of entry.installed_files ?? []) {
+        const fname = f.replace(/\\/g, '/').split('/').pop() ?? ''
+        const key = fname.replace(/\.zip$/i, '')
+        if (key && key !== identifier) {
+          try { await window.api.deleteMod(key) } catch { /* best effort */ }
+        }
+      }
+      await fetchInstalled(); await fetchUpdates()
+      if (selectedMod?.identifier === identifier) setSelectedMod(null)
+    } finally {
+      setUninstalling(null)
+    }
   }
 
   return (
@@ -2074,7 +2119,7 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
                 })}
               </div>
             </div>
-            {selectedMod && <RegistryDetailPanel mod={selectedMod} installed={installed} installing={installing} onInstall={handleInstallClick} thumbDataUrl={selectedMod.versions[0]?.thumbnail ? thumbCache.get(selectedMod.versions[0].thumbnail) : undefined} />}
+            {selectedMod && <RegistryDetailPanel mod={selectedMod} installed={installed} installing={installing} uninstalling={uninstalling} onInstall={handleInstallClick} onUninstall={handleUninstall} thumbDataUrl={selectedMod.versions[0]?.thumbnail ? thumbCache.get(selectedMod.versions[0].thumbnail) : undefined} />}
           </>
         )}
       </div>
@@ -2092,6 +2137,7 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
           </button>
         </div>
       )}
+      {confirmDialogEl}
     </>
   )
 }
@@ -2099,17 +2145,20 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
 /* ── Registry Detail Panel ── */
 
 function RegistryDetailPanel({
-  mod, installed, installing, onInstall, thumbDataUrl
+  mod, installed, installing, uninstalling, onInstall, onUninstall, thumbDataUrl
 }: {
   mod: AvailableMod
   installed: Record<string, InstalledRegistryMod>
   installing: string | null
+  uninstalling: string | null
   onInstall: (id: string) => void
+  onUninstall: (id: string) => void
   thumbDataUrl?: string
 }): React.JSX.Element {
   const latest = mod.versions[0]!
   const authors = Array.isArray(latest.author) ? latest.author.join(', ') : latest.author
   const isInst = mod.identifier in installed
+  const isUninstalling = uninstalling === mod.identifier
   const deps = latest.depends ?? []
   const { t } = useTranslation()
 
@@ -2200,20 +2249,32 @@ function RegistryDetailPanel({
 
       <div className="pt-2">
         <button
-          onClick={() => onInstall(mod.identifier)}
-          disabled={installing === mod.identifier || isInst}
-          className={`w-full inline-flex items-center justify-center gap-1.5 border px-3 py-2.5 text-xs font-medium transition ${
-            isInst
-              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 cursor-default'
-              : installing === mod.identifier
-                ? 'border-[var(--color-border-accent)] bg-[var(--color-accent-10)] text-[var(--color-accent-text)]/60 cursor-wait'
-                : 'border-[var(--color-border-accent)] bg-[var(--color-accent-10)] text-[var(--color-accent-text)] hover:bg-[var(--color-accent-20)]'
+          onClick={() => {
+            if (isInst) onUninstall(mod.identifier)
+            else onInstall(mod.identifier)
+          }}
+          disabled={installing === mod.identifier || isUninstalling}
+          className={`group w-full inline-flex items-center justify-center gap-1.5 border px-3 py-2.5 text-xs font-medium transition ${
+            isUninstalling
+              ? 'border-red-500/30 bg-red-500/10 text-red-300 cursor-wait'
+              : isInst
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-300'
+                : installing === mod.identifier
+                  ? 'border-[var(--color-border-accent)] bg-[var(--color-accent-10)] text-[var(--color-accent-text)]/60 cursor-wait'
+                  : 'border-[var(--color-border-accent)] bg-[var(--color-accent-10)] text-[var(--color-accent-text)] hover:bg-[var(--color-accent-20)]'
           }`}
         >
-          {installing === mod.identifier ? (
+          {isUninstalling ? (
+            <><Loader2 size={13} className="animate-spin" /> {t('common.delete')}</>
+          ) : installing === mod.identifier ? (
             <><Loader2 size={13} className="animate-spin" /> {t('mods.installing')}</>
           ) : isInst ? (
-            <><CheckCircle size={13} /> {t('mods.installed')}</>
+            <>
+              <CheckCircle size={13} className="group-hover:hidden" />
+              <Trash2 size={13} className="hidden group-hover:inline" />
+              <span className="group-hover:hidden">{t('mods.installed')}</span>
+              <span className="hidden group-hover:inline">{t('common.delete')}</span>
+            </>
           ) : (
             <><Download size={13} /> {t('common.install')}</>
           )}
