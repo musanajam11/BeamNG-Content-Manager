@@ -135,15 +135,55 @@ export function HomePage(): React.JSX.Element {
   }, [favoriteServers.length, recentServers.length])
 
   useEffect(() => {
-    for (const mod of recentMods) {
-      if (mod.filePath && !modPreviews.has(mod.key)) {
-        window.api.getModPreview(mod.filePath).then((result) => {
-          if (result.success && result.data) {
+    if (recentMods.length === 0) return
+    let cancelled = false
+    const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+    void (async () => {
+      // Pull registry once per recentMods change so we can resolve thumbnail
+      // URLs for registry-tracked mods (e.g. GTA Radio) whose .zip lacks an
+      // in-archive preview image. Falls back to in-zip preview otherwise.
+      let installed: Record<string, { metadata: { thumbnail?: string }; installed_files: string[] }> = {}
+      try {
+        installed = await window.api.registryGetInstalled() as typeof installed
+      } catch { /* registry optional */ }
+
+      const findRegistryThumb = (mod: ModInfo): string | undefined => {
+        const wantKey = norm(mod.key)
+        const wantBase = norm(mod.fileName.replace(/\.zip$/i, ''))
+        const wantFile = mod.fileName.toLowerCase()
+        for (const [identifier, entry] of Object.entries(installed)) {
+          const id = norm(identifier)
+          if (id === wantKey || id === wantBase) return entry.metadata.thumbnail
+          if (entry.installed_files?.some((f) => {
+            const fname = (f.replace(/\\/g, '/').split('/').pop() || f).toLowerCase()
+            return fname === wantFile
+          })) return entry.metadata.thumbnail
+        }
+        return undefined
+      }
+
+      for (const mod of recentMods) {
+        if (cancelled) return
+        if (!mod.filePath || modPreviews.has(mod.key)) continue
+        // Prefer registry thumbnail when available (cheap, network cached).
+        const regThumb = findRegistryThumb(mod)
+        if (regThumb) {
+          try {
+            const proxied = await window.api.getRepoThumbnails([regThumb])
+            const dataUrl = proxied[regThumb]
+            if (dataUrl && !cancelled) { modPreviews.set(mod.key, dataUrl); continue }
+          } catch { /* fall through to in-zip preview */ }
+        }
+        // Fallback: try the in-zip preview image.
+        try {
+          const result = await window.api.getModPreview(mod.filePath)
+          if (result.success && result.data && !cancelled) {
             modPreviews.set(mod.key, result.data as string)
           }
-        })
+        } catch { /* missing preview is fine */ }
       }
-    }
+    })()
+    return () => { cancelled = true }
   }, [recentMods])
 
   const handleVanillaLaunch = async (): Promise<void> => {

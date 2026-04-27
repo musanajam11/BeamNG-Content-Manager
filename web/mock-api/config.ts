@@ -25,6 +25,14 @@ export const configMocks = {
   deleteDefaultBackground: async (): Promise<boolean> => false,
   loadBackgroundThumb: async (): Promise<string | null> => null,
 
+  // Auto-updater (no-ops in web demo)
+  onUpdateAvailable: (_cb: (info: { version: string }) => void): (() => void) => () => {},
+  onUpdateDownloadProgress: (_cb: (progress: { percent: number }) => void): (() => void) => () => {},
+  onUpdateDownloaded: (_cb: (info: { version: string }) => void): (() => void) => () => {},
+  checkForUpdates: async (): Promise<void> => {},
+  installUpdate: async (): Promise<void> => {},
+  quitAndInstall: async (): Promise<void> => {},
+
   // Versions
   getVersions: async () => ({
     appVersion: '0.3.0-demo',

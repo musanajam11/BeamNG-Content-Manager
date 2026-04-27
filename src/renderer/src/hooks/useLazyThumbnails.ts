@@ -31,6 +31,8 @@ export interface ThumbnailLoader {
    * the count drops to zero.
    */
   subscribe: (url: string | null | undefined) => () => void
+  /** Returns true once a fetch attempt for `url` has completed (with or without data). */
+  attempted: (url: string | null | undefined) => boolean
   /** Bumped whenever new thumbnails arrive. Use as a render dependency only. */
   version: number
 }
@@ -42,6 +44,9 @@ export function useLazyThumbnails(
   const cacheRef = useRef<Map<string, string>>(new Map())
   const inFlightRef = useRef<Set<string>>(new Set())
   const pendingRef = useRef<Set<string>>(new Set())
+  // Set of urls that were fetched but produced no data — short-circuits the
+  // spinner UI so consumers can show a fallback icon.
+  const attemptedRef = useRef<Set<string>>(new Set())
   // Ref-count of mounted subscribers per url. A url with refs > 0 is pinned
   // and won't be evicted even if it is the LRU candidate.
   const refsRef = useRef<Map<string, number>>(new Map())
@@ -96,6 +101,12 @@ export function useLazyThumbnails(
           if (data) {
             if (cache.has(u)) cache.delete(u)
             cache.set(u, data)
+          } else {
+            // Negative-cache sentinel: prevents infinite spinners on rows
+            // whose source has no preview (e.g. a .zip without a preview.png
+            // and no registry thumbnail). Consumers treat empty string as
+            // "tried, nothing to render".
+            attemptedRef.current.add(u)
           }
         }
         trim()
@@ -107,7 +118,11 @@ export function useLazyThumbnails(
         }
       })
       .catch(() => {
-        for (const u of urls) inFlightRef.current.delete(u)
+        for (const u of urls) {
+          inFlightRef.current.delete(u)
+          attemptedRef.current.add(u)
+        }
+        setVersion((v) => v + 1)
         if (pendingRef.current.size > 0 && timerRef.current == null) {
           timerRef.current = window.setTimeout(flush, BATCH_DELAY_MS)
         }
@@ -118,6 +133,7 @@ export function useLazyThumbnails(
     (url: string | null | undefined): void => {
       if (!url) return
       if (cacheRef.current.has(url)) return
+      if (attemptedRef.current.has(url)) return
       if (inFlightRef.current.has(url) || pendingRef.current.has(url)) return
       pendingRef.current.add(url)
       if (timerRef.current == null) {
@@ -132,6 +148,11 @@ export function useLazyThumbnails(
     return cacheRef.current.get(url)
   }, [])
 
+  const attempted = useCallback((url: string | null | undefined): boolean => {
+    if (!url) return false
+    return attemptedRef.current.has(url) || cacheRef.current.has(url)
+  }, [])
+
   const subscribe = useCallback((url: string | null | undefined): (() => void) => {
     if (!url) return () => undefined
     const refs = refsRef.current
@@ -143,7 +164,7 @@ export function useLazyThumbnails(
     }
   }, [])
 
-  return { get, request, subscribe, version }
+  return { get, request, subscribe, attempted, version }
 }
 
 /**
@@ -156,7 +177,7 @@ export function useLazyThumb<T extends Element = HTMLDivElement>(
   url: string | null | undefined,
   loader: ThumbnailLoader,
   rootMargin = '300px'
-): { ref: React.MutableRefObject<T | null>; src: string | undefined; visible: boolean } {
+): { ref: React.MutableRefObject<T | null>; src: string | undefined; visible: boolean; attempted: boolean } {
   const ref = useRef<T | null>(null)
   const [visible, setVisible] = useState(false)
 
@@ -198,5 +219,6 @@ export function useLazyThumb<T extends Element = HTMLDivElement>(
   // Read on every render; the loader bumps `version` on arrivals which
   // re-renders the consuming component naturally.
   const src = url ? loader.get(url) : undefined
-  return { ref, src, visible }
+  const attempted = url ? loader.attempted(url) : false
+  return { ref, src, visible, attempted }
 }

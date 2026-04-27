@@ -290,6 +290,8 @@ function SortableModRow({
   conflictCount,
   isOverridden,
   registrySource,
+  thumbLoader,
+  thumbKey,
   onSelect,
   onToggle,
   onDelete,
@@ -302,6 +304,8 @@ function SortableModRow({
   conflictCount: number
   isOverridden: boolean
   registrySource: 'registry' | 'manual' | null
+  thumbLoader: ThumbnailLoader
+  thumbKey: string
   onSelect: (mod: ModInfo) => void
   onToggle: (mod: ModInfo) => void
   onDelete: (mod: ModInfo) => void
@@ -315,6 +319,9 @@ function SortableModRow({
     transition,
     isDragging
   } = useSortable({ id: mod.key })
+
+  // Lazy-load the in-zip preview only when this row scrolls into view.
+  const { ref: thumbRef, src: thumbSrc, visible, attempted: thumbAttempted } = useLazyThumb<HTMLDivElement>(thumbKey, thumbLoader)
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -373,9 +380,27 @@ function SortableModRow({
         />
       </td>
 
-      {/* Mod name + conflict indicator */}
+      {/* Mod name + thumbnail + conflict indicator */}
       <td className="px-4 py-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {/* Lazy thumbnail (in-zip preview) */}
+          <div
+            ref={thumbRef}
+            className="relative w-14 h-10 shrink-0 overflow-hidden bg-[var(--color-scrim-30)] border border-[var(--color-border)]"
+          >
+            {thumbSrc ? (
+              <img
+                src={thumbSrc}
+                alt=""
+                className="w-full h-full object-cover"
+                draggable={false}
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-[var(--color-text-dim)]">
+                {visible && !thumbAttempted ? <Loader2 size={12} className="animate-spin" /> : <Package size={14} strokeWidth={1.5} />}
+              </div>
+            )}
+          </div>
           <div className="min-w-0 flex-1">
             <div className="font-medium text-[var(--color-text-primary)] truncate max-w-[260px]">
               {mod.title || mod.fileName}
@@ -427,10 +452,10 @@ function SortableModRow({
 
       {/* Type */}
       <td className="px-4 py-3">
-        <div className="inline-flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)]">
+        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 border text-[11px] font-medium ${modTypeChipClasses(mod.modType)}`}>
           {modTypeIcon(mod.modType)}
-          {mod.modType || t('mods.otherType')}
-        </div>
+          <span>{modTypeLabel(mod.modType) || t('mods.otherType')}</span>
+        </span>
       </td>
 
       {/* Size */}
@@ -476,6 +501,43 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
   // that can easily be 100-300 KB; without bounding, clicking through hundreds
   // of mods would retain all of them in renderer memory for the session.
   const previewCache = useBoundedCache<string | null>(20)
+  // Per-row lazy thumbnail loader. The "url" key is opaque to the loader:
+  //   • `http(s)://…` → fetched via the repo-thumbnail proxy (registry mods,
+  //     hard-coded BeamMP logo, etc.).
+  //   • Anything else → treated as a local mod filePath and resolved through
+  //     `getModPreview` which extracts an in-zip preview image.
+  // Bounded LRU keeps memory in check for huge mod libraries.
+  const previewFetcher = useCallback(
+    async (keys: string[]): Promise<Record<string, string>> => {
+      const out: Record<string, string> = {}
+      const httpKeys = keys.filter((k) => /^https?:\/\//i.test(k))
+      const fileKeys = keys.filter((k) => !/^https?:\/\//i.test(k))
+      // Batch HTTP thumbnails through the existing repo-thumbnail proxy so
+      // the main process can cache + decode them once.
+      if (httpKeys.length > 0) {
+        try {
+          const result = await window.api.getRepoThumbnails(httpKeys)
+          Object.assign(out, result)
+        } catch {
+          /* ignore: missing thumbnails fall back to icon */
+        }
+      }
+      // Local files use the in-zip preview extractor.
+      await Promise.all(
+        fileKeys.map(async (p) => {
+          try {
+            const r = await window.api.getModPreview(p)
+            if (r.success && r.data) out[p] = r.data
+          } catch {
+            /* ignore: missing preview is fine, fallback icon will render */
+          }
+        })
+      )
+      return out
+    },
+    []
+  )
+  const rowThumbLoader = useLazyThumbnails(previewFetcher, 60)
   const [registryInstalled, setRegistryInstalled] = useState<Record<string, InstalledRegistryMod>>({})
   const [scopeDialogMods, setScopeDialogMods] = useState<ModInfo[]>([])
   const [scopeDialogIndex, setScopeDialogIndex] = useState(0)
@@ -526,6 +588,13 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
       } else {
         setError(result.error || t('mods.failedToLoadMods'))
       }
+      // Refresh registry alongside the mod list so freshly-installed mods
+      // (e.g. GTA Radio just downloaded via the registry browser) get their
+      // thumbnail URL populated without needing a full page remount.
+      try {
+        const installed = await window.api.registryGetInstalled()
+        setRegistryInstalled(installed)
+      } catch { /* registry optional */ }
     } catch (err) {
       setError(String(err))
     } finally {
@@ -555,6 +624,9 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
   // Match a ModInfo to its registry entry by checking installed_files
   const findRegistryEntry = useCallback((mod: ModInfo): InstalledRegistryMod | undefined => {
     const modFile = mod.fileName.toLowerCase()
+    const modBase = modFile.replace(/\.zip$/i, '')
+    const modKey = mod.key.trim().toLowerCase()
+    // Pass 1: exact filename match anywhere in installed_files.
     for (const entry of Object.values(registryInstalled)) {
       if (entry.installed_files.some((f) => {
         const fname = f.replace(/\\/g, '/').split('/').pop() || f
@@ -563,14 +635,51 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
         return entry
       }
     }
-    // Also try matching by mod key as identifier
-    return registryInstalled[mod.key]
+    // Pass 2: identifier matches the mod key directly (mods/repo/<key>.zip).
+    if (registryInstalled[mod.key]) return registryInstalled[mod.key]
+    // Pass 3: identifier ↔ filename slug equivalence (e.g. "gta-radio" vs
+    // "gta_radio.zip"). Normalize both sides by lowercasing and replacing
+    // separator chars so the user gets a thumbnail even when the zip was
+    // renamed during install.
+    const normalize = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+    const wantBase = normalize(modBase)
+    const wantKey = normalize(modKey)
+    for (const [identifier, entry] of Object.entries(registryInstalled)) {
+      const id = normalize(identifier)
+      if (id === wantBase || id === wantKey) return entry
+      // Also check installed_files basenames after normalization.
+      if (entry.installed_files.some((f) => {
+        const fname = f.replace(/\\/g, '/').split('/').pop() || f
+        return normalize(fname.replace(/\.zip$/i, '')) === wantBase
+      })) {
+        return entry
+      }
+    }
+    return undefined
   }, [registryInstalled])
 
   const selectedRegistryEntry = useMemo(() => {
     if (!selectedMod) return undefined
     return findRegistryEntry(selectedMod)
   }, [selectedMod, findRegistryEntry])
+
+  // Resolve the best thumbnail source for a row. Priority:
+  //   1. Hard-coded BeamMP.zip logo (special-cased so users see branding).
+  //   2. Registry thumbnail URL when this mod is tracked by the registry.
+  //   3. Local file path → in-zip preview.png/jpg via `getModPreview`.
+  const resolveRowThumb = useCallback(
+    (mod: ModInfo): string => {
+      const fileLower = mod.fileName.toLowerCase()
+      const keyLower = mod.key.trim().toLowerCase()
+      if (keyLower === 'beammp' || fileLower === 'beammp.zip') {
+        return 'https://beammp.com/assets/BeamMP_wht-CDWCyUA1.png'
+      }
+      const reg = findRegistryEntry(mod)
+      if (reg?.metadata.thumbnail) return reg.metadata.thumbnail
+      return mod.filePath
+    },
+    [findRegistryEntry]
+  )
 
   const filteredMods = useMemo(() => {
     let result = mods
@@ -1006,6 +1115,8 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                           isBusy={bulkPending || actionPending === mod.key}
                           conflictCount={getModConflictCount(mod.key)}
                           isOverridden={isModOverridden(mod.key)}
+                          thumbLoader={rowThumbLoader}
+                          thumbKey={resolveRowThumb(mod)}
                           registrySource={
                             (() => {
                               const entry = findRegistryEntry(mod)
@@ -1033,9 +1144,12 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                 style={{ width: 340, padding: 12 }}
               >
                 <div>
-                  <h2 className="text-base font-semibold text-[var(--color-text-primary)]">
-                    {selectedRegistryEntry?.metadata.name || selectedMod.title || selectedMod.fileName}
-                  </h2>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <h2 className="text-base font-semibold text-[var(--color-text-primary)]">
+                      {selectedRegistryEntry?.metadata.name || selectedMod.title || selectedMod.fileName}
+                    </h2>
+                    {selectedRegistryEntry?.metadata.x_verified && <VerifiedBadge height={16} />}
+                  </div>
                   {(selectedRegistryEntry?.metadata.abstract || selectedMod.tagLine) && (
                     <p className="text-xs text-[var(--color-text-secondary)] mt-1">
                       {selectedRegistryEntry?.metadata.abstract || selectedMod.tagLine}
@@ -1043,14 +1157,52 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                   )}
                 </div>
 
-                {/* Preview image */}
-                {previewCache.get(selectedMod.filePath) && (
-                  <img
-                    src={previewCache.get(selectedMod.filePath)!}
-                    alt={selectedMod.title || selectedMod.fileName}
-                    className="w-full object-cover border border-[var(--color-border)]"
-                  />
-                )}
+                {/* Hero preview image */}
+                {(() => {
+                  const detailKey = resolveRowThumb(selectedMod)
+                  const hero =
+                    previewCache.get(selectedMod.filePath) ||
+                    rowThumbLoader.get(detailKey)
+                  if (hero) {
+                    return (
+                      <img
+                        src={hero}
+                        alt={selectedMod.title || selectedMod.fileName}
+                        className="w-full object-cover border border-[var(--color-border)]"
+                      />
+                    )
+                  }
+                  return (
+                    <div className="w-full aspect-video flex items-center justify-center bg-[var(--color-scrim-30)] border border-[var(--color-border)] text-[var(--color-text-dim)]">
+                      <Package size={32} strokeWidth={1.2} />
+                    </div>
+                  )
+                })()}
+
+                {/* Type / source chip row (registry-style) */}
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-medium">
+                  <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 border ${modTypeChipClasses(selectedRegistryEntry?.metadata.mod_type || selectedMod.modType)}`}>
+                    {modTypeIcon(selectedRegistryEntry?.metadata.mod_type || selectedMod.modType)}
+                    <span>{modTypeLabel(selectedRegistryEntry?.metadata.mod_type || selectedMod.modType) || t('mods.otherType')}</span>
+                  </span>
+                  {selectedRegistryEntry?.metadata.license && (
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 border border-indigo-400/40 bg-indigo-500/15 text-indigo-200">
+                      <Shield size={11} />
+                      <span>{Array.isArray(selectedRegistryEntry.metadata.license) ? selectedRegistryEntry.metadata.license[0] : selectedRegistryEntry.metadata.license}</span>
+                    </span>
+                  )}
+                  {selectedRegistryEntry?.metadata.release_status && (
+                    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 border ${
+                      selectedRegistryEntry.metadata.release_status === 'stable'
+                        ? 'border-emerald-400/40 bg-emerald-500/15 text-emerald-200'
+                        : selectedRegistryEntry.metadata.release_status === 'testing'
+                          ? 'border-amber-400/40 bg-amber-500/15 text-amber-200'
+                          : 'border-orange-400/40 bg-orange-500/15 text-orange-200'
+                    }`}>
+                      <span className="capitalize">{selectedRegistryEntry.metadata.release_status}</span>
+                    </span>
+                  )}
+                </div>
 
                 {/* Registry tags */}
                 {selectedRegistryEntry?.metadata.tags && selectedRegistryEntry.metadata.tags.length > 0 && (
@@ -1068,7 +1220,7 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
 
                 {/* Description */}
                 {selectedRegistryEntry?.metadata.description && (
-                  <div className="text-xs text-[var(--color-text-secondary)] leading-relaxed border-t border-[var(--color-border)] pt-3">
+                  <div className="text-xs text-[var(--color-text-secondary)] leading-relaxed border-t border-[var(--color-border)] pt-3 whitespace-pre-line">
                     {selectedRegistryEntry.metadata.description}
                   </div>
                 )}
@@ -1078,9 +1230,9 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                     <span className="text-[var(--color-text-muted)] shrink-0">{t('common.file')}</span>
                     <span className="text-[var(--color-text-secondary)] truncate text-right min-w-0" title={selectedMod.fileName}>{selectedMod.fileName}</span>
                   </div>
-                  <div className="flex justify-between gap-3 min-w-0">
-                    <span className="text-[var(--color-text-muted)] shrink-0">{t('common.type')}</span>
-                    {(selectedMod.modType === 'unknown' || selectedMod.modType === 'other') && !selectedRegistryEntry?.metadata.mod_type ? (
+                  {(selectedMod.modType === 'unknown' || selectedMod.modType === 'other') && !selectedRegistryEntry?.metadata.mod_type && (
+                    <div className="flex justify-between gap-3 min-w-0 items-center">
+                      <span className="text-[var(--color-text-muted)] shrink-0">{t('common.type')}</span>
                       <select
                         value={selectedMod.modType}
                         onChange={async (e) => {
@@ -1098,13 +1250,8 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                         <option value="sound">{t('mods.sounds')}</option>
                         <option value="ui_app">{t('mods.uiApps')}</option>
                       </select>
-                    ) : (
-                      <span className="text-[var(--color-text-secondary)] inline-flex items-center gap-1">
-                        {modTypeIcon(selectedMod.modType)}
-                        {selectedRegistryEntry?.metadata.mod_type || selectedMod.modType}
-                      </span>
-                    )}
-                  </div>
+                    </div>
+                  )}
                   <div className="flex justify-between gap-3 min-w-0">
                     <span className="text-[var(--color-text-muted)] shrink-0">{t('common.size')}</span>
                     <span className="text-[var(--color-text-secondary)] truncate text-right min-w-0">{formatBytes(selectedMod.sizeBytes)}</span>
@@ -1124,30 +1271,6 @@ function InstalledModsView({ onModDeleted }: { onModDeleted: () => void }): Reac
                       <span className="text-[var(--color-text-muted)] shrink-0">{t('common.version')}</span>
                       <span className="text-[var(--color-text-secondary)] truncate text-right min-w-0">
                         {selectedRegistryEntry?.metadata.version || selectedMod.version}
-                      </span>
-                    </div>
-                  )}
-                  {selectedRegistryEntry?.metadata.license && (
-                    <div className="flex justify-between gap-3 min-w-0">
-                      <span className="text-[var(--color-text-muted)] shrink-0">{t('common.license')}</span>
-                      <span className="text-[var(--color-text-secondary)] truncate text-right min-w-0">
-                        {Array.isArray(selectedRegistryEntry.metadata.license)
-                          ? selectedRegistryEntry.metadata.license.join(', ')
-                          : selectedRegistryEntry.metadata.license}
-                      </span>
-                    </div>
-                  )}
-                  {selectedRegistryEntry?.metadata.release_status && (
-                    <div className="flex justify-between gap-3 min-w-0">
-                      <span className="text-[var(--color-text-muted)] shrink-0">{t('mods.release')}</span>
-                      <span className={`capitalize truncate text-right min-w-0 ${
-                        selectedRegistryEntry.metadata.release_status === 'stable'
-                          ? 'text-emerald-400'
-                          : selectedRegistryEntry.metadata.release_status === 'testing'
-                            ? 'text-amber-400'
-                            : 'text-orange-400'
-                      }`}>
-                        {selectedRegistryEntry.metadata.release_status}
                       </span>
                     </div>
                   )}

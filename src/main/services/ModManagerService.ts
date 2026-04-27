@@ -663,8 +663,19 @@ export class ModManagerService {
           } catch { /* malformed json */ }
         }
 
-        // Read mod_info/<id>/icon.jpg|png
+        // Read mod_info/<id>/icon.jpg|png — official BeamNG layout
         if (/^mod_info\/[^/]+\/icon\.(jpe?g|png)$/i.test(name) && !result.iconDataUrl) {
+          const ext = name.split('.').pop()?.toLowerCase() || 'jpg'
+          const mime = ext === 'png' ? 'image/png' : 'image/jpeg'
+          result.iconDataUrl = `data:${mime};base64,${data.toString('base64')}`
+        }
+        // Fallback: preview.{jpg,png} at archive root (common for sound /
+        // asset mods like GTA Radio that lack a mod_info folder), or the
+        // older art/preview.{jpg,png} vehicle-mod convention.
+        else if (
+          (/^preview\.(jpe?g|png)$/i.test(name) || /^art\/preview\.(jpe?g|png)$/i.test(name))
+          && !result.iconDataUrl
+        ) {
           const ext = name.split('.').pop()?.toLowerCase() || 'jpg'
           const mime = ext === 'png' ? 'image/png' : 'image/jpeg'
           result.iconDataUrl = `data:${mime};base64,${data.toString('base64')}`
@@ -680,13 +691,29 @@ export class ModManagerService {
     return result
   }
 
-  /** Extract the preview icon from a mod archive as a data: URL */
+  /** Extract the preview icon from a mod archive as a data: URL.
+   *
+   * Tries multiple common locations because BeamNG mod authors are inconsistent:
+   *   1. `mod_info/<id>/icon.{jpg,png}` — official BeamNG layout
+   *   2. `preview.{jpg,png}` at archive root — common for sound/asset mods
+   *      (e.g. GTA Radio) that don't have a `mod_info/` folder at all
+   *   3. `art/preview.{jpg,png}` — older BeamNG vehicle-mod convention
+   */
   async getModPreview(archivePath: string): Promise<string | null> {
-    const result = await readFirstMatchWithName(archivePath, /^mod_info\/[^/]+\/icon\.(jpe?g|png)$/i)
-    if (!result) return null
-    const ext = result.fileName.split('.').pop()?.toLowerCase() || 'jpg'
-    const mime = ext === 'png' ? 'image/png' : 'image/jpeg'
-    return `data:${mime};base64,${result.data.toString('base64')}`
+    const patterns = [
+      /^mod_info\/[^/]+\/icon\.(jpe?g|png)$/i,
+      /^preview\.(jpe?g|png)$/i,
+      /^art\/preview\.(jpe?g|png)$/i
+    ]
+    for (const pattern of patterns) {
+      const result = await readFirstMatchWithName(archivePath, pattern)
+      if (result) {
+        const ext = result.fileName.split('.').pop()?.toLowerCase() || 'jpg'
+        const mime = ext === 'png' ? 'image/png' : 'image/jpeg'
+        return `data:${mime};base64,${result.data.toString('base64')}`
+      }
+    }
+    return null
   }
 
   /** Open the mods folder in the system file explorer */
