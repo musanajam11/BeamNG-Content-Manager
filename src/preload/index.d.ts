@@ -616,6 +616,11 @@ interface AppAPI {
   }>
   dynamicTrafficSaveConfig(serverId: string, config: DynamicTrafficConfig): Promise<{ success: boolean; error?: string }>
 
+  // Generic mod config editor
+  modConfigListDescriptors(): Promise<import('../shared/modConfigDescriptors').ModConfigDescriptor[]>
+  modConfigLoadBundle(serverId: string, descriptorId: string): Promise<import('../shared/modConfigDescriptors').ModConfigBundle | null>
+  modConfigSaveFile(serverId: string, descriptorId: string, relPath: string, content: unknown): Promise<{ success: boolean; error?: string }>
+
   // Career Plugin Browser
   careerListPluginCatalog(): Promise<Array<{
     id: string

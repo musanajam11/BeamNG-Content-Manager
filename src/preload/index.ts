@@ -745,6 +745,14 @@ const api = {
   dynamicTrafficSaveConfig: (serverId: string, config: unknown) =>
     ipcRenderer.invoke('dynamicTraffic:saveConfig', serverId, config) as Promise<{ success: boolean; error?: string }>,
 
+  // Generic mod config editor (auto-discovers JSON files for registered descriptors)
+  modConfigListDescriptors: () =>
+    ipcRenderer.invoke('modConfig:listDescriptors'),
+  modConfigLoadBundle: (serverId: string, descriptorId: string) =>
+    ipcRenderer.invoke('modConfig:loadBundle', serverId, descriptorId),
+  modConfigSaveFile: (serverId: string, descriptorId: string, relPath: string, content: unknown) =>
+    ipcRenderer.invoke('modConfig:saveFile', serverId, descriptorId, relPath, content) as Promise<{ success: boolean; error?: string }>,
+
   // Career Plugin Browser
   careerListPluginCatalog: () =>
     ipcRenderer.invoke('career:listPluginCatalog'),

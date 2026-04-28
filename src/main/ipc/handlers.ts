@@ -28,6 +28,7 @@ import { RoadNetwork } from '../services/RoadNetwork'
 import { TailscaleService } from '../services/TailscaleService'
 import { CareerSaveService } from '../services/CareerSaveService'
 import { CareerModService } from '../services/CareerModService'
+import { ModConfigService } from '../services/ModConfigService'
 import { CareerPluginService } from '../services/CareerPluginService'
 import { LoadOrderService } from '../services/LoadOrderService'
 import { ConflictDetectionService } from '../services/ConflictDetectionService'
@@ -7988,6 +7989,24 @@ end
 
   // ?????? Career Mod Management ??????
   const careerModService = new CareerModService()
+  const modConfigService = new ModConfigService()
+
+  ipcMain.handle('modConfig:listDescriptors', async () => {
+    return modConfigService.listDescriptors()
+  })
+
+  ipcMain.handle('modConfig:loadBundle', async (_event, serverId: string, descriptorId: string) => {
+    const dir = serverManagerService.getServerDir(serverId)
+    return modConfigService.loadBundle(dir, descriptorId)
+  })
+
+  ipcMain.handle(
+    'modConfig:saveFile',
+    async (_event, serverId: string, descriptorId: string, relPath: string, content: unknown) => {
+      const dir = serverManagerService.getServerDir(serverId)
+      return modConfigService.saveFile(dir, descriptorId, relPath, content)
+    },
+  )
 
   ipcMain.handle('career:fetchCareerMPReleases', async () => {
     return careerModService.fetchCareerMPReleases()

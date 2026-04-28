@@ -63,7 +63,7 @@ export function DynamicTrafficConfigSection({ serverId }: Props): React.JSX.Elem
   }
 
   return (
-    <div className="mt-6 p-4 rounded border border-[var(--color-border)] bg-[var(--color-surface)] max-w-4xl">
+    <div className="mt-6 p-4 rounded border border-[var(--color-border)] bg-[var(--color-surface)]">
       <div className="flex items-center justify-between mb-3">
         <div>
           <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">

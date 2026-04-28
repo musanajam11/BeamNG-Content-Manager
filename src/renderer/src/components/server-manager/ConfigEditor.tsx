@@ -3,9 +3,9 @@ import { Trash2, AlertTriangle, Upload, X, ImageIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { HostedServerConfig } from '../../../../shared/types'
 import { BeamMPNameEditor } from './BeamMPNameEditor'
-import { CareerMPConfigSection } from './CareerMPConfigSection'
 import { DynamicTrafficConfigSection } from './DynamicTrafficConfigSection'
 import { ModGateConfigSection } from './ModGateConfigSection'
+import { DynamicModConfigSection } from './DynamicModConfigSection'
 import { useConfirmDialog } from '../../hooks/useConfirmDialog'
 
 type MapEntry = { name: string; source: 'stock' | 'mod'; levelDir?: string; modZipPath?: string; previewImage?: string | null }
@@ -386,8 +386,21 @@ export function ConfigEditor({
         </div>
       )}
 
-      {/* CareerMP plugin config — only renders when CareerMP is installed for this server */}
-      <CareerMPConfigSection serverId={serverId} />
+      {/* CareerMP plugin config — auto-discovers fields from the file on disk */}
+      <DynamicModConfigSection
+        serverId={serverId}
+        descriptorId="careermp"
+        displayName="CareerMP"
+        blurb="Resources/Server/CareerMP/config/ — fields auto-detected"
+      />
+
+      {/* Cobalt Essentials — multi-file CobaltDB editor */}
+      <DynamicModConfigSection
+        serverId={serverId}
+        descriptorId="cobalt-essentials"
+        displayName="Cobalt Essentials"
+        blurb="Resources/Server/CobaltEssentials/CobaltDB/ — fields auto-detected"
+      />
 
       {/* BeamMP Dynamic Traffic plugin config — only renders when that plugin is installed for this server */}
       <DynamicTrafficConfigSection serverId={serverId} />
