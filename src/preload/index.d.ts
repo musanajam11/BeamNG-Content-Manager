@@ -548,7 +548,7 @@ interface AppAPI {
     publishedAt: string
     downloadUrl: string
   }>>
-  careerInstallCareerMP(downloadUrl: string, version: string, serverDir: string): Promise<{ success: boolean; error?: string }>
+  careerInstallCareerMP(downloadUrl: string, version: string, serverDir: string, variant?: 'plain' | 'rls' | 'betterCareer' | 'rls-tgr'): Promise<{ success: boolean; error?: string }>
   careerInstallRLS(downloadUrl: string, version: string, traffic: boolean, serverDir: string): Promise<{ success: boolean; error?: string }>
   careerInstallBetterCareerCompat(clientZipUrl: string, serverZipUrl: string, version: string, serverDir: string): Promise<{ success: boolean; error?: string }>
   careerInstallRLSGreatRebalance(
@@ -569,10 +569,14 @@ interface AppAPI {
   }>
   careerInstallPythonRuntime(): Promise<{ success: boolean; error?: string }>
   careerGetInstalledMods(serverDir: string): Promise<{
-    careerMP: { version: string; installedAt: string } | null
-    rls: { version: string; traffic: boolean; installedAt: string } | null
+    careerMP: { version: string; installedAt: string; variant?: 'plain' | 'rls' | 'betterCareer' | 'rls-tgr' } | null
+    rls: { version: string; traffic: boolean; installedAt: string; variant?: 'plain' | 'rls' | 'betterCareer' | 'rls-tgr' } | null
     betterCareer: { version: string; installedAt: string } | null
   }>
+  careerUninstallCareerMP(serverDir: string): Promise<{ success: boolean; error?: string }>
+  careerUninstallRLS(serverDir: string): Promise<{ success: boolean; error?: string }>
+  careerUninstallBetterCareer(serverDir: string): Promise<{ success: boolean; error?: string }>
+  careerUninstallRLSGreatRebalance(serverDir: string): Promise<{ success: boolean; error?: string }>
   careerBrowseServerDir(): Promise<string | null>
   careerGetServerDir(serverId: string): Promise<string>
 

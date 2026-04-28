@@ -70,9 +70,19 @@ export interface BetterCareerCompatRelease {
   downloads: number
 }
 
+/**
+ * Discriminator for which install flow last wrote the CareerMP files for a
+ * server. The four CareerMP flavours are mutually exclusive — only one set
+ * of CareerMP files can be live on disk at a time — so we record which one
+ * is active.  Without this, the UI cannot tell whether `careerMP` is a plain
+ * install, the CareerMP-side of an RLS install, or the patched copy that
+ * Better Career / RLS-TGR drop in (which share file names with each other).
+ */
+export type CareerMPVariant = 'plain' | 'rls' | 'betterCareer' | 'rls-tgr'
+
 export interface InstalledCareerMods {
-  careerMP: { version: string; installedAt: string; installedFiles?: string[] } | null
-  rls: { version: string; traffic: boolean; installedAt: string; installedFile?: string } | null
+  careerMP: { version: string; installedAt: string; installedFiles?: string[]; variant?: CareerMPVariant } | null
+  rls: { version: string; traffic: boolean; installedAt: string; installedFile?: string; variant?: CareerMPVariant } | null
   betterCareer: { version: string; installedAt: string; installedFiles?: string[] } | null
 }
 
@@ -394,7 +404,8 @@ export class CareerModService {
   async installCareerMP(
     downloadUrl: string,
     version: string,
-    serverDir: string
+    serverDir: string,
+    variant: CareerMPVariant = 'plain'
   ): Promise<{ success: boolean; error?: string }> {
     try {
       await mkdir(this.tmpDir, { recursive: true })
@@ -412,11 +423,14 @@ export class CareerModService {
       const installedFiles = await this.extractZipToDir(zipPath, serverDir)
 
       // Track installed version + the exact files placed by this install so a
-      // future re-install/upgrade can clean them up.
+      // future re-install/upgrade can clean them up.  `variant` records WHICH
+      // CareerMP install flow wrote these files so the UI only lights up the
+      // matching card (and only its uninstall button).
       await this.saveInstalledVersion(serverDir, 'careerMP', {
         version,
         installedAt: new Date().toISOString(),
-        installedFiles
+        installedFiles,
+        variant
       })
 
       // Cleanup temp
@@ -461,12 +475,15 @@ export class CareerModService {
       await copyFile(zipPath, destPath)
 
       // Track installed version + the deployed zip path so future installs
-      // can verify cleanup.
+      // can verify cleanup.  `variant: 'rls'` distinguishes a plain RLS
+      // install from the GRB-patched ("compatible") RLS zip that the RLS-TGR
+      // flow writes (which uses 'rls-tgr').
       await this.saveInstalledVersion(serverDir, 'rls', {
         version,
         traffic,
         installedAt: new Date().toISOString(),
-        installedFile: destPath
+        installedFile: destPath,
+        variant: 'rls'
       })
 
       // Cleanup temp
@@ -515,7 +532,8 @@ export class CareerModService {
       await this.saveInstalledVersion(serverDir, 'careerMP', {
         version: `${version} (Better Career compat)`,
         installedAt: new Date().toISOString(),
-        installedFiles
+        installedFiles,
+        variant: 'betterCareer'
       })
       await this.saveInstalledVersion(serverDir, 'betterCareer', {
         version,
@@ -624,7 +642,8 @@ export class CareerModService {
       await this.saveInstalledVersion(serverDir, 'careerMP', {
         version: `${careerMpVersion} (GRB patched: ${patchVersion})`,
         installedAt: new Date().toISOString(),
-        installedFiles: [serverCareerMpLuaPath, clientCareerMpPath]
+        installedFiles: [serverCareerMpLuaPath, clientCareerMpPath],
+        variant: 'rls-tgr'
       })
 
       // Install generated compatible RLS zip to Resources/Client with robust cleanup.
@@ -639,7 +658,8 @@ export class CareerModService {
         version: `${rlsVersion} (GRB compatible: ${patchVersion})`,
         traffic: true,
         installedAt: new Date().toISOString(),
-        installedFile: finalRlsPath
+        installedFile: finalRlsPath,
+        variant: 'rls-tgr'
       })
 
       // Disable CareerMP auto-update so it doesn't overwrite the patched client zip
@@ -870,6 +890,15 @@ export class CareerModService {
 
   /* ── Check installed versions ── */
 
+  /**
+   * Read the per-server `career-mods.json` and validate every tracked entry
+   * against disk.  An entry is considered installed only when **all** of its
+   * tracked files still exist; if any are missing (e.g. the user wiped
+   * Resources/ manually) the entry is dropped from the in-memory result AND
+   * persisted back to disk so the tracking JSON stops claiming the mod is
+   * installed.  Without this round-trip the UI would happily report stale
+   * state forever after a manual deletion.
+   */
   async getInstalledMods(serverDir: string): Promise<InstalledCareerMods> {
     const metaPath = join(serverDir, 'career-mods.json')
     if (!existsSync(metaPath)) return { careerMP: null, rls: null, betterCareer: null }
@@ -886,34 +915,163 @@ export class CareerModService {
       betterCareer: parsedRaw.betterCareer ?? null
     }
 
-    // Validate tracked files actually exist on disk. If the key files are gone
-    // (e.g. the user deleted Resources/ manually) treat as not installed so the
-    // UI doesn't show stale state.
+    let mutated = false
+
+    // CareerMP: require every tracked file to be present.  Some installs
+    // (CareerMP server-only release) ship a single file; others (Better
+    // Career, GRB) ship a bundle.  If even one file is missing the install
+    // is considered broken / partially deleted and we mark it uninstalled.
     const careerMP = parsed.careerMP
     if (careerMP) {
       const files = (careerMP as { installedFiles?: string[] }).installedFiles
-      if (files && files.length > 0 && !files.some((f) => existsSync(f))) {
+      if (!files || files.length === 0 || !files.every((f) => existsSync(f))) {
         parsed.careerMP = null
+        mutated = true
       }
     }
 
     const rls = parsed.rls
     if (rls) {
       const file = (rls as { installedFile?: string }).installedFile
-      if (file && !existsSync(file)) {
+      if (!file || !existsSync(file)) {
         parsed.rls = null
+        mutated = true
       }
     }
 
     const betterCareer = parsed.betterCareer
     if (betterCareer) {
       const files = (betterCareer as { installedFiles?: string[] }).installedFiles
-      if (files && files.length > 0 && !files.some((f) => existsSync(f))) {
+      if (!files || files.length === 0 || !files.every((f) => existsSync(f))) {
         parsed.betterCareer = null
+        mutated = true
       }
     }
 
+    // Legacy migration: tracking files written before the `variant` tag was
+    // introduced will have `variant === undefined`.  Infer the variant from
+    // sibling entries / version strings so the UI lights up the correct card
+    // without forcing a reinstall:
+    //   - betterCareer entry present  → CareerMP was installed by the BC flow
+    //   - rls.version contains "compatible" AND careerMP present → RLS-TGR
+    //   - rls entry present (no compat marker) → plain RLS
+    //   - careerMP only → plain
+    if (parsed.careerMP && parsed.careerMP.variant === undefined) {
+      let inferred: CareerMPVariant = 'plain'
+      if (parsed.betterCareer) inferred = 'betterCareer'
+      else if (parsed.rls && /compatible/i.test(parsed.rls.version)) inferred = 'rls-tgr'
+      else if (parsed.rls) inferred = 'rls'
+      parsed.careerMP = { ...parsed.careerMP, variant: inferred }
+      mutated = true
+    }
+    if (parsed.rls && parsed.rls.variant === undefined) {
+      const inferred: CareerMPVariant = /compatible/i.test(parsed.rls.version) ? 'rls-tgr' : 'rls'
+      parsed.rls = { ...parsed.rls, variant: inferred }
+      mutated = true
+    }
+
+    if (mutated) {
+      // Best-effort persist; never let a write failure poison the read path.
+      try {
+        await writeFile(
+          metaPath,
+          JSON.stringify(
+            { careerMP: parsed.careerMP, rls: parsed.rls, betterCareer: parsed.betterCareer },
+            null,
+            2
+          ),
+          'utf-8'
+        )
+      } catch { /* ignore */ }
+    }
+
     return parsed
+  }
+
+  /* ── Uninstall ── */
+
+  /**
+   * Uninstall the CareerMP server plugin (and any tracked client zip placed
+   * by the plain CareerMP install path).  Does NOT touch RLS or Better
+   * Career — call those uninstallers separately if you want to wipe the
+   * whole stack.  Safe to call when nothing is installed.
+   */
+  async uninstallCareerMP(serverDir: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      await this.removePreviouslyInstalledFiles(serverDir, 'careerMP')
+      await this.clearInstalledVersion(serverDir, 'careerMP')
+      // If Better Career was tracked alongside CareerMP its files share the
+      // same on-disk artefacts; clear that key too so the UI doesn't keep
+      // pretending Better Career is installed after the underlying files
+      // were deleted.
+      const installed = await this.getInstalledMods(serverDir)
+      if (installed.betterCareer) {
+        await this.clearInstalledVersion(serverDir, 'betterCareer')
+      }
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  }
+
+  async uninstallRLS(serverDir: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      await this.removePreviouslyInstalledFiles(serverDir, 'rls')
+      // Defensive: nuke any leftover RLS-style zip in Resources/Client, in
+      // case a previous install path tracked a different filename or the
+      // user dropped a stray zip in.
+      const clientDir = join(serverDir, 'Resources', 'Client')
+      await this.removeStaleRlsZips(clientDir)
+      await this.clearInstalledVersion(serverDir, 'rls')
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  }
+
+  /**
+   * Better Career install records the same `installedFiles` under both the
+   * `careerMP` and `betterCareer` keys, so removing them once and clearing
+   * both keys is enough.
+   */
+  async uninstallBetterCareer(serverDir: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      await this.removePreviouslyInstalledFiles(serverDir, 'betterCareer')
+      await this.clearInstalledVersion(serverDir, 'betterCareer')
+      await this.clearInstalledVersion(serverDir, 'careerMP')
+      // Better Career also drops a stale CareerMP client zip variant; clear
+      // that filename too for good measure.
+      const clientDir = join(serverDir, 'Resources', 'Client')
+      await this.removeStaleCareerMpClientZips(clientDir)
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  }
+
+  /**
+   * Uninstall the full RLS-TGR (Great Rebalance) stack: CareerMP-patched
+   * server lua + client zip, the compatible RLS zip, and the CareerMP
+   * Banking server plugin (which is tracked separately in
+   * `career-plugins.json`).
+   */
+  async uninstallRLSGreatRebalance(
+    serverDir: string,
+    pluginService: { uninstallPlugin: (pluginId: string, serverDir: string) => Promise<{ success: boolean; error?: string }> }
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const errors: string[] = []
+      const banking = await pluginService.uninstallPlugin('careermp-banking', serverDir)
+      if (!banking.success && banking.error) errors.push(`careermp-banking: ${banking.error}`)
+      const rls = await this.uninstallRLS(serverDir)
+      if (!rls.success && rls.error) errors.push(`rls: ${rls.error}`)
+      const cmp = await this.uninstallCareerMP(serverDir)
+      if (!cmp.success && cmp.error) errors.push(`careerMP: ${cmp.error}`)
+      if (errors.length > 0) return { success: false, error: errors.join('\n') }
+      return { success: true }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
   }
 
   /* ── Internals ── */

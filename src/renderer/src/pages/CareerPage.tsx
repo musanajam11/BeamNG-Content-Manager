@@ -191,9 +191,11 @@ interface ServerEntry {
   config: { id: string; name: string }
 }
 
+type CareerMPVariant = 'plain' | 'rls' | 'betterCareer' | 'rls-tgr'
+
 interface InstalledCareerMods {
-  careerMP: { version: string; installedAt: string } | null
-  rls: { version: string; traffic: boolean; installedAt: string } | null
+  careerMP: { version: string; installedAt: string; variant?: CareerMPVariant } | null
+  rls: { version: string; traffic: boolean; installedAt: string; variant?: CareerMPVariant } | null
   betterCareer: { version: string; installedAt: string } | null
 }
 
@@ -537,6 +539,34 @@ export function CareerPage(): React.JSX.Element {
     }
   }, [getActiveServerDir, cmpReleases, cmpSelectedVersion, loadInstalledMods, t])
 
+  const handleUninstallCareerMP = useCallback(async () => {
+    const dir = await getActiveServerDir()
+    if (!dir) return
+    const ok = await confirm({
+      title: t('career.mod.uninstallConfirmTitle', { name: 'CareerMP' }),
+      message: t('career.mod.uninstallCareerMPMessage'),
+      confirmLabel: t('career.mod.uninstall'),
+      cancelLabel: t('common.cancel'),
+      variant: 'danger'
+    })
+    if (!ok) return
+    setCmpInstalling(true)
+    setCmpMsg(null)
+    try {
+      const result = await window.api.careerUninstallCareerMP(dir)
+      if (result.success) {
+        setCmpMsg({ type: 'success', text: t('career.mod.uninstallSuccess', { name: 'CareerMP' }) })
+        await loadInstalledMods()
+      } else {
+        setCmpMsg({ type: 'error', text: result.error || t('career.mod.uninstallFailed') })
+      }
+    } catch (err) {
+      setCmpMsg({ type: 'error', text: String(err) })
+    } finally {
+      setCmpInstalling(false)
+    }
+  }, [getActiveServerDir, loadInstalledMods, confirm, t])
+
   const handleInstallRLS = useCallback(async () => {
     const dir = await getActiveServerDir()
     if (!dir) return
@@ -550,7 +580,7 @@ export function CareerPage(): React.JSX.Element {
       // Install CareerMP dependency first
       const cmpRelease = cmpReleases.find((r) => r.version === rlsCmpVersion)
       if (cmpRelease) {
-        const cmpResult = await window.api.careerInstallCareerMP(cmpRelease.downloadUrl, cmpRelease.version, dir)
+        const cmpResult = await window.api.careerInstallCareerMP(cmpRelease.downloadUrl, cmpRelease.version, dir, 'rls')
         if (!cmpResult.success) {
           setRlsMsg({ type: 'error', text: `CareerMP install failed: ${cmpResult.error}` })
           setRlsInstalling(false)
@@ -571,6 +601,42 @@ export function CareerPage(): React.JSX.Element {
       setRlsInstalling(false)
     }
   }, [getActiveServerDir, rlsReleases, rlsSelectedVersion, rlsTraffic, cmpReleases, rlsCmpVersion, loadInstalledMods, t])
+
+  const handleUninstallRLS = useCallback(async () => {
+    const dir = await getActiveServerDir()
+    if (!dir) return
+    const ok = await confirm({
+      title: t('career.mod.uninstallConfirmTitle', { name: 'CareerMP + RLS' }),
+      message: t('career.mod.uninstallRLSMessage'),
+      confirmLabel: t('career.mod.uninstall'),
+      cancelLabel: t('common.cancel'),
+      variant: 'danger'
+    })
+    if (!ok) return
+    setRlsInstalling(true)
+    setRlsMsg(null)
+    try {
+      // Wipe the RLS client zip first, then the CareerMP server plugin so the
+      // whole stack is gone in one click — RLS depends on CareerMP, leaving
+      // CareerMP behind on its own would orphan the install.
+      const rlsRes = await window.api.careerUninstallRLS(dir)
+      if (!rlsRes.success) {
+        setRlsMsg({ type: 'error', text: rlsRes.error || t('career.mod.uninstallFailed') })
+        return
+      }
+      const cmpRes = await window.api.careerUninstallCareerMP(dir)
+      if (!cmpRes.success) {
+        setRlsMsg({ type: 'error', text: cmpRes.error || t('career.mod.uninstallFailed') })
+        return
+      }
+      setRlsMsg({ type: 'success', text: t('career.mod.uninstallSuccess', { name: 'CareerMP + RLS' }) })
+      await loadInstalledMods()
+    } catch (err) {
+      setRlsMsg({ type: 'error', text: String(err) })
+    } finally {
+      setRlsInstalling(false)
+    }
+  }, [getActiveServerDir, loadInstalledMods, confirm, t])
 
   const handleInstallBetterCareer = useCallback(async () => {
     const dir = await getActiveServerDir()
@@ -598,6 +664,34 @@ export function CareerPage(): React.JSX.Element {
       setBetterCareerInstalling(false)
     }
   }, [getActiveServerDir, betterCareerReleases, betterCareerSelectedVersion, loadInstalledMods, t])
+
+  const handleUninstallBetterCareer = useCallback(async () => {
+    const dir = await getActiveServerDir()
+    if (!dir) return
+    const ok = await confirm({
+      title: t('career.mod.uninstallConfirmTitle', { name: 'CareerMP + Better Career' }),
+      message: t('career.mod.uninstallBetterCareerMessage'),
+      confirmLabel: t('career.mod.uninstall'),
+      cancelLabel: t('common.cancel'),
+      variant: 'danger'
+    })
+    if (!ok) return
+    setBetterCareerInstalling(true)
+    setBetterCareerMsg(null)
+    try {
+      const result = await window.api.careerUninstallBetterCareer(dir)
+      if (result.success) {
+        setBetterCareerMsg({ type: 'success', text: t('career.mod.uninstallSuccess', { name: 'CareerMP + Better Career' }) })
+        await loadInstalledMods()
+      } else {
+        setBetterCareerMsg({ type: 'error', text: result.error || t('career.mod.uninstallFailed') })
+      }
+    } catch (err) {
+      setBetterCareerMsg({ type: 'error', text: String(err) })
+    } finally {
+      setBetterCareerInstalling(false)
+    }
+  }, [getActiveServerDir, loadInstalledMods, confirm, t])
 
   const handleInstallRLSGreatRebalance = useCallback(async () => {
     const dir = await getActiveServerDir()
@@ -711,6 +805,34 @@ export function CareerPage(): React.JSX.Element {
     loadInstalledMods,
     confirm
   ])
+
+  const handleUninstallRLSGreatRebalance = useCallback(async () => {
+    const dir = await getActiveServerDir()
+    if (!dir) return
+    const ok = await confirm({
+      title: t('career.mod.uninstallConfirmTitle', { name: 'CareerMP + RLS-TGR' }),
+      message: t('career.mod.uninstallGRBMessage'),
+      confirmLabel: t('career.mod.uninstall'),
+      cancelLabel: t('common.cancel'),
+      variant: 'danger'
+    })
+    if (!ok) return
+    setGrbInstalling(true)
+    setGrbMsg(null)
+    try {
+      const result = await window.api.careerUninstallRLSGreatRebalance(dir)
+      if (result.success) {
+        setGrbMsg({ type: 'success', text: t('career.mod.uninstallSuccess', { name: 'CareerMP + RLS-TGR' }) })
+        await loadInstalledMods()
+      } else {
+        setGrbMsg({ type: 'error', text: result.error || t('career.mod.uninstallFailed') })
+      }
+    } catch (err) {
+      setGrbMsg({ type: 'error', text: String(err) })
+    } finally {
+      setGrbInstalling(false)
+    }
+  }, [getActiveServerDir, loadInstalledMods, confirm, t])
 
   const openProfile = useCallback((profile: CareerProfile) => {
     setSelectedProfile(profile)
@@ -1712,6 +1834,10 @@ export function CareerPage(): React.JSX.Element {
           handleInstallRLS={handleInstallRLS}
           handleInstallBetterCareer={handleInstallBetterCareer}
           handleInstallRLSGreatRebalance={handleInstallRLSGreatRebalance}
+          handleUninstallCareerMP={handleUninstallCareerMP}
+          handleUninstallRLS={handleUninstallRLS}
+          handleUninstallBetterCareer={handleUninstallBetterCareer}
+          handleUninstallRLSGreatRebalance={handleUninstallRLSGreatRebalance}
           loadModReleases={() => {
             loadModReleases()
             loadGreatRebalanceDependencies()
@@ -1726,7 +1852,7 @@ export function CareerPage(): React.JSX.Element {
 }
 
 /* ── Mod Manager Panel sub-component ── */
-function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, betterCareerReleases, cmpSelectedVersion, setCmpSelectedVersion, rlsSelectedVersion, setRlsSelectedVersion, betterCareerSelectedVersion, setBetterCareerSelectedVersion, rlsCmpVersion, setRlsCmpVersion, rlsTraffic, setRlsTraffic, cmpInstalling, rlsInstalling, betterCareerInstalling, grbInstalling, cmpMsg, rlsMsg, betterCareerMsg, grbMsg, servers, selectedServerId, setSelectedServerId, customServerDir, installedMods, installedPlugins, pythonStatus, pythonInstallBusy, grbRlsReleases, grbRlsVersion, setGrbRlsVersion, grbBankingReleases, grbBankingVersion, setGrbBankingVersion, grbPatchReleases, grbPatchVersion, setGrbPatchVersion, refreshPythonStatus, installPythonRuntime, handleBrowseServerDir, handleInstallCareerMP, handleInstallRLS, handleInstallBetterCareer, handleInstallRLSGreatRebalance, loadModReleases, getActiveServerDir, t }: {
+function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, betterCareerReleases, cmpSelectedVersion, setCmpSelectedVersion, rlsSelectedVersion, setRlsSelectedVersion, betterCareerSelectedVersion, setBetterCareerSelectedVersion, rlsCmpVersion, setRlsCmpVersion, rlsTraffic, setRlsTraffic, cmpInstalling, rlsInstalling, betterCareerInstalling, grbInstalling, cmpMsg, rlsMsg, betterCareerMsg, grbMsg, servers, selectedServerId, setSelectedServerId, customServerDir, installedMods, installedPlugins, pythonStatus, pythonInstallBusy, grbRlsReleases, grbRlsVersion, setGrbRlsVersion, grbBankingReleases, grbBankingVersion, setGrbBankingVersion, grbPatchReleases, grbPatchVersion, setGrbPatchVersion, refreshPythonStatus, installPythonRuntime, handleBrowseServerDir, handleInstallCareerMP, handleInstallRLS, handleInstallBetterCareer, handleInstallRLSGreatRebalance, handleUninstallCareerMP, handleUninstallRLS, handleUninstallBetterCareer, handleUninstallRLSGreatRebalance, loadModReleases, getActiveServerDir, t }: {
   modLoading: boolean
   modError: string | null
   cmpReleases: CareerMPRelease[]
@@ -1780,19 +1906,32 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, bette
   handleInstallRLS: () => void
   handleInstallBetterCareer: () => void
   handleInstallRLSGreatRebalance: () => void
+  handleUninstallCareerMP: () => void
+  handleUninstallRLS: () => void
+  handleUninstallBetterCareer: () => void
+  handleUninstallRLSGreatRebalance: () => void
   loadModReleases: () => void
   getActiveServerDir: () => Promise<string | null>
   t: (key: string, opts?: Record<string, unknown>) => string
 }): React.JSX.Element {
+  // Which CareerMP install flow last wrote files for this server. Treat the
+  // legacy unset case as 'plain' so older `career-mods.json` files still
+  // resolve to a single CareerMP card lighting up rather than all four.
+  const cmpVariant: CareerMPVariant = (installedMods?.careerMP?.variant ?? 'plain') as CareerMPVariant
+
+  // Installation state per card, mutually exclusive via cmpVariant. Only the
+  // card whose flow actually placed the files shows the green "Installed"
+  // badge AND its red Uninstall button \u2014 so e.g. uninstalling Better Career
+  // can never wipe the patched CareerMP files that RLS-TGR depends on,
+  // because the BC card is hidden whenever variant !== 'betterCareer'.
+  const careerMPPlainInstalled = Boolean(installedMods?.careerMP && cmpVariant === 'plain')
+  const rlsInstalled = Boolean(installedMods?.rls && cmpVariant === 'rls')
   const grbInstalled = Boolean(
     installedMods?.careerMP &&
-    installedMods?.rls &&
-    /compatible/i.test(installedMods.rls.version) &&
+    cmpVariant === 'rls-tgr' &&
     installedPlugins['careermp-banking']
   )
-
-  const rlsInstalled = Boolean(installedMods?.rls)
-  const betterCareerInstalled = Boolean(installedMods?.betterCareer)
+  const betterCareerInstalled = Boolean(installedMods?.betterCareer && cmpVariant === 'betterCareer')
   const [rlsTrayOpen, setRlsTrayOpen] = useState(false)
   const [betterCareerTrayOpen, setBetterCareerTrayOpen] = useState(false)
 
@@ -1883,7 +2022,7 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, bette
                 <p className="text-[11px] leading-snug text-amber-200/90">{t('career.mod.careerMPNote')}</p>
               </div>
 
-              {installedMods?.careerMP && (
+              {careerMPPlainInstalled && installedMods?.careerMP && (
                 <div className="flex items-center gap-2 px-3 py-2.5 bg-green-500/10 rounded-lg border border-green-500/20">
                   <Check size={14} className="text-green-400" />
                   <span className="text-xs text-green-300">{t('career.mod.installed')}: v{installedMods.careerMP.version}</span>
@@ -1910,6 +2049,15 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, bette
                   {cmpInstalling ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
                   Install CareerMP Only
                 </button>
+                {careerMPPlainInstalled && (
+                  <button
+                    onClick={handleUninstallCareerMP}
+                    disabled={cmpInstalling}
+                    className="w-full flex items-center justify-center gap-1.5 px-4 py-2 text-xs rounded-lg bg-red-600/20 hover:bg-red-600/40 border border-red-500/30 text-red-300 font-medium transition-colors disabled:opacity-50"
+                  >
+                    <Trash2 size={12} /> {t('career.mod.uninstall')} CareerMP
+                  </button>
+                )}
               </div>
               {cmpMsg && (
                 <p className={`text-xs ${cmpMsg.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{cmpMsg.text}</p>
@@ -1927,9 +2075,14 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, bette
               <div className="flex items-center gap-2">
                 <Star size={16} className="text-purple-400" />
                 <span className="text-sm font-semibold text-[var(--color-text-primary)]">CareerMP + RLS</span>
-                {rlsInstalled && (
+                {installedMods?.rls && cmpVariant === 'rls' && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full border bg-green-500/15 text-green-300 border-green-500/30 flex items-center gap-1">
-                    <Check size={10} /> {grbInstalled ? 'TGR installed' : `v${installedMods!.rls!.version}`}
+                    <Check size={10} /> v{installedMods.rls.version}
+                  </span>
+                )}
+                {grbInstalled && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full border bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30 flex items-center gap-1">
+                    <Check size={10} /> TGR installed
                   </span>
                 )}
               </div>
@@ -1960,7 +2113,7 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, bette
                 <p className="text-[11px] leading-snug text-amber-200/90">{t('career.mod.rlsNote')}</p>
               </div>
 
-              {installedMods?.rls && (
+              {rlsInstalled && installedMods?.rls && (
                 <div className="flex items-center gap-2 mb-3 px-3 py-2 bg-green-500/10 rounded-lg border border-green-500/20">
                   <Check size={14} className="text-green-400" />
                   <span className="text-xs text-green-300">
@@ -2028,6 +2181,15 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, bette
                   {rlsInstalling ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
                   Install CareerMP+RLS
                 </button>
+                {installedMods?.rls && (
+                  <button
+                    onClick={handleUninstallRLS}
+                    disabled={rlsInstalling}
+                    className="w-full flex items-center justify-center gap-1.5 px-4 py-2 text-xs rounded-lg bg-red-600/20 hover:bg-red-600/40 border border-red-500/30 text-red-300 font-medium transition-colors disabled:opacity-50"
+                  >
+                    <Trash2 size={12} /> {t('career.mod.uninstall')} CareerMP + RLS
+                  </button>
+                )}
               </div>
               {rlsMsg && (
                 <p className={`text-xs mt-2 ${rlsMsg.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{rlsMsg.text}</p>
@@ -2187,6 +2349,15 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, bette
                   {grbInstalling ? <Loader2 size={14} className="animate-spin" /> : grbInstalled ? <RefreshCw size={14} /> : <Download size={14} />}
                   {grbInstalled ? 'Update / Reinstall CareerMP + RLS-TGR' : 'Install CareerMP + RLS-TGR'}
                 </button>
+                {grbInstalled && (
+                  <button
+                    onClick={handleUninstallRLSGreatRebalance}
+                    disabled={grbInstalling}
+                    className="w-full flex items-center justify-center gap-1.5 px-4 py-2 text-xs rounded-lg bg-red-600/20 hover:bg-red-600/40 border border-red-500/30 text-red-300 font-medium transition-colors disabled:opacity-50"
+                  >
+                    <Trash2 size={12} /> {t('career.mod.uninstall')} CareerMP + RLS-TGR
+                  </button>
+                )}
               </div>
               {grbMsg && (
                 <p className={`text-xs mt-2 ${grbMsg.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>{grbMsg.text}</p>
@@ -2272,6 +2443,15 @@ function ModManagerPanel({ modLoading, modError, cmpReleases, rlsReleases, bette
                       {betterCareerInstalling ? <Loader2 size={14} className="animate-spin" /> : betterCareerInstalled ? <RefreshCw size={14} /> : <Download size={14} />}
                       {betterCareerInstalled ? 'Update / Reinstall CareerMP + Better Career' : 'Install CareerMP + Better Career'}
                     </button>
+                    {betterCareerInstalled && (
+                      <button
+                        onClick={handleUninstallBetterCareer}
+                        disabled={betterCareerInstalling}
+                        className="w-full flex items-center justify-center gap-1.5 px-4 py-2 text-xs rounded-lg bg-red-600/20 hover:bg-red-600/40 border border-red-500/30 text-red-300 font-medium transition-colors disabled:opacity-50"
+                      >
+                        <Trash2 size={12} /> {t('career.mod.uninstall')} CareerMP + Better Career
+                      </button>
+                    )}
                   </div>
 
                   {betterCareerMsg && (

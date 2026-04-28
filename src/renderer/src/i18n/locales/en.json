@@ -1343,7 +1343,15 @@
       "installed": "Installed",
       "notInstalled": "Not Installed",
       "installSuccess": "{{name}} installed successfully",
-      "installFailed": "Installation failed"
+      "installFailed": "Installation failed",
+      "uninstall": "Uninstall",
+      "uninstallSuccess": "{{name}} uninstalled",
+      "uninstallFailed": "Uninstall failed",
+      "uninstallConfirmTitle": "Uninstall {{name}}?",
+      "uninstallCareerMPMessage": "This removes the CareerMP server plugin and tracked client zip from this server. RLS / Better Career compatibility files (if any) will also be cleared from tracking. Continue?",
+      "uninstallRLSMessage": "This removes the RLS client zip and the CareerMP server plugin from this server. Continue?",
+      "uninstallBetterCareerMessage": "This removes the Better Career compatibility client + server files (and the linked CareerMP plugin) from this server. Continue?",
+      "uninstallGRBMessage": "This removes the patched CareerMP, the compatible RLS zip, and the CareerMP Banking plugin from this server. Continue?"
     },
     "plugin": {
       "title": "Plugin Browser",

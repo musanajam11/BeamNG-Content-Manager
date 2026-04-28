@@ -653,8 +653,8 @@ const api = {
       publishedAt: string
       downloadUrl: string
     }>>,
-  careerInstallCareerMP: (downloadUrl: string, version: string, serverDir: string) =>
-    ipcRenderer.invoke('career:installCareerMP', downloadUrl, version, serverDir) as Promise<{ success: boolean; error?: string }>,
+  careerInstallCareerMP: (downloadUrl: string, version: string, serverDir: string, variant?: 'plain' | 'rls' | 'betterCareer' | 'rls-tgr') =>
+    ipcRenderer.invoke('career:installCareerMP', downloadUrl, version, serverDir, variant) as Promise<{ success: boolean; error?: string }>,
   careerInstallRLS: (downloadUrl: string, version: string, traffic: boolean, serverDir: string) =>
     ipcRenderer.invoke('career:installRLS', downloadUrl, version, traffic, serverDir) as Promise<{ success: boolean; error?: string }>,
   careerInstallBetterCareerCompat: (clientZipUrl: string, serverZipUrl: string, version: string, serverDir: string) =>
@@ -690,6 +690,14 @@ const api = {
     ipcRenderer.invoke('career:installPythonRuntime') as Promise<{ success: boolean; error?: string }>,
   careerGetInstalledMods: (serverDir: string) =>
     ipcRenderer.invoke('career:getInstalledMods', serverDir),
+  careerUninstallCareerMP: (serverDir: string) =>
+    ipcRenderer.invoke('career:uninstallCareerMP', serverDir) as Promise<{ success: boolean; error?: string }>,
+  careerUninstallRLS: (serverDir: string) =>
+    ipcRenderer.invoke('career:uninstallRLS', serverDir) as Promise<{ success: boolean; error?: string }>,
+  careerUninstallBetterCareer: (serverDir: string) =>
+    ipcRenderer.invoke('career:uninstallBetterCareer', serverDir) as Promise<{ success: boolean; error?: string }>,
+  careerUninstallRLSGreatRebalance: (serverDir: string) =>
+    ipcRenderer.invoke('career:uninstallRLSGreatRebalance', serverDir) as Promise<{ success: boolean; error?: string }>,
   careerBrowseServerDir: () =>
     ipcRenderer.invoke('career:browseServerDir') as Promise<string | null>,
   careerGetServerDir: (serverId: string) =>

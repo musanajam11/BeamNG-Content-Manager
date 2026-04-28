@@ -495,9 +495,34 @@ export class CareerPluginService {
     }
   }
 
+  /**
+   * Read the per-server tracking file and validate every recorded plugin
+   * against disk.  An entry is dropped (and the tracking file rewritten) if
+   * none of its artifacts exist anymore — typically because the user wiped
+   * Resources/ manually.  Without this round-trip the renderer would keep
+   * showing "installed" badges for plugins whose files are long gone.
+   */
   async getInstalledPlugins(serverDir: string, category: PluginCategory = 'career'): Promise<Record<string, InstalledPlugin>> {
-    const t = await this.readTracking(serverDir, category)
-    return t.plugins
+    const tracking = await this.readTracking(serverDir, category)
+    let mutated = false
+    for (const id of Object.keys(tracking.plugins)) {
+      const entry = tracking.plugins[id]
+      const artifacts = entry.artifacts || []
+      if (artifacts.length === 0) continue
+      const stillThere = artifacts.some((rel) => {
+        const normalized = rel.replace(/\\/g, '/').replace(/\/+$/, '')
+        if (!normalized || normalized === '.' ) return false
+        return existsSync(join(serverDir, normalized))
+      })
+      if (!stillThere) {
+        delete tracking.plugins[id]
+        mutated = true
+      }
+    }
+    if (mutated) {
+      try { await this.writeTracking(serverDir, category, tracking) } catch { /* ignore */ }
+    }
+    return tracking.plugins
   }
 
   /* ── Internals ── */

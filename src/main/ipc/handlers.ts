@@ -7946,8 +7946,8 @@ end
     return careerModService.fetchGreatRebalancePatchReleases()
   })
 
-  ipcMain.handle('career:installCareerMP', async (_event, downloadUrl: string, version: string, serverDir: string) => {
-    return careerModService.installCareerMP(downloadUrl, version, serverDir)
+  ipcMain.handle('career:installCareerMP', async (_event, downloadUrl: string, version: string, serverDir: string, variant?: 'plain' | 'rls' | 'betterCareer' | 'rls-tgr') => {
+    return careerModService.installCareerMP(downloadUrl, version, serverDir, variant ?? 'plain')
   })
 
   ipcMain.handle('career:installRLS', async (_event, downloadUrl: string, version: string, traffic: boolean, serverDir: string) => {
@@ -7995,6 +7995,18 @@ end
 
   ipcMain.handle('career:getInstalledMods', async (_event, serverDir: string) => {
     return careerModService.getInstalledMods(serverDir)
+  })
+
+  ipcMain.handle('career:uninstallCareerMP', async (_event, serverDir: string) => {
+    return careerModService.uninstallCareerMP(serverDir)
+  })
+
+  ipcMain.handle('career:uninstallRLS', async (_event, serverDir: string) => {
+    return careerModService.uninstallRLS(serverDir)
+  })
+
+  ipcMain.handle('career:uninstallBetterCareer', async (_event, serverDir: string) => {
+    return careerModService.uninstallBetterCareer(serverDir)
   })
 
   ipcMain.handle('careerMP:getServerConfig', async (_event, serverId: string) => {
@@ -8062,6 +8074,14 @@ end
 
   ipcMain.handle('career:getInstalledPlugins', async (_event, serverDir: string) => {
     return careerPluginService.getInstalledPlugins(serverDir)
+  })
+
+  // Composite uninstaller for the Great Rebalance (RLS-TGR) stack: needs both
+  // the mod service (for CareerMP / RLS files) and the plugin service (for
+  // CareerMP Banking).  Registered here, after `careerPluginService` is
+  // declared, so the closure captures a valid reference at definition time.
+  ipcMain.handle('career:uninstallRLSGreatRebalance', async (_event, serverDir: string) => {
+    return careerModService.uninstallRLSGreatRebalance(serverDir, careerPluginService)
   })
 
   // -- Server Admin Tools (CEI / CobaltEssentials / etc) --
