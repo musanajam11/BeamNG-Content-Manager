@@ -83,6 +83,17 @@
     "expandSidebar": "Expand sidebar",
     "collapseSidebar": "Collapse sidebar"
   },
+  "auth": {
+    "accounts": "Accounts",
+    "beamng": "BeamNG.com",
+    "beammp": "BeamMP",
+    "bmr": "Mod Registry",
+    "signedIn": "Signed in",
+    "signedOut": "Not signed in",
+    "clickSignIn": "Click to sign in",
+    "clickSignOut": "Click to sign out",
+    "beammpSignIn": "Sign in to BeamMP"
+  },
   "titlebar": {
     "minimize": "Minimize",
     "maximize": "Maximize",

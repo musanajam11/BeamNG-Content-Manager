@@ -60,7 +60,6 @@ import type { ModInfo, RepoMod, RepoCategory, RepoSortOrder } from '../../../sha
 import type { AvailableMod, BeamModMetadata, RegistrySearchResult, ResolutionResult, InstalledRegistryMod } from '../../../shared/registry-types'
 import type { BmrFacets, BmrModListItem, BmrSearchOptions } from '../../../shared/bmr-types'
 import {
-  BmrAuthProvider,
   BmrAuthMenu,
   BmrFiltersPanel,
   bmrFiltersToQuery,
@@ -282,9 +281,7 @@ export function ModsPage(): React.JSX.Element {
         <BrowseModsView />
       </div>
       <div className={activeTab === 'registry' ? 'flex flex-col flex-1 min-h-0' : 'hidden'}>
-        <BmrAuthProvider>
-          <RegistryBrowseView onUpdatesChange={setRegistryUpdates} deleteVersion={deleteVersion} />
-        </BmrAuthProvider>
+        <RegistryBrowseView onUpdatesChange={setRegistryUpdates} deleteVersion={deleteVersion} />
       </div>
 
       <ToastContainer />

@@ -28,6 +28,7 @@ import { useGameStore } from './stores/useGameStore'
 import { useWorldEditSessionStore } from './stores/useWorldEditSessionStore'
 import { useThemeStore, resolveColorMode, applyTheme } from './stores/useThemeStore'
 import { useHostedServerStore } from './stores/useHostedServerStore'
+import { BmrAuthProvider } from './components/bmr/BmrComponents'
 import i18n from './i18n'
 
 function PageRouter(): React.JSX.Element {
@@ -344,19 +345,21 @@ function App(): React.JSX.Element {
           opacity: 'var(--app-bg-overlay-opacity, 0)'
         }}
       />
-      <div className="relative z-10 flex flex-col h-full">
-        <Titlebar />
-        <div className="flex flex-1 min-h-0">
-          <Sidebar />
-          <main className="flex-1 min-w-0 overflow-clip">
-            <ErrorBoundary>
-              <PageRouter />
-            </ErrorBoundary>
-          </main>
+      <BmrAuthProvider>
+        <div className="relative z-10 flex flex-col h-full">
+          <Titlebar />
+          <div className="flex flex-1 min-h-0">
+            <Sidebar />
+            <main className="flex-1 min-w-0 overflow-clip">
+              <ErrorBoundary>
+                <PageRouter />
+              </ErrorBoundary>
+            </main>
+          </div>
+          <StatusBar />
+          <VoiceChatPanel />
         </div>
-        <StatusBar />
-        <VoiceChatPanel />
-      </div>
+      </BmrAuthProvider>
     </div>
   )
 }
