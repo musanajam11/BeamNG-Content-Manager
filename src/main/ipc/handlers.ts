@@ -2843,20 +2843,27 @@ export function registerIpcHandlers(): void {
         }
       } catch { /* dir doesn't exist */ }
 
-      // Scan active mod zips for vehicles
+      // Scan ALL repo mod zips for vehicles (regardless of enabled/active
+      // status), mirroring the listMaps behaviour. Enabling now governs
+      // sideload-on-join, not whether a vehicle is *installed*. Showing only
+      // active mods made disabled vehicles vanish from the picker even
+      // though their zips were still present in /mods/repo/.
       const userDir = config.gamePaths?.userDir
       if (userDir) {
         try {
-          const dbPath = join(userDir, 'mods', 'db.json')
-          const raw = await readFile(dbPath, 'utf-8')
-          const db = JSON.parse(raw.charCodeAt(0) === 0xFEFF ? raw.slice(1) : raw)
-          const modsMap = (db.mods && typeof db.mods === 'object') ? db.mods : db
-
-          for (const [, entry] of Object.entries(modsMap)) {
-            const mod = entry as Record<string, unknown>
-            if (!mod.active || !mod.filename) continue
-            const dirname = String(mod.dirname || '/mods/repo/')
-            const modZipPath = join(userDir, dirname.replace(/^\//, ''), String(mod.filename))
+          const mods = await modManagerService.listMods(userDir)
+          for (const mod of mods) {
+            if (mod.location !== 'repo') continue
+            // Skip mods we know aren't vehicles to keep the scan cheap;
+            // 'unknown' is allowed through because db.json sometimes
+            // misclassifies vehicle mods (same caveat as listMaps).
+            if (
+              mod.modType &&
+              mod.modType !== 'vehicle' &&
+              mod.modType !== 'unknown'
+            ) continue
+            const modZipPath = mod.filePath
+            if (!modZipPath) continue
             try {
               await access(modZipPath)
               const vehicleNames = await discoverVehiclesInZip(modZipPath)
@@ -2871,7 +2878,7 @@ export function registerIpcHandlers(): void {
               }
             } catch { /* zip not found */ }
           }
-        } catch { /* no db.json */ }
+        } catch { /* listMods failed */ }
       }
 
       // Also count user configs per vehicle
