@@ -21,6 +21,8 @@ import { BackupSchedulerService } from '../services/BackupSchedulerService'
 import { TaskSchedulerService } from '../services/TaskSchedulerService'
 import { AnalyticsService } from '../services/AnalyticsService'
 import { RegistryService } from '../services/RegistryService'
+import { BmrService } from '../services/BmrService'
+import { bmrDesktopSignIn, bmrDesktopSignOut } from '../services/bmrDesktopSignIn'
 import { DependencyResolver } from '../services/DependencyResolver'
 import { RoadNetwork } from '../services/RoadNetwork'
 import { TailscaleService } from '../services/TailscaleService'
@@ -43,6 +45,7 @@ import { parseBeamNGJson } from '../utils/parseBeamNGJson'
 import { LRUCache } from '../utils/lruCache'
 import type { AppConfig, GamePaths, ServerInfo, RepoSortOrder, VehicleDetail, VehicleConfigInfo, VehicleConfigData, VehicleEditorData, SlotInfo, VariableInfo, WheelPlacement, ActiveMeshResult, HostedServerConfig, GPSRoute, ScheduledTask, MapRichMetadata, SupportTicketCreateInput, SupportTicketUpdateInput, HostedServerSupportIngestConfig, HostedServerSupportTicketUiConfig } from '../../shared/types'
 import type { RegistrySearchOptions, RegistryRepository, BeamModMetadata, InstalledRegistryMod } from '../../shared/registry-types'
+import type { BmrSearchOptions } from '../../shared/bmr-types'
 
 let discoveryService: GameDiscoveryService
 let launcherService: GameLauncherService
@@ -55,6 +58,7 @@ let backupSchedulerService: BackupSchedulerService
 let taskSchedulerService: TaskSchedulerService
 let analyticsService: AnalyticsService
 let registryService: RegistryService
+let bmrService: BmrService
 let tailscaleService: TailscaleService
 let loadOrderService: LoadOrderService
 let conflictDetectionService: ConflictDetectionService
@@ -112,6 +116,7 @@ export function initializeServices(): {
   analyticsService = new AnalyticsService()
   serverManagerService.setAnalyticsService(analyticsService)
   registryService = new RegistryService()
+  bmrService = new BmrService()
   tailscaleService = new TailscaleService()
   loadOrderService = new LoadOrderService()
   conflictDetectionService = new ConflictDetectionService()
@@ -290,6 +295,11 @@ export function initializeServices(): {
   // Initialize mod registry (load local registry + cached index)
   registryService.load().catch((err) =>
     console.error('[Registry] Init failed:', err)
+  )
+
+  // Initialize bmr.musanet.xyz session (cookie jar + CSRF warm-up).
+  bmrService.load().catch((err) =>
+    console.error('[Bmr] Init failed:', err)
   )
 
   // Eagerly REFRESH (not deploy) the voice chat artifacts on startup so
@@ -7700,6 +7710,52 @@ end
     const resolver = new DependencyResolver(registryService)
     return resolver.findSupporters(identifier)
   })
+
+  // -- BeamNG Mod Registry (bmr.musanet.xyz) --
+  // All HTTP runs in main so the session cookie + CSRF stay out of the
+  // renderer; the renderer just passes typed payloads through IPC.
+  ipcMain.handle('bmr:getAuthState', async () => bmrService.getAuthState())
+  ipcMain.handle('bmr:getBaseUrl', async () => bmrService.getBaseUrl())
+  ipcMain.handle('bmr:getPublicConfig', async () => bmrService.getPublicConfig())
+  ipcMain.handle('bmr:refreshMe', async () => {
+    const res = await bmrService.refreshMe()
+    return { result: res, state: bmrService.getAuthState() }
+  })
+  ipcMain.handle('bmr:signup', async (_e, input: {
+    email: string; password: string; display_name: string; turnstile_token?: string
+  }) => {
+    const result = await bmrService.signup(input)
+    return { result, state: bmrService.getAuthState() }
+  })
+  ipcMain.handle('bmr:login', async (_e, input: {
+    email: string; password: string; turnstile_token?: string
+  }) => {
+    const result = await bmrService.login(input)
+    return { result, state: bmrService.getAuthState() }
+  })
+  ipcMain.handle('bmr:logout', async () => {
+    const result = await bmrService.logout()
+    // Also wipe the persistent Electron partition used by the sign-in
+    // window; otherwise the next sign-in attempt re-auths silently from
+    // leftover session cookies.
+    await bmrDesktopSignOut()
+    return { result, state: bmrService.getAuthState() }
+  })
+  ipcMain.handle('bmr:resendVerification', async () => bmrService.resendVerification())
+  ipcMain.handle('bmr:desktopSignIn', async (event) => {
+    const parent = BrowserWindow.fromWebContents(event.sender)
+    const cookies = await bmrDesktopSignIn(parent)
+    if (cookies.length === 0) {
+      return { ok: false, state: bmrService.getAuthState() }
+    }
+    await bmrService.ingestCookies(cookies)
+    return { ok: true, state: bmrService.getAuthState() }
+  })
+  ipcMain.handle('bmr:searchMods', async (_e, opts: BmrSearchOptions) => bmrService.searchMods(opts))
+  ipcMain.handle('bmr:getMod', async (_e, identifier: string) => bmrService.getMod(identifier))
+  ipcMain.handle('bmr:getModHistory', async (_e, identifier: string) => bmrService.getModHistory(identifier))
+  ipcMain.handle('bmr:setRating', async (_e, identifier: string, stars: number) => bmrService.setRating(identifier, stars))
+  ipcMain.handle('bmr:clearRating', async (_e, identifier: string) => bmrService.clearRating(identifier))
 
   // News feed � cached for 1 hour
   let newsFeedCache: {

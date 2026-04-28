@@ -30,6 +30,15 @@ const DEFAULT_REPO: RegistryRepository = {
   priority: 0
 }
 
+const RATINGS_API_URL = 'https://bmr.musanet.xyz/api/mods'
+const RATINGS_PAGE_SIZE = 100
+const RATINGS_TTL_MS = 6 * 60 * 60 * 1000 // 6h
+
+interface RatingsCache {
+  fetched_at: number
+  ratings: Record<string, { avg: number; count: number }>
+}
+
 interface RemoteIndex {
   schema_version: number
   generated_at: string
@@ -42,10 +51,14 @@ export class RegistryService {
   private registryPath: string
   private indexPath: string
   private indexGzPath: string
+  private ratingsPath: string
   private cachePath: string
   private registry: LocalRegistry
   private remoteIndex: Map<string, AvailableMod> = new Map()
+  private ratingsMap: Map<string, { avg: number; count: number }> = new Map()
+  private ratingsFetchedAt: number | null = null
   private updating = false
+  private fetchingRatings = false
   private modManager: ModManagerService | null = null
 
   constructor() {
@@ -54,6 +67,7 @@ export class RegistryService {
     this.cachePath = join(dataDir, 'cache')
     this.indexPath = join(this.cachePath, 'registry-index.json')
     this.indexGzPath = join(this.cachePath, 'registry-index.json.gz')
+    this.ratingsPath = join(this.cachePath, 'registry-ratings.json')
     this.registry = this.defaultRegistry()
   }
 
@@ -88,6 +102,7 @@ export class RegistryService {
 
     // Load cached remote index if available
     await this.loadCachedIndex()
+    await this.loadCachedRatings()
 
     // Auto-update if stale (>24h) or never fetched
     const ONE_DAY = 24 * 60 * 60 * 1000
@@ -95,6 +110,13 @@ export class RegistryService {
     if (!lastUpdate || Date.now() - lastUpdate > ONE_DAY) {
       this.updateIndex().catch((err) =>
         console.error('[Registry] Auto-update failed:', err)
+      )
+    }
+
+    // Refresh ratings in background if stale
+    if (!this.ratingsFetchedAt || Date.now() - this.ratingsFetchedAt > RATINGS_TTL_MS) {
+      this.fetchRatings().catch((err) =>
+        console.error('[Registry] Ratings fetch failed:', err)
       )
     }
   }
@@ -175,6 +197,11 @@ export class RegistryService {
       this.registry.last_index_update = Date.now()
       await this.save()
 
+      // 7. Refresh ratings in background (best effort)
+      this.fetchRatings().catch((err) =>
+        console.error('[Registry] Post-update ratings fetch failed:', err)
+      )
+
       return { updated: true }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -195,12 +222,105 @@ export class RegistryService {
           this.remoteIndex.set(id, {
             identifier: id,
             versions: entry.versions,
-            download_count: undefined
+            download_count: undefined,
+            rating: this.ratingsMap.get(id)
           })
         }
       }
     } catch (err) {
       console.error('[Registry] Failed to load cached index:', err)
+    }
+  }
+
+  private async loadCachedRatings(): Promise<void> {
+    try {
+      if (existsSync(this.ratingsPath)) {
+        const raw = await readFile(this.ratingsPath, 'utf-8')
+        const data = JSON.parse(raw) as RatingsCache
+        this.ratingsMap.clear()
+        for (const [id, r] of Object.entries(data.ratings ?? {})) {
+          this.ratingsMap.set(id, r)
+        }
+        this.ratingsFetchedAt = data.fetched_at ?? null
+        this.applyRatingsToIndex()
+      }
+    } catch (err) {
+      console.error('[Registry] Failed to load cached ratings:', err)
+    }
+  }
+
+  private applyRatingsToIndex(): void {
+    for (const [id, mod] of this.remoteIndex) {
+      const r = this.ratingsMap.get(id)
+      if (r) mod.rating = r
+    }
+  }
+
+  /**
+   * Fetch per-mod ratings from bmr.musanet.xyz and merge into the in-memory
+   * index. Persists to disk for offline reuse. Best-effort: failures are
+   * swallowed so the registry browser keeps working without ratings.
+   */
+  async fetchRatings(): Promise<{ updated: boolean; error?: string }> {
+    if (this.fetchingRatings) return { updated: false, error: 'Already fetching' }
+    this.fetchingRatings = true
+    try {
+      const ratings: Record<string, { avg: number; count: number }> = {}
+      let page = 1
+      // Hard cap to avoid infinite loops on a misbehaving API
+      const MAX_PAGES = 200
+      while (page <= MAX_PAGES) {
+        const url = `${RATINGS_API_URL}?page=${page}&pageSize=${RATINGS_PAGE_SIZE}`
+        const res = await fetch(url, {
+          headers: {
+            Accept: 'application/json',
+            'User-Agent': 'BeamMP-ContentManager/1.0'
+          }
+        })
+        if (!res.ok) {
+          return { updated: false, error: `Ratings API error: ${res.status}` }
+        }
+        const body = (await res.json()) as {
+          mods?: Array<{ identifier?: string; rating?: { avg?: number; count?: number } }>
+          total?: number
+        }
+        const items = body.mods ?? []
+        if (items.length === 0) break
+        for (const m of items) {
+          if (!m.identifier) continue
+          const avg = Number(m.rating?.avg ?? 0)
+          const count = Number(m.rating?.count ?? 0)
+          if (count > 0 || avg > 0) {
+            ratings[m.identifier] = { avg, count }
+          }
+        }
+        const total = typeof body.total === 'number' ? body.total : items.length
+        if (page * RATINGS_PAGE_SIZE >= total) break
+        page += 1
+      }
+
+      this.ratingsMap.clear()
+      for (const [id, r] of Object.entries(ratings)) this.ratingsMap.set(id, r)
+      this.ratingsFetchedAt = Date.now()
+      this.applyRatingsToIndex()
+
+      // Persist cache (best effort)
+      try {
+        const cacheDir = join(this.ratingsPath, '..')
+        if (!existsSync(cacheDir)) await mkdir(cacheDir, { recursive: true })
+        const payload: RatingsCache = { fetched_at: this.ratingsFetchedAt, ratings }
+        await writeFile(this.ratingsPath, JSON.stringify(payload))
+      } catch (writeErr) {
+        console.error('[Registry] Failed to persist ratings cache:', writeErr)
+      }
+
+      return { updated: true }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error('[Registry] fetchRatings error:', msg)
+      return { updated: false, error: msg }
+    } finally {
+      this.fetchingRatings = false
     }
   }
 
@@ -267,6 +387,19 @@ export class RegistryService {
           const aa = Array.isArray(la.author) ? la.author[0] : la.author
           const ab = Array.isArray(lb.author) ? lb.author[0] : lb.author
           return aa.localeCompare(ab) * sortDir
+        }
+        case 'rating': {
+          // Unrated mods sort to the bottom regardless of sortDir.
+          const ra = a.rating
+          const rb = b.rating
+          const hasA = !!(ra && ra.count > 0)
+          const hasB = !!(rb && rb.count > 0)
+          if (hasA !== hasB) return hasA ? -1 : 1
+          if (!hasA) return 0
+          const avgDiff = (rb!.avg - ra!.avg) * sortDir
+          if (avgDiff !== 0) return avgDiff
+          // Tie-break: more votes first
+          return (rb!.count - ra!.count) * sortDir
         }
         default:
           return 0

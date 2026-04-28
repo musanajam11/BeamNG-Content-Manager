@@ -1,6 +1,7 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type { AppConfig, GamePaths, ServerInfo, AuthResult, GameStatus, ModInfo, RepoBrowseResult, RepoCategory, RepoSortOrder, VehicleDetail, VehicleConfigInfo, VehicleConfigData, HostedServerConfig, HostedServerStatus, HostedServerEntry, ServerFileEntry, ServerFileSearchResult, ServerExeStatus, GPSRoute, PlayerPosition, BackupSchedule, BackupEntry, ScheduledTask, AnalyticsData, IpSummary, MapRichMetadata, LoadOrderData, ModConflictReport, SupportTicket, SupportTicketCreateInput, SupportTicketUpdateInput, HostedServerSupportIngestConfig, HostedServerSupportIngestStatus, HostedServerSupportTicketUiConfig } from '../shared/types'
 import type { RegistryStatus, RegistrySearchOptions, RegistrySearchResult, AvailableMod, InstalledRegistryMod, ResolutionResult, RegistryRepository, BeamModMetadata, ModpackExport } from '../shared/registry-types'
+import type { BmrAuthState, BmrCallResult, BmrPublicConfig, BmrRating, BmrSearchOptions, BmrSearchResult, BmrUser } from '../shared/bmr-types'
 
 export interface CareerMPServerConfig {
   server: {
@@ -389,6 +390,24 @@ interface AppAPI {
   onRegistryDownloadProgress(
     callback: (progress: { identifier: string; received: number; total: number; fileName: string }) => void
   ): () => void
+
+  // BeamNG Mod Registry (bmr.musanet.xyz)
+  bmrGetAuthState(): Promise<BmrAuthState>
+  bmrGetBaseUrl(): Promise<string>
+  bmrGetPublicConfig(): Promise<BmrCallResult<BmrPublicConfig>>
+  bmrRefreshMe(): Promise<{ result: BmrCallResult<{ user: BmrUser | null }>; state: BmrAuthState }>
+  bmrSignup(input: { email: string; password: string; display_name: string; turnstile_token?: string }):
+    Promise<{ result: BmrCallResult<{ user: BmrUser }>; state: BmrAuthState }>
+  bmrLogin(input: { email: string; password: string; turnstile_token?: string }):
+    Promise<{ result: BmrCallResult<{ user: BmrUser }>; state: BmrAuthState }>
+  bmrLogout(): Promise<{ result: BmrCallResult<{ ok: boolean }>; state: BmrAuthState }>
+  bmrResendVerification(): Promise<BmrCallResult>
+  bmrDesktopSignIn(): Promise<{ ok: boolean; state: BmrAuthState }>
+  bmrSearchMods(opts: BmrSearchOptions): Promise<BmrCallResult<BmrSearchResult>>
+  bmrGetMod(identifier: string): Promise<BmrCallResult<unknown>>
+  bmrGetModHistory(identifier: string): Promise<BmrCallResult<unknown>>
+  bmrSetRating(identifier: string, stars: number): Promise<BmrCallResult<{ rating: BmrRating }>>
+  bmrClearRating(identifier: string): Promise<BmrCallResult<{ rating: BmrRating }>>
 
   // News feed
   getNewsFeed(): Promise<

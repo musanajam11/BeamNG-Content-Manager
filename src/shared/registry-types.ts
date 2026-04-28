@@ -226,6 +226,8 @@ export interface AvailableMod {
   versions: BeamModMetadata[]
   /** Total download count (from registry stats) */
   download_count?: number
+  /** Aggregate rating sourced from bmr.musanet.xyz (cached) */
+  rating?: { avg: number; count: number }
 }
 
 /** The result of a dependency resolution */
@@ -253,7 +255,7 @@ export interface RegistrySearchOptions {
   /** Filter by compatible BeamNG version */
   beamng_version?: string
   /** Sort field */
-  sort_by?: 'name' | 'updated' | 'downloads' | 'author'
+  sort_by?: 'name' | 'updated' | 'downloads' | 'author' | 'rating'
   /** Sort direction */
   sort_order?: 'asc' | 'desc'
   /** Pagination */

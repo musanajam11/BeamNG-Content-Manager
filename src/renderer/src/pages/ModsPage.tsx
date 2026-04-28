@@ -36,7 +36,8 @@ import {
   Server,
   GripVertical,
   ShieldAlert,
-  Scan
+  Scan,
+  SlidersHorizontal
 } from 'lucide-react'
 import {
   DndContext,
@@ -57,6 +58,17 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import type { ModInfo, RepoMod, RepoCategory, RepoSortOrder } from '../../../shared/types'
 import type { AvailableMod, BeamModMetadata, RegistrySearchResult, ResolutionResult, InstalledRegistryMod } from '../../../shared/registry-types'
+import type { BmrFacets, BmrModListItem, BmrSearchOptions } from '../../../shared/bmr-types'
+import {
+  BmrAuthProvider,
+  BmrAuthMenu,
+  BmrFiltersPanel,
+  bmrFiltersToQuery,
+  EMPTY_FILTERS,
+  InteractiveStarRating,
+  useBmrAuth,
+  type BmrFilterState,
+} from '../components/bmr/BmrComponents'
 import { useConfirmDialog } from '../hooks/useConfirmDialog'
 import { useBoundedCache } from '../hooks/useBoundedCache'
 import { useLazyThumbnails, useLazyThumb, type ThumbnailLoader } from '../hooks/useLazyThumbnails'
@@ -270,7 +282,9 @@ export function ModsPage(): React.JSX.Element {
         <BrowseModsView />
       </div>
       <div className={activeTab === 'registry' ? 'flex flex-col flex-1 min-h-0' : 'hidden'}>
-        <RegistryBrowseView onUpdatesChange={setRegistryUpdates} deleteVersion={deleteVersion} />
+        <BmrAuthProvider>
+          <RegistryBrowseView onUpdatesChange={setRegistryUpdates} deleteVersion={deleteVersion} />
+        </BmrAuthProvider>
       </div>
 
       <ToastContainer />
@@ -2139,6 +2153,12 @@ function RegistryModCard({
         </div>
         <p className="text-[12px] font-medium text-[var(--color-text-primary)] line-clamp-2">{latest.abstract}</p>
         <div className="mt-auto flex items-center gap-1.5 text-[11px] font-medium">
+          {mod.rating && mod.rating.count > 0 && (
+            <span className="inline-flex items-center gap-1">
+              <StarRating rating={mod.rating.avg} />
+              <span className="text-[10px] text-[var(--color-text-muted)]">({mod.rating.count})</span>
+            </span>
+          )}
           {latest.mod_type && (
             <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 border ${modTypeChipClasses(latest.mod_type)}`}>
               {modTypeIcon(latest.mod_type)}
@@ -2160,6 +2180,7 @@ function RegistryModCard({
 function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChange: (n: number) => void; deleteVersion: number }): React.JSX.Element {
   const [searchQuery, setSearchQuery] = useState('')
   const [modType, setModType] = useState('')
+  const [sortBy, setSortBy] = useState<'name' | 'updated' | 'rating' | 'author'>('name')
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalMods, setTotalMods] = useState(0)
@@ -2180,6 +2201,21 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
   const [uninstalling, setUninstalling] = useState<string | null>(null)
   const [showRegistryHelp, setShowRegistryHelp] = useState(false)
   const [registryLogo, setRegistryLogo] = useState<string | null>(null)
+  // BMR-driven extras: facet sidebar + per-mod "mine" rating cache. When BMR
+  // is reachable these power the deep-search UI; when it's offline we fall
+  // back to the legacy in-memory registrySearch and these stay empty/idle.
+  const [facets, setFacets] = useState<BmrFacets | null>(null)
+  const [filters, setFilters] = useState<BmrFilterState>(EMPTY_FILTERS)
+  const [showFilters, setShowFilters] = useState(false)
+  const [myRatings, setMyRatings] = useState<Record<string, number>>({})
+  // Verified mods, fetched once per session and merged into the visible
+  // list so they always appear at the top of the default browse view even
+  // when name-sorted pagination would otherwise push them past the
+  // currently-loaded slice.
+  const [verifiedMods, setVerifiedMods] = useState<AvailableMod[]>([])
+  const [bmrOffline, setBmrOffline] = useState(false)
+  const [ratingBusy, setRatingBusy] = useState<string | null>(null)
+  const { signedIn } = useBmrAuth()
   const { dialog: confirmDialogEl, confirm } = useConfirmDialog()
   // External thumbnail URLs from registry metadata are blocked by CSP if loaded
   // directly. Proxy through the main process which returns base64 data URLs.
@@ -2204,14 +2240,109 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
       .catch(() => { /* keep fallback */ })
   }, [])
 
+  // Map UI sort dropdown → BMR sort param. The desktop "updated" sort lines
+  // up with the registry's "recent" (best-effort version-string newness),
+  // and "author" has no server-side equivalent so we fall back to name.
+  const bmrSortParam = (s: typeof sortBy): BmrSearchOptions['sort'] => {
+    switch (s) {
+      case 'rating': return '-rating'
+      case 'updated': return 'recent'
+      case 'name':
+      case 'author':
+      default: return 'name'
+    }
+  }
+
+  /** Synthesize an `AvailableMod` from a BMR list item so existing card +
+   * detail components keep working without a parallel renderer rewrite. */
+  const bmrToAvailable = (item: BmrModListItem): AvailableMod => {
+    const meta: BeamModMetadata = {
+      spec_version: 1,
+      identifier: item.identifier,
+      name: item.name,
+      abstract: item.abstract,
+      author: item.author ?? '',
+      version: item.version,
+      license: item.license ?? '',
+      kind: (item.kind as BeamModMetadata['kind']) ?? 'package',
+      mod_type: item.mod_type ?? undefined,
+      tags: item.tags,
+      thumbnail: item.thumbnail ?? undefined,
+      download: item.download ?? undefined,
+      multiplayer_scope: item.multiplayer_scope ?? undefined,
+      release_status: (item.release_status as BeamModMetadata['release_status']) ?? undefined,
+      resources: item.resources as BeamModMetadata['resources'],
+      x_verified: item.verified,
+    }
+    const versions: BeamModMetadata[] = [meta]
+    if (item.versions) {
+      for (const v of item.versions) {
+        if (v.version === meta.version) continue
+        versions.push({ ...meta, version: v.version, release_date: v.release_date ?? undefined })
+      }
+    }
+    return {
+      identifier: item.identifier,
+      versions,
+      rating: { avg: item.rating.avg, count: item.rating.count },
+    }
+  }
+
   const fetchMods = useCallback(async (): Promise<void> => {
     setLoading(true); setError(null)
     try {
+      // Try BMR first for full server-side faceted search + live ratings.
+      const fq = bmrFiltersToQuery(filters)
+      const bmrOpts: BmrSearchOptions = {
+        q: searchQuery || undefined,
+        type: modType || undefined,
+        sort: bmrSortParam(sortBy),
+        page,
+        pageSize: 25,
+        verified: fq.verified === 'true' || fq.verified === 'false' ? fq.verified : undefined,
+        status: fq.status,
+        kind: fq.kind,
+        license: fq.license,
+        multiplayer: fq.multiplayer,
+        tags: fq.tags,
+        tag_mode: fq.tag_mode === 'any' ? 'any' : fq.tag_mode === 'all' ? 'all' : undefined,
+        author: fq.author,
+        has: fq.has,
+        min_rating: fq.min_rating ? Number(fq.min_rating) : undefined,
+      }
+      const bmrRes = await window.api.bmrSearchMods(bmrOpts)
+      if (bmrRes.ok && bmrRes.data) {
+        setBmrOffline(false)
+        setFacets(bmrRes.data.facets)
+        const items = bmrRes.data.items.map(bmrToAvailable)
+        const newMine: Record<string, number> = {}
+        for (const it of bmrRes.data.items) newMine[it.identifier] = it.rating.mine ?? 0
+        if (page === 1) {
+          setMods(items)
+          setMyRatings(newMine)
+        } else {
+          setMods((prev) => {
+            const seen = new Set(prev.map((m) => m.identifier))
+            const merged = prev.slice()
+            for (const m of items) {
+              if (!seen.has(m.identifier)) { seen.add(m.identifier); merged.push(m) }
+            }
+            return merged
+          })
+          setMyRatings((prev) => ({ ...prev, ...newMine }))
+        }
+        const totalPgs = Math.max(1, Math.ceil(bmrRes.data.total / bmrRes.data.pageSize))
+        setTotalPages(totalPgs)
+        setTotalMods(bmrRes.data.total)
+        return
+      }
+      // BMR unreachable — fall back to the cached on-disk index. Faceted
+      // filters are dropped in this mode (only basic query/type/sort apply).
+      setBmrOffline(true)
+      setFacets(null)
       const result: RegistrySearchResult = await window.api.registrySearch({
-        query: searchQuery || undefined, mod_type: modType || undefined, page, per_page: 25
+        query: searchQuery || undefined, mod_type: modType || undefined, sort_by: sortBy, page, per_page: 25
       })
-      // Page 1 replaces; later pages append (infinite scroll). Defensive
-      // dedup by identifier in case the index shifts mid-scroll.
       if (page === 1) {
         setMods(result.mods)
       } else {
@@ -2219,10 +2350,7 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
           const seen = new Set(prev.map((m) => m.identifier))
           const merged = prev.slice()
           for (const m of result.mods) {
-            if (!seen.has(m.identifier)) {
-              seen.add(m.identifier)
-              merged.push(m)
-            }
+            if (!seen.has(m.identifier)) { seen.add(m.identifier); merged.push(m) }
           }
           return merged
         })
@@ -2230,7 +2358,7 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
       setTotalPages(result.total_pages)
       setTotalMods(result.total)
     } catch (err) { setError(String(err)); if (page === 1) setMods([]) } finally { setLoading(false) }
-  }, [searchQuery, modType, page])
+  }, [searchQuery, modType, sortBy, page, filters])
 
   const fetchInstalled = useCallback(async () => {
     try { setInstalled(await window.api.registryGetInstalled()) } catch { /* */ }
@@ -2244,7 +2372,37 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
   useEffect(() => { fetchInstalled() }, [fetchInstalled])
   useEffect(() => { if (deleteVersion > 0) fetchInstalled() }, [deleteVersion])
   useEffect(() => { fetchUpdates() }, [fetchUpdates])
-  useEffect(() => { setPage(1) }, [searchQuery, modType])
+  useEffect(() => { setPage(1) }, [searchQuery, modType, sortBy, filters])
+
+  // When the user signs in/out, refresh so the `mine` rating field is
+  // accurate for the currently-rendered page.
+  useEffect(() => { setPage(1); void fetchMods() // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signedIn])
+
+  // Submit / clear a rating. Optimistically updates myRatings and patches
+  // the affected mod's aggregate so the card re-renders without a full
+  // page refetch.
+  const handleSetRating = useCallback(async (identifier: string, stars: number): Promise<void> => {
+    if (!signedIn) return
+    setRatingBusy(identifier)
+    try {
+      const res = stars === 0
+        ? await window.api.bmrClearRating(identifier)
+        : await window.api.bmrSetRating(identifier, stars)
+      if (res.ok && res.data) {
+        const r = res.data.rating
+        setMyRatings((prev) => ({ ...prev, [identifier]: r.mine ?? 0 }))
+        setMods((prev) => prev.map((m) =>
+          m.identifier === identifier ? { ...m, rating: { avg: r.avg, count: r.count } } : m
+        ))
+        setSelectedMod((prev) =>
+          prev && prev.identifier === identifier ? { ...prev, rating: { avg: r.avg, count: r.count } } : prev
+        )
+      }
+    } finally {
+      setRatingBusy(null)
+    }
+  }, [signedIn])
 
   // Infinite-scroll plumbing — see ServerList.tsx for the original pattern.
   // Only mounts what the user has scrolled into; further pages are fetched
@@ -2294,32 +2452,92 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
     return () => { cancelled = true }
   }, [installed])
 
-  // Display order: installed first, then verified, then everything else.
-  // When unfiltered we cross-fetch installed entries so they always appear at
-  // the top regardless of which page they happen to live on. Page is no
-  // longer part of this check because infinite scroll keeps `mods` as the
-  // running accumulation across all loaded pages.
+  // Prefetch the full set of verified mods once BMR is reachable. We keep
+  // them in a dedicated bucket and always merge them into the visible list
+  // (respecting the active query/type/filters) so verified entries pin to
+  // the top of the page regardless of name-sorted pagination.
+  useEffect(() => {
+    if (bmrOffline) { setVerifiedMods([]); return }
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await window.api.bmrSearchMods({
+          verified: 'true', sort: 'name', page: 1, pageSize: 100,
+        })
+        if (cancelled || !res.ok || !res.data) return
+        setVerifiedMods(res.data.items.map(bmrToAvailable))
+      } catch { /* ignore — we'll just lose the pin until next attempt */ }
+    })()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bmrOffline])
+
+  // Display order: verified first (pinned), then installed, then everything
+  // else. Verified mods are merged in from a dedicated prefetch so they
+  // always surface at the top regardless of which page they live on under
+  // the current filters/sort.
   const sortedMods = useMemo(() => {
+    // Tier order:
+    //   0 verified + installed   1 verified
+    //   2 installed              3 everything else
     const tier = (m: AvailableMod): number => {
-      if (m.identifier in installed) return 0
-      if (m.versions[0]?.x_verified) return 1
-      return 2
+      const isInstalled = m.identifier in installed
+      const isVerified = !!m.versions[0]?.x_verified
+      if (isVerified && isInstalled) return 0
+      if (isVerified) return 1
+      if (isInstalled) return 2
+      return 3
     }
     const showPinned = !searchQuery && !modType
+    const bmrById = new Map<string, AvailableMod>()
+    for (const m of mods) bmrById.set(m.identifier, m)
+    // Apply the same query/type/filter narrowing the BMR search request
+    // honours, so a verified mod that doesn't match the user's filters
+    // stays hidden. Free-text query is checked against name/identifier
+    // since we don't have the full BMR scoring locally.
+    const q = searchQuery.trim().toLowerCase()
+    const matchesActiveFilters = (m: AvailableMod): boolean => {
+      const v = m.versions[0]
+      if (!v) return false
+      if (modType && v.mod_type !== modType) return false
+      if (q) {
+        const hay = `${v.name ?? ''} ${m.identifier} ${v.abstract ?? ''}`.toLowerCase()
+        if (!hay.includes(q)) return false
+      }
+      // Filter sidebar: only enforce the simple equality facets we can
+      // evaluate client-side. Tag/license/etc. checks are best-effort
+      // since the underlying registry entry may be partial.
+      if (filters.kind && v.kind && v.kind !== filters.kind) return false
+      if (filters.multiplayer && v.multiplayer_scope && v.multiplayer_scope !== filters.multiplayer) return false
+      if (filters.release_status && v.release_status && v.release_status !== filters.release_status) return false
+      if (filters.verified === 'false' && v.x_verified) return false
+      return true
+    }
     const seen = new Set<string>()
     const merged: AvailableMod[] = []
+    // 1) Verified pin — honour active filters so e.g. "verified=false"
+    //    still hides them. BMR copy is preferred for live ratings.
+    for (const v of verifiedMods) {
+      const candidate = bmrById.get(v.identifier) ?? v
+      if (!matchesActiveFilters(candidate)) continue
+      if (seen.has(candidate.identifier)) continue
+      seen.add(candidate.identifier); merged.push(candidate)
+    }
+    // 2) Installed pin (only when unfiltered, mirroring previous behaviour).
     if (showPinned) {
       for (const m of installedEntries) {
         if (seen.has(m.identifier)) continue
-        seen.add(m.identifier); merged.push(m)
+        seen.add(m.identifier)
+        merged.push(bmrById.get(m.identifier) ?? m)
       }
     }
+    // 3) Everything else from the active search response.
     for (const m of mods) {
       if (seen.has(m.identifier)) continue
       seen.add(m.identifier); merged.push(m)
     }
     return merged.sort((a, b) => tier(a) - tier(b))
-  }, [mods, installed, installedEntries, searchQuery, modType])
+  }, [mods, installed, installedEntries, verifiedMods, searchQuery, modType, filters])
 
   // Bulk thumbnail prefetch removed: cards now request their own thumbs
   // lazily via `useLazyThumb` when they enter the viewport. Make sure the
@@ -2465,6 +2683,7 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
               <RefreshCw size={26} className={indexUpdating ? 'animate-spin' : ''} />
               {indexUpdating ? t('mods.updating') : t('common.refresh')}
             </button>
+            <BmrAuthMenu />
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -2474,9 +2693,28 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
               placeholder={t('mods.searchRegistry')} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] pr-4 py-2.5 text-sm text-[var(--color-text-primary)] placeholder-[var(--color-text-muted)] outline-none focus:border-[var(--color-accent-50)]"
               style={{ paddingLeft: 42 }} />
           </div>
+          <button
+            onClick={() => setShowFilters((v) => !v)}
+            disabled={bmrOffline}
+            title={bmrOffline ? t('mods.bmrOfflineFilters') : t('mods.bmrFilters')}
+            className={`inline-flex items-center gap-1.5 border px-3 py-2.5 text-xs transition ${
+              showFilters && !bmrOffline
+                ? 'border-[var(--color-border-accent)] bg-[var(--color-accent-10)] text-[var(--color-accent-text)]'
+                : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-active)]'
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
+          >
+            <SlidersHorizontal size={13} /> {t('mods.bmrFilters')}
+          </button>
           <select value={modType} onChange={(e) => setModType(e.target.value)}
             className="bg-[var(--color-surface)] border border-[var(--color-border)] px-4 py-2.5 text-xs text-[var(--color-text-secondary)] outline-none focus:border-[var(--color-accent-50)]">
             {MOD_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)}
+          </select>
+          <select value={sortBy} onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+            className="bg-[var(--color-surface)] border border-[var(--color-border)] px-4 py-2.5 text-xs text-[var(--color-text-secondary)] outline-none focus:border-[var(--color-accent-50)]">
+            <option value="name">{t('mods.sortName')}</option>
+            <option value="rating">{t('mods.sortRating')}</option>
+            <option value="updated">{t('mods.sortUpdated')}</option>
+            <option value="author">{t('mods.sortAuthor')}</option>
           </select>
         </div>
       </div>
@@ -2513,6 +2751,14 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
 
       {/* Content */}
       <div className="flex-1 flex min-h-0">
+        {showFilters && !bmrOffline && (
+          <BmrFiltersPanel
+            facets={facets}
+            filters={filters}
+            setFilters={setFilters}
+            onClose={() => setShowFilters(false)}
+          />
+        )}
         {loading && mods.length === 0 ? (
           <div className="flex-1 flex items-center justify-center text-[var(--color-text-secondary)] text-sm">
             <Loader2 size={16} className="animate-spin mr-2" /> {t('mods.loadingRegistry')}
@@ -2555,7 +2801,21 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
                 </div>
               ) : null}
             </div>
-            {selectedMod && <RegistryDetailPanel mod={selectedMod} installed={installed} installing={installing} uninstalling={uninstalling} onInstall={handleInstallClick} onUninstall={handleUninstall} thumbDataUrl={selectedMod.versions[0]?.thumbnail ? thumbLoader.get(selectedMod.versions[0].thumbnail) : undefined} />}
+            {selectedMod && (
+              <RegistryDetailPanel
+                mod={selectedMod}
+                installed={installed}
+                installing={installing}
+                uninstalling={uninstalling}
+                onInstall={handleInstallClick}
+                onUninstall={handleUninstall}
+                thumbDataUrl={selectedMod.versions[0]?.thumbnail ? thumbLoader.get(selectedMod.versions[0].thumbnail) : undefined}
+                myRating={myRatings[selectedMod.identifier] ?? 0}
+                onRate={(stars) => handleSetRating(selectedMod.identifier, stars)}
+                ratingBusy={ratingBusy === selectedMod.identifier}
+                bmrAvailable={!bmrOffline}
+              />
+            )}
           </>
         )}
       </div>
@@ -2569,7 +2829,8 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
 /* ── Registry Detail Panel ── */
 
 function RegistryDetailPanel({
-  mod, installed, installing, uninstalling, onInstall, onUninstall, thumbDataUrl
+  mod, installed, installing, uninstalling, onInstall, onUninstall, thumbDataUrl,
+  myRating = 0, onRate, ratingBusy = false, bmrAvailable = false,
 }: {
   mod: AvailableMod
   installed: Record<string, InstalledRegistryMod>
@@ -2578,6 +2839,13 @@ function RegistryDetailPanel({
   onInstall: (id: string) => void
   onUninstall: (id: string) => void
   thumbDataUrl?: string
+  /** Viewer's submitted star rating (0 if none). */
+  myRating?: number
+  /** Stars 0..5 (0 to clear). Omit when BMR isn't wired. */
+  onRate?: (stars: number) => void
+  ratingBusy?: boolean
+  /** True when the BMR backend is reachable + auth-aware. */
+  bmrAvailable?: boolean
 }): React.JSX.Element {
   const latest = mod.versions[0]!
   const authors = Array.isArray(latest.author) ? latest.author.join(', ') : latest.author
@@ -2585,6 +2853,9 @@ function RegistryDetailPanel({
   const isUninstalling = uninstalling === mod.identifier
   const deps = latest.depends ?? []
   const { t } = useTranslation()
+  // Auth-gated rating widget. We can't usefully call useBmrAuth here in
+  // the offline path (provider missing), so guard via bmrAvailable.
+  const auth = useBmrAuth()
 
   return (
     <div
@@ -2601,6 +2872,36 @@ function RegistryDetailPanel({
 
       {thumbDataUrl && (
         <img src={thumbDataUrl} alt={latest.name} className="w-full object-cover border border-[var(--color-border)]" />
+      )}
+
+      {/* Live BMR rating + interactive widget. Hidden when offline. */}
+      {bmrAvailable && onRate && (
+        <div className="border border-[var(--color-border)] bg-[var(--color-surface)]/40 px-3 py-2 space-y-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[10px] uppercase tracking-widest text-[var(--color-text-muted)]">
+              {t('mods.bmrCommunityRating')}
+            </span>
+            {mod.rating && mod.rating.count > 0 ? (
+              <span className="text-[11px] text-[var(--color-text-secondary)] tabular-nums">
+                ★ {mod.rating.avg.toFixed(2)} · {mod.rating.count}
+              </span>
+            ) : (
+              <span className="text-[11px] text-[var(--color-text-muted)]">{t('mods.bmrNoRatingsYet')}</span>
+            )}
+          </div>
+          {auth.signedIn ? (
+            <div className="flex items-center justify-between gap-2 pt-1">
+              <span className="text-[11px] text-[var(--color-text-secondary)]">
+                {myRating > 0 ? t('mods.bmrYourRating') : t('mods.bmrRateThis')}
+              </span>
+              <InteractiveStarRating value={myRating} onChange={onRate} busy={ratingBusy} />
+            </div>
+          ) : (
+            <p className="text-[10px] text-[var(--color-text-muted)] italic pt-1">
+              {t('mods.bmrSignInToRate')}
+            </p>
+          )}
+        </div>
       )}
 
       <div className="space-y-2 text-xs">

@@ -537,6 +537,36 @@ const api = {
     return () => ipcRenderer.removeListener('registry:downloadProgress', handler)
   },
 
+  // BeamNG Mod Registry (bmr.musanet.xyz) — auth, search, ratings
+  bmrGetAuthState: () =>
+    ipcRenderer.invoke('bmr:getAuthState'),
+  bmrGetBaseUrl: () =>
+    ipcRenderer.invoke('bmr:getBaseUrl') as Promise<string>,
+  bmrGetPublicConfig: () =>
+    ipcRenderer.invoke('bmr:getPublicConfig'),
+  bmrRefreshMe: () =>
+    ipcRenderer.invoke('bmr:refreshMe'),
+  bmrSignup: (input: { email: string; password: string; display_name: string; turnstile_token?: string }) =>
+    ipcRenderer.invoke('bmr:signup', input),
+  bmrLogin: (input: { email: string; password: string; turnstile_token?: string }) =>
+    ipcRenderer.invoke('bmr:login', input),
+  bmrLogout: () =>
+    ipcRenderer.invoke('bmr:logout'),
+  bmrResendVerification: () =>
+    ipcRenderer.invoke('bmr:resendVerification'),
+  bmrDesktopSignIn: () =>
+    ipcRenderer.invoke('bmr:desktopSignIn') as Promise<{ ok: boolean; state: import('../shared/bmr-types').BmrAuthState }>,
+  bmrSearchMods: (opts: Record<string, unknown>) =>
+    ipcRenderer.invoke('bmr:searchMods', opts),
+  bmrGetMod: (identifier: string) =>
+    ipcRenderer.invoke('bmr:getMod', identifier),
+  bmrGetModHistory: (identifier: string) =>
+    ipcRenderer.invoke('bmr:getModHistory', identifier),
+  bmrSetRating: (identifier: string, stars: number) =>
+    ipcRenderer.invoke('bmr:setRating', identifier, stars),
+  bmrClearRating: (identifier: string) =>
+    ipcRenderer.invoke('bmr:clearRating', identifier),
+
   // News feed
   getNewsFeed: () =>
     ipcRenderer.invoke('news:getFeed') as Promise<
