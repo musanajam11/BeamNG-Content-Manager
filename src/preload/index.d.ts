@@ -1,7 +1,7 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type { AppConfig, GamePaths, ServerInfo, AuthResult, GameStatus, ModInfo, RepoBrowseResult, RepoCategory, RepoSortOrder, VehicleDetail, VehicleConfigInfo, VehicleConfigData, HostedServerConfig, HostedServerStatus, HostedServerEntry, ServerFileEntry, ServerFileSearchResult, ServerExeStatus, GPSRoute, PlayerPosition, BackupSchedule, BackupEntry, ScheduledTask, AnalyticsData, IpSummary, MapRichMetadata, LoadOrderData, ModConflictReport, SupportTicket, SupportTicketCreateInput, SupportTicketUpdateInput, HostedServerSupportIngestConfig, HostedServerSupportIngestStatus, HostedServerSupportTicketUiConfig } from '../shared/types'
 import type { RegistryStatus, RegistrySearchOptions, RegistrySearchResult, AvailableMod, InstalledRegistryMod, ResolutionResult, RegistryRepository, BeamModMetadata, ModpackExport } from '../shared/registry-types'
-import type { BmrAuthState, BmrCallResult, BmrPublicConfig, BmrRating, BmrSearchOptions, BmrSearchResult, BmrUser } from '../shared/bmr-types'
+import type { BmrAuthState, BmrCallResult, BmrModDetail, BmrPublicConfig, BmrRating, BmrSearchOptions, BmrSearchResult, BmrUser } from '../shared/bmr-types'
 
 export interface CareerMPServerConfig {
   server: {
@@ -404,7 +404,7 @@ interface AppAPI {
   bmrResendVerification(): Promise<BmrCallResult>
   bmrDesktopSignIn(): Promise<{ ok: boolean; state: BmrAuthState }>
   bmrSearchMods(opts: BmrSearchOptions): Promise<BmrCallResult<BmrSearchResult>>
-  bmrGetMod(identifier: string): Promise<BmrCallResult<unknown>>
+  bmrGetMod(identifier: string): Promise<BmrCallResult<BmrModDetail>>
   bmrGetModHistory(identifier: string): Promise<BmrCallResult<unknown>>
   bmrSetRating(identifier: string, stars: number): Promise<BmrCallResult<{ rating: BmrRating }>>
   bmrClearRating(identifier: string): Promise<BmrCallResult<{ rating: BmrRating }>>

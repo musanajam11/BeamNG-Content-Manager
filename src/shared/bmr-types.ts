@@ -93,6 +93,20 @@ export interface BmrSearchResult {
 }
 
 /**
+ * Single mod returned by `GET /api/mods/:identifier`. The backend wraps the
+ * full mod blob alongside the same joined fields as the list endpoint. We
+ * only type the bits the renderer reads back — currently just `rating` so
+ * we can refresh the viewer's `mine` value on detail-panel open.
+ */
+export interface BmrModDetail {
+  mod: unknown
+  owner: BmrOwner | null
+  last_edit: BmrLastEdit | null
+  rating: BmrRating
+  watch?: unknown
+}
+
+/**
  * Search query forwarded to the registry. Each field maps directly to a
  * Zod-validated query parameter on the backend (see public.ts QuerySchema).
  */

@@ -649,6 +649,7 @@ export function InteractiveStarRating({
 }): React.JSX.Element {
   const [hover, setHover] = useState(0)
   const display = hover || value
+  const { t } = useTranslation()
   return (
     <div className="inline-flex items-center gap-0.5" onMouseLeave={() => setHover(0)}>
       {[1, 2, 3, 4, 5].map((n) => (
@@ -660,6 +661,7 @@ export function InteractiveStarRating({
           onMouseEnter={() => setHover(n)}
           className="p-0.5 disabled:opacity-50 cursor-pointer transition-transform hover:scale-110"
           aria-label={`${n} stars`}
+          title={value === n ? t('mods.bmrClearRating') : `${n} ★`}
         >
           <Star
             size={size}
@@ -671,6 +673,19 @@ export function InteractiveStarRating({
           />
         </button>
       ))}
+      {/* Explicit clear button so the "click same star to clear" affordance
+          isn't hidden — only shown once the viewer has actually rated. */}
+      {value > 0 && !busy && (
+        <button
+          type="button"
+          onClick={() => onChange(0)}
+          className="ml-1 px-1 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] cursor-pointer"
+          title={t('mods.bmrClearRatingTooltip')}
+          aria-label={t('mods.bmrClearRating')}
+        >
+          {t('mods.bmrClearRating')}
+        </button>
+      )}
       {busy && <Loader2 size={size - 4} className="animate-spin text-[var(--color-text-muted)] ml-1" />}
     </div>
   )

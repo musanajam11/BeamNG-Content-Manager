@@ -2213,6 +2213,7 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
   const [bmrOffline, setBmrOffline] = useState(false)
   const [ratingBusy, setRatingBusy] = useState<string | null>(null)
   const { signedIn } = useBmrAuth()
+  const addRatingToast = useToastStore((s) => s.addToast)
   const { dialog: confirmDialogEl, confirm } = useConfirmDialog()
   // External thumbnail URLs from registry metadata are blocked by CSP if loaded
   // directly. Proxy through the main process which returns base64 data URLs.
@@ -2376,11 +2377,46 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
   useEffect(() => { setPage(1); void fetchMods() // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signedIn])
 
+  // Whenever a mod is opened in the detail panel, refresh its `rating`
+  // (including the viewer's `mine` value) from the per-mod endpoint. The
+  // search list only carries `mine` for rows currently in view, so opening
+  // a mod the user rated outside the app — or paginated past — would
+  // otherwise show "Rate this mod" instead of "Your rating" and let them
+  // accidentally re-submit. Patches mods/selectedMod aggregates too so the
+  // card reflects the freshest server count.
+  useEffect(() => {
+    if (!selectedMod || !signedIn || bmrOffline) return
+    const id = selectedMod.identifier
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await window.api.bmrGetMod(id)
+        if (cancelled || !res.ok || !res.data) return
+        const r = res.data.rating
+        setMyRatings((prev) => (
+          prev[id] === (r.mine ?? 0) ? prev : { ...prev, [id]: r.mine ?? 0 }
+        ))
+        setMods((prev) => prev.map((m) =>
+          m.identifier === id ? { ...m, rating: { avg: r.avg, count: r.count } } : m
+        ))
+        setSelectedMod((prev) =>
+          prev && prev.identifier === id ? { ...prev, rating: { avg: r.avg, count: r.count } } : prev
+        )
+      } catch {
+        /* offline / network — keep stale state */
+      }
+    })()
+    return () => { cancelled = true }
+  }, [selectedMod?.identifier, signedIn, bmrOffline])
+
   // Submit / clear a rating. Optimistically updates myRatings and patches
   // the affected mod's aggregate so the card re-renders without a full
   // page refetch.
   const handleSetRating = useCallback(async (identifier: string, stars: number): Promise<void> => {
-    if (!signedIn) return
+    if (!signedIn) {
+      addRatingToast(t('mods.bmrSignInToRate'), 'info')
+      return
+    }
     setRatingBusy(identifier)
     try {
       const res = stars === 0
@@ -2395,11 +2431,27 @@ function RegistryBrowseView({ onUpdatesChange, deleteVersion }: { onUpdatesChang
         setSelectedMod((prev) =>
           prev && prev.identifier === identifier ? { ...prev, rating: { avg: r.avg, count: r.count } } : prev
         )
+      } else {
+        // Surface failure so the user sees *why* nothing changed instead of
+        // silently swallowing the error. Logs the full payload to devtools
+        // so we can diagnose CSRF/auth/validation issues without code edits.
+        console.warn('[bmr] setRating failed', { identifier, stars, res })
+        const code = res.error || `http_${res.status ?? 0}`
+        addRatingToast(`${t('mods.bmrRatingFailed') ?? 'Rating failed'}: ${code}`, 'error')
+        // If the server says we're not authenticated, our cached auth state
+        // is stale — kick a refresh so the UI updates and the user can sign
+        // in again. (No retry of the rating itself; we don't want to spam.)
+        if (res.status === 401 || res.status === 403 || res.error === 'unauthorized') {
+          try { await window.api.bmrRefreshMe() } catch { /* best-effort */ }
+        }
       }
+    } catch (err) {
+      console.warn('[bmr] setRating threw', err)
+      addRatingToast(`${t('mods.bmrRatingFailed') ?? 'Rating failed'}: ${String(err)}`, 'error')
     } finally {
       setRatingBusy(null)
     }
-  }, [signedIn])
+  }, [signedIn, addRatingToast, t])
 
   // Infinite-scroll plumbing — see ServerList.tsx for the original pattern.
   // Only mounts what the user has scrolled into; further pages are fetched

@@ -8,7 +8,7 @@
 //
 // Cookies are persisted to userData so the user stays signed in across app
 // restarts. CSRF is double-submit: the server sets a non-httpOnly cookie
-// `bmr_csrf`, we mirror it into `x-csrf-token` on every mutating request.
+// `rw_csrf`, we mirror it into `x-csrf-token` on every mutating request.
 // ─────────────────────────────────────────────────────────────────────────
 
 import { app } from 'electron'
@@ -18,6 +18,7 @@ import { join } from 'node:path'
 import type {
   BmrAuthState,
   BmrCallResult,
+  BmrModDetail,
   BmrPublicConfig,
   BmrRating,
   BmrSearchOptions,
@@ -26,7 +27,7 @@ import type {
 } from '../../shared/bmr-types'
 
 const DEFAULT_BASE_URL = 'https://bmr.musanet.xyz'
-const CSRF_COOKIE = 'bmr_csrf'
+const CSRF_COOKIE = 'rw_csrf'
 const CSRF_HEADER = 'x-csrf-token'
 const COOKIE_FILE = 'bmr-cookies.json'
 
@@ -199,7 +200,7 @@ export class BmrService {
     method: string,
     path: string,
     body?: unknown,
-    opts: { skipCsrf?: boolean } = {}
+    opts: { skipCsrf?: boolean; noRetry?: boolean } = {}
   ): Promise<BmrCallResult<T>> {
     const url = `${this.baseUrl}${path.startsWith('/') ? path : `/${path}`}`
     const isMutation = method !== 'GET' && method !== 'HEAD'
@@ -243,6 +244,31 @@ export class BmrService {
       const fromBody =
         data && typeof data === 'object' ? (data as { error?: string }).error : undefined
       const errCode: string = typeof fromBody === 'string' && fromBody ? fromBody : `http_${res.status}`
+      // CSRF tokens can go stale (server-side rotation, prior session, or
+      // cookies imported from the desktop sign-in window). When a mutation
+      // is rejected with a 403/419 and we haven't already retried, drop our
+      // cached token, re-fetch a fresh one, and retry exactly once. This
+      // keeps the "click rating → silently does nothing" footgun fixed even
+      // if the user's local CSRF cookie has drifted away from the server.
+      const csrfLooksStale =
+        isMutation &&
+        !opts.skipCsrf &&
+        !opts.noRetry &&
+        (res.status === 403 || res.status === 419) &&
+        (errCode === 'http_403' || errCode === 'http_419' ||
+          /csrf|forbidden|expired/i.test(errCode))
+      if (csrfLooksStale) {
+        this.csrfToken = null
+        this.cookieJar.delete(CSRF_COOKIE)
+        try {
+          await this.ensureCsrf()
+        } catch {
+          /* if CSRF refresh itself fails, fall through to the original error */
+        }
+        if (this.csrfToken) {
+          return this.request<T>(method, path, body, { skipCsrf: true, noRetry: true })
+        }
+      }
       return { ok: false, status: res.status, error: errCode, details: data }
     }
     return { ok: true, status: res.status, data: data as T }
@@ -329,8 +355,8 @@ export class BmrService {
     return this.request<BmrSearchResult>('GET', path)
   }
 
-  async getMod(identifier: string): Promise<BmrCallResult<unknown>> {
-    return this.request('GET', `/api/mods/${encodeURIComponent(identifier)}`)
+  async getMod(identifier: string): Promise<BmrCallResult<BmrModDetail>> {
+    return this.request<BmrModDetail>('GET', `/api/mods/${encodeURIComponent(identifier)}`)
   }
 
   async getModHistory(identifier: string): Promise<BmrCallResult<unknown>> {

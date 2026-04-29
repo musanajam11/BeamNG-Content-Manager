@@ -462,6 +462,9 @@
     "bmrYourRating": "Your rating",
     "bmrRateThis": "Rate this mod",
     "bmrSignInToRate": "Sign in to rate this mod",
+    "bmrRatingFailed": "Rating failed",
+    "bmrClearRating": "Clear",
+    "bmrClearRatingTooltip": "Remove your rating",
     "bmrErrors": {
       "invalidCredentials": "Wrong email or password.",
       "accountLocked": "Too many attempts. Try again later.",
