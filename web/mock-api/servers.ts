@@ -7,7 +7,9 @@ import type { ServerInfo } from '../../src/shared/types'
 
 const FAVORITES_KEY = 'bmp-cm-demo:favorites'
 const RECENTS_KEY = 'bmp-cm-demo:recent-servers'
-const BACKEND_BASE = 'https://backend.beammp.com'
+// Dev: use Vite proxy to dodge CORS. Production (GitHub Pages): direct
+// origin (will hit CORS and fall back to bundled demo data).
+const BACKEND_BASE = import.meta.env.DEV ? '/__proxy/beammp' : 'https://backend.beammp.com'
 
 let cachedServers: ServerInfo[] | null = null
 let cachedAt = 0

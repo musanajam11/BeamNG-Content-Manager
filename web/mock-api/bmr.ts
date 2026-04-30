@@ -4,7 +4,11 @@
 
 import type { BmrAuthState, BmrCallResult, BmrPublicConfig, BmrUser } from '../../src/shared/bmr-types'
 
-const BMR_BASE = 'https://bmr.musanet.xyz'
+// In dev (Vite) we use the local reverse proxy to bypass CORS. In production
+// (GitHub Pages) we hit the real origin directly — it'll typically fail CORS
+// and fall back to local demo data, which is acceptable for a static demo.
+const BMR_BASE = import.meta.env.DEV ? '/__proxy/bmr' : 'https://bmr.musanet.xyz'
+const BMR_PUBLIC_BASE = 'https://bmr.musanet.xyz'
 const SESSION_KEY = 'bmp-cm-demo:bmr-session'
 
 interface StoredSession {
@@ -73,7 +77,7 @@ const DEMO_USER: BmrUser = {
 }
 
 export const bmrMocks = {
-  bmrGetBaseUrl: async (): Promise<string> => BMR_BASE,
+  bmrGetBaseUrl: async (): Promise<string> => BMR_PUBLIC_BASE,
 
   bmrGetAuthState: async (): Promise<BmrAuthState> => authStateFromSession(loadSession()),
 

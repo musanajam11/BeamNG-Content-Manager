@@ -16,7 +16,7 @@
 // In all cases nothing throws, so the React app can render even when a
 // page reaches for a not-yet-mocked endpoint.
 
-const PROMISE_EMPTY_ARRAY = /^(get(All|List|Sessions|Backups|Plugins|Files|Friends|Recent|Favorites|Categories|Devices|Actions|Categories|Bindings|POIs|Logs|Routes|Mods|Backgrounds)|list|find|search|browse)/i
+const PROMISE_EMPTY_ARRAY = /^(get(All|List|Sessions|Backups|Plugins|Files|Friends|Recent|Favorites|Categories|Devices|Actions|Categories|Bindings|POIs|Logs|Routes|Mods|Backgrounds)|list|find|search|browse|fetch)/i
 const PROMISE_NULL = /^(get(Preview|Detail|Status|Image|Metadata|Heightmap|Minimap|TerrainBase|TerrainInfo|ConfigData|Path|Default|Health))/i
 const PROMISE_BOOL_FALSE = /^(is|has|check|verify)/i
 const SEND_VOID = /^(set|send|push|notify|update|toggle|save|write|delete|remove|clear|reset|open|close|hide|show|focus|blur|disable|enable|start|stop|restart|launch|kill|select|cancel|approve|reject|accept|deny|trigger|emit|register|unregister|deploy|undeploy|install|uninstall|track|record|reveal|simulate|export|import|extract|copy|move|rename|duplicate|create|add|increment|decrement|mark|backup|restore|join|leave|connect|disconnect|sign|login|logout|signup|signin|signout|browse|fetch|warm|refresh|reload|sync|generate|regenerate|render|copy|paste|undo|redo|persist|forget|edit|use|run|invoke|tick|ping|pong|seek|playPause|setUseOfficialBackend|setBackendUrl|setAuthUrl|setZoomFactor|markSetupComplete)/i

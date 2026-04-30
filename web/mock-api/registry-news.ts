@@ -11,7 +11,9 @@ export const registryMocks = {
     lastUpdate: null as number | null
   }),
   registryUpdateIndex: async () => ({ success: true, indexedModCount: 0 }),
-  registrySearch: async () => ({ items: [], total: 0, page: 1, pageSize: 20 }),
+  // Must match RegistrySearchResult in src/shared/registry-types.ts:
+  //   { mods: AvailableMod[]; total: number; page: number; per_page: number; total_pages: number }
+  registrySearch: async () => ({ mods: [], total: 0, page: 1, per_page: 25, total_pages: 1 }),
   registryGetMod: async (): Promise<null> => null,
   registryResolve: async () => ({ resolved: [], conflicts: [], missing: [] }),
   registryCheckReverseDeps: async () => [],
@@ -33,32 +35,45 @@ export const registryMocks = {
 }
 
 export const newsMocks = {
-  getNewsFeed: async () => [
-    {
-      id: 'demo-1',
-      source: 'BeamMP Blog',
-      title: 'Welcome to the BeamMP Content Manager web demo',
-      url: 'https://github.com/MusaNajam11/BeamNG-Content-Manager',
-      date: new Date().toISOString(),
-      summary: 'You are exploring an in-browser preview. Download the desktop app to manage real mods, launch BeamNG, host your own multiplayer server, and more.'
-    },
-    {
-      id: 'demo-2',
-      source: 'BeamNG.drive',
-      title: 'BeamNG.drive — latest update notes',
-      url: 'https://www.beamng.com/game/news/',
-      date: new Date(Date.now() - 86_400_000 * 3).toISOString(),
-      summary: 'Read the latest patch notes for BeamNG.drive on the official site.'
-    },
-    {
-      id: 'demo-3',
-      source: 'Community',
-      title: 'Top 5 community drift maps worth trying',
-      url: 'https://www.beamng.com/resources/categories/maps.5/',
-      date: new Date(Date.now() - 86_400_000 * 7).toISOString(),
-      summary: 'Showcase of community-built drift maps from the BeamNG repository.'
-    }
-  ],
+  // Schema must match the desktop preload's getNewsFeed signature exactly:
+  // { id, source: 'steam' | 'beammp', title, url, date: number (unix seconds), summary }
+  getNewsFeed: async (): Promise<Array<{
+    id: string
+    source: 'steam' | 'beammp'
+    title: string
+    url: string
+    date: number
+    summary: string
+  }>> => {
+    const nowSec = Math.floor(Date.now() / 1000)
+    const day = 86_400
+    return [
+      {
+        id: 'demo-1',
+        source: 'beammp',
+        title: 'Welcome to the BeamMP Content Manager web demo',
+        url: 'https://github.com/MusaNajam11/BeamNG-Content-Manager',
+        date: nowSec,
+        summary: 'You are exploring an in-browser preview. Download the desktop app to manage real mods, launch BeamNG, host your own multiplayer server, and more.'
+      },
+      {
+        id: 'demo-2',
+        source: 'steam',
+        title: 'BeamNG.drive — latest update notes',
+        url: 'https://www.beamng.com/game/news/',
+        date: nowSec - day * 3,
+        summary: 'Read the latest patch notes for BeamNG.drive on the official site.'
+      },
+      {
+        id: 'demo-3',
+        source: 'beammp',
+        title: 'Top 5 community drift maps worth trying',
+        url: 'https://www.beamng.com/resources/categories/maps.5/',
+        date: nowSec - day * 7,
+        summary: 'Showcase of community-built drift maps from the BeamNG repository.'
+      }
+    ]
+  },
 
   recordNewsClick: async (): Promise<void> => {},
   recordNewsImpression: async (): Promise<void> => {},
