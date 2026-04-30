@@ -7,9 +7,13 @@ import type { ServerInfo } from '../../src/shared/types'
 
 const FAVORITES_KEY = 'bmp-cm-demo:favorites'
 const RECENTS_KEY = 'bmp-cm-demo:recent-servers'
-// Dev: use Vite proxy to dodge CORS. Production (GitHub Pages): direct
-// origin (will hit CORS and fall back to bundled demo data).
-const BACKEND_BASE = import.meta.env.DEV ? '/__proxy/beammp' : 'https://backend.beammp.com'
+// Dev: use Vite proxy to dodge CORS. Production (GitHub Pages): route
+// through a public CORS proxy so the demo can still hit the real list.
+const BACKEND_ORIGIN = 'https://backend.beammp.com'
+function backendUrl(path: string): string {
+  if (import.meta.env.DEV) return `/__proxy/beammp${path}`
+  return `https://corsproxy.io/?url=${encodeURIComponent(`${BACKEND_ORIGIN}${path}`)}`
+}
 
 let cachedServers: ServerInfo[] | null = null
 let cachedAt = 0
@@ -18,7 +22,7 @@ const CACHE_TTL = 60_000
 async function fetchLiveServers(): Promise<ServerInfo[] | null> {
   if (cachedServers && Date.now() - cachedAt < CACHE_TTL) return cachedServers
   try {
-    const r = await fetch(`${BACKEND_BASE}/servers-info`, {
+    const r = await fetch(backendUrl('/servers-info'), {
       // Best effort: many environments will block this with CORS. We treat
       // any failure as "fall back to demo data" so the UI still renders.
       signal: AbortSignal.timeout(5_000)
@@ -83,7 +87,7 @@ export const serverMocks = {
   },
   checkBackendHealth: async (): Promise<boolean> => {
     try {
-      const r = await fetch(`${BACKEND_BASE}/servers-info`, { signal: AbortSignal.timeout(3000) })
+      const r = await fetch(backendUrl('/servers-info'), { signal: AbortSignal.timeout(3000) })
       return r.ok
     } catch { return false }
   },
