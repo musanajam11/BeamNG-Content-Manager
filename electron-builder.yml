@@ -13,8 +13,19 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+protocols:
+  - name: BeamMP Content Manager
+    schemes:
+      - beammp-cm
 win:
   executableName: BeamMP-Content-Manager
+  # Tell Windows the installer should register the beammp-cm:// URL handler.
+  # electron-builder reads top-level `protocols` and emits the matching
+  # NSIS registry writes (HKCU\Software\Classes\beammp-cm).
+  protocols:
+    - name: BeamMP Content Manager
+      schemes:
+        - beammp-cm
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
@@ -37,6 +48,12 @@ linux:
   maintainer: Justmusa
   category: Game
   executableName: beamng-content-manager
+  # Linux: electron-builder writes a .desktop file with `MimeType=x-scheme-handler/beammp-cm`
+  # so xdg-open routes beammp-cm:// links to CM.
+  protocols:
+    - name: BeamMP Content Manager
+      schemes:
+        - beammp-cm
 appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false

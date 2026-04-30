@@ -21,6 +21,7 @@ import { LuaConsolePage } from './pages/LuaConsolePage'
 import { WorldEditSyncPage } from './pages/WorldEditSyncPage'
 import { SetupWizard } from './pages/SetupWizard'
 import { VoiceChatPanel } from './components/VoiceChatPanel'
+import { InviteJoinDialog } from './components/servers/InviteJoinDialog'
 import { useAppStore } from './stores/useAppStore'
 import { useServerStore } from './stores/useServerStore'
 import { useVoiceChatStore } from './stores/useVoiceChatStore'
@@ -359,6 +360,7 @@ function App(): React.JSX.Element {
           <StatusBar />
           <VoiceChatPanel />
         </div>
+        <InviteJoinDialog />
       </BmrAuthProvider>
     </div>
   )

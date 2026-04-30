@@ -1,5 +1,6 @@
 import { app, shell, BrowserWindow, protocol, Tray, Menu, nativeImage, ipcMain, nativeTheme } from 'electron'
-import { join } from 'path'
+import { join, resolve as resolvePath } from 'path'
+import { spawn } from 'child_process'
 import { existsSync, readFileSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
@@ -7,7 +8,6 @@ import icon from '../../resources/icon.png?asset'
 import { initializeServices, registerIpcHandlers } from './ipc/handlers'
 import { extractVehicleAsset, resolveGameAsset, initVehicleAssetService } from './services/VehicleAssetService'
 import { initDiscordRPC, destroyDiscordRPC } from './services/DiscordRPCService'
-
 // ── Read stored colorMode before window creation for correct initial background ──
 function getInitialBackground(): string {
   try {
@@ -36,6 +36,153 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'vehicle-asset', privileges: { bypassCSP: true, supportFetchAPI: true, stream: true } }
 ])
 
+// ── beammp-cm:// custom URL scheme (invite links) ──────────────────────────
+//
+// Lets users (or web pages) open `beammp-cm://join?ip=...&port=...&...` and
+// have it routed straight into a running CM instance. The OS launches the
+// installed app for the scheme; we receive the URL via:
+//   • argv on cold start (Windows/Linux)
+//   • app.on('second-instance', argv) when already running (Win/Linux)
+//   • app.on('open-url', url)        on macOS (both cold and warm)
+//
+// Format (parsed in parseInviteUrl below — keep schema minimal/whitelisted):
+//   beammp-cm://join?ip=<host>&port=<1-65535>
+//                  [&name=<sname>][&map=<map>][&password=<pw>][&from=<sender>]
+//
+// Security: we never auto-join. The renderer always shows a confirmation card
+// with the parsed server info first. Unknown query keys are ignored. Any
+// malformed URL is dropped silently (logged for debugging).
+const INVITE_SCHEME = 'beammp-cm'
+
+interface JoinInvitePayload {
+  ip: string
+  port: number
+  name?: string
+  map?: string
+  password?: string
+  from?: string
+  raw: string
+}
+
+let pendingInvite: JoinInvitePayload | null = null
+
+function parseInviteUrl(input: string): JoinInvitePayload | null {
+  if (!input || typeof input !== 'string') return null
+  let url: URL
+  try {
+    url = new URL(input)
+  } catch {
+    return null
+  }
+  if (url.protocol !== `${INVITE_SCHEME}:`) return null
+
+  // We intentionally accept either `beammp-cm://join?...` (host = "join")
+  // or `beammp-cm:join?...` (path-style). Either way, the action is "join".
+  const action = (url.host || url.pathname.replace(/^\/+/, '')).toLowerCase()
+  if (action && action !== 'join') {
+    console.warn('[invite] unsupported action:', action)
+    return null
+  }
+
+  const ip = (url.searchParams.get('ip') || '').trim()
+  const portStr = (url.searchParams.get('port') || '').trim()
+  const port = parseInt(portStr, 10)
+  if (!ip || !port || port < 1 || port > 65535) return null
+
+  // Reject obviously hostile hosts: only allow chars that can appear in a
+  // hostname / IPv4 / bracketed IPv6 literal. This blocks command-injection
+  // style payloads from any downstream code that might forward the value.
+  if (!/^[a-zA-Z0-9.\-:[\]_]+$/.test(ip)) return null
+
+  const name = url.searchParams.get('name')?.slice(0, 200) || undefined
+  const map = url.searchParams.get('map')?.slice(0, 200) || undefined
+  const password = url.searchParams.get('password')?.slice(0, 200) || undefined
+  const from = url.searchParams.get('from')?.slice(0, 100) || undefined
+
+  return { ip, port, name, map, password, from, raw: input }
+}
+
+function findInviteInArgv(argv: readonly string[]): JoinInvitePayload | null {
+  for (const arg of argv) {
+    if (typeof arg === 'string' && arg.toLowerCase().startsWith(`${INVITE_SCHEME}:`)) {
+      const parsed = parseInviteUrl(arg)
+      if (parsed) return parsed
+    }
+  }
+  return null
+}
+
+function dispatchInvite(invite: JoinInvitePayload): void {
+  console.log('[invite] received:', invite.ip + ':' + invite.port, invite.name ? `(${invite.name})` : '')
+  if (mainWindow && !mainWindow.webContents.isLoading()) {
+    mainWindow.show()
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.focus()
+    mainWindow.webContents.send('invite:received', invite)
+  } else {
+    // Window not ready yet — stash and let the renderer pull on first mount.
+    pendingInvite = invite
+  }
+}
+
+// Register CM as the OS-level handler for beammp-cm:// links.
+// Dev mode special-case: when running via `electron .` the invocation is
+// `electron.exe <argv[1]=path-to-app>`, so we must pass execPath + the
+// script path so Windows reconstructs the correct command line on
+// protocol launch. The script path MUST be absolute — when Windows
+// invokes the registered command from the browser, the working directory
+// is typically C:\WINDOWS\System32, and a relative argv[1] resolves there
+// (yielding the "Unable to find Electron app at C:\WINDOWS\System32"
+// error). We also unregister any stale prior dev registration so leftover
+// entries pointing at deleted electron.exe paths don't poison the OS
+// handler list.
+if (process.defaultApp) {
+  if (process.argv.length >= 2 && process.argv[1]) {
+    const appEntry = resolvePath(process.argv[1])
+    // Pass `--` so beammp-cm://… URLs are treated as positional args, not
+    // as flags (Electron would otherwise try to interpret a leading `--`).
+    app.removeAsDefaultProtocolClient(INVITE_SCHEME)
+    app.setAsDefaultProtocolClient(INVITE_SCHEME, process.execPath, [appEntry])
+  }
+} else {
+  app.setAsDefaultProtocolClient(INVITE_SCHEME)
+}
+
+// On Windows, decorate the protocol's HKCU class with a friendly name and
+// DefaultIcon so the browser's "Open this link with…" picker shows
+// "BeamMP Content Manager" + our app icon instead of the generic
+// "Electron" text and a blank icon. `app.setAsDefaultProtocolClient` only
+// writes shell\open\command; it leaves the (Default) friendly name and
+// DefaultIcon empty, which is what the browser scrapes for the picker UI.
+// In packaged installs, electron-builder's NSIS installer writes these
+// for us, so we only need this in dev / unpackaged contexts.
+if (process.platform === 'win32') {
+  try {
+    const iconPath = app.isPackaged
+      ? join(process.resourcesPath, 'icon.ico')
+      : join(app.getAppPath(), 'build', 'icon.ico')
+    const friendlyName = 'BeamMP Content Manager'
+    const baseKey = `HKCU\\Software\\Classes\\${INVITE_SCHEME}`
+    const regAdd = (key: string, valueName: string, type: string, data: string): void => {
+      // Use spawn (no shell) so values containing spaces/quotes are passed
+      // safely as a single argv element. /f forces overwrite without prompt.
+      const args = ['ADD', key, '/v', valueName, '/t', type, '/d', data, '/f']
+      // /ve writes the (Default) value
+      if (valueName === '') {
+        args.splice(2, 2, '/ve')
+      }
+      const child = spawn('reg.exe', args, { stdio: 'ignore', windowsHide: true })
+      child.on('error', (err) => console.warn('[invite] reg.exe failed:', err.message))
+    }
+    regAdd(baseKey, '', 'REG_SZ', `URL:${friendlyName} Invite`)
+    regAdd(baseKey, 'URL Protocol', 'REG_SZ', '')
+    regAdd(baseKey, 'FriendlyTypeName', 'REG_SZ', friendlyName)
+    regAdd(`${baseKey}\\DefaultIcon`, '', 'REG_SZ', `"${iconPath}",0`)
+  } catch (err) {
+    console.warn('[invite] Failed to decorate protocol registry entries:', err)
+  }
+}
+
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let isQuitting = false
@@ -45,12 +192,30 @@ const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, argv) => {
     if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.show()
       mainWindow.focus()
     }
+    // The OS appended the beammp-cm:// URL to our argv when it relaunched
+    // the existing instance. Parse it and dispatch.
+    const invite = findInviteInArgv(argv)
+    if (invite) dispatchInvite(invite)
   })
+
+  // macOS: protocol URLs arrive via 'open-url', NOT argv.
+  app.on('open-url', (event, url) => {
+    event.preventDefault()
+    const invite = parseInviteUrl(url)
+    if (invite) dispatchInvite(invite)
+  })
+
+  // Cold start (Win/Linux): the URL is in our own process.argv.
+  // macOS cold-start uses 'open-url' which is wired up above and will fire
+  // shortly after app.whenReady(); dispatchInvite() stashes it as pending
+  // until mainWindow is ready.
+  pendingInvite = findInviteInArgv(process.argv)
 }
 
 function createWindow(): void {
@@ -250,6 +415,15 @@ app.whenReady().then(async () => {
 
   // Register all IPC handlers
   registerIpcHandlers()
+
+  // Invite link bridge: renderer pulls any pending invite that was captured
+  // before the window finished loading (cold-start case). Returns null and
+  // clears in one call so we never re-deliver the same invite.
+  ipcMain.handle('invite:getPending', () => {
+    const inv = pendingInvite
+    pendingInvite = null
+    return inv
+  })
 
   // Discord Rich Presence
   initDiscordRPC()

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import { contextBridge, ipcRenderer, webUtils, clipboard } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
 const api = {
@@ -86,14 +86,37 @@ const api = {
     ipcRenderer.invoke('game:probeServer', ip, port) as Promise<{
       online: boolean; sname?: string; map?: string; players?: string;
       maxplayers?: string; modstotal?: string; playerslist?: string
-    }>,
-  beammpLogin: (username: string, password: string) => ipcRenderer.invoke('game:beammpLogin', username, password),
+    }>,  beammpLogin: (username: string, password: string) => ipcRenderer.invoke('game:beammpLogin', username, password),
   beammpLoginAsGuest: () => ipcRenderer.invoke('game:beammpLoginAsGuest'),
   beammpLogout: () => ipcRenderer.invoke('game:beammpLogout'),
   getAuthInfo: () => ipcRenderer.invoke('game:getAuthInfo'),
   getLauncherLogs: () => ipcRenderer.invoke('game:getLauncherLogs'),
   checkBeamMPInstalled: () => ipcRenderer.invoke('game:checkBeamMPInstalled') as Promise<boolean>,
   installBeamMP: () => ipcRenderer.invoke('game:installBeamMP') as Promise<{ success: boolean; error?: string }>,
+
+  // Clipboard (Electron native — works reliably with custom frame /
+  // unfocused-document quirks where navigator.clipboard.writeText silently
+  // rejects). Returns true on success.
+  writeClipboard: (text: string): boolean => {
+    try {
+      clipboard.writeText(String(text ?? ''))
+      return true
+    } catch (err) {
+      console.error('[clipboard] writeText failed:', err)
+      return false
+    }
+  },
+
+  // Invite links (beammp-cm:// custom URL scheme)
+  getPendingInvite: () =>
+    ipcRenderer.invoke('invite:getPending') as Promise<import('../shared/types').JoinInvitePayload | null>,
+  onInviteReceived: (
+    callback: (invite: import('../shared/types').JoinInvitePayload) => void
+  ) => {
+    const handler = (_e: unknown, invite: import('../shared/types').JoinInvitePayload): void => callback(invite)
+    ipcRenderer.on('invite:received', handler)
+    return () => { ipcRenderer.removeListener('invite:received', handler) }
+  },
 
   // Discord Rich Presence
   discordSetPage: (pageId: string) => ipcRenderer.send('discord:setPage', pageId),

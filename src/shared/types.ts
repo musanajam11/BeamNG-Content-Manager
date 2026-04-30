@@ -183,6 +183,26 @@ export interface ServerInfo {
   playerslist: string
 }
 
+/**
+ * Parsed payload of a `beammp-cm://join?...` invite URL, delivered from the
+ * main process to the renderer. The renderer uses this to render the rich
+ * confirmation card before any join action runs.
+ */
+export interface JoinInvitePayload {
+  ip: string
+  port: number
+  /** Optional friendly name encoded in the link (display only — we re-probe). */
+  name?: string
+  /** Optional map slug from the link (display only). */
+  map?: string
+  /** Optional pre-shared password the inviter included for private servers. */
+  password?: string
+  /** Optional inviter handle / sender label. */
+  from?: string
+  /** Original raw URL string (for diagnostics / copy-back). */
+  raw: string
+}
+
 export interface AuthResult {
   success: boolean
   username?: string

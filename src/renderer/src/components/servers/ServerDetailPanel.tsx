@@ -1,4 +1,4 @@
-import { Play, Star, Package, Users, MapPin, Globe, Gauge, Wifi, Copy, Check, X, Clock, Square, ImageIcon, HardDrive } from 'lucide-react'
+import { Play, Star, Package, Users, MapPin, Globe, Gauge, Wifi, Copy, Check, X, Clock, Square, ImageIcon, HardDrive, Link2 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ServerInfo } from '../../../../shared/types'
@@ -7,6 +7,8 @@ import { useFlagUrl } from '../../utils/flagCache'
 import { BeamMPText } from '../BeamMPText'
 import { parseServerTags } from '../../utils/serverTags'
 import { ServerTagBadge } from './ServerTag'
+import { buildInviteLink } from '../../utils/inviteLink'
+import { copyText } from '../../utils/clipboard'
 
 interface Props {
   server: ServerInfo
@@ -71,6 +73,7 @@ export function ServerDetailPanel({
   }
 
   const [copied, setCopied] = useState(false)
+  const [inviteCopied, setInviteCopied] = useState(false)
   const [mapPreview, setMapPreview] = useState<string | null>(null)
 
   // Load map preview when server changes
@@ -85,9 +88,25 @@ export function ServerDetailPanel({
   }, [server.map])
 
   const handleCopy = (): void => {
-    navigator.clipboard.writeText(`${server.ip}:${server.port}`)
+    copyText(`${server.ip}:${server.port}`)
     setCopied(true)
     setTimeout(() => setCopied(false), 1200)
+  }
+
+  const handleCopyInvite = (): void => {
+    // Generate a beammp-cm:// invite link that, when clicked on a system
+    // with CM installed, opens straight into this server's confirmation
+    // card. Embed sname + map so recipients see meaningful info even
+    // before the live probe finishes.
+    const link = buildInviteLink({
+      ip: server.ip,
+      port: server.port,
+      name: server.sname,
+      map: server.map
+    })
+    copyText(link)
+    setInviteCopied(true)
+    setTimeout(() => setInviteCopied(false), 1500)
   }
 
   const formatElapsed = (ms: number): string => {
@@ -250,6 +269,14 @@ export function ServerDetailPanel({
             title={t('servers.copyAddress')}
           >
             {copied ? <Check size={14} /> : <Copy size={14} />}
+          </button>
+
+          <button
+            onClick={handleCopyInvite}
+            className="border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-[var(--color-text-secondary)] transition hover:bg-[var(--color-surface-active)] hover:text-[var(--color-text-primary)]"
+            title={t('servers.copyInviteLink', 'Copy invite link (beammp-cm://)')}
+          >
+            {inviteCopied ? <Check size={14} /> : <Link2 size={14} />}
           </button>
         </div>
 

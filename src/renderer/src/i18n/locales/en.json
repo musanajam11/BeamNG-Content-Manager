@@ -47,6 +47,21 @@
     "goBack": "Go back",
     "more": "more"
   },
+  "invite": {
+    "title": "Join invite",
+    "from": "Invited by",
+    "address": "Address",
+    "mods": "Mods",
+    "none": "None",
+    "unknownMap": "Unknown map",
+    "probing": "Looking up server…",
+    "offline": "Server is offline or unreachable. You can still try to join.",
+    "passwordProvided": "Password provided",
+    "passwordNote": "Enter this when BeamMP prompts you.",
+    "publicWarn": "This link points at a public address. Only join servers you trust — joining will download mods and run server-supplied scripts.",
+    "joinAction": "Join server",
+    "joinFailed": "Failed to join server"
+  },
   "analytics": {
     "banActivated": "IP Ban Activated",
     "banRequiresRestart": "The server must be restarted for this ban to take effect.",
@@ -210,6 +225,7 @@
     "lockedInQueue": "Locked — in queue",
     "connectedElsewhere": "Connected elsewhere",
     "copyAddress": "Copy address",
+    "copyInviteLink": "Copy invite link (beammp-cm://)",
     "connection": "Connection",
     "players": "Players",
     "map": "Map",

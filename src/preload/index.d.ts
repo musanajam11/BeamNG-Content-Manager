@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import type { AppConfig, GamePaths, ServerInfo, AuthResult, GameStatus, ModInfo, RepoBrowseResult, RepoCategory, RepoSortOrder, VehicleDetail, VehicleConfigInfo, VehicleConfigData, HostedServerConfig, HostedServerStatus, HostedServerEntry, ServerFileEntry, ServerFileSearchResult, ServerExeStatus, GPSRoute, PlayerPosition, BackupSchedule, BackupEntry, ScheduledTask, AnalyticsData, IpSummary, MapRichMetadata, LoadOrderData, ModConflictReport, SupportTicket, SupportTicketCreateInput, SupportTicketUpdateInput, HostedServerSupportIngestConfig, HostedServerSupportIngestStatus, HostedServerSupportTicketUiConfig } from '../shared/types'
+import type { AppConfig, GamePaths, ServerInfo, AuthResult, GameStatus, ModInfo, RepoBrowseResult, RepoCategory, RepoSortOrder, VehicleDetail, VehicleConfigInfo, VehicleConfigData, HostedServerConfig, HostedServerStatus, HostedServerEntry, ServerFileEntry, ServerFileSearchResult, ServerExeStatus, GPSRoute, PlayerPosition, BackupSchedule, BackupEntry, ScheduledTask, AnalyticsData, IpSummary, MapRichMetadata, LoadOrderData, ModConflictReport, SupportTicket, SupportTicketCreateInput, SupportTicketUpdateInput, HostedServerSupportIngestConfig, HostedServerSupportIngestStatus, HostedServerSupportTicketUiConfig, JoinInvitePayload } from '../shared/types'
 import type { RegistryStatus, RegistrySearchOptions, RegistrySearchResult, AvailableMod, InstalledRegistryMod, ResolutionResult, RegistryRepository, BeamModMetadata, ModpackExport } from '../shared/registry-types'
 import type { BmrAuthState, BmrCallResult, BmrModDetail, BmrPublicConfig, BmrRating, BmrSearchOptions, BmrSearchResult, BmrUser } from '../shared/bmr-types'
 
@@ -133,6 +133,13 @@ interface AppAPI {
   getLauncherLogs(): Promise<string[]>
   checkBeamMPInstalled(): Promise<boolean>
   installBeamMP(): Promise<{ success: boolean; error?: string }>
+
+  // Clipboard
+  writeClipboard(text: string): boolean
+
+  // Invite links (beammp-cm:// custom URL scheme)
+  getPendingInvite(): Promise<JoinInvitePayload | null>
+  onInviteReceived(callback: (invite: JoinInvitePayload) => void): () => void
 
   // Support Tools
   openUserFolder(): Promise<{ success: boolean; error?: string }>
