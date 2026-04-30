@@ -69,10 +69,35 @@ export const gameMocks = {
   onGameStatusChange: noop,
   joinServer: async () => ({ success: false, error: 'Demo mode' }),
   probeServer: async () => ({ online: false }),
-  beammpLogin: async () => ({ success: false, error: 'Demo mode' }),
-  beammpLoginAsGuest: async (): Promise<void> => {},
-  beammpLogout: async (): Promise<void> => {},
-  getAuthInfo: async () => ({ authenticated: false, username: 'DemoUser', guest: true }),
+  beammpLogin: async (username: string, _password: string) => {
+    if (!username) return { success: false, error: 'Enter a username' }
+    try {
+      localStorage.setItem('bmp-cm-demo:beammp-user', username)
+      localStorage.setItem('bmp-cm-demo:beammp-guest', 'false')
+    } catch { /* quota */ }
+    return { success: true, username }
+  },
+  beammpLoginAsGuest: async (): Promise<void> => {
+    try {
+      localStorage.setItem('bmp-cm-demo:beammp-user', 'Guest')
+      localStorage.setItem('bmp-cm-demo:beammp-guest', 'true')
+    } catch { /* quota */ }
+  },
+  beammpLogout: async (): Promise<void> => {
+    try {
+      localStorage.removeItem('bmp-cm-demo:beammp-user')
+      localStorage.removeItem('bmp-cm-demo:beammp-guest')
+    } catch { /* quota */ }
+  },
+  getAuthInfo: async () => {
+    let username = 'DemoUser'
+    let guest = true
+    try {
+      username = localStorage.getItem('bmp-cm-demo:beammp-user') || 'DemoUser'
+      guest = localStorage.getItem('bmp-cm-demo:beammp-guest') !== 'false'
+    } catch { /* fall through */ }
+    return { authenticated: true, username, guest }
+  },
   getLauncherLogs: async (): Promise<string[]> => ['[Demo] Launcher not running in web demo mode'],
 
   // Map Preview
