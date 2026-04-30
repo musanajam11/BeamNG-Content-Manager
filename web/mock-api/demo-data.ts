@@ -32,7 +32,10 @@ export const DEMO_CONFIG: AppConfig = {
     bgImageBlur: 0,
     bgImageOpacity: 0.3,
     bgImageList: [],
-    bgCycleOnLaunch: false,
+    // Web demo defaults: pick a fresh random background each launch and
+    // apply the vignette overlay so the UI looks polished out of the box.
+    bgCycleOnLaunch: true,
+    overlayEffect: 'vignette',
     sidebarOrder: ['home', 'servers', 'friends', 'vehicles', 'maps', 'mods', 'career', 'server-admin', 'launcher', 'controls', 'live-gps'],
     sidebarHidden: [],
     customCSS: '',
