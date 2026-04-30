@@ -5,6 +5,26 @@ import type { AppConfig } from '../../src/shared/types'
 
 let currentConfig = { ...DEMO_CONFIG }
 
+// Bundled background images served from /backgrounds/* via vite's publicDir
+// (configured in web/vite.config.ts to point at ../resources). The renderer
+// stores these paths in localStorage and feeds them back into <img src> and
+// CSS url(...), so we just return the same string for thumb/full loaders.
+const DEMO_BG_FILES = [
+  'baja-bug.jpg',
+  'camper-van.png',
+  'city-cruise.png',
+  'coastal-drive.jpg',
+  'demolition-derby.png',
+  'flying-car.jpg',
+  'police-chase.jpg',
+  'rally-drift.png',
+  'rally-jump.jpg',
+  'red-convertible.png',
+  'rock-crawling.jpg',
+  'tunnel-drive.png'
+]
+const DEMO_BG_PATHS = DEMO_BG_FILES.map((f) => `backgrounds/${f}`)
+
 export const configMocks = {
   // Config
   getConfig: async (): Promise<AppConfig> => ({ ...currentConfig }),
@@ -20,10 +40,10 @@ export const configMocks = {
   setZoomFactor: async (): Promise<void> => {},
   getZoomFactor: async (): Promise<number> => currentConfig.appearance.uiScale,
   pickBackgroundImage: async (): Promise<string | null> => null,
-  loadBackgroundImage: async (): Promise<string | null> => null,
-  getDefaultBackgrounds: async (): Promise<string[]> => [],
+  loadBackgroundImage: async (filePath: string): Promise<string | null> => filePath,
+  getDefaultBackgrounds: async (): Promise<string[]> => DEMO_BG_PATHS,
   deleteDefaultBackground: async (): Promise<boolean> => false,
-  loadBackgroundThumb: async (): Promise<string | null> => null,
+  loadBackgroundThumb: async (filePath: string): Promise<string | null> => filePath,
 
   // Auto-updater (no-ops in web demo)
   onUpdateAvailable: (_cb: (info: { version: string }) => void): (() => void) => () => {},

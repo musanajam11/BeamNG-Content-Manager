@@ -6,6 +6,9 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   root: resolve(__dirname),
   base: './', // relative paths so GitHub Pages works in a sub-path
+  // Serve the desktop app's bundled resources (backgrounds, icon, etc.)
+  // so the web demo can show the same default background gallery.
+  publicDir: resolve(__dirname, '../resources'),
   resolve: {
     alias: {
       '@renderer': resolve(__dirname, '../src/renderer/src')

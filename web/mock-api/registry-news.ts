@@ -11,6 +11,13 @@ export const registryMocks = {
     lastUpdate: null as number | null
   }),
   registryUpdateIndex: async () => ({ success: true, indexedModCount: 0 }),
+  // Repository list shown in SettingsPage. Renderer iterates with .map(), so
+  // we must return an array (not undefined) — the auto-stub falls through to
+  // undefined for `registryGet*` keys not matched by the heuristic regex.
+  registryGetRepositories: async (): Promise<Array<{ name: string; url: string; priority: number }>> => [
+    { name: 'BeamMP Mod Repository', url: 'https://www.beamng.com/resources/categories/multiplayer.43/', priority: 0 }
+  ],
+  registrySetRepositories: async (): Promise<{ success: true }> => ({ success: true }),
   // Must match RegistrySearchResult in src/shared/registry-types.ts:
   //   { mods: AvailableMod[]; total: number; page: number; per_page: number; total_pages: number }
   registrySearch: async () => ({ mods: [], total: 0, page: 1, per_page: 25, total_pages: 1 }),
