@@ -2,6 +2,8 @@ import { useState, useCallback, useEffect } from 'react'
 import { Play, Square, RotateCcw, Clock, Cpu, HardDrive, Users, Wifi, Copy, AlertTriangle, Search, CheckCircle, XCircle, Loader2, Globe, Download, ChevronDown, ChevronUp, ExternalLink, Plug } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { HostedServerEntry, ServerExeStatus } from '../../../../shared/types'
+import { buildInviteLink, createShortInviteLink } from '../../utils/inviteLink'
+import { copyText } from '../../utils/clipboard'
 
 type TailscaleStatus = {
   installed: boolean
@@ -43,6 +45,8 @@ export function StatusDashboard({
   // Direct connect state
   const [connecting, setConnecting] = useState(false)
   const [connectError, setConnectError] = useState<string | null>(null)
+  const [inviteCopied, setInviteCopied] = useState(false)
+  const [creatingInvite, setCreatingInvite] = useState(false)
 
   // Live uptime — computed from startedAt so it survives navigation
   const [liveUptime, setLiveUptime] = useState(() =>
@@ -93,6 +97,7 @@ export function StatusDashboard({
   }, [config.port])
 
   const connectionString = publicIp ? `${publicIp}:${config.port}` : `:${config.port}`
+  const inviteIp = publicIp || (tailscale?.installed && tailscale.running ? tailscale.ip : null)
 
   const handleDirectConnect = useCallback(async () => {
     setConnecting(true)
@@ -112,6 +117,22 @@ export function StatusDashboard({
       setConnecting(false)
     }
   }, [config.port, t])
+
+  const handleCopyInvite = useCallback(async () => {
+    if (!inviteIp || creatingInvite) return
+    setCreatingInvite(true)
+    setInviteCopied(false)
+    try {
+      const shortLink = await createShortInviteLink({ ip: inviteIp, port: config.port })
+      copyText(shortLink)
+    } catch {
+      copyText(buildInviteLink({ ip: inviteIp, port: config.port, name: config.name }))
+    } finally {
+      setCreatingInvite(false)
+      setInviteCopied(true)
+      setTimeout(() => setInviteCopied(false), 1500)
+    }
+  }, [inviteIp, creatingInvite, config.port, config.name])
 
   return (
     <div className="flex-1 overflow-y-auto p-5">
@@ -268,6 +289,28 @@ export function StatusDashboard({
                 {config.private ? t('serverManager.private') : t('serverManager.public')}
               </span>
             </div>
+            {isRunning && (
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-[var(--color-text-muted)]">{t('serverManager.inviteLink', 'Invite link')}</span>
+                <button
+                  onClick={handleCopyInvite}
+                  disabled={!inviteIp || creatingInvite}
+                  className="inline-flex items-center gap-1.5 px-2 py-1 text-xs border border-[var(--color-border)] bg-[var(--color-surface-hover)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-border-accent)] transition-colors disabled:opacity-50"
+                  title={inviteIp
+                    ? t('servers.copyInviteLink', 'Copy invite link (beammp-cm://)')
+                    : t('serverManager.inviteLinkRequiresAddress', 'Run Test My Port or enable Tailscale to create a shareable invite')}
+                >
+                  {creatingInvite ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : inviteCopied ? (
+                    <CheckCircle size={12} />
+                  ) : (
+                    <ExternalLink size={12} />
+                  )}
+                  <span>{inviteCopied ? t('serverManager.copied', 'Copied') : t('serverManager.copy', 'Copy')}</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

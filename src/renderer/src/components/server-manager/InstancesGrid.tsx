@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Play, Square, Settings, FolderOpen, Cpu, HardDrive, Users, Copy } from 'lucide-react'
+import { Play, Square, Settings, FolderOpen, Cpu, HardDrive, Users, Copy, Link2, Check, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { HostedServerEntry } from '../../../../shared/types'
 import { useLiveUptime } from '../../hooks/useLiveUptime'
 import { BeamMPText } from '../BeamMPText'
 import type { Tab } from '../../stores/useHostedServerStore'
+import { createShortInviteLink, buildInviteLink } from '../../utils/inviteLink'
+import { copyText } from '../../utils/clipboard'
 
 interface InstancesGridProps {
   servers: HostedServerEntry[]
@@ -93,6 +95,8 @@ function InstanceCard({
   const liveUptime = useLiveUptime(status.startedAt, isRunning)
 
   const mapName = config.map?.split('/')[2] ?? 'Unknown'
+  const [inviteCopied, setInviteCopied] = useState(false)
+  const [creatingInvite, setCreatingInvite] = useState(false)
 
   // Marquee scroll for long server names
   const nameContainerRef = useRef<HTMLDivElement>(null)
@@ -133,6 +137,39 @@ function InstanceCard({
       }
     })
   }, [config.id, config.map, config.customImage, modZipLookup])
+
+  const handleCopyInvite = useCallback(async () => {
+    if (!isRunning || creatingInvite) return
+
+    setCreatingInvite(true)
+    setInviteCopied(false)
+    let didCopy = false
+    try {
+      const probe = await window.api.hostedServerTestPort(config.port).catch(() => null)
+      let inviteIp = probe?.ip?.trim() || ''
+      if (!inviteIp) {
+        const ts = await window.api.getTailscaleStatus().catch(() => null)
+        if (ts?.installed && ts.running && ts.ip) inviteIp = ts.ip
+      }
+      if (!inviteIp) return
+
+      const link = await createShortInviteLink({ ip: inviteIp, port: config.port })
+      copyText(link)
+      didCopy = true
+    } catch {
+      const probe = await window.api.hostedServerTestPort(config.port).catch(() => null)
+      const fallbackIp = probe?.ip?.trim()
+      if (!fallbackIp) return
+      copyText(buildInviteLink({ ip: fallbackIp, port: config.port, name: config.name }))
+      didCopy = true
+    } finally {
+      setCreatingInvite(false)
+      if (didCopy) {
+        setInviteCopied(true)
+        setTimeout(() => setInviteCopied(false), 1500)
+      }
+    }
+  }, [isRunning, creatingInvite, config.port, config.name])
 
   return (
     <div className="border border-[var(--color-border)] bg-[var(--color-surface)] flex flex-col overflow-hidden">
@@ -221,6 +258,15 @@ function InstanceCard({
         >
           <Copy size={14} />
         </ActionBtn>
+        {isRunning && (
+          <ActionBtn
+            onClick={handleCopyInvite}
+            className="text-[var(--color-text-muted)] hover:bg-[var(--color-surface-hover)]"
+            title={t('servers.copyInviteLink', 'Copy invite link (beammp-cm://)')}
+          >
+            {creatingInvite ? <Loader2 size={14} className="animate-spin" /> : inviteCopied ? <Check size={14} /> : <Link2 size={14} />}
+          </ActionBtn>
+        )}
 
         <div className="ml-auto">
           <ActionBtn
