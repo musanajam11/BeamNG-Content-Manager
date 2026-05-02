@@ -53,6 +53,8 @@ protocol.registerSchemesAsPrivileged([
 // with the parsed server info first. Unknown query keys are ignored. Any
 // malformed URL is dropped silently (logged for debugging).
 const INVITE_SCHEME = 'beammp-cm'
+const BMR_ORIGIN = 'https://bmr.musanet.xyz'
+const BMR_INVITE_API = `${BMR_ORIGIN}/api/invite`
 
 interface JoinInvitePayload {
   ip: string
@@ -423,6 +425,59 @@ app.whenReady().then(async () => {
     const inv = pendingInvite
     pendingInvite = null
     return inv
+  })
+
+  // Create a short invite URL via bmr.musanet.xyz from the main process so
+  // renderer CORS restrictions cannot force a fallback to beammp-cm://.
+  ipcMain.handle('invite:createShort', async (_evt, payload: { ip?: string; port?: number }) => {
+    const ip = String(payload?.ip ?? '').trim()
+    const port = Number(payload?.port)
+    if (!ip || !Number.isInteger(port) || port < 1 || port > 65535) {
+      return null
+    }
+    if (!/^[a-zA-Z0-9.\-:[\]_]+$/.test(ip)) {
+      return null
+    }
+
+    try {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 8000)
+
+      // BMR protects non-GET endpoints with CSRF. As a non-browser client we
+      // must perform the same handshake explicitly and forward the token.
+      const csrfRes = await fetch(`${BMR_ORIGIN}/api/auth/csrf`, {
+        method: 'GET',
+        signal: controller.signal,
+      })
+
+      const setCookie = csrfRes.headers.get('set-cookie') || ''
+      const csrfMatch = setCookie.match(/(?:^|,\s*)rw_csrf=([^;]+)/)
+      const csrfToken = csrfMatch?.[1] ?? ''
+
+      const res = await fetch(BMR_INVITE_API, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(csrfToken ? { 'X-CSRF-Token': csrfToken, Cookie: `rw_csrf=${csrfToken}` } : {}),
+        },
+        body: JSON.stringify({ ip, port }),
+        signal: controller.signal,
+      })
+      clearTimeout(timer)
+
+      if (!res.ok) {
+        console.warn(`[invite] short-link upstream non-OK: ${res.status}`)
+        return null
+      }
+
+      const data = await res.json() as { url?: string }
+      const url = typeof data?.url === 'string' ? data.url : null
+      if (!url) return null
+      return url
+    } catch (err) {
+      console.warn('[invite] short-link request failed:', err)
+      return null
+    }
   })
 
   // Discord Rich Presence

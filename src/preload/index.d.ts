@@ -139,6 +139,7 @@ interface AppAPI {
 
   // Invite links (beammp-cm:// custom URL scheme)
   getPendingInvite(): Promise<JoinInvitePayload | null>
+  createShortInviteLink(ip: string, port: number): Promise<string | null>
   onInviteReceived(callback: (invite: JoinInvitePayload) => void): () => void
 
   // Support Tools

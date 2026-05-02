@@ -7,7 +7,7 @@ import { useFlagUrl } from '../../utils/flagCache'
 import { BeamMPText } from '../BeamMPText'
 import { parseServerTags } from '../../utils/serverTags'
 import { ServerTagBadge } from './ServerTag'
-import { buildInviteLink } from '../../utils/inviteLink'
+import { buildInviteLink, createShortInviteLink } from '../../utils/inviteLink'
 import { copyText } from '../../utils/clipboard'
 
 interface Props {
@@ -94,19 +94,22 @@ export function ServerDetailPanel({
   }
 
   const handleCopyInvite = (): void => {
-    // Generate a beammp-cm:// invite link that, when clicked on a system
-    // with CM installed, opens straight into this server's confirmation
-    // card. Embed sname + map so recipients see meaningful info even
-    // before the live probe finishes.
-    const link = buildInviteLink({
-      ip: server.ip,
-      port: server.port,
-      name: server.sname,
-      map: server.map
-    })
-    copyText(link)
-    setInviteCopied(true)
-    setTimeout(() => setInviteCopied(false), 1500)
+    // Kick off short-link creation async; show spinner until done then flash
+    // the "Copied!" state. Falls back to a plain beammp-cm:// link if the
+    // BMR API is unreachable so the copy always works.
+    setInviteCopied(false)
+    createShortInviteLink({ ip: server.ip, port: Number(server.port) })
+      .then((link) => {
+        copyText(link)
+        setInviteCopied(true)
+        setTimeout(() => setInviteCopied(false), 1500)
+      })
+      .catch(() => {
+        // Absolute last resort — local deep link
+        copyText(buildInviteLink({ ip: server.ip, port: server.port }))
+        setInviteCopied(true)
+        setTimeout(() => setInviteCopied(false), 1500)
+      })
   }
 
   const formatElapsed = (ms: number): string => {

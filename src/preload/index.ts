@@ -110,6 +110,8 @@ const api = {
   // Invite links (beammp-cm:// custom URL scheme)
   getPendingInvite: () =>
     ipcRenderer.invoke('invite:getPending') as Promise<import('../shared/types').JoinInvitePayload | null>,
+  createShortInviteLink: (ip: string, port: number) =>
+    ipcRenderer.invoke('invite:createShort', { ip, port }) as Promise<string | null>,
   onInviteReceived: (
     callback: (invite: import('../shared/types').JoinInvitePayload) => void
   ) => {
