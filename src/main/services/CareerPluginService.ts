@@ -36,6 +36,17 @@ export interface PluginCatalogEntry {
    */
   serverPluginFolder?: string
   /**
+   * Optional path inside the repository tag source zip to extract into
+   * `Resources/Server/<serverPluginFolder>/`.
+   * Example: `Resources/Server/MyPlugin`.
+   */
+  serverSourceFromTagSubdir?: string
+  /**
+   * Optional path to the actual client mod zip inside a wrapper archive.
+   * Example: `Resources/Client/busDisplaySync.zip`.
+   */
+  clientZipPathInArchive?: string
+  /**
    * Mod source. Defaults to GitHub releases. `beamng` entries are downloaded from
    * BeamNG.com using the same logged-in cookie session as the main mod browser,
    * then deployed straight to `Resources/Client/` of the selected hosted server.
@@ -95,7 +106,8 @@ export const PLUGIN_CATALOG: PluginCatalogEntry[] = [
     repo: 'StanleyDudek/citybusDisplaysSync',
     homepage: 'https://github.com/StanleyDudek/citybusDisplaysSync',
     compat: 'careerMP',
-    installMethod: 'copy-client-zip'
+    installMethod: 'copy-client-zip',
+    clientZipPathInArchive: 'Resources/Client/busDisplaySync.zip'
   },
   {
     id: 'player-dealership-loaner',
@@ -105,7 +117,8 @@ export const PLUGIN_CATALOG: PluginCatalogEntry[] = [
     repo: 'ChiarelloB/Player-Dealership-Loaner-System-for-CareerMP',
     homepage: 'https://github.com/ChiarelloB/Player-Dealership-Loaner-System-for-CareerMP',
     compat: 'both',
-    installMethod: 'extract-to-root',
+    installMethod: 'copy-client-zip',
+    serverSourceFromTagSubdir: 'Resources/Server/CareerMPPartySharedVehicles',
     serverPluginFolder: 'CareerMPPartySharedVehicles'
   },
   {
@@ -333,10 +346,44 @@ export class CareerPluginService {
         case 'copy-client-zip': {
           const clientDir = join(serverDir, 'Resources', 'Client')
           await mkdir(clientDir, { recursive: true })
-          const assetName = basename(new URL(downloadUrl).pathname) || `${entry.id}.zip`
-          const destPath = join(clientDir, assetName)
-          await copyFile(zipPath, destPath)
-          artifacts = [join('Resources', 'Client', assetName)]
+
+          if (entry.clientZipPathInArchive) {
+            const nestedName = await this.extractZipEntryToDir(zipPath, clientDir, entry.clientZipPathInArchive)
+            if (!nestedName) {
+              throw new Error(`Could not find nested client zip ${entry.clientZipPathInArchive} in release archive`)
+            }
+            artifacts = [join('Resources', 'Client', nestedName)]
+          } else {
+            const assetName = basename(new URL(downloadUrl).pathname) || `${entry.id}.zip`
+            const destPath = join(clientDir, assetName)
+            await copyFile(zipPath, destPath)
+            artifacts = [join('Resources', 'Client', assetName)]
+          }
+
+          // Optional split install: some plugins publish the client mod as the release asset,
+          // while server files live in the tagged source tree under a known subdirectory.
+          if (entry.serverSourceFromTagSubdir) {
+            if (!entry.repo) {
+              throw new Error(`Plugin ${entry.id} is missing repo metadata required for serverSourceFromTagSubdir`)
+            }
+            const tag = this.parseGitHubReleaseTagFromDownloadUrl(downloadUrl)
+            if (!tag) {
+              throw new Error(`Could not infer release tag from download URL for ${entry.id}`)
+            }
+            const sourceZipPath = join(this.tmpDir, `${entry.id}_${safeVersion}_source.zip`)
+            const sourceZipUrl = `https://codeload.github.com/${entry.repo}/zip/refs/tags/${encodeURIComponent(tag)}`
+            await this.downloadFile(sourceZipUrl, sourceZipPath)
+
+            const folderName = entry.serverPluginFolder || entry.id
+            const serverPluginDir = join(serverDir, 'Resources', 'Server', folderName)
+            await mkdir(serverPluginDir, { recursive: true })
+            const extracted = await this.extractZipSubdirTracked(sourceZipPath, serverPluginDir, entry.serverSourceFromTagSubdir)
+            await rm(sourceZipPath, { force: true }).catch(() => {})
+            if (extracted.length === 0) {
+              throw new Error(`No files found in tagged source for ${entry.serverSourceFromTagSubdir}`)
+            }
+            artifacts.push(join('Resources', 'Server', folderName))
+          }
           break
         }
       }
@@ -607,6 +654,167 @@ export class CareerPluginService {
         zipFile.on('error', (e) => reject(e))
       })
     })
+  }
+
+  /**
+   * Extract only a subdirectory from a zip into destDir.
+   * `subdir` is matched by path segments (case-insensitive), so it works even
+   * when source zips have an extra top-level folder.
+   */
+  private extractZipSubdirTracked(zipPath: string, destDir: string, subdir: string): Promise<string[]> {
+    return new Promise((resolvePromise, reject) => {
+      yauzlOpen(zipPath, { lazyEntries: true }, (err, zipFile) => {
+        if (err || !zipFile) { reject(err ?? new Error('Failed to open zip')); return }
+
+        const files: string[] = []
+        const resolvedDest = resolvePath(destDir)
+        const targetSegs = subdir.split('/').filter(Boolean).map((s) => s.toLowerCase())
+        zipFile.readEntry()
+
+        zipFile.on('entry', (entry: Entry) => {
+          const rawName = entry.fileName.replace(/\\/g, '/')
+          const segs = rawName.split('/').filter(Boolean)
+          const lower = segs.map((s) => s.toLowerCase())
+
+          let relSegStart = -1
+          for (let i = 0; i <= lower.length - targetSegs.length; i++) {
+            let ok = true
+            for (let j = 0; j < targetSegs.length; j++) {
+              if (lower[i + j] !== targetSegs[j]) { ok = false; break }
+            }
+            if (ok) {
+              relSegStart = i + targetSegs.length
+              break
+            }
+          }
+
+          if (relSegStart < 0) {
+            zipFile.readEntry()
+            return
+          }
+
+          const relPath = segs.slice(relSegStart).join('/')
+          if (!relPath) {
+            zipFile.readEntry()
+            return
+          }
+
+          const entryPath = join(destDir, relPath)
+          const resolvedEntry = resolvePath(entryPath)
+          if (resolvedEntry !== resolvedDest && !resolvedEntry.startsWith(resolvedDest + sep)) {
+            zipFile.readEntry()
+            return
+          }
+
+          if (/\/$/.test(rawName)) {
+            mkdir(entryPath, { recursive: true })
+              .then(() => zipFile.readEntry())
+              .catch(() => zipFile.readEntry())
+          } else {
+            mkdir(dirname(entryPath), { recursive: true })
+              .then(() => {
+                zipFile.openReadStream(entry, (sErr, stream) => {
+                  if (sErr || !stream) { zipFile.readEntry(); return }
+                  const ws = createWriteStream(entryPath)
+                  stream.pipe(ws)
+                  ws.on('finish', () => {
+                    files.push(relPath)
+                    zipFile.readEntry()
+                  })
+                  ws.on('error', () => zipFile.readEntry())
+                })
+              })
+              .catch(() => zipFile.readEntry())
+          }
+        })
+
+        zipFile.on('end', () => {
+          zipFile.close()
+          resolvePromise(files)
+        })
+        zipFile.on('error', (e) => reject(e))
+      })
+    })
+  }
+
+  /**
+   * Extract a single file entry from a zip to destDir by matching a trailing
+   * archive path (case-insensitive, segment-aware).
+   * Returns the output file name when extracted, otherwise null.
+   */
+  private extractZipEntryToDir(zipPath: string, destDir: string, targetArchivePath: string): Promise<string | null> {
+    return new Promise((resolvePromise, reject) => {
+      yauzlOpen(zipPath, { lazyEntries: true }, (err, zipFile) => {
+        if (err || !zipFile) { reject(err ?? new Error('Failed to open zip')); return }
+
+        const targetSegs = targetArchivePath.split('/').filter(Boolean).map((s) => s.toLowerCase())
+        const resolvedDest = resolvePath(destDir)
+        let resolved = false
+
+        zipFile.readEntry()
+
+        zipFile.on('entry', (entry: Entry) => {
+          if (resolved) return
+          const rawName = entry.fileName.replace(/\\/g, '/')
+          if (/\/$/.test(rawName)) {
+            zipFile.readEntry()
+            return
+          }
+
+          const segs = rawName.split('/').filter(Boolean)
+          const lower = segs.map((s) => s.toLowerCase())
+          const tail = lower.slice(Math.max(0, lower.length - targetSegs.length))
+          const matches = tail.length === targetSegs.length && tail.every((s, i) => s === targetSegs[i])
+          if (!matches) {
+            zipFile.readEntry()
+            return
+          }
+
+          const fileName = basename(rawName)
+          const outPath = join(destDir, fileName)
+          const resolvedOut = resolvePath(outPath)
+          if (resolvedOut !== resolvedDest && !resolvedOut.startsWith(resolvedDest + sep)) {
+            zipFile.readEntry()
+            return
+          }
+
+          mkdir(dirname(outPath), { recursive: true })
+            .then(() => {
+              zipFile.openReadStream(entry, (sErr, stream) => {
+                if (sErr || !stream) { zipFile.readEntry(); return }
+                const ws = createWriteStream(outPath)
+                stream.pipe(ws)
+                ws.on('finish', () => {
+                  resolved = true
+                  zipFile.close()
+                  resolvePromise(fileName)
+                })
+                ws.on('error', (e) => reject(e))
+              })
+            })
+            .catch(() => zipFile.readEntry())
+        })
+
+        zipFile.on('end', () => {
+          if (resolved) return
+          zipFile.close()
+          resolvePromise(null)
+        })
+        zipFile.on('error', (e) => reject(e))
+      })
+    })
+  }
+
+  private parseGitHubReleaseTagFromDownloadUrl(downloadUrl: string): string | null {
+    try {
+      const u = new URL(downloadUrl)
+      const segs = u.pathname.split('/').filter(Boolean)
+      const idx = segs.findIndex((s) => s.toLowerCase() === 'download')
+      if (idx >= 0 && idx + 1 < segs.length) return segs[idx + 1]
+      return null
+    } catch {
+      return null
+    }
   }
 
   private fetchJson(url: string): Promise<unknown> {
