@@ -246,7 +246,7 @@ export function StatusDashboard({
                   {connectionString}
                 </span>
                 <button
-                  onClick={() => navigator.clipboard.writeText(connectionString)}
+                  onClick={() => copyText(connectionString)}
                   className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-accent)] transition-colors"
                   title={t('serverManager.copyConnectionAddress')}
                 >
@@ -262,7 +262,7 @@ export function StatusDashboard({
                     {publicIp}
                   </span>
                   <button
-                    onClick={() => navigator.clipboard.writeText(publicIp)}
+                    onClick={() => copyText(publicIp)}
                     className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-accent)] transition-colors"
                     title={t('serverManager.copyIp')}
                   >
