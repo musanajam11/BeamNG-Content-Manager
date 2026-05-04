@@ -173,27 +173,100 @@ export class ServerManagerService {
     return this.exePath
   }
 
+  /**
+   * Count distinct ESTABLISHED TCP connections whose LOCAL endpoint port equals
+   * `port`. We parse netstat output rather than relying on shell pipelines so we
+   * can correctly handle:
+   *   - The listening socket (which is in LISTEN/LISTENING state, not ESTABLISHED).
+   *   - Loopback connections, which appear twice in netstat (once for each
+   *     endpoint). Without dedup, a single direct-connect from this machine
+   *     was counted as 2 ESTABLISHED rows, while an external player counted as
+   *     only 1 — which combined with a bogus `-1` "listening socket" subtraction
+   *     made external player counts effectively zero. (Hence the previous
+   *     symptom: active users only updated when direct-connecting locally.)
+   *   - Substring port collisions (the old `find "${port}"` matched any line
+   *     containing the digits — including when the remote port happened to
+   *     contain them).
+   * Returns the number of unique remote endpoints currently connected to the
+   * server-side TCP port.
+   */
   private async pollConnectionCount(port: number): Promise<number> {
     try {
       const { exec } = await import('child_process')
       const { promisify } = await import('util')
       const execPromise = promisify(exec)
 
-      let cmd: string
-      if (process.platform === 'win32') {
-        // On Windows, use netstat to count ESTABLISHED connections on the port
-        cmd = `netstat -an | find "${port}" | find "ESTABLISHED" /c`
-      } else {
-        // On Linux/macOS, use ss or netstat
-        cmd = `ss -tuln 2>/dev/null | grep ":${port}" | wc -l || netstat -tuln 2>/dev/null | grep ":${port}" | wc -l || echo 0`
+      const cmd = process.platform === 'win32'
+        ? 'netstat -an -p TCP'
+        : 'netstat -an -p tcp 2>/dev/null || netstat -an 2>/dev/null'
+
+      const { stdout } = await execPromise(cmd, { windowsHide: true, maxBuffer: 4 * 1024 * 1024 })
+
+      const portStr = `:${port}`
+      const remotes = new Set<string>()
+      for (const rawLine of stdout.split(/\r?\n/)) {
+        const line = rawLine.trim()
+        if (!line) continue
+        // Only count established connections — exclude LISTEN/LISTENING,
+        // TIME_WAIT, CLOSE_WAIT, SYN_SENT, etc.
+        if (!/\bESTABLISHED\b/i.test(line)) continue
+
+        // Tokenize by whitespace. Both Windows and Linux netstat outputs are
+        // whitespace-separated columns; the local and remote endpoints are
+        // address:port pairs (or [ipv6]:port).
+        const cols = line.split(/\s+/)
+        if (cols.length < 4) continue
+
+        // Find the two endpoint columns (address:port). On Windows the row is
+        // `Proto  LocalAddress  ForeignAddress  State`. On Linux it varies but
+        // local/foreign are still consecutive endpoint columns.
+        let local: string | null = null
+        let remote: string | null = null
+        for (let i = 0; i < cols.length; i++) {
+          const c = cols[i]
+          if (/:\d+$/.test(c)) {
+            if (!local) local = c
+            else if (!remote) { remote = c; break }
+          }
+        }
+        if (!local || !remote) continue
+
+        // Only count rows where the LOCAL port matches the server's listening
+        // port (i.e. server-side endpoint of a connection).
+        if (!local.endsWith(portStr)) continue
+
+        // Dedup loopback: each loopback connection appears as two rows
+        // swapping local/remote. By keying on the remote endpoint we still
+        // count distinct connections correctly even on loopback.
+        remotes.add(remote)
       }
 
-      const { stdout } = await execPromise(cmd, { windowsHide: true })
-      const count = parseInt(stdout.trim().split('\n')[0], 10) || 0
-      // Subtract 1 for the listening socket itself on some netstat outputs
-      return Math.max(0, count - 1)
+      return remotes.size
     } catch {
       return 0
+    }
+  }
+
+  /**
+   * Read the tracker plugin's analytics snapshot and return its current
+   * activeSessions player names. Returns null if the file is missing/invalid
+   * (caller should fall back to netstat-based counting).
+   */
+  private async readTrackerActiveNames(serverId: string): Promise<string[] | null> {
+    try {
+      const trackerFile = join(this.serversDir, serverId, 'player_analytics.json')
+      const raw = await readFile(trackerFile, 'utf-8')
+      const data = JSON.parse(raw)
+      if (!data || !Array.isArray(data.activeSessions)) return null
+      const names: string[] = []
+      for (const s of data.activeSessions) {
+        if (s && typeof s.playerName === 'string' && s.playerName.length > 0) {
+          names.push(s.playerName)
+        }
+      }
+      return names
+    } catch {
+      return null
     }
   }
 
@@ -1876,14 +1949,25 @@ export class ServerManagerService {
       }).catch(() => {})
     }, 2000)
 
-    // Poll connection count on server port every 3 seconds for accurate player count
-    entry.connectionPollTimer = setInterval(() => {
-      this.pollConnectionCount(config.port).then((count) => {
+    // Poll active player count every 3 seconds. Prefer the tracker plugin's
+    // analytics snapshot (authoritative — driven by BeamMP's onPlayerJoin /
+    // onPlayerDisconnect events) when it is deployed and writing. Fall back to
+    // counting ESTABLISHED TCP connections via netstat when the tracker file
+    // is unavailable (plugin not deployed, file not yet written, etc.).
+    entry.connectionPollTimer = setInterval(async () => {
+      try {
+        let count: number | null = null
+        const trackerNames = await this.readTrackerActiveNames(id)
+        if (trackerNames !== null) {
+          count = trackerNames.length
+        } else {
+          count = await this.pollConnectionCount(config.port)
+        }
         if (count !== entry.players) {
           entry.players = count
           this.emitStatusChange(id)
         }
-      }).catch(() => {})
+      } catch { /* ignore — keep last known count */ }
     }, 3000)
 
     // Background analytics poller — reads active player names from the tracker
@@ -1894,17 +1978,45 @@ export class ServerManagerService {
     if (this.analyticsService) {
       const svc = this.analyticsService
       const trackerFile = join(this.serversDir, id, 'player_analytics.json')
+      let warnedMissing = false
+      let warnedParse = false
       entry.analyticsPollerTimer = setInterval(() => {
         readFile(trackerFile, 'utf-8')
           .then((raw) => {
-            const data = JSON.parse(raw)
-            const activeSessions: Array<{ playerName?: string }> = Array.isArray(data.activeSessions) ? data.activeSessions : []
+            warnedMissing = false
+            let data: unknown
+            try {
+              data = JSON.parse(raw)
+            } catch (parseErr) {
+              if (!warnedParse) {
+                warnedParse = true
+                console.warn(`[Analytics] failed to parse tracker snapshot for ${id}:`, parseErr)
+              }
+              return
+            }
+            warnedParse = false
+            const obj = (data && typeof data === 'object') ? (data as { activeSessions?: unknown }) : {}
+            const activeSessions: Array<{ playerName?: string }> = Array.isArray(obj.activeSessions)
+              ? (obj.activeSessions as Array<{ playerName?: string }>)
+              : []
             const names = activeSessions
               .map((s) => (typeof s.playerName === 'string' ? s.playerName : ''))
               .filter((n) => n.length > 0)
             return svc.updatePlayers(id, names)
           })
-          .catch(() => {})
+          .catch((err: NodeJS.ErrnoException) => {
+            // ENOENT just means the tracker plugin hasn't written the file yet
+            // (or isn't deployed). Warn once so the user can diagnose missing
+            // analytics, then stay quiet.
+            if (err && err.code === 'ENOENT') {
+              if (!warnedMissing) {
+                warnedMissing = true
+                console.warn(`[Analytics] tracker snapshot missing for ${id} at ${trackerFile} — analytics & player counts will be inactive until the BeamMPCM tracker plugin is deployed and a player has joined.`)
+              }
+              return
+            }
+            console.warn(`[Analytics] poller error for ${id}:`, err)
+          })
       }, 10000)
     }
 
